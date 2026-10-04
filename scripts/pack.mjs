@@ -16,6 +16,8 @@ export async function pack({ pluginsRoot = resolve('plugins'), outDir = resolve(
     if (!p.author || !p.license || !p.version || !p.source) throw new Error('Incomplete catalog entry: '+p.id);
     if (!p.source.startsWith('./official/')) {
       if (!p.compatibility?.status || !/^https:\/\//.test(p.source)) throw new Error('External catalog contract missing: '+p.id);
+      const pinnedGitHub=/^https:\/\/github\.com\/[^/]+\/[^/]+\/(?:commit|tree)\/[a-f0-9]{40}$/.test(p.source);
+      if(!pinnedGitHub&&!/^[a-f0-9]{64}$/.test(p.sha256??''))throw new Error('External source needs a fixed commit or ZIP checksum: '+p.id);
       continue;
     }
     if (p.source !== `./official/${p.id}`) throw new Error('Local identity/path mismatch: '+p.id);

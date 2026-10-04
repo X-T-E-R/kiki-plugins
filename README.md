@@ -34,6 +34,15 @@ npm run dev
 
 `check` validates all 15 packages, manifest synchronization, media distribution, Extract behavior, and mocked provider protocols. It downloads only the checksum-pinned Host RPC runner from the public Kiki ref in `sdk.lock.json`; it does not read your Kiki home or use paid API credentials. To test one package, use `npm run check -- kiki-extract`.
 
+With a Kiki checkout and its dependencies installed beside this repository, run the real Host installation test against the public catalog:
+
+```sh
+KIKI_HOST_REPO=../kiki KIKI_CATALOG_URL=https://x-t-e-r.github.io/kiki-plugins/marketplace.json \
+  ../kiki/node_modules/.bin/tsx --tsconfig ../kiki/tsconfig.json test/host.integration.mts --all
+```
+
+This verifies ZIP checksums, preview/install, enablement, and loaded contributions for all 15 first-party packages. It creates its own Kiki home and temporary files under `.tmp/host-proof`, uses no OAuth or paid generation, and leaves external engines uninstalled. Omit `--all` for the four-package Writing/Extract/Media/OpenAI smoke test; omit `KIKI_CATALOG_URL` to use local prebuilt ZIPs.
+
 Office's real document-engine tests require `OFFICECLI_TEST_BINARY` pointing to the pinned executable. Without it, those three tests are explicitly skipped; manifest, consent, path, and package-safety tests still run. Optional Python extraction tests use `NB_EXTRACT_TEST_PYTHON`. Neither dependency is silently installed.
 
 `build` writes a local candidate to `dist/`; production Release URLs become available only after publication. `dev` prints a loopback catalog URL and serves one prebuilt set of ZIPs, so index digests always match downloaded bytes. It exposes neither source tests nor build scripts. Restart it after source changes.
