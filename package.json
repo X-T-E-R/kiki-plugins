@@ -1,0 +1,24 @@
+{
+  "name": "kiki-plugins",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "scripts": {
+    "build": "node scripts/pack.mjs",
+    "check": "node scripts/check.mjs",
+    "test": "node --test test/*.test.mjs",
+    "dev": "node scripts/dev-plugin-marketplace-server.mjs"
+  },
+  "devDependencies": {
+    "@kiki/plugin-sdk": "file:vendor/kiki-plugin-sdk-0.1.0.tgz",
+    "@types/node": "22.15.3",
+    "semver": "7.7.4",
+    "typescript": "6.0.2",
+    "yauzl": "3.3.0",
+    "yazl": "3.3.1",
+    "zod": "4.3.6"
+  }
+}

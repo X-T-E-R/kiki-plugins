@@ -1,0 +1,69 @@
+name: Plugin CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.changes.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+      - id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          node scripts/changes.mjs > changes.json
+          echo "matrix=$(node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync("changes.json")).matrix))')" >> "$GITHUB_OUTPUT"
+  package:
+    needs: changes
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.changes.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Validate package and mocked protocol
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: node scripts/check.mjs "$PACKAGE"
+  archives:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: actions/checkout@v4
+        with:
+          repository: X-T-E-R/kiki
+          ref: 4c64f17a9dbc5ded7b08157204468995d3931566
+          path: .tmp/sdk-upstream
+          sparse-checkout: |
+            packages/plugin-sdk
+            LICENSE
+          persist-credentials: false
+      - run: node_modules/.bin/tsc -p .tmp/sdk-upstream/packages/plugin-sdk/tsconfig.build.json
+      - run: node scripts/verify-sdk.mjs
+      - run: npm test

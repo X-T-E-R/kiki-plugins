@@ -1,0 +1,420 @@
+{
+  "version": "1",
+  "plugins": [
+    {
+      "id": "kiki-office",
+      "tier": "official",
+      "displayName": "Kiki Office Suite",
+      "version": "0.1.0",
+      "description": "Create and edit local Word, Excel and PowerPoint files.",
+      "keywords": [
+        "office",
+        "docx",
+        "xlsx",
+        "pptx"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "relevance": {
+        "fileGlobs": [
+          "**/*.docx",
+          "**/*.xlsx",
+          "**/*.pptx"
+        ],
+        "commands": [
+          "officecli"
+        ]
+      },
+      "source": "./official/kiki-office",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-office"
+    },
+    {
+      "id": "kiki-writing",
+      "tier": "official",
+      "displayName": "Kiki Writing",
+      "version": "0.1.0",
+      "description": "A focused manuscript panel and draft command.",
+      "keywords": [
+        "writing",
+        "manuscript",
+        "fiction"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "relevance": {
+        "fileGlobs": [
+          "**/*.md",
+          "**/*.txt"
+        ]
+      },
+      "source": "./official/kiki-writing",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-writing"
+    },
+    {
+      "id": "kiki-extract",
+      "tier": "official",
+      "displayName": "Kiki Extract",
+      "version": "0.1.0",
+      "description": "Turn local PDF, Office, HTML and text documents into readable Markdown with source metadata. MinerU OCR is explicit and opt-in.",
+      "keywords": [
+        "documents",
+        "extract",
+        "pdf",
+        "markdown",
+        "docx"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "relevance": {
+        "fileGlobs": [
+          "**/*.pdf",
+          "**/*.docx",
+          "**/*.html"
+        ]
+      },
+      "source": "./official/kiki-extract",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-extract"
+    },
+    {
+      "id": "kiki-notion",
+      "tier": "official",
+      "displayName": "Kiki Notion",
+      "version": "0.1.0",
+      "description": "Search and read Notion material, produce source-backed briefs, and save to a specified page on request.",
+      "keywords": [
+        "notion",
+        "knowledge",
+        "mcp"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-notion",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-notion"
+    },
+    {
+      "id": "kiki-media",
+      "tier": "official",
+      "displayName": "Kiki Media",
+      "version": "0.1.0",
+      "description": "The media surface: image, video and speech providers, their credentials, and the per-modality defaults. Install a provider package for each service you use.",
+      "keywords": [
+        "media",
+        "image",
+        "video",
+        "speech"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "group": "media",
+      "source": "./official/kiki-media",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-media"
+    },
+    {
+      "id": "kiki-media-openai",
+      "tier": "official",
+      "displayName": "OpenAI Media",
+      "version": "0.1.0",
+      "description": "OpenAI image generation and editing, and file speech synthesis. Needs a media-capable API connection or key; cloud generation can incur charges.",
+      "keywords": [
+        "media",
+        "openai",
+        "image",
+        "tts"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-media-openai",
+      "group": "media",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-media-openai"
+    },
+    {
+      "id": "kiki-media-google",
+      "tier": "official",
+      "displayName": "Google Media",
+      "version": "0.1.0",
+      "description": "Google Gemini native images and Veo asynchronous video. Needs the corresponding media API access.",
+      "keywords": [
+        "media",
+        "google",
+        "gemini",
+        "veo",
+        "image",
+        "video"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-media-google",
+      "group": "media",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-media-google"
+    },
+    {
+      "id": "kiki-media-ark",
+      "tier": "official",
+      "displayName": "Ark Media",
+      "version": "0.1.0",
+      "description": "Ark Seedream images and the Seedance 2.0 video protocol. Configure an entitled endpoint and model; no implicit OSS upload and no Seedance 2.5.",
+      "keywords": [
+        "media",
+        "ark",
+        "seedream",
+        "seedance",
+        "image",
+        "video"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-media-ark",
+      "group": "media",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-media-ark"
+    },
+    {
+      "id": "kiki-media-xai",
+      "tier": "official",
+      "displayName": "xAI Media",
+      "version": "0.1.0",
+      "description": "xAI image generation and editing, and asynchronous video. API media access is required; a Grok web subscription is not assumed compatible.",
+      "keywords": [
+        "media",
+        "xai",
+        "grok",
+        "image",
+        "video"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-media-xai",
+      "group": "media",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-media-xai"
+    },
+    {
+      "id": "kiki-media-minimax",
+      "tier": "official",
+      "displayName": "MiniMax Media",
+      "version": "0.1.0",
+      "description": "MiniMax portrait-reference images, H3 and H3-Max video, and HTTP/SSE file speech with optional subtitles. Needs media API access; long text is not split into paid jobs automatically.",
+      "keywords": [
+        "media",
+        "minimax",
+        "image",
+        "video",
+        "tts",
+        "subtitles"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-media-minimax",
+      "group": "media",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-media-minimax"
+    },
+    {
+      "id": "kiki-media-stepfun",
+      "tier": "official",
+      "displayName": "StepFun Speech",
+      "version": "0.1.0",
+      "description": "StepFun HTTP binary and SSE file speech through a TTS-capable API endpoint. Not a WebSocket live-session runtime.",
+      "keywords": [
+        "media",
+        "stepfun",
+        "tts",
+        "speech"
+      ],
+      "author": "Kiki",
+      "license": "MIT AND Apache-2.0",
+      "source": "./official/kiki-media-stepfun",
+      "group": "media",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-media-stepfun"
+    },
+    {
+      "id": "kiki-media-novita",
+      "tier": "official",
+      "displayName": "Novita Compatible Video",
+      "version": "0.1.0",
+      "description": "Optional Novita /video/create and task-result compatibility profile. Configure your endpoint and the actual model; not every Novita API is supported.",
+      "keywords": [
+        "media",
+        "novita",
+        "video",
+        "endpoint"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-media-novita",
+      "group": "media",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-media-novita"
+    },
+    {
+      "id": "kiki-media-agnes",
+      "tier": "official",
+      "displayName": "Agnes Video",
+      "version": "0.1.0",
+      "description": "Optional Agnes 2.5, Flash and V2.0 video endpoint adapter with explicit frame and reference roles. Configure a compatible endpoint.",
+      "keywords": [
+        "media",
+        "agnes",
+        "video",
+        "endpoint"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-media-agnes",
+      "group": "media",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-media-agnes"
+    },
+    {
+      "id": "kiki-media-newapi",
+      "tier": "official",
+      "displayName": "NewAPI Compatible Video",
+      "version": "0.1.0",
+      "description": "Optional NewAPI /video/generations gateway profile. Model availability and audio generation depend on your configured endpoint.",
+      "keywords": [
+        "media",
+        "newapi",
+        "video",
+        "gateway"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-media-newapi",
+      "group": "media",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-media-newapi"
+    },
+    {
+      "id": "kiki-media-comfyui",
+      "tier": "official",
+      "displayName": "ComfyUI Workflow",
+      "version": "0.1.0",
+      "description": "Optional ComfyUI API-format image and video workflows using your running endpoint and installed models. No engine, GPU runtime or models are bundled.",
+      "keywords": [
+        "media",
+        "comfyui",
+        "image",
+        "video",
+        "workflow",
+        "local"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-media-comfyui",
+      "group": "media",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-media-comfyui"
+    },
+    {
+      "id": "kimi-datasource",
+      "tier": "official",
+      "displayName": "Kimi Datasource",
+      "version": "3.4.0",
+      "description": "Official datasource workflows.",
+      "keywords": [
+        "data",
+        "mcp"
+      ],
+      "author": "Moonshot AI",
+      "source": "https://code.kimi.com/kimi-code/plugins/official/kimi-datasource.zip",
+      "sha256": "f395c73bc463566506fa198a590cb927a1aad093f32936f0f9809a2f30537bad",
+      "license": "License not declared by upstream",
+      "homepage": "https://github.com/MoonshotAI/kimi-code",
+      "compatibility": {
+        "status": "upstream-reference",
+        "format": "kimi",
+        "notes": "Requires author-managed Kimi credentials and service entitlement; Kiki compatibility not revalidated. Author CDN may change; checksum pins inspected bytes."
+      }
+    },
+    {
+      "id": "kimi-webbridge",
+      "tier": "official",
+      "displayName": "Kimi Browser Extension",
+      "version": "1.11.3",
+      "description": "Control your real browser from Kiki.",
+      "keywords": [
+        "browser",
+        "automation",
+        "webbridge"
+      ],
+      "author": "Moonshot AI",
+      "license": "Proprietary",
+      "source": "https://code.kimi.com/kimi-code/plugins/official/kimi-webbridge.zip",
+      "sha256": "1c1dc29ddcdec4c8accd44a0c9c7b3fb83b2da178fb558148a86cdbc0d9b7f56",
+      "homepage": "https://www.kimi.com/features/webbridge",
+      "compatibility": {
+        "status": "upstream-reference",
+        "format": "kimi",
+        "notes": "Requires author browser extension and local daemon. Author CDN may change; checksum pins inspected bytes."
+      }
+    },
+    {
+      "id": "superpowers",
+      "tier": "curated",
+      "displayName": "Superpowers",
+      "description": "Planning, TDD, debugging, and delivery workflows for coding agents.",
+      "homepage": "https://github.com/obra/superpowers",
+      "keywords": [
+        "skills",
+        "planning",
+        "tdd",
+        "debugging",
+        "code-review"
+      ],
+      "author": "Jesse Vincent",
+      "source": "https://github.com/obra/superpowers/commit/8ca22dba9a94f28898bbce59f2537ff4d87c747d",
+      "version": "6.4.2",
+      "license": "MIT",
+      "compatibility": {
+        "status": "unverified",
+        "format": "claude-plugin",
+        "notes": "Pinned author source. Preview imported contributions and unsupported diagnostics before enabling; no author scripts are run during catalog validation."
+      }
+    },
+    {
+      "id": "vercel-plugin",
+      "tier": "curated",
+      "displayName": "Vercel Plugin",
+      "description": "Comprehensive Vercel ecosystem plugin: skills, agents, and conventions for the Vercel platform.",
+      "homepage": "https://vercel.com/docs/agent-resources/vercel-plugin",
+      "keywords": [
+        "vercel",
+        "deployment",
+        "nextjs",
+        "skills",
+        "agents"
+      ],
+      "author": "Vercel",
+      "relevance": {
+        "dependencies": [
+          "next",
+          "@vercel/*"
+        ]
+      },
+      "source": "https://github.com/vercel/vercel-plugin/commit/3b472643cbb1a42479d99b0c9a1d27b8bc84aaa7",
+      "version": "0.53.0",
+      "license": "Apache-2.0",
+      "compatibility": {
+        "status": "unverified",
+        "format": "claude-plugin",
+        "notes": "Pinned author source. Preview imported contributions and unsupported diagnostics before enabling; no author scripts are run during catalog validation."
+      }
+    },
+    {
+      "id": "modern-web-guidance",
+      "tier": "curated",
+      "displayName": "Modern Web Guidance",
+      "description": "Modern web platform expertise, best practices, and browser compatibility data for coding agents, from the Google Chrome team.",
+      "homepage": "https://github.com/GoogleChrome/modern-web-guidance",
+      "keywords": [
+        "web",
+        "css",
+        "browser",
+        "frontend",
+        "skills"
+      ],
+      "author": "Google Chrome",
+      "source": "https://github.com/GoogleChrome/modern-web-guidance/commit/84ae7251ee919239d5ea85aef25897983f26601e",
+      "version": "0.0.191",
+      "license": "Apache-2.0",
+      "compatibility": {
+        "status": "unverified",
+        "format": "claude-plugin",
+        "notes": "Pinned author source. Preview imported contributions and unsupported diagnostics before enabling; no author scripts are run during catalog validation."
+      }
+    }
+  ]
+}

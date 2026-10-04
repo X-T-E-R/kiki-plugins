@@ -1,0 +1,58 @@
+name: Publish plugins
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'New immutable batch tag (blank uses run number)'
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: plugin-publication
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run check && npm test
+      - name: Publish immutable ZIPs, verify anonymous downloads, then prepare site
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || format('plugins-{0}', github.run_number) }}
+        run: node scripts/release.mjs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .tmp/site
+  pages:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Refuse deployment of a stale release revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          url=$(gh api repos/X-T-E-R/kiki-plugins/releases/latest --jq '.assets[] | select(.name == "marketplace.json") | .browser_download_url')
+          revision=$(curl --fail --location "$url" | jq -r .revision)
+          test "$revision" = "$GITHUB_SHA"
+      - uses: actions/configure-pages@v5
+      - uses: actions/deploy-pages@v4
+        id: deployment
