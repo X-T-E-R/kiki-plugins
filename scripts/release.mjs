@@ -24,18 +24,18 @@ if(release&&!release.draft){
  const remote=JSON.parse(await bytes(release.assets.find(a=>a.name==='marketplace.json')?.browser_download_url));
  if(JSON.stringify(remote)!==JSON.stringify(result.index))throw new Error('Published batch differs; use a new tag, never overwrite');
 }else{
- if(!release){gh(['release','create',tag,'--repo',repo,'--target',revision,'--draft','--title',tag,'--notes','Versioned Kiki plugin packages and checksum-pinned catalog. Each package keeps its manifest version.']);release=findRelease();}
+ if(!release)release=JSON.parse(gh(['api','--method','POST',`repos/${repo}/releases`,'-f',`tag_name=${tag}`,'-f',`target_commitish=${revision}`,'-F','draft=true','-f',`name=${tag}`,'-f','body=Versioned Kiki plugin packages and checksum-pinned catalog. Each package keeps its manifest version.']));
  if(release.target_commitish!==revision)throw new Error('Draft target revision mismatch');
+ const token=process.env.GH_TOKEN??process.env.GITHUB_TOKEN;if(!token)throw new Error('Workflow GitHub token is required for draft assets');
+ const auth=async(url,init={})=>{if(!['api.github.com','uploads.github.com'].includes(new URL(url).hostname))throw new Error('Unexpected authenticated API host');const r=await fetch(url,{...init,headers:{Authorization:`Bearer ${token}`,...init.headers}});if(!r.ok)throw new Error(`Release API ${r.status}`);return r;};
  const files=['marketplace.json','SHA256SUMS',...result.newPackages.map(p=>p.filename)];
  for(const filename of files){
-  const old=release.assets.find(a=>a.name===filename);
-  if(old){const dir=resolve('.tmp','draft-check',String(old.id));await mkdir(dir,{recursive:true});gh(['release','download',tag,'--repo',repo,'--pattern',filename,'--dir',dir]);if(hash(await readFile(join(dir,filename)))!==hash(await readFile(join('dist/assets',filename))))throw new Error('Draft asset differs: '+filename);}
-  else gh(['release','upload',tag,join('dist/assets',filename),'--repo',repo]);
+  const local=await readFile(join('dist/assets',filename));let asset=release.assets.find(a=>a.name===filename);
+  if(!asset){const upload=release.upload_url.replace(/\{.*$/, '')+'?name='+encodeURIComponent(filename);asset=await(await auth(upload,{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:local})).json();release.assets.push(asset);}
+  const remote=Buffer.from(await(await auth(asset.url,{headers:{Accept:'application/octet-stream'}})).arrayBuffer());
+  if(hash(remote)!==hash(local))throw new Error('Uploaded asset checksum mismatch: '+filename);
  }
- const verifiedDir=resolve('.tmp','uploaded-check',String(Date.now()));await mkdir(verifiedDir,{recursive:true});
- gh(['release','download',tag,'--repo',repo,'--dir',verifiedDir]);
- for(const filename of files)if(hash(await readFile(join(verifiedDir,filename)))!==hash(await readFile(join('dist/assets',filename))))throw new Error('Uploaded asset checksum mismatch: '+filename);
- gh(['release','edit',tag,'--repo',repo,'--draft=false','--latest']);
+ gh(['api','--method','PATCH',`repos/${repo}/releases/${release.id}`,'-F','draft=false','-f','make_latest=true']);
 }
 for(const p of result.index.plugins.filter(p=>p.source.startsWith(`https://github.com/${repo}/releases/download/`))){
  const b=await bytes(p.source);if(hash(b)!==p.sha256)throw new Error('Anonymous checksum mismatch: '+p.id);console.log('Anonymous checksum verified',p.id,p.version,p.sha256);
