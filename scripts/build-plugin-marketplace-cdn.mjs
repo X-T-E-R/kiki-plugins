@@ -10,7 +10,7 @@ import { promisify } from 'node:util';
 import yazl from 'yazl';
 
 import { readPluginManifestVersion } from './plugin-manifest-version.mjs';
-import { packageFiles } from './package-files.mjs';
+import { packageFiles, packageBytes } from './package-files.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, '..');
@@ -185,7 +185,7 @@ async function publishIcon(sourceRoot, id, version, outDir, publicBaseUrl) {
   if (typeof declared !== 'string') return undefined;
   const name = declared.replace(/^\.\//, '');
   if (!ICON_TYPES.has(extname(name).toLowerCase())) return undefined;
-  const iconPath = resolve(sourceRoot, name);
+  const iconPath = resolveInsideRoot(sourceRoot, name);
   if (!(await stat(iconPath).then((info) => info.isFile()).catch(() => false))) return undefined;
   const iconRel = `official/${id}/icon-${version ?? 'latest'}${extname(name).toLowerCase()}`;
   const target = resolveInsideRoot(outDir, iconRel);
@@ -239,7 +239,7 @@ async function zipDirectory(sourceRoot, outputFile) {
 
 async function addDirectoryToZip(zipfile, root, zipRoot) {
   for (const file of await packageFiles(root)) {
-    zipfile.addFile(resolve(root, file), `${zipRoot}/${file}`, { mtime: new Date('1980-01-01T00:00:00Z'), mode: 0o100644 });
+    zipfile.addBuffer(await packageBytes(root,file), `${zipRoot}/${file}`, { mtime: new Date(1980,0,1,0,0,0), forceDosTimestamp: true, mode: 0o100644 });
   }
 }
 

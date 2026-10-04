@@ -20,8 +20,13 @@ export async function packageFiles(root) {
   if (!out.includes('kimi.plugin.json') || !out.some(f => f.startsWith('LICENSE'))) throw new Error(`Package needs manifest and license: ${root}`);
   return out;
 }
+export async function packageBytes(root, file) {
+  const bytes=await readFile(join(root,file));
+  const text=/\.(?:mjs|js|json|md|yaml|yml|svg|html|py)$/.test(file)||/(?:^|\/)(?:LICENSE(?:\..+)?|NOTICE)$/.test(file);
+  return text?Buffer.from(bytes.toString('utf8').replaceAll('\r\n','\n')):bytes;
+}
 export async function inputDigest(root) {
   const hash = createHash('sha256');
-  for (const file of await packageFiles(root)) hash.update(file).update('\0').update(await readFile(join(root, file))).update('\0');
+  for (const file of await packageFiles(root)) hash.update(file).update('\0').update(await packageBytes(root, file)).update('\0');
   return hash.digest('hex');
 }

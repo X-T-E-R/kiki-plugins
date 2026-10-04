@@ -16,12 +16,21 @@ test('deterministic ZIPs, complete digest/icon contract, metadata reuse and immu
   const first=await pack(opts);assert.equal(first.newPackages.length,15);assert.equal(first.index.plugins.length,20);
   const second=await pack({...opts,outDir:join(dir,'second')});
   for(const p of first.newPackages){assert.equal(p.sha256,second.newPackages.find(x=>x.id===p.id).sha256);assert.equal(sha(await readFile(join(opts.outDir,'assets',p.filename))),p.sha256);const entry=first.index.plugins.find(x=>x.id===p.id);const manifest=JSON.parse(await readFile(join(opts.pluginsRoot,'official',p.id,'kimi.plugin.json')));assert.equal(entry.engines?.kiki,manifest['x-kiki']?.engines?.kiki);assert.match(entry.icon,/icon-0\.1\.0\.svg$/);}
-  const catalogPath=join(opts.pluginsRoot,'marketplace.json'),catalog=JSON.parse(await readFile(catalogPath));catalog.plugins[0].description='Changed description only';await writeFile(catalogPath,JSON.stringify(catalog));
+  const lineEndingFile=join(opts.pluginsRoot,'official/kiki-writing/panel.html');
+  await writeFile(lineEndingFile,(await readFile(lineEndingFile,'utf8')).replaceAll('\r\n','\n').replaceAll('\n','\r\n'));
+  const oldTz=process.env.TZ;process.env.TZ='Pacific/Honolulu';
+  let alternate;try{alternate=await pack({...opts,outDir:join(dir,'alternate-platform')});}finally{if(oldTz===undefined)delete process.env.TZ;else process.env.TZ=oldTz;}
+  for(const p of first.newPackages)assert.equal(alternate.newPackages.find(x=>x.id===p.id).sha256,p.sha256);
+  const catalogPath=join(opts.pluginsRoot,'marketplace.json'),catalog=JSON.parse(await readFile(catalogPath));catalog.plugins[0].description='Changed description only';catalog.plugins[0].localizations={zh:{description:'本地办公文档'},'example-locale':{keywords:['fixture']}};await writeFile(catalogPath,JSON.stringify(catalog));
   const reused=await pack({...opts,outDir:join(dir,'reuse'),tag:'batch-2',previous:first.index});assert.equal(reused.newPackages.length,0);for(const p of first.index.plugins)assert.equal(reused.index.plugins.find(x=>x.id===p.id).source,p.source);
+  assert.deepEqual(reused.index.plugins[0].localizations,catalog.plugins[0].localizations);
   const panel=join(opts.pluginsRoot,'official/kiki-writing/panel.html');await writeFile(panel,(await readFile(panel,'utf8'))+'\n');
   await assert.rejects(pack({...opts,outDir:join(dir,'reject'),previous:first.index}),/Immutable kiki-writing@0.1.0 changed/);
+  await assert.rejects(pack({...opts,outDir:join(dir,'reject-retired-version'),previous:{...first.index,plugins:first.index.plugins.filter(p=>p.id!=='kiki-writing')}}),/Immutable kiki-writing@0.1.0 changed/);
   const manifestPath=join(opts.pluginsRoot,'official/kiki-writing/kimi.plugin.json'),m=JSON.parse(await readFile(manifestPath));m.version='0.1.1';await writeFile(manifestPath,JSON.stringify(m));
   const update=await pack({...opts,outDir:join(dir,'updated'),tag:'batch-3',previous:first.index});assert.deepEqual(update.newPackages.map(p=>p.id),['kiki-writing']);
+  m.icon='../private.svg';await writeFile(manifestPath,JSON.stringify(m));
+  await assert.rejects(pack({...opts,outDir:join(dir,'reject-icon-escape')}),/Path escapes root/);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
 test('change mapping includes ten shared-runtime consumers and metadata builds no ZIP',()=>{
