@@ -8,6 +8,7 @@ const tag=process.env.RELEASE_TAG,revision=process.env.GITHUB_SHA;
 if(!tag||!revision||! /^[a-f0-9]{40}$/.test(revision))throw new Error('RELEASE_TAG and exact GITHUB_SHA are required');
 const gh=(args)=>execFileSync('gh',args,{encoding:'utf8'});
 function api(path){const result=spawnSync('gh',['api',path],{encoding:'utf8'});if(result.status===0)return JSON.parse(result.stdout);if(result.stderr.includes('HTTP 404'))return undefined;throw new Error(result.stderr);}
+function findRelease(){return api(`repos/${repo}/releases/tags/${tag}`)??api(`repos/${repo}/releases?per_page=100`).find(r=>r.tag_name===tag);}
 async function bytes(url){const r=await fetch(url);if(!r.ok)throw new Error(`Anonymous download ${r.status}: ${url}`);return Buffer.from(await r.arrayBuffer());}
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const latest=api(`repos/${repo}/releases/latest`);
@@ -18,12 +19,12 @@ if(latest){
  if(previous.revision!==revision&&spawnSync('git',['merge-base','--is-ancestor',previous.revision,revision]).status!==0)throw new Error('Refusing stale/non-descendant catalog revision');
 }
 const result=await pack({tag,revision,previous});
-let release=api(`repos/${repo}/releases/tags/${tag}`);
+let release=findRelease();
 if(release&&!release.draft){
  const remote=JSON.parse(await bytes(release.assets.find(a=>a.name==='marketplace.json')?.browser_download_url));
  if(JSON.stringify(remote)!==JSON.stringify(result.index))throw new Error('Published batch differs; use a new tag, never overwrite');
 }else{
- if(!release){gh(['release','create',tag,'--repo',repo,'--target',revision,'--draft','--title',tag,'--notes','Versioned Kiki plugin packages and checksum-pinned catalog. Each package keeps its manifest version.']);release=api(`repos/${repo}/releases/tags/${tag}`);}
+ if(!release){gh(['release','create',tag,'--repo',repo,'--target',revision,'--draft','--title',tag,'--notes','Versioned Kiki plugin packages and checksum-pinned catalog. Each package keeps its manifest version.']);release=findRelease();}
  if(release.target_commitish!==revision)throw new Error('Draft target revision mismatch');
  const files=['marketplace.json','SHA256SUMS',...result.newPackages.map(p=>p.filename)];
  for(const filename of files){
