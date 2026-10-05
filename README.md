@@ -6,7 +6,7 @@ Independently versioned plugins for [Kiki](https://github.com/X-T-E-R/kiki): Off
 
 ## Install a plugin
 
-Open Kiki's plugin market, choose a package, and review the installation preview. Enable it after checking its contributions and requested permissions. Each first-party catalog entry points to a versioned Release ZIP and its SHA-256 digest; old packages stay available.
+Use a Kiki Host with checksum-pinned catalog installation support. If your build still opens an older catalog, set `KIKI_PLUGIN_MARKETPLACE_URL=https://x-t-e-r.github.io/kiki-plugins/marketplace.json` when starting Kiki. Open the plugin market, choose a package, and review the installation preview. Enable it after checking its contributions and requested permissions. Each first-party entry points to a versioned Release ZIP and its SHA-256 digest; old packages stay available.
 
 The catalog targets **plugin engine 0.4.0**, not the Kiki product version or the SDK package version. SDK 0.1.0 is the current build-time contract. A package's `x-kiki.engines.kiki` range determines Host compatibility.
 
