@@ -1,6 +1,6 @@
 {
   "name": "kiki-media-comfyui",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Optional ComfyUI API-format workflow endpoint. Uses your already running engine and installed models; no cloud bridge, account runtime or GPU dependency is bundled.",
   "license": "MIT",
   "interface": {

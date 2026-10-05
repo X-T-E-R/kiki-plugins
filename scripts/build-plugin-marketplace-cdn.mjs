@@ -190,7 +190,7 @@ async function publishIcon(sourceRoot, id, version, outDir, publicBaseUrl) {
   const iconRel = `official/${id}/icon-${version ?? 'latest'}${extname(name).toLowerCase()}`;
   const target = resolveInsideRoot(outDir, iconRel);
   await mkdir(dirname(target), { recursive: true });
-  await cp(iconPath, target);
+  await writeFile(target, await packageBytes(sourceRoot, name));
   return publicUrl(publicBaseUrl, iconRel);
 }
 

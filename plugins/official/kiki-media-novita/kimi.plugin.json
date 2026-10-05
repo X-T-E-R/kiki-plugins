@@ -1,6 +1,6 @@
 {
   "name": "kiki-media-novita",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Optional Novita /video/create compatibility endpoint adapter from Canvas. Configure your endpoint and actual model; does not claim every Novita generation API.",
   "license": "MIT",
   "interface": {

@@ -1,6 +1,6 @@
 {
   "name": "kiki-media",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Generate images, videos and speech with installed media providers.",
   "license": "MIT",
   "skills": "./skills/",

@@ -1,6 +1,6 @@
 {
   "name": "kiki-media-agnes",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Optional Agnes video endpoint adapter. Explicit frame/reference roles and native V2.0 frames; no account runtime or hidden uploads.",
   "license": "MIT",
   "interface": {

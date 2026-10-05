@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir, cp } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { pack } from './pack.mjs';
+import { retainHistoricalIcons } from './historical-icons.mjs';
 const repo='X-T-E-R/kiki-plugins';
 const tag=process.env.RELEASE_TAG,revision=process.env.GITHUB_SHA;
 if(!tag||!revision||! /^[a-f0-9]{40}$/.test(revision))throw new Error('RELEASE_TAG and exact GITHUB_SHA are required');
@@ -19,6 +20,7 @@ if(latest){
  if(previous.revision!==revision&&spawnSync('git',['merge-base','--is-ancestor',previous.revision,revision]).status!==0)throw new Error('Refusing stale/non-descendant catalog revision');
 }
 const result=await pack({tag,revision,previous});
+const historicalIcons=await retainHistoricalIcons(previous,'dist',bytes);
 let release=findRelease();
 if(release&&!release.draft){
  const remote=JSON.parse(await bytes(release.assets.find(a=>a.name==='marketplace.json')?.browser_download_url));
@@ -43,4 +45,4 @@ for(const p of result.index.plugins.filter(p=>p.source.startsWith(`https://githu
 await mkdir('.tmp/site',{recursive:true});
 await cp('dist/official','.tmp/site/official',{recursive:true});
 await cp('dist/marketplace.json','.tmp/site/marketplace.json');await cp('dist/index.html','.tmp/site/index.html');
-await writeFile('.tmp/release-receipt.json',JSON.stringify({tag,revision,newPackages:result.newPackages,verified:result.index.plugins.filter(p=>p.source.startsWith(`https://github.com/${repo}/releases/download/`)).length},null,2));
+await writeFile('.tmp/release-receipt.json',JSON.stringify({tag,revision,newPackages:result.newPackages,historicalIcons,verified:result.index.plugins.filter(p=>p.source.startsWith(`https://github.com/${repo}/releases/download/`)).length},null,2));

@@ -1,6 +1,6 @@
 {
   "name": "kiki-media-newapi",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Optional NewAPI /video/generations compatible gateway adapter. Model availability and audio generation depend on your endpoint.",
   "license": "MIT",
   "interface": {

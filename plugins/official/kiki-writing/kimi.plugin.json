@@ -1,6 +1,6 @@
 {
   "name": "kiki-writing",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A focused writing panel and a declarative draft command.",
   "license": "MIT",
   "icon": "./icon.svg",

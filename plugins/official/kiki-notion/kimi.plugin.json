@@ -1,6 +1,6 @@
 {
   "name": "kiki-notion",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Search and read Notion material, produce source-backed briefs, and save to a specified page on request.",
   "license": "MIT",
   "skills": [

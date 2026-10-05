@@ -5,7 +5,7 @@
       "id": "kiki-office",
       "tier": "official",
       "displayName": "Kiki Office Suite",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Create and edit local Word, Excel and PowerPoint files.",
       "keywords": [
         "office",
@@ -33,7 +33,7 @@
       "id": "kiki-writing",
       "tier": "official",
       "displayName": "Kiki Writing",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "A focused manuscript panel and draft command.",
       "keywords": [
         "writing",
@@ -56,7 +56,7 @@
       "id": "kiki-extract",
       "tier": "official",
       "displayName": "Kiki Extract",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Turn local PDF, Office, HTML and text documents into readable Markdown with source metadata. MinerU OCR is explicit and opt-in.",
       "keywords": [
         "documents",
@@ -82,7 +82,7 @@
       "id": "kiki-notion",
       "tier": "official",
       "displayName": "Kiki Notion",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Search and read Notion material, produce source-backed briefs, and save to a specified page on request.",
       "keywords": [
         "notion",
@@ -99,7 +99,7 @@
       "id": "kiki-media",
       "tier": "official",
       "displayName": "Kiki Media",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "The media surface: image, video and speech providers, their credentials, and the per-modality defaults. Install a provider package for each service you use.",
       "keywords": [
         "media",
@@ -118,7 +118,7 @@
       "id": "kiki-media-openai",
       "tier": "official",
       "displayName": "OpenAI Media",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "OpenAI image generation and editing, and file speech synthesis. Needs a media-capable API connection or key; cloud generation can incur charges.",
       "keywords": [
         "media",
@@ -137,7 +137,7 @@
       "id": "kiki-media-google",
       "tier": "official",
       "displayName": "Google Media",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Google Gemini native images and Veo asynchronous video. Needs the corresponding media API access.",
       "keywords": [
         "media",
@@ -158,7 +158,7 @@
       "id": "kiki-media-ark",
       "tier": "official",
       "displayName": "Ark Media",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Ark Seedream images and the Seedance 2.0 video protocol. Configure an entitled endpoint and model; no implicit OSS upload and no Seedance 2.5.",
       "keywords": [
         "media",
@@ -179,7 +179,7 @@
       "id": "kiki-media-xai",
       "tier": "official",
       "displayName": "xAI Media",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "xAI image generation and editing, and asynchronous video. API media access is required; a Grok web subscription is not assumed compatible.",
       "keywords": [
         "media",
@@ -199,7 +199,7 @@
       "id": "kiki-media-minimax",
       "tier": "official",
       "displayName": "MiniMax Media",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "MiniMax portrait-reference images, H3 and H3-Max video, and HTTP/SSE file speech with optional subtitles. Needs media API access; long text is not split into paid jobs automatically.",
       "keywords": [
         "media",
@@ -220,7 +220,7 @@
       "id": "kiki-media-stepfun",
       "tier": "official",
       "displayName": "StepFun Speech",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "StepFun HTTP binary and SSE file speech through a TTS-capable API endpoint. Not a WebSocket live-session runtime.",
       "keywords": [
         "media",
@@ -239,7 +239,7 @@
       "id": "kiki-media-novita",
       "tier": "official",
       "displayName": "Novita Compatible Video",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Optional Novita /video/create and task-result compatibility profile. Configure your endpoint and the actual model; not every Novita API is supported.",
       "keywords": [
         "media",
@@ -258,7 +258,7 @@
       "id": "kiki-media-agnes",
       "tier": "official",
       "displayName": "Agnes Video",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Optional Agnes 2.5, Flash and V2.0 video endpoint adapter with explicit frame and reference roles. Configure a compatible endpoint.",
       "keywords": [
         "media",
@@ -277,7 +277,7 @@
       "id": "kiki-media-newapi",
       "tier": "official",
       "displayName": "NewAPI Compatible Video",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Optional NewAPI /video/generations gateway profile. Model availability and audio generation depend on your configured endpoint.",
       "keywords": [
         "media",
@@ -296,7 +296,7 @@
       "id": "kiki-media-comfyui",
       "tier": "official",
       "displayName": "ComfyUI Workflow",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Optional ComfyUI API-format image and video workflows using your running endpoint and installed models. No engine, GPU runtime or models are bundled.",
       "keywords": [
         "media",

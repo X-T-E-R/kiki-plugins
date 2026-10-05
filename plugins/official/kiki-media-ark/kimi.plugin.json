@@ -1,6 +1,6 @@
 {
   "name": "kiki-media-ark",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Ark Seedream images and Seedance 2.0 asynchronous video protocol. Configure the endpoint/model you are entitled to use; no implicit OSS upload.",
   "license": "MIT",
   "interface": {

@@ -1,6 +1,6 @@
 {
   "name": "kiki-media-xai",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "xAI image generation/editing and asynchronous video generation. Reference-audio/image capability depends on the selected model and account.",
   "license": "MIT",
   "interface": {
