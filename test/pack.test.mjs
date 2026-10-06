@@ -15,7 +15,7 @@ test('deterministic ZIPs, complete digest/icon contract, metadata reuse and immu
  try{
   await cp('plugins',join(dir,'plugins'),{recursive:true});
   const opts={pluginsRoot:join(dir,'plugins'),outDir:join(dir,'first'),tag:'batch-1',revision:'a'.repeat(40)};
-  const first=await pack(opts);assert.equal(first.newPackages.length,15);assert.equal(first.index.plugins.length,20);
+  const first=await pack(opts);assert.equal(first.newPackages.length,5);assert.equal(first.index.plugins.length,10);assert.deepEqual(first.index.plugins.filter(p=>p.id.startsWith('kiki-media')).map(p=>p.id),['kiki-media']);
   const second=await pack({...opts,outDir:join(dir,'second')});
   for(const p of first.newPackages){assert.equal(p.sha256,second.newPackages.find(x=>x.id===p.id).sha256);assert.equal(sha(await readFile(join(opts.outDir,'assets',p.filename))),p.sha256);const entry=first.index.plugins.find(x=>x.id===p.id);const manifest=JSON.parse(await readFile(join(opts.pluginsRoot,'official',p.id,'kimi.plugin.json')));assert.equal(entry.engines?.kiki,manifest['x-kiki']?.engines?.kiki);assert.ok(entry.icon.endsWith(`/icon-${manifest.version}.svg`));}
   const lineEndingFile=join(opts.pluginsRoot,'official/kiki-writing/panel.html');
@@ -37,12 +37,12 @@ test('deterministic ZIPs, complete digest/icon contract, metadata reuse and immu
   await assert.rejects(pack({...opts,outDir:join(dir,'reject-icon-escape')}),/Path escapes root/);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
-test('change mapping includes ten shared-runtime consumers and metadata builds no ZIP',()=>{
- const ids=['kiki-writing','kiki-extract','kiki-media',...['openai','google','ark','xai','minimax','stepfun','novita','agnes','newapi','comfyui'].map(x=>'kiki-media-'+x),'kiki-office','kiki-notion'];
- assert.equal(changedPackages(['plugins/official/media-runtime/runtime.mjs'],ids).packages.length,10);
+test('change mapping includes unified media for every donor and metadata builds no ZIP',()=>{
+ const ids=['kiki-writing','kiki-extract','kiki-media','kiki-office','kiki-notion'];
+ assert.deepEqual(changedPackages(['plugins/official/media-runtime/runtime.mjs'],ids).packages,['kiki-media']);
  assert.deepEqual(changedPackages(['plugins/marketplace.json'],ids),{packages:[],metadataOnly:true});
- assert.deepEqual(changedPackages(['plugins/official/kiki-media-openai/adapters.mjs'],ids).packages,['kiki-media-openai']);
- assert.equal(changedPackages(['sdk.lock.json'],ids).packages.length,15);
+ for(const vendor of ['openai','google','ark','xai','minimax','stepfun','novita','agnes','newapi','comfyui']) assert.deepEqual(changedPackages([`plugins/official/kiki-media-${vendor}/adapters.mjs`],ids).packages,['kiki-media']);
+ assert.equal(changedPackages(['sdk.lock.json'],ids).packages.length,5);
 });
 test('dev catalog digest matches exactly served immutable bytes and hides dotfiles',async()=>{
  const dir=await mkdtemp(resolve('.tmp/dev-test-'));

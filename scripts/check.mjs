@@ -25,12 +25,13 @@ for(const p of packages){
  const root=resolve('plugins',p.source),m=JSON.parse(await readFile(resolve(root,'kimi.plugin.json'),'utf8'));
  assert.equal(m.name,p.id);assert.ok(satisfies(lock.pluginEngineVersion,m['x-kiki']?.engines?.kiki??'*'));
  await packageFiles(root);
- if(m['x-kiki']?.entry){const module=await import(pathToFileURL(resolve(root,m['x-kiki'].entry)));assert.equal(typeof module.register,'function');module.register({registerTool(d,f){assert.equal(typeof f,'function');assert.ok(m['x-kiki'].tools.some(t=>t.name===d.name));},registerMediaProvider(d){mediaProviderDefinitionSchema.parse(d);assert.ok(m['x-kiki'].mediaProviders.some(p=>p.id===d.id));}});}
+ if(m['x-kiki']?.entry){const module=await import(pathToFileURL(resolve(root,m['x-kiki'].entry)));assert.equal(typeof module.register,'function');await module.register({registerTool(d,f){assert.equal(typeof f,'function');assert.ok(m['x-kiki'].tools.some(t=>t.name===d.name));},registerMediaProvider(d){mediaProviderDefinitionSchema.parse(d);assert.ok(m['x-kiki'].mediaProviders.some(p=>p.id===d.id));}});}
  console.log('Validated package',p.id,m.version);
 }
 run('plugins/official/media-runtime/distribute.mjs',['--check']);
 for(const id of ['kiki-extract','kiki-office','kiki-media'])if(!selected||selected===id)run(`plugins/official/${id}/scripts/sync-manifest.mjs`,['--check']);
 if(!selected||selected==='kiki-extract')run('--test',['plugins/official/kiki-extract/test/documents.test.mjs']);
 if(!selected||selected==='kiki-office')run('--test',['plugins/official/kiki-office/test/office.test.mjs']);
-if(!selected||selected.startsWith('kiki-media-')||selected==='kiki-media')run('--test',['plugins/official/media-runtime/test/protocol.test.mjs']);
+if(!selected||selected==='kiki-media') { run('plugins/official/kiki-media/scripts/sync-sources.mjs',['--check']); run('scripts/sync-media-catalog.mjs',['--check']); }
+if(!selected||selected.startsWith('kiki-media-'))run('--test',['plugins/official/media-runtime/test/protocol.test.mjs']);
 for(const p of catalog.plugins){assert.ok(p.author&&p.license&&p.version&&p.source);if(!p.source.startsWith('./official/'))assert.ok(p.compatibility?.status);}
