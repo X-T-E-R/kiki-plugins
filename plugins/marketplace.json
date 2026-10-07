@@ -145,7 +145,7 @@
       "tier": "official",
       "displayName": "Kiki Media",
       "version": "0.2.0",
-      "description": "One media plugin with OpenAI, Google, Ark, xAI, MiniMax, StepFun, Novita, Agnes, NewAPI and ComfyUI sources. Configure or disable each service inside Media, or add your own local script. Cloud generation requires media API access and can incur charges.",
+      "description": "One media plugin with OpenAI, Google, Ark, xAI, MiniMax, StepFun, Novita, Agnes, NewAPI and ComfyUI sources. Configure or disable each service inside Media, or add your own local script. Requires a Kiki host with grouped media sources and script-source management. Cloud generation requires media API access and can incur charges.",
       "keywords": [
         "media",
         "image",
@@ -171,7 +171,7 @@
       "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-media",
       "localizations": {
         "zh": {
-          "description": "一个媒体插件，内置 OpenAI、Google、Ark、xAI、MiniMax、StepFun、Novita、Agnes、NewAPI 和 ComfyUI 来源。可在媒体页分别配置、启停或移除，也可添加自己的本地脚本。云端生成需媒体 API 权限，并可能产生费用。",
+          "description": "一个媒体插件，内置 OpenAI、Google、Ark、xAI、MiniMax、StepFun、Novita、Agnes、NewAPI 和 ComfyUI 来源。可在媒体页分别配置、启停或移除，也可添加自己的本地脚本。需要支持媒体来源分组及脚本来源管理的 Kiki 宿主。云端生成需媒体 API 权限，并可能产生费用。",
           "keywords": [
             "媒体",
             "图像",

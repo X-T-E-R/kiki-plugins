@@ -4,7 +4,9 @@ Install one media plugin, then choose sources inside Media. OpenAI, Google, Ark,
 
 ## Configure a source
 
-Install and enable `kiki-media`, open its Media view, and configure the service you want to use. Each source has its own endpoint, key and optional Kiki connection. Image, video and speech defaults are independent. Selecting an existing connection reuses its endpoint and authentication; OAuth refresh stays in Kiki. A text subscription or OAuth login does not by itself grant media API access. Cloud generation can incur charges.
+Use a Kiki host with grouped media sources and script-source management. This package declares plugin engine `>=0.4.0`, which is a plugin-protocol version, not a CLI release number; older hosts that lack `mediaSources` / `mediaScriptProvider` cannot load it. The supported client has `klient.global.media.managedSources`, `sourceSettings`, `updateSource` and `addScriptSource`, and a Media sources page with **Add script source**. If your build lacks that page or reports unknown manifest fields, update the host before installing 0.2.0; your existing vendor packages remain usable.
+
+Install and enable `kiki-media`, open **Capabilities → Plugins → Media sources**, and configure the service you want to use. Each source has its own endpoint, key and optional Kiki connection. Image, video and speech defaults are independent. Selecting an existing connection reuses its endpoint and authentication; OAuth refresh stays in Kiki. A text subscription or OAuth login does not by itself grant media API access. Cloud generation can incur charges.
 
 Disabling or removing one source leaves other sources, saved configuration and completed files alone. Restore the source with the same endpoint and credentials to continue a compatible saved handle. Resume polls or downloads an accepted job; it does not purchase another generation. A lost submission without a handle is reported as unknown rather than retried.
 
