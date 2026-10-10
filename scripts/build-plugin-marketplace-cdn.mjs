@@ -66,6 +66,9 @@ export async function buildPluginMarketplaceCdn({ pluginsRoot, outDir, publicBas
       '--check',
     ]);
   }
+  if (parsed.plugins.some((entry) => entry.id === 'kiki-media' && entry.source === './official/kiki-media')) {
+    await promisify(execFile)(process.execPath, [resolveInsideRoot(pluginsRoot, 'official/kiki-media/scripts/sync-sources.mjs'), '--check']);
+  }
   await prepareOutputDir(outDir);
 
   const archives = [];

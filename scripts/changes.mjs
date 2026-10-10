@@ -6,7 +6,8 @@ export function changedPackages(paths, ids) {
   for(const p of paths){
     if(p==='plugins/marketplace.json'||p.startsWith('catalog/')||p.endsWith('.md')&&!p.startsWith('plugins/official/'))continue;
     metadataOnly=false;
-    if(p.startsWith('plugins/official/media-runtime/')){for(const id of ids.filter(id=>id.startsWith('kiki-media-')))selected.add(id);continue;}
+    if(p.startsWith('plugins/official/media-runtime/')){for(const id of ids.filter(id=>id==='kiki-media'||id.startsWith('kiki-media-')))selected.add(id);continue;}
+    if(/^plugins\/official\/kiki-media-[^/]+\//.test(p)&&ids.includes('kiki-media'))selected.add('kiki-media');
     const id=p.match(/^plugins\/official\/([^/]+)\//)?.[1];
     if(ids.includes(id)){selected.add(id);continue;}
     if(/^(scripts\/|test\/|vendor\/|sdk\.lock|package|\.github\/)/.test(p))for(const id of ids)selected.add(id);

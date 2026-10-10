@@ -1,8 +1,8 @@
 {
   "name": "kiki-media",
-  "version": "0.1.1",
-  "description": "Generate images, videos and speech with installed media providers.",
-  "license": "MIT",
+  "version": "0.2.0",
+  "description": "Generate images, videos and speech with built-in services and your own scripts in one media plugin.",
+  "license": "MIT AND Apache-2.0",
   "skills": "./skills/",
   "interface": {
     "displayName": "Media",
@@ -18,7 +18,10 @@
       "net": [
         "*"
       ],
-      "secrets": false
+      "secrets": true,
+      "exec": [
+        "*"
+      ]
     },
     "tools": [
       {
@@ -487,13 +490,659 @@
           "defaultTtsProvider": {
             "type": "string",
             "title": "Default speech provider"
+          },
+          "openai__connectionId": {
+            "type": "string",
+            "title": "Kiki connection (optional)",
+            "description": "Use a media-capable API connection. Selected endpoint and authentication replace this plugin's key; OAuth login alone does not imply image or speech entitlement."
+          },
+          "openai__apiKey": {
+            "type": "string",
+            "title": "API key",
+            "secret": true
+          },
+          "openai__baseUrl": {
+            "type": "string",
+            "title": "API base URL",
+            "default": "https://api.openai.com/v1"
+          },
+          "openai__imageModel": {
+            "type": "string",
+            "title": "Default image model",
+            "default": "gpt-image-1.5"
+          },
+          "openai__speechModel": {
+            "type": "string",
+            "title": "Default speech model",
+            "default": "gpt-4o-mini-tts"
+          },
+          "openai__enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "openai__removed": {
+            "type": "boolean",
+            "default": false
+          },
+          "openai__cleared": {
+            "type": "string",
+            "default": "[]"
+          },
+          "google__connectionId": {
+            "type": "string",
+            "title": "Kiki Google connection (optional)",
+            "description": "Use a Gemini API endpoint with x-goog-api-key authentication. Other OAuth products are not assumed compatible."
+          },
+          "google__apiKey": {
+            "type": "string",
+            "title": "API key",
+            "secret": true
+          },
+          "google__baseUrl": {
+            "type": "string",
+            "title": "API base URL",
+            "default": "https://generativelanguage.googleapis.com/v1beta"
+          },
+          "google__imageModel": {
+            "type": "string",
+            "title": "Default image model",
+            "default": "gemini-2.5-flash-image"
+          },
+          "google__videoModel": {
+            "type": "string",
+            "title": "Default Veo model",
+            "default": "veo-3.1-generate-preview"
+          },
+          "google__enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "google__removed": {
+            "type": "boolean",
+            "default": false
+          },
+          "google__cleared": {
+            "type": "string",
+            "default": "[]"
+          },
+          "ark__connectionId": {
+            "type": "string",
+            "title": "Kiki Ark connection (optional)",
+            "description": "Selected Ark API endpoint and authentication replace this plugin's key; use an endpoint with media entitlement."
+          },
+          "ark__apiKey": {
+            "type": "string",
+            "title": "API key",
+            "secret": true
+          },
+          "ark__baseUrl": {
+            "type": "string",
+            "title": "Ark API base URL",
+            "default": "https://ark.cn-beijing.volces.com/api/v3"
+          },
+          "ark__imageModel": {
+            "type": "string",
+            "title": "Default Seedream model",
+            "default": "doubao-seedream-4-0-250828"
+          },
+          "ark__videoModel": {
+            "type": "string",
+            "title": "Seedance 2.0 model or endpoint ID",
+            "description": "Use your actual Seedance 2.0 model/endpoint. 2.5 is not this protocol profile."
+          },
+          "ark__enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "ark__removed": {
+            "type": "boolean",
+            "default": false
+          },
+          "ark__cleared": {
+            "type": "string",
+            "default": "[]"
+          },
+          "xai__connectionId": {
+            "type": "string",
+            "title": "Kiki xAI API connection (optional)",
+            "description": "Use an xAI media API connection; Grok web/OAuth subscriptions are not assumed to support this API."
+          },
+          "xai__apiKey": {
+            "type": "string",
+            "title": "API key",
+            "secret": true
+          },
+          "xai__baseUrl": {
+            "type": "string",
+            "title": "API base URL",
+            "default": "https://api.x.ai/v1"
+          },
+          "xai__imageModel": {
+            "type": "string",
+            "title": "Default image model",
+            "default": "grok-imagine-image"
+          },
+          "xai__videoModel": {
+            "type": "string",
+            "title": "Default video model",
+            "default": "grok-imagine-video"
+          },
+          "xai__enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "xai__removed": {
+            "type": "boolean",
+            "default": false
+          },
+          "xai__cleared": {
+            "type": "string",
+            "default": "[]"
+          },
+          "minimax__connectionId": {
+            "type": "string",
+            "title": "Kiki MiniMax connection (optional)",
+            "description": "Selected MiniMax API authentication replaces this plugin's key. Media requires corresponding pay-as-you-go entitlement; text Token Plan/OAuth does not imply it."
+          },
+          "minimax__apiKey": {
+            "type": "string",
+            "title": "API key",
+            "secret": true
+          },
+          "minimax__baseUrl": {
+            "type": "string",
+            "title": "API base URL (no /v1 or /v2 suffix)",
+            "default": "https://api.minimax.io"
+          },
+          "minimax__imageModel": {
+            "type": "string",
+            "title": "Default image model",
+            "default": "image-01"
+          },
+          "minimax__videoModel": {
+            "type": "string",
+            "title": "Default video model",
+            "default": "MiniMax-H3"
+          },
+          "minimax__speechModel": {
+            "type": "string",
+            "title": "Default speech model",
+            "default": "speech-2.8-hd"
+          },
+          "minimax__enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "minimax__removed": {
+            "type": "boolean",
+            "default": false
+          },
+          "minimax__cleared": {
+            "type": "string",
+            "default": "[]"
+          },
+          "stepfun__connectionId": {
+            "type": "string",
+            "title": "Kiki StepFun connection (optional)",
+            "description": "Selected StepFun API endpoint and authentication replace this plugin's key; choose an endpoint with TTS entitlement."
+          },
+          "stepfun__apiKey": {
+            "type": "string",
+            "title": "API key",
+            "secret": true
+          },
+          "stepfun__baseUrl": {
+            "type": "string",
+            "title": "API base URL",
+            "default": "https://api.stepfun.ai/v1"
+          },
+          "stepfun__speechModel": {
+            "type": "string",
+            "title": "Default speech model",
+            "default": "stepaudio-3-tts"
+          },
+          "stepfun__enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "stepfun__removed": {
+            "type": "boolean",
+            "default": false
+          },
+          "stepfun__cleared": {
+            "type": "string",
+            "default": "[]"
+          },
+          "novita__connectionId": {
+            "type": "string",
+            "title": "Kiki compatible endpoint connection (optional)",
+            "description": "Selected endpoint and authentication replace this plugin's own configuration; endpoint must implement this video profile."
+          },
+          "novita__apiKey": {
+            "type": "string",
+            "title": "Endpoint API key",
+            "secret": true
+          },
+          "novita__baseUrl": {
+            "type": "string",
+            "title": "Compatible API base URL"
+          },
+          "novita__videoModel": {
+            "type": "string",
+            "title": "Actual endpoint model"
+          },
+          "novita__enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "novita__removed": {
+            "type": "boolean",
+            "default": false
+          },
+          "novita__cleared": {
+            "type": "string",
+            "default": "[]"
+          },
+          "agnes__connectionId": {
+            "type": "string",
+            "title": "Kiki Agnes endpoint connection (optional)",
+            "description": "Selected endpoint and authentication replace this plugin's own configuration; endpoint must implement Agnes video."
+          },
+          "agnes__apiKey": {
+            "type": "string",
+            "title": "Endpoint API key",
+            "secret": true
+          },
+          "agnes__baseUrl": {
+            "type": "string",
+            "title": "Compatible API base URL"
+          },
+          "agnes__videoModel": {
+            "type": "string",
+            "title": "Default video model",
+            "default": "agnes-video-2.5"
+          },
+          "agnes__enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "agnes__removed": {
+            "type": "boolean",
+            "default": false
+          },
+          "agnes__cleared": {
+            "type": "string",
+            "default": "[]"
+          },
+          "newapi__connectionId": {
+            "type": "string",
+            "title": "Kiki gateway connection (optional)",
+            "description": "Selected gateway endpoint and authentication replace this plugin's own configuration; model availability remains endpoint-specific."
+          },
+          "newapi__apiKey": {
+            "type": "string",
+            "title": "Gateway API key",
+            "secret": true
+          },
+          "newapi__baseUrl": {
+            "type": "string",
+            "title": "Compatible API base URL"
+          },
+          "newapi__videoModel": {
+            "type": "string",
+            "title": "Actual gateway model"
+          },
+          "newapi__enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "newapi__removed": {
+            "type": "boolean",
+            "default": false
+          },
+          "newapi__cleared": {
+            "type": "string",
+            "default": "[]"
+          },
+          "comfyui__connectionId": {
+            "type": "string",
+            "title": "Kiki ComfyUI endpoint connection (optional)",
+            "description": "Optional endpoint/custom-header connection; otherwise use your local ComfyUI URL without authentication."
+          },
+          "comfyui__baseUrl": {
+            "type": "string",
+            "title": "Your ComfyUI endpoint",
+            "default": "http://127.0.0.1:8188"
+          },
+          "comfyui__apiKey": {
+            "type": "string",
+            "title": "Optional endpoint API key",
+            "secret": true
+          },
+          "comfyui__enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "comfyui__removed": {
+            "type": "boolean",
+            "default": false
+          },
+          "comfyui__cleared": {
+            "type": "string",
+            "default": "[]"
+          },
+          "scriptSources": {
+            "type": "string",
+            "default": "[]",
+            "title": "Custom media scripts"
           }
         }
       }
     },
     "mediaSurface": {
       "view": "media"
-    }
+    },
+    "mediaProviders": [
+      {
+        "schemaVersion": 1,
+        "id": "openai-image",
+        "label": "OpenAI Images",
+        "kinds": [
+          "image"
+        ],
+        "resumeVersion": 1,
+        "connectionSetting": "openai__connectionId"
+      },
+      {
+        "schemaVersion": 1,
+        "id": "openai-speech",
+        "label": "OpenAI Speech",
+        "kinds": [
+          "tts"
+        ],
+        "resumeVersion": 1,
+        "connectionSetting": "openai__connectionId"
+      },
+      {
+        "schemaVersion": 1,
+        "id": "google-image",
+        "label": "Gemini Images",
+        "kinds": [
+          "image"
+        ],
+        "resumeVersion": 1,
+        "connectionSetting": "google__connectionId"
+      },
+      {
+        "schemaVersion": 1,
+        "id": "google-video",
+        "label": "Veo Video",
+        "kinds": [
+          "video"
+        ],
+        "resumeVersion": 1,
+        "connectionSetting": "google__connectionId"
+      },
+      {
+        "schemaVersion": 1,
+        "id": "ark-image",
+        "label": "Ark Seedream Images",
+        "kinds": [
+          "image"
+        ],
+        "resumeVersion": 1,
+        "connectionSetting": "ark__connectionId"
+      },
+      {
+        "schemaVersion": 1,
+        "id": "ark-video",
+        "label": "Ark Seedance Video",
+        "kinds": [
+          "video"
+        ],
+        "resumeVersion": 1,
+        "connectionSetting": "ark__connectionId"
+      },
+      {
+        "schemaVersion": 1,
+        "id": "xai-image",
+        "label": "xAI Images",
+        "kinds": [
+          "image"
+        ],
+        "resumeVersion": 1,
+        "connectionSetting": "xai__connectionId"
+      },
+      {
+        "schemaVersion": 1,
+        "id": "xai-video",
+        "label": "xAI Video",
+        "kinds": [
+          "video"
+        ],
+        "resumeVersion": 1,
+        "connectionSetting": "xai__connectionId"
+      },
+      {
+        "schemaVersion": 1,
+        "id": "minimax-image",
+        "label": "MiniMax Images",
+        "kinds": [
+          "image"
+        ],
+        "resumeVersion": 1,
+        "connectionSetting": "minimax__connectionId"
+      },
+      {
+        "schemaVersion": 1,
+        "id": "minimax-video",
+        "label": "MiniMax H3 Video",
+        "kinds": [
+          "video"
+        ],
+        "resumeVersion": 1,
+        "connectionSetting": "minimax__connectionId"
+      },
+      {
+        "schemaVersion": 1,
+        "id": "minimax-speech",
+        "label": "MiniMax Speech",
+        "kinds": [
+          "tts"
+        ],
+        "resumeVersion": 1,
+        "connectionSetting": "minimax__connectionId"
+      },
+      {
+        "schemaVersion": 1,
+        "id": "stepfun-speech",
+        "label": "StepFun Speech",
+        "kinds": [
+          "tts"
+        ],
+        "resumeVersion": 1,
+        "connectionSetting": "stepfun__connectionId"
+      },
+      {
+        "schemaVersion": 1,
+        "id": "novita-video",
+        "label": "Novita Compatible Video",
+        "kinds": [
+          "video"
+        ],
+        "resumeVersion": 1,
+        "connectionSetting": "novita__connectionId"
+      },
+      {
+        "schemaVersion": 1,
+        "id": "agnes-video",
+        "label": "Agnes Video",
+        "kinds": [
+          "video"
+        ],
+        "resumeVersion": 1,
+        "connectionSetting": "agnes__connectionId"
+      },
+      {
+        "schemaVersion": 1,
+        "id": "newapi-video",
+        "label": "NewAPI Compatible Video",
+        "kinds": [
+          "video"
+        ],
+        "resumeVersion": 1,
+        "connectionSetting": "newapi__connectionId"
+      },
+      {
+        "schemaVersion": 1,
+        "id": "comfyui-workflow",
+        "label": "ComfyUI Workflow",
+        "kinds": [
+          "image",
+          "video"
+        ],
+        "resumeVersion": 1,
+        "connectionSetting": "comfyui__connectionId"
+      },
+      {
+        "schemaVersion": 1,
+        "id": "custom-script",
+        "label": "Custom script",
+        "kinds": [
+          "image",
+          "video",
+          "tts"
+        ],
+        "resumeVersion": 1
+      }
+    ],
+    "mediaSources": [
+      {
+        "id": "openai",
+        "label": "OpenAI Media",
+        "providerIds": [
+          "openai-image",
+          "openai-speech"
+        ],
+        "settingsPrefix": "openai__",
+        "legacyPluginId": "kiki-media-openai",
+        "required": [
+          "apiKey"
+        ]
+      },
+      {
+        "id": "google",
+        "label": "Google Media",
+        "providerIds": [
+          "google-image",
+          "google-video"
+        ],
+        "settingsPrefix": "google__",
+        "legacyPluginId": "kiki-media-google",
+        "required": [
+          "apiKey"
+        ]
+      },
+      {
+        "id": "ark",
+        "label": "Ark Media",
+        "providerIds": [
+          "ark-image",
+          "ark-video"
+        ],
+        "settingsPrefix": "ark__",
+        "legacyPluginId": "kiki-media-ark",
+        "required": [
+          "apiKey"
+        ]
+      },
+      {
+        "id": "xai",
+        "label": "xAI Media",
+        "providerIds": [
+          "xai-image",
+          "xai-video"
+        ],
+        "settingsPrefix": "xai__",
+        "legacyPluginId": "kiki-media-xai",
+        "required": [
+          "apiKey"
+        ]
+      },
+      {
+        "id": "minimax",
+        "label": "MiniMax Media",
+        "providerIds": [
+          "minimax-image",
+          "minimax-video",
+          "minimax-speech"
+        ],
+        "settingsPrefix": "minimax__",
+        "legacyPluginId": "kiki-media-minimax",
+        "required": [
+          "apiKey"
+        ]
+      },
+      {
+        "id": "stepfun",
+        "label": "StepFun Speech",
+        "providerIds": [
+          "stepfun-speech"
+        ],
+        "settingsPrefix": "stepfun__",
+        "legacyPluginId": "kiki-media-stepfun",
+        "required": [
+          "apiKey"
+        ]
+      },
+      {
+        "id": "novita",
+        "label": "Novita Compatible Video",
+        "providerIds": [
+          "novita-video"
+        ],
+        "settingsPrefix": "novita__",
+        "legacyPluginId": "kiki-media-novita",
+        "required": [
+          "baseUrl"
+        ]
+      },
+      {
+        "id": "agnes",
+        "label": "Agnes Video",
+        "providerIds": [
+          "agnes-video"
+        ],
+        "settingsPrefix": "agnes__",
+        "legacyPluginId": "kiki-media-agnes",
+        "required": [
+          "baseUrl"
+        ]
+      },
+      {
+        "id": "newapi",
+        "label": "NewAPI Compatible Video",
+        "providerIds": [
+          "newapi-video"
+        ],
+        "settingsPrefix": "newapi__",
+        "legacyPluginId": "kiki-media-newapi",
+        "required": [
+          "baseUrl"
+        ]
+      },
+      {
+        "id": "comfyui",
+        "label": "ComfyUI Workflow",
+        "providerIds": [
+          "comfyui-workflow"
+        ],
+        "settingsPrefix": "comfyui__",
+        "legacyPluginId": "kiki-media-comfyui",
+        "required": []
+      }
+    ],
+    "mediaScriptProvider": "custom-script"
   },
   "icon": "./icon.svg"
 }
