@@ -1,0 +1,43 @@
+{
+  "name": "kiki-cloudflare",
+  "version": "0.1.1",
+  "description": "Connect existing Cloudflare accounts and keep a managed Cloudflare Tunnel running with Kiki.",
+  "license": "MIT",
+  "icon": "./icon.svg",
+  "interface": {
+    "displayName": "Cloudflare Tunnel",
+    "shortDescription": "Connect your remote spaces through Cloudflare",
+    "websiteURL": "https://developers.cloudflare.com/tunnel/"
+  },
+  "x-kiki": {
+    "engines": { "kiki": "^0.4.0" },
+    "entry": "./entry.mjs",
+    "activation": "app",
+    "permissions": { "fs": "outside", "exec": ["cloudflared"], "secrets": true, "uiPanel": true },
+    "prerequisites": {
+      "schemaVersion": 1,
+      "items": [{ "id": "cloudflared", "kind": "executable", "required": true, "executionHost": "plugin-runtime", "version": "2026.10.0", "setting": "cloudflaredPath", "capabilityImpact": ["cloudflare-tunnel"] }]
+    },
+    "panels": [{ "schemaVersion": 1, "id": "cloudflare", "label": "Cloudflare Tunnel", "slot": "sidebar", "path": "./panel.html" }],
+    "settings": {
+      "schemaVersion": 1,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "cloudflaredPath": { "type": "string", "title": "cloudflared executable" },
+          "mode": { "type": "string", "title": "Configuration mode", "default": "token" },
+          "tunnelToken": { "type": "string", "title": "Tunnel connector token", "secret": true },
+          "tokenFile": { "type": "string", "title": "Existing connector token file" },
+          "apiToken": { "type": "string", "title": "Cloudflare account API token", "secret": true },
+          "accountId": { "type": "string", "title": "Cloudflare account ID" },
+          "tunnelId": { "type": "string", "title": "Tunnel UUID" },
+          "certificatePath": { "type": "string", "title": "Existing account certificate" },
+          "configPath": { "type": "string", "title": "Existing cloudflared config file" },
+          "credentialsFile": { "type": "string", "title": "Existing tunnel credentials file" },
+          "publicUrl": { "type": "string", "title": "Public HTTPS endpoint" },
+          "autoStart": { "type": "boolean", "title": "Start with Kiki", "default": true }
+        }
+      }
+    }
+  }
+}

@@ -15,7 +15,7 @@ test('deterministic ZIPs, complete digest/icon contract, metadata reuse and immu
  try{
   await cp('plugins',join(dir,'plugins'),{recursive:true});
   const opts={pluginsRoot:join(dir,'plugins'),outDir:join(dir,'first'),tag:'batch-1',revision:'a'.repeat(40)};
-  const first=await pack(opts);assert.equal(first.newPackages.length,5);assert.equal(first.index.plugins.length,10);assert.deepEqual(first.index.plugins.filter(p=>p.id.startsWith('kiki-media')).map(p=>p.id),['kiki-media']);
+  const first=await pack(opts);assert.equal(first.newPackages.length,6);assert.equal(first.index.plugins.length,11);assert.deepEqual(first.index.plugins.filter(p=>p.id.startsWith('kiki-media')).map(p=>p.id),['kiki-media']);
   const second=await pack({...opts,outDir:join(dir,'second')});
   for(const p of first.newPackages){assert.equal(p.sha256,second.newPackages.find(x=>x.id===p.id).sha256);assert.equal(sha(await readFile(join(opts.outDir,'assets',p.filename))),p.sha256);const entry=first.index.plugins.find(x=>x.id===p.id);const manifest=JSON.parse(await readFile(join(opts.pluginsRoot,'official',p.id,'kimi.plugin.json')));assert.equal(entry.engines?.kiki,manifest['x-kiki']?.engines?.kiki);assert.ok(entry.icon.endsWith(`/icon-${manifest.version}.svg`));}
   const lineEndingFile=join(opts.pluginsRoot,'official/kiki-writing/panel.html');

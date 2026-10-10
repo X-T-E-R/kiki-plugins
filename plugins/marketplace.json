@@ -366,6 +366,34 @@
         "format": "claude-plugin",
         "notes": "Pinned author source. Preview imported contributions and unsupported diagnostics before enabling; no author scripts are run during catalog validation."
       }
+    },
+    {
+      "id": "kiki-cloudflare",
+      "tier": "official",
+      "displayName": "Cloudflare Tunnel",
+      "version": "0.1.1",
+      "description": "Connect an existing Cloudflare Tunnel and manage its Kiki-owned connector.",
+      "keywords": [
+        "cloudflare",
+        "cloudflared",
+        "tunnel",
+        "remote"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-cloudflare",
+      "homepage": "https://developers.cloudflare.com/tunnel/",
+      "localizations": {
+        "zh": {
+          "description": "连接已有 Cloudflare 隧道，管理随 Kiki 常驻的连接器。",
+          "keywords": [
+            "隧道",
+            "外部连接",
+            "远程",
+            "cloudflare"
+          ]
+        }
+      }
     }
   ]
 }
