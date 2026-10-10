@@ -1,0 +1,1198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cloudflare Tunnel</title>
+<style>
+/* Served into a sandboxed iframe (sandbox="allow-scripts"), so the panel cannot
+   read the host theme, fonts or DOM. It is a self-contained sheet on Kiki's
+   paper-and-ink ladder: one state line with weight, the next step directly
+   under it, and everything rare (paths, account access) folded away. Dark
+   values are chosen, not inverted, to match the host's Inkstone surfaces. */
+:root {
+  color-scheme: light dark;
+  --paper: #fbfaf6;
+  --panel: #fffdfa;
+  --ink: #1b1a17;
+  --ink-soft: #4b453e;
+  --ink-faint: #665e54;
+  --hairline: #e4ddd0;
+  --hairline-strong: #cdc3b1;
+  --accent: #c8401a;
+  --accent-ink: #9c3012;
+  --accent-on: #fff;
+  --selected: #dfe8f0;
+  --selected-ink: #1d4d6d;
+  --attention: #b33a12;
+  --ok: #2f6b45;
+  --danger: #b0261e;
+  --focus: #1d4d6d;
+  --wash: rgb(27 26 23 / 0.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1b2226;
+    --panel: #252d31;
+    --ink: #eeEAe2;
+    --ink-soft: #c1c5c5;
+    --ink-faint: #a2acaf;
+    --hairline: #354047;
+    --hairline-strong: #596870;
+    --accent: #eb946f;
+    --accent-ink: #f4ae8d;
+    --accent-on: #261a14;
+    --selected: #24323b;
+    --selected-ink: #a3cbde;
+    --attention: #f4ae8d;
+    --ok: #9ac6ae;
+    --danger: #f1a29a;
+    --focus: #a3cbde;
+    --wash: rgb(238 234 226 / 0.07);
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 14px/1.55 'Instrument Sans', ui-sans-serif, system-ui, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.sheet { max-width: 620px; margin: 0 auto; padding: 22px 20px 44px; }
+@media (min-width: 720px) { .sheet { padding: 26px 28px 52px; } }
+
+h1 { font-size: 19px; font-weight: 500; letter-spacing: -0.01em; margin: 0 0 10px; }
+
+.statusline { display: flex; align-items: center; gap: 8px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--ink-faint); }
+.dot[data-tone="running"] { background: var(--ok); }
+.dot[data-tone="busy"] { background: var(--attention); }
+.dot[data-tone="error"] { background: var(--danger); }
+.dot[data-tone="ready"] { background: var(--selected-ink); }
+.statustext { font-size: 15px; color: var(--ink); }
+.reason { margin: 5px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--ink-faint); }
+.reason[data-tone="error"] { color: var(--danger); }
+
+.rule { height: 1px; background: var(--hairline); border: 0; margin: 15px 0; }
+/* `display` on a class beats the UA [hidden] rule, so hidden containers would
+   stay visible; this keeps the attribute authoritative everywhere. */
+[hidden] { display: none !important; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+
+.actions.tight { margin-top: 8px; }
+
+button {
+  font: inherit; font-size: 13px; min-height: 34px; padding: 0 14px; border-radius: 7px;
+  border: 1px solid transparent; background: transparent; color: var(--ink);
+  cursor: pointer; transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+button.primary { background: var(--accent); color: var(--accent-on); }
+button.primary:hover:not(:disabled) { background: var(--accent-ink); }
+button.secondary { border-color: var(--hairline-strong); color: var(--ink-soft); }
+button.secondary:hover:not(:disabled) { background: var(--wash); color: var(--ink); }
+button.quiet { color: var(--ink-faint); padding: 0 6px; min-height: 30px; }
+button.quiet:hover:not(:disabled) { color: var(--ink); background: var(--wash); }
+button:disabled { opacity: 0.45; cursor: default; }
+button:focus-visible, summary:focus-visible, input:focus-visible, a:focus-visible {
+  outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 7px;
+}
+@media (pointer: coarse) { button { min-height: 44px; } }
+
+.field { display: block; margin: 0 0 12px; }
+.field > .label { display: block; font-size: 12px; color: var(--ink-soft); margin: 0 0 4px; }
+.hint { display: block; font-size: 12px; line-height: 1.45; color: var(--ink-faint); margin: 4px 0 0; }
+input[type="text"], input[type="password"] {
+  width: 100%; min-height: 34px; padding: 6px 10px; font: inherit; font-size: 13.5px;
+  color: var(--ink); background: var(--panel);
+  border: 1px solid var(--hairline-strong); border-radius: 7px;
+}
+input::placeholder { color: var(--ink-faint); opacity: 1; }
+input:focus-visible { outline-offset: -1px; }
+.mono { font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace; font-size: 12.5px; }
+
+.choices { display: flex; gap: 6px; flex-wrap: wrap; }
+.choice { position: relative; }
+.choice input { position: absolute; opacity: 0; width: 0; height: 0; }
+.choice span {
+  display: inline-flex; align-items: center; min-height: 30px; padding: 0 11px;
+  font-size: 12.5px; border: 1px solid var(--hairline-strong); border-radius: 7px;
+  color: var(--ink-soft); cursor: pointer;
+}
+.choice input:checked + span { border-color: var(--selected-ink); background: var(--selected); color: var(--selected-ink); font-weight: 500; }
+.choice input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.pref { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0 0; padding: 0; border: 0; min-width: 0; }
+.pref input { margin: 3px 0 0; width: 15px; height: 15px; accent-color: var(--selected-ink); flex: none; }
+
+/* The rule above the disclosure is the separator; details must not add another. */
+details { border-top: 0; }
+summary {
+  display: flex; align-items: center; gap: 6px; min-height: 38px; cursor: pointer;
+  font-size: 12.5px; color: var(--ink-faint); list-style: none;
+}
+summary::-webkit-details-marker { display: none; }
+summary::after { content: '+'; margin-left: auto; font-size: 14px; }
+details[open] summary::after { content: '-'; }
+summary:hover { color: var(--ink); }
+details .inside { padding: 2px 0 14px; }
+
+a.link { color: var(--selected-ink); font-size: 12.5px; text-underline-offset: 2px; cursor: pointer; }
+a.link:hover { color: var(--ink); }
+
+.loginurl {
+  display: block; margin: 8px 0 0; padding: 8px 10px; word-break: break-all;
+  background: var(--panel); border: 1px solid var(--hairline); border-radius: 7px;
+  font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace; font-size: 12px;
+  color: var(--ink-soft);
+}
+.tunnels { list-style: none; margin: 8px 0 0; padding: 0; border-top: 1px solid var(--hairline); }
+.tunnels li { border-bottom: 1px solid var(--hairline); }
+.tunnels button {
+  display: flex; width: 100%; align-items: baseline; gap: 8px; text-align: left;
+  min-height: 40px; padding: 6px 2px; border-radius: 0;
+}
+.section-label { font-size: 12px; color: var(--ink-soft); margin: 14px 0 0; }
+.tunnels .tname { color: var(--ink); font-size: 13px; }
+.tunnels .tid { color: var(--ink-faint); font-size: 11.5px; margin-left: auto; }
+.saved-note { font-size: 12.5px; color: var(--ok); margin: 10px 0 0; }
+.vis-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<main class="sheet">
+  <h1 data-i18n="title">Cloudflare Tunnel</h1>
+  <p class="vis-hidden" id="live" role="status" aria-live="polite"></p>
+
+  <div class="statusline">
+    <span class="dot" id="dot" data-tone="" aria-hidden="true"></span>
+    <span class="statustext" id="stat">Reading state</span>
+  </div>
+  <p class="reason" id="reason"></p>
+  <p class="reason" id="public-url" hidden></p>
+
+  <div class="actions" id="lifecycle" hidden></div>
+  <p class="reason" id="root-reason" data-tone="error" role="alert" hidden></p>
+  <p class="busy-note" id="busy" hidden></p>
+
+  <hr class="rule" id="rule-dep" hidden>
+
+  <section id="dep-section" hidden>
+    <div class="actions tight" id="dep-actions"></div>
+    <p class="reason" id="dep-note"></p>
+  </section>
+
+  <hr class="rule" id="rule-setup" hidden>
+
+  <div id="setup">
+    <div id="setup-fields">
+      <div class="actions tight" id="create-actions">
+        <button type="button" class="secondary" id="create" data-i18n="createButton">Create tunnel in Cloudflare</button>
+        <a class="link" id="docs" href="https://developers.cloudflare.com/tunnel/get-started/" target="_blank" rel="noreferrer noopener" data-i18n="docsLink">How tunnels work</a>
+      </div>
+      <p class="hint" id="create-hint" data-i18n="createHint"></p>
+
+      <label class="field" for="token" id="wrap-token" style="margin-top:14px">
+        <span class="label" data-i18n="tokenLabel">Tunnel connector token</span>
+        <input type="password" id="token" autocomplete="off" spellcheck="false" data-i18n-placeholder="tokenPlaceholder">
+        <span class="hint" id="token-hint"></span>
+      </label>
+
+      <div class="choices" id="mode" role="radiogroup" data-i18n-aria="modeGroup" aria-label="Configuration source">
+        <label class="choice">
+          <input type="radio" name="mode" value="token" checked>
+          <span data-i18n="modeToken">Tunnel token</span>
+        </label>
+        <label class="choice">
+          <input type="radio" name="mode" value="local">
+          <span data-i18n="modeLocal">Existing local tunnel</span>
+        </label>
+      </div>
+
+      <div id="local-fields" hidden>
+        <label class="field" for="tunnelid" style="margin-top:12px">
+          <span class="label" data-i18n="tunnelIdLabel">Tunnel ID</span>
+          <input type="text" id="tunnelid" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="uuidPlaceholder">
+        </label>
+        <label class="field" for="configpath">
+          <span class="label" data-i18n="configPathLabel">cloudflared config file</span>
+          <input type="text" id="configpath" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="configPathPlaceholder">
+        </label>
+      </div>
+
+      <div class="actions" id="reuse-actions">
+        <button type="button" class="secondary" id="login" data-i18n="loginButton">Sign in with Cloudflare</button>
+        <button type="button" class="secondary" id="reuse" data-i18n="reuseButton">Use an existing tunnel</button>
+        <button type="button" class="primary" id="save" data-i18n="saveButton">Save and connect</button>
+      </div>
+
+      <p class="reason" id="setup-reason" role="alert" hidden></p>
+    </div>
+  </div>
+
+  <div id="login-panel" hidden>
+    <p class="reason" id="login-state"></p>
+    <a class="link" id="login-link" href="#" hidden data-i18n="loginLink">Open the Cloudflare authorization page</a>
+    <p class="loginurl" id="login-url" hidden></p>
+    <div class="actions tight">
+      <button type="button" class="quiet" id="cancel-login" data-i18n="loginCancel">Cancel sign-in</button>
+    </div>
+  </div>
+
+  <div id="reuse-panel" hidden>
+    <p class="section-label" id="reuse-title" data-i18n="reuseTitle">Tunnels on this account</p>
+    <p class="reason" id="reuse-state"></p>
+    <ul class="tunnels" id="tunnels"></ul>
+    <div class="actions tight">
+      <button type="button" class="quiet" id="reuse-close" data-i18n="reuseClose">Close list</button>
+    </div>
+  </div>
+
+  <p class="saved-note" id="saved-note" hidden></p>
+
+  <hr class="rule" id="rule-advanced" hidden>
+
+  <details id="advanced">
+    <summary data-i18n="advancedSummary">Paths and account access</summary>
+    <div class="inside">
+      <p class="hint" id="cert-fact"></p>
+
+      <label class="field" for="apitoken" style="margin-top:12px">
+        <span class="label" data-i18n="apiTokenLabel">Account API token (optional)</span>
+        <input type="password" id="apitoken" autocomplete="off" spellcheck="false" data-i18n-placeholder="apiTokenPlaceholder">
+        <span class="hint" data-i18n="apiTokenHint"></span>
+      </label>
+
+      <label class="field" for="accountid">
+        <span class="label" data-i18n="accountIdLabel">Account ID</span>
+        <input type="text" id="accountid" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="accountIdPlaceholder">
+      </label>
+
+      <label class="field" for="tokenfile">
+        <span class="label" data-i18n="tokenFileLabel">Existing token file</span>
+        <input type="text" id="tokenfile" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="tokenFilePlaceholder">
+      </label>
+
+      <label class="field" for="certpath">
+        <span class="label" data-i18n="certPathLabel">Certificate file</span>
+        <input type="text" id="certpath" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="certPathPlaceholder">
+      </label>
+
+      <label class="field" for="credfile">
+        <span class="label" data-i18n="credentialsFileLabel">Tunnel credentials file</span>
+        <input type="text" id="credfile" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="credentialsFilePlaceholder">
+      </label>
+
+      <label class="field" for="binarypath">
+        <span class="label" data-i18n="binaryPathLabel">cloudflared executable</span>
+        <input type="text" id="binarypath" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="binaryPathPlaceholder">
+      </label>
+
+      <label class="field" for="publicurl">
+        <span class="label" data-i18n="publicUrlLabel">Public HTTPS endpoint</span>
+        <input type="text" id="publicurl" spellcheck="false" autocomplete="off" data-i18n-placeholder="publicUrlPlaceholder">
+        <span class="hint" data-i18n="publicUrlHint"></span>
+      </label>
+
+      <fieldset class="pref">
+        <input type="checkbox" id="autoStart" checked>
+        <span>
+          <label for="autoStart" data-i18n="autoStartLabel">Start with Kiki</label>
+          <span class="hint" data-i18n="autoStartHint"></span>
+        </span>
+      </fieldset>
+    </div>
+  </details>
+</main>
+
+<script>
+(() => {
+'use strict';
+
+const CHANNEL = 'kiki.panel.v1';
+const PREREQUISITE = 'cloudflared';
+
+const I18N = {
+  en: {
+    title: 'Cloudflare Tunnel',
+    readingState: 'Reading state',
+    unavailable: 'Panel unavailable',
+    depMissing: 'cloudflared is not installed',
+    depMissingReason: 'A Cloudflare Tunnel needs the cloudflared executable before it can connect.',
+    depError: 'cloudflared did not answer',
+    depInstall: 'Install cloudflared',
+    depInstallNote: 'Kiki downloads the official cloudflared release and verifies it before installing.',
+    depInstalling: 'Downloading cloudflared...',
+    depInstalled: 'cloudflared is installed',
+    depTooOld: 'This cloudflared is too old',
+    unconfigured: 'Not configured',
+    unconfiguredReason: 'Create a tunnel in Cloudflare, then paste its connector token here.',
+    stopped: 'Stopped',
+    stoppedAutoReason: 'Paused for this Kiki run. It starts again the next time Kiki starts.',
+    stoppedReason: 'Paused for this Kiki run.',
+    starting: 'Connecting',
+    startingReason: 'Waiting for the tunnel to report itself ready.',
+    running: 'Tunnel running',
+    runningReason: 'The tunnel is connected.',
+    runningUrlReason: 'Configured public endpoint: ',
+    retrying: 'Reconnecting',
+    retryingReason: 'cloudflared exited and is being restarted.',
+    error: 'Tunnel not running',
+    authOnly: 'Credentials saved, tunnel not started',
+    authOnlyReason: 'Start the tunnel to publish this machine.',
+    startButton: 'Start tunnel',
+    saveButton: 'Save and connect',
+    errorStart: 'Start',
+    stopButton: 'Stop for this run',
+    dashLink: 'Tunnel dashboard',
+    createButton: 'Create tunnel in Cloudflare',
+    createHint: 'Create the tunnel and its hostname in the dashboard, then paste its connector token below.',
+    docsLink: 'How tunnels work',
+    tokenLabel: 'Tunnel connector token',
+    tokenPlaceholder: 'Paste the connector token from the dashboard',
+    tokenHint: 'Kiki stores this in its credentials store. It is never shown again.',
+    tokenConfigured: 'A token is already saved.',
+    tokenSavedHint: 'A token is saved. Paste a new one to replace it.',
+    tokenReplace: 'Paste a new connector token to replace the saved one',
+    modeGroup: 'Configuration source',
+    modeToken: 'Tunnel token',
+    modeLocal: 'Existing local tunnel',
+    tunnelIdLabel: 'Tunnel ID',
+    uuidPlaceholder: '00000000-0000-0000-0000-000000000000',
+    configPathLabel: 'cloudflared config file',
+    configPathPlaceholder: '/etc/cloudflared/config.yml',
+    loginButton: 'Sign in with Cloudflare',
+    reuseButton: 'Use an existing tunnel',
+    loginWaiting: 'Waiting for Cloudflare to hand back a certificate...',
+    loginPending: 'Finish signing in in the browser window. Kiki picks the certificate up when you return.',
+    loginLink: 'Open the Cloudflare authorization page',
+    loginCancel: 'Cancel sign-in',
+    advancedSummary: 'Paths and account access',
+    apiTokenLabel: 'Account API token (optional)',
+    apiTokenPlaceholder: 'Only needed to list tunnels without a certificate',
+    apiTokenHint: 'Account-wide access for listing tunnels. It cannot deploy Workers or Pages, and it is separate from the tunnel token.',
+    accountIdLabel: 'Account ID',
+    accountIdPlaceholder: '32 hexadecimal characters',
+    tokenFileLabel: 'Existing token file',
+    tokenFilePlaceholder: 'Absolute path on the Kiki server',
+    certPathLabel: 'Certificate file',
+    certPathPlaceholder: 'Absolute path on the Kiki server',
+    credentialsFileLabel: 'Tunnel credentials file',
+    credentialsFilePlaceholder: 'Absolute path on the Kiki server',
+    binaryPathLabel: 'cloudflared executable',
+    binaryPathPlaceholder: 'Leave empty to use the installed copy',
+    publicUrlLabel: 'Public HTTPS endpoint',
+    publicUrlPlaceholder: 'https://your-tunnel.example.com',
+    publicUrlHint: 'Shown here as a label. The Kiki remote-space connection keeps its own authentication.',
+    autoStartLabel: 'Start with Kiki',
+    autoStartHint: 'A saved tunnel starts when Kiki starts. Turning this off does not stop a tunnel that is already running.',
+    certPresent: 'Reusing the certificate at {path}.',
+    certAbsent: 'No account certificate yet. Sign in above, or point this at an existing cert.pem.',
+    reuseTitle: 'Tunnels on this account',
+    reuseLoading: 'Looking for existing tunnels',
+    reuseEmpty: 'No tunnels found on this account.',
+    reuseClose: 'Close list',
+    saving: 'Saving and connecting',
+    saved: 'Saved. The tunnel is connecting.',
+    stopped_note: 'Stopped for this Kiki run.',
+    started_note: 'The tunnel is connecting.',
+    err: {
+      tokenRequired: 'Paste the connector token from the Cloudflare dashboard.',
+      uuidInvalid: 'Tunnel ID must be a UUID, like 00000000-0000-0000-0000-000000000000.',
+      localRequired: 'An existing local tunnel needs a tunnel ID and a config file path.',
+      noSession: 'Open a Kiki session to use this panel.',
+      rateLimited: 'Too many actions at once. Wait a moment and try again.',
+      noBridge: 'The Kiki host did not answer. Reopen the panel.',
+      unknown: 'The plugin did not answer. Try again.',
+      tunnelKeepsExiting: 'cloudflared keeps exiting. Check the token and configuration, then start again.',
+      tunnelReconnecting: 'cloudflared exited and is reconnecting.',
+      needCloudflared: 'Install cloudflared (2025.4.0 or later) first.',
+      needToken: 'Save a tunnel token or pick an existing tunnel first.',
+      needConfigFile: 'Choose a cloudflared config file and tunnel UUID.',
+      needCredentialsFile: 'The tunnel credentials file is missing or unreadable.',
+      needTokenFile: 'The tunnel token file is missing or unreadable.',
+      needCertificate: 'Sign in to Cloudflare, or point advanced settings at an existing certificate.',
+      needApiToken: 'Add an account API token to list tunnels without a certificate.',
+      noConnectorToken: 'No connector token was returned. Use an existing local config for a locally managed tunnel.',
+      cannotSave: 'Kiki cannot save this configuration. Update Kiki to a build with App lifecycle support.',
+      needAppLifecycle: 'This plugin needs a Kiki build with App lifecycle support. Update Kiki, then reopen this panel.',
+      notActivated: 'Kiki has not activated the Cloudflare plugin yet. Enable the plugin and reopen this panel.',
+      cloudflaredRejected: 'cloudflared refused the request. Check the token and configuration.',
+      cannotRun: 'Kiki cannot run cloudflared. Install it or choose a working executable.',
+      badSetting: (key) => 'Check the value for ' + key + '.',
+      checksumMismatch: 'The cloudflared download did not match its published checksum, so nothing was installed. Try again.',
+      pathOccupied: 'Another file already occupies the install path. Choose a different executable path.',
+      needConsent: 'Press Install to allow downloading cloudflared.'
+    }
+  },
+  zh: {
+    title: 'Cloudflare 隧道',
+    readingState: '正在读取状态',
+    unavailable: '面板不可用',
+    depMissing: '尚未安装 cloudflared',
+    depMissingReason: 'Cloudflare 隧道需要 cloudflared 可执行文件才能连接。',
+    depError: 'cloudflared 没有响应',
+    depInstall: '安装 cloudflared',
+    depInstallNote: 'Kiki 会下载官方 cloudflared 版本并校验后安装。',
+    depInstalling: '正在下载 cloudflared…',
+    depInstalled: 'cloudflared 已安装',
+    depTooOld: '当前 cloudflared 版本过旧',
+    unconfigured: '尚未配置',
+    unconfiguredReason: '先在 Cloudflare 创建隧道，再把它的 connector token 粘贴到这里。',
+    stopped: '已停止',
+    stoppedAutoReason: '本次 Kiki 运行已暂停。下次启动 Kiki 时会重新运行。',
+    stoppedReason: '本次 Kiki 运行已暂停。',
+    starting: '正在连接',
+    startingReason: '等待隧道报告就绪。',
+    running: '隧道运行中',
+    runningReason: '隧道已连接。',
+    runningUrlReason: '已配置的公网地址：',
+    retrying: '正在重连',
+    retryingReason: 'cloudflared 已退出，正在重启。',
+    error: '隧道未运行',
+    authOnly: '凭据已保存，隧道未启动',
+    authOnlyReason: '启动隧道后才会对外发布这台机器。',
+    startButton: '启动隧道',
+    saveButton: '保存并连接',
+    errorStart: '启动',
+    stopButton: '本次运行停止',
+    dashLink: '隧道控制台',
+    createButton: '在 Cloudflare 创建隧道',
+    createHint: '在控制台里创建隧道并配置 hostname，然后粘贴它的 connector token。',
+    docsLink: '隧道工作方式',
+    tokenLabel: '隧道 connector token',
+    tokenPlaceholder: '粘贴控制台给出的 connector token',
+    tokenHint: '由 Kiki 存入凭据存储，之后不会再显示。',
+    tokenConfigured: '已保存一个 token。',
+    tokenSavedHint: '已保存一个 token。粘贴新的 token 即可替换。',
+    tokenReplace: '粘贴新的 connector token 以替换已保存的值',
+    modeGroup: '配置来源',
+    modeToken: '隧道 token',
+    modeLocal: '已有本地隧道',
+    tunnelIdLabel: '隧道 ID',
+    uuidPlaceholder: '00000000-0000-0000-0000-000000000000',
+    configPathLabel: 'cloudflared 配置文件',
+    configPathPlaceholder: '/etc/cloudflared/config.yml',
+    loginButton: '登录 Cloudflare',
+    reuseButton: '使用已有隧道',
+    loginWaiting: '正在等待 Cloudflare 返回证书…',
+    loginPending: '请在浏览器窗口完成登录，Kiki 会在你返回后读取证书。',
+    loginLink: '打开 Cloudflare 授权页面',
+    loginCancel: '取消登录',
+    advancedSummary: '路径与账户访问',
+    apiTokenLabel: '账户 API token（可选）',
+    apiTokenPlaceholder: '仅在没有证书、需要列出隧道时使用',
+    apiTokenHint: '账户级访问权限，用于列出隧道。它不能部署 Workers 或 Pages，也与隧道 token 无关。',
+    accountIdLabel: '账户 ID',
+    accountIdPlaceholder: '32 位十六进制字符',
+    tokenFileLabel: '已有 token 文件',
+    tokenFilePlaceholder: 'Kiki 服务器上的绝对路径',
+    certPathLabel: '证书文件',
+    certPathPlaceholder: 'Kiki 服务器上的绝对路径',
+    credentialsFileLabel: '隧道凭据文件',
+    credentialsFilePlaceholder: 'Kiki 服务器上的绝对路径',
+    binaryPathLabel: 'cloudflared 可执行文件',
+    binaryPathPlaceholder: '留空则使用已安装的副本',
+    publicUrlLabel: '公共 HTTPS 地址',
+    publicUrlPlaceholder: 'https://your-tunnel.example.com',
+    publicUrlHint: '这里只作为标签显示。Kiki 远程空间连接保留自己的鉴权。',
+    autoStartLabel: '随 Kiki 启动',
+    autoStartHint: '已保存的隧道会在 Kiki 启动时运行。关闭此项不会停止已在运行的隧道。',
+    certPresent: '正在复用 {path} 的证书。',
+    certAbsent: '还没有账户证书。可以先登录，或在这里指向已有的 cert.pem。',
+    reuseTitle: '该账户下的隧道',
+    reuseLoading: '正在查找已有隧道',
+    reuseEmpty: '这个账户下没有找到隧道。',
+    reuseClose: '关闭列表',
+    saving: '正在保存并连接',
+    saved: '已保存，隧道正在连接。',
+    stopped_note: '本次 Kiki 运行已停止。',
+    started_note: '隧道正在连接。',
+    err: {
+      tokenRequired: '请粘贴 Cloudflare 控制台给出的 connector token。',
+      uuidInvalid: '隧道 ID 必须是 UUID，例如 00000000-0000-0000-0000-000000000000。',
+      localRequired: '使用已有本地隧道时需要填写隧道 ID 和配置文件路径。',
+      noSession: '请先打开一个 Kiki 会话再使用此面板。',
+      rateLimited: '操作过于频繁，请稍后再试。',
+      noBridge: 'Kiki 宿主没有响应，请重新打开面板。',
+      unknown: '插件没有响应，请重试。',
+      tunnelKeepsExiting: 'cloudflared 反复退出。请检查 token 与配置后重新启动。',
+      tunnelReconnecting: 'cloudflared 已退出，正在重连。',
+      needCloudflared: '请先安装 cloudflared（2025.4.0 或更新版本）。',
+      needToken: '请先保存隧道 token，或选择一个已有隧道。',
+      needConfigFile: '请选择 cloudflared 配置文件和隧道 UUID。',
+      needCredentialsFile: '隧道凭据文件缺失或不可读。',
+      needTokenFile: '隧道 token 文件缺失或不可读。',
+      needCertificate: '请登录 Cloudflare，或在高级设置里指向已有证书。',
+      needApiToken: '如需在没有证书时列出隧道，请提供账户 API token。',
+      noConnectorToken: '没有返回 connector token。本地管理的隧道请使用已有本地配置。',
+      cannotSave: 'Kiki 无法保存此配置。请更新到支持 App 生命周期的 Kiki 版本。',
+      needAppLifecycle: '此插件需要支持 App 生命周期的 Kiki 版本。请更新 Kiki 后重新打开本面板。',
+      notActivated: 'Kiki 尚未启用 Cloudflare 插件。请启用插件后重新打开本面板。',
+      cloudflaredRejected: 'cloudflared 拒绝了该请求。请检查 token 与配置。',
+      cannotRun: 'Kiki 无法运行 cloudflared。请安装它或指定可执行文件。',
+      badSetting: (key) => '请检查 ' + key + ' 的取值。',
+      checksumMismatch: '下载的 cloudflared 与官方校验值不符，因此没有安装。请重试。',
+      pathOccupied: '该安装路径已被其他文件占用。请换一个可执行文件路径。',
+      needConsent: '点击安装即表示允许下载 cloudflared。'
+    }
+  }
+};
+
+const $ = (id) => document.getElementById(id);
+const el = {
+  stat: $('stat'), reason: $('reason'), publicUrl: $('public-url'), dot: $('dot'), live: $('live'),
+  lifecycle: $('lifecycle'), rootReason: $('root-reason'), busy: $('busy'),
+  ruleDep: $('rule-dep'), depSection: $('dep-section'), depActions: $('dep-actions'), depNote: $('dep-note'),
+  ruleSetup: $('rule-setup'), setup: $('setup'), setupFields: $('setup-fields'),
+  setupReason: $('setup-reason'),
+  createActions: $('create-actions'), create: $('create'), createHint: $('create-hint'), docs: $('docs'),
+  wrapToken: $('wrap-token'), token: $('token'), tokenHint: $('token-hint'),
+  mode: $('mode'), localFields: $('local-fields'), tunnelid: $('tunnelid'), configpath: $('configpath'),
+  login: $('login'), reuse: $('reuse'), save: $('save'),
+  loginPanel: $('login-panel'), loginState: $('login-state'), loginLink: $('login-link'),
+  loginUrl: $('login-url'), cancelLogin: $('cancel-login'),
+  reusePanel: $('reuse-panel'), reuseState: $('reuse-state'), tunnels: $('tunnels'), reuseClose: $('reuse-close'),
+  savedNote: $('saved-note'), ruleAdvanced: $('rule-advanced'), advanced: $('advanced'), certFact: $('cert-fact'),
+  apitoken: $('apitoken'), accountid: $('accountid'), tokenfile: $('tokenfile'),
+  certpath: $('certpath'), credfile: $('credfile'), binarypath: $('binarypath'), publicurl: $('publicurl'),
+  autoStart: $('autoStart')
+};
+
+let t = I18N[detectLocale()];
+let bridgeReady = false;
+let sequence = 0;
+const pending = new Map();
+let status = null;
+let mode = 'token';
+let busy = '';
+let pollTimer = null;
+let lastStateKey = '';
+let savedNote = '';
+let fieldsFilled = false;
+let blocked = '';
+let publicUrlFact = '';
+let lastLoginUrl = '';
+let depInstallError = '';
+let loginDismissed = false;
+
+function detectLocale() {
+  return (navigator.language || 'en').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+}
+
+function applyStrings() {
+  document.documentElement.lang = t === I18N.zh ? 'zh' : 'en';
+  document.title = t.title;
+  for (const node of document.querySelectorAll('[data-i18n]')) {
+    const value = t[node.getAttribute('data-i18n')];
+    if (typeof value === 'string') node.textContent = value;
+  }
+  /* Placeholders live in the table too, so no English survives a Chinese run. */
+  for (const node of document.querySelectorAll('[data-i18n-placeholder]')) {
+    const value = t[node.getAttribute('data-i18n-placeholder')];
+    if (typeof value === 'string') node.placeholder = value;
+  }
+  const aria = document.querySelector('[data-i18n-aria]');
+  if (aria) aria.setAttribute('aria-label', t[aria.getAttribute('data-i18n-aria')]);
+}
+
+function setText(node, value) { node.textContent = value; }
+function announce(value) { el.live.textContent = value; }
+
+/* plugin.call and plugin.openExternal do not need a session; session.* methods do. */
+function request(payload) {
+  const id = ++sequence;
+  const response = new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+  window.parent.postMessage({ channel: CHANNEL, kind: 'request', id, ...payload }, '*');
+  return response;
+}
+
+function call(action, args) {
+  if (!bridgeReady || blocked !== '') return Promise.reject(new Error(blocked || t.err.noBridge));
+  return request({ method: 'plugin.call', action, args: args ?? {} });
+}
+
+function installPrerequisite(id) {
+  if (!bridgeReady || blocked !== '') return Promise.reject(new Error(blocked || t.err.noBridge));
+  return request({ method: 'plugin.installPrerequisite', prerequisiteId: id, consent: true });
+}
+
+/* The sandbox cannot open windows, so the host opens the page. If it cannot,
+   the link stays visible and selectable instead of pretending it opened. */
+function openExternal(url) {
+  if (!bridgeReady || blocked !== '') { announce(t.err.noBridge); return; }
+  request({ method: 'plugin.openExternal', url }).catch(() => { announce(url); });
+}
+
+/* The backend throws safe, actionable English sentences. The panel shows the
+   user's own language for the ones it recognizes and falls back to the
+   original text, never to an empty or invented message. */
+const SERVICE_ERRORS = [
+  [/repeatedly exited/i, 'tunnelKeepsExiting'],
+  [/exited; reconnecting/i, 'tunnelReconnecting'],
+  [/Install cloudflared \(2025|Install cloudflared before/i, 'needCloudflared'],
+  [/Save a tunnel token or select/i, 'needToken'],
+  [/config file and tunnel UUID/i, 'needConfigFile'],
+  [/credentials file is missing/i, 'needCredentialsFile'],
+  [/token file is missing/i, 'needTokenFile'],
+  [/certificate/i, 'needCertificate'],
+  [/certificate, or clear its custom path/i, 'needCertificate'],
+  [/API token to (list|select)/i, 'needApiToken'],
+  [/No connector token was returned/i, 'noConnectorToken'],
+  [/Kiki cannot save this plugin configuration/i, 'cannotSave'],
+  [/App lifecycle support/i, 'needAppLifecycle'],
+  [/Kiki is not activated/i, 'notActivated'],
+  [/cloudflared rejected the operation/i, 'cloudflaredRejected'],
+  [/Cannot run cloudflared/i, 'cannotRun'],
+  [/Invalid setting: ([a-zA-Z]+)/, 'badSetting'],
+  [/download checksum mismatch/i, 'checksumMismatch'],
+  [/install path/i, 'pathOccupied'],
+  [/Choose Install to allow/i, 'needConsent']
+];
+
+function normalizeError(error) {
+  const raw = typeof error === 'string' ? error : (error && error.message) || '';
+  if (/rate limited/i.test(raw)) return t.err.rateLimited;
+  if (/no session/i.test(raw)) return t.err.noSession;
+  for (const [pattern, key] of SERVICE_ERRORS) {
+    const match = pattern.exec(raw);
+    if (match === null) continue;
+    const value = t.err[key];
+    if (typeof value === 'string') return value;
+    if (typeof value === 'function') return value(match[1] || '');
+  }
+  return raw.trim() || t.err.unknown;
+}
+
+const UUID = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
+
+/* Any value the user typed is itself worth saving, even before the tunnel is
+   complete: a path, an account id or an endpoint is a real change. Only an
+   entirely empty form in token mode is rejected. */
+function hasPendingEdit() {
+  return [
+    el.token, el.tunnelid, el.configpath, el.accountid, el.tokenfile, el.certpath,
+    el.credfile, el.binarypath, el.publicurl, el.apitoken
+  ].some((node) => node.value.trim() !== '');
+}
+
+function validate() {
+  if (mode === 'token') {
+    /* A pasted token, a saved token, or an existing token file each complete
+       token mode. So does any other pending edit, because that is how a user
+       prepares a tunnel without typing the token yet. */
+    if (el.token.value.trim() || el.tokenfile.value.trim()) return null;
+    if (status?.configuration?.tokenConfigured) return null;
+    if (hasPendingEdit()) return null;
+    return t.err.tokenRequired;
+  }
+  const tunnelId = el.tunnelid.value.trim();
+  if (tunnelId && !UUID.test(tunnelId)) return t.err.uuidInvalid;
+  if (!tunnelId || !el.configpath.value.trim()) return t.err.localRequired;
+  return null;
+}
+
+function collect() {
+  const values = { mode };
+  if (mode === 'token') {
+    const token = el.token.value.trim();
+    if (token) values.tunnelToken = token;
+  } else {
+    const tunnelId = el.tunnelid.value.trim();
+    const configPath = el.configpath.value.trim();
+    if (tunnelId) values.tunnelId = tunnelId;
+    if (configPath) values.configPath = configPath;
+  }
+  for (const [node, key] of [
+    [el.accountid, 'accountId'], [el.tokenfile, 'tokenFile'], [el.certpath, 'certificatePath'],
+    [el.credfile, 'credentialsFile'], [el.binarypath, 'cloudflaredPath'], [el.publicurl, 'publicUrl']
+  ]) {
+    const value = node.value.trim();
+    if (value) values[key] = value;
+  }
+  /* A typed API token replaces a stored one; it is write-only, so the stored
+     value never comes back to compare against. */
+  const apiToken = el.apitoken.value.trim();
+  if (apiToken) values.apiToken = apiToken;
+  if (el.autoStart.checked !== (status?.configuration?.autoStart !== false)) {
+    values.autoStart = el.autoStart.checked;
+  }
+  return values;
+}
+
+function showFormError(message) {
+  el.setupReason.hidden = false;
+  el.setupReason.dataset.tone = 'error';
+  setText(el.setupReason, message);
+}
+
+function clearFormError() { el.setupReason.hidden = true; }
+
+function button(kind, label, onClick, disabled) {
+  const node = document.createElement('button');
+  node.type = 'button';
+  node.className = kind;
+  node.textContent = label;
+  node.disabled = disabled === true;
+  node.addEventListener('click', onClick);
+  return node;
+}
+
+function render(next) {
+  if (next) {
+    /* Adopt the stored mode whenever the backend reports a fresh one, so a
+       page opened on a local-mode tunnel shows its own fields. */
+    const reported = next.configuration?.mode;
+    if (reported === 'local' || reported === 'token') {
+      const radio = el.mode.querySelector('input[value="' + reported + '"]');
+      if (radio && !radio.checked) { radio.checked = true; mode = reported; }
+    }
+    status = next;
+    /* Populate the fields on the first status too, so an existing local tunnel
+       shows its own path instead of an empty form. */
+    if (!fieldsFilled) { syncFields(); fieldsFilled = true; }
+  }
+  const dep = status?.dependency || { state: 'missing' };
+  const cfg = status?.configuration || {};
+  const svc = status?.service || { state: 'unconfigured' };
+  const login = status?.login || { state: 'idle' };
+  const depReady = dep.state === 'ready';
+  const configured = Boolean(cfg.tokenConfigured || cfg.tunnelId);
+  const running = svc.state === 'running' && svc.ready === true;
+  const starting = svc.state === 'starting' || svc.state === 'retrying';
+  const working = busy !== '';
+
+  el.lifecycle.replaceChildren();
+  el.depActions.replaceChildren();
+  el.setup.hidden = !depReady;
+  el.ruleSetup.hidden = !depReady;
+  el.depSection.hidden = depReady;
+  el.ruleDep.hidden = depReady;
+  el.ruleAdvanced.hidden = !depReady;
+  el.advanced.hidden = !depReady;
+
+  let tone = '';
+  let headline;
+  let reason = '';
+  if (!depReady) {
+    tone = dep.state === 'error' ? 'error' : '';
+    headline = dep.state === 'error' ? t.depTooOld : t.depMissing;
+    reason = t.depMissingReason;
+  } else if (!configured) {
+    headline = t.unconfigured;
+    reason = t.unconfiguredReason;
+  } else if (running) {
+    tone = 'running';
+    headline = t.running;
+    reason = t.runningReason;
+    /* A configured endpoint is a label Kiki shows; it is not proof the machine
+       is reachable, so it stays a separate fact under the status line. */
+    publicUrlFact = cfg.publicUrl || '';
+  } else if (svc.state === 'error') {
+    tone = 'error';
+    headline = t.error;
+    /* The service reports a safe English sentence; show it in the user's
+       language when it is one we know, and never an empty reason. */
+    reason = svc.error ? normalizeError(svc.error) : t.err.unknown;
+  } else if (starting) {
+    tone = 'busy';
+    headline = svc.state === 'retrying' ? t.retrying : t.starting;
+    reason = t[svc.state === 'retrying' ? 'retryingReason' : 'startingReason'];
+  } else if (svc.manualStop || svc.state === 'stopped') {
+    /* A paused run is exactly what Stop means, and it keeps the next-start
+       fact; saved-but-never-started is a different state, below. */
+    headline = t.stopped;
+    reason = cfg.autoStart !== false ? t.stoppedAutoReason : t.stoppedReason;
+  } else {
+    /* Saved credentials that were never started are not a running tunnel. */
+    headline = t.authOnly;
+    reason = t.authOnlyReason;
+  }
+
+  el.dot.dataset.tone = tone;
+  setText(el.stat, headline);
+  setText(el.reason, reason);
+  el.reason.dataset.tone = tone === 'error' ? 'error' : '';
+  el.publicUrl.hidden = publicUrlFact === '';
+  if (publicUrlFact) setText(el.publicUrl, t.runningUrlReason + publicUrlFact + '.');
+
+  const stateKey = [dep.state, cfg.mode, configured, svc.state, svc.ready, cfg.autoStart, svc.manualStop, login.state].join('|');
+  if (stateKey !== lastStateKey) {
+    lastStateKey = stateKey;
+    announce(headline + (reason ? '. ' + reason : ''));
+  }
+
+  if (depReady) {
+    if (running || starting) {
+      el.lifecycle.append(button('secondary', t.stopButton, () => run('stop'), working));
+    } else if (configured) {
+      el.lifecycle.append(button('primary', svc.state === 'error' ? t.errorStart : t.startButton, () => run('start'), working));
+    }
+    if (cfg.tunnelId) {
+      el.lifecycle.append(button('quiet', t.dashLink, () => {
+        call('setup').then((r) => { if (r?.url) openExternal(r.url); }, () => {});
+      }, false));
+    }
+    el.lifecycle.hidden = el.lifecycle.childElementCount === 0;
+  } else {
+    /* The button is the download consent; there is no second confirmation. */
+    el.depActions.append(button('primary', busy === 'install' ? t.depInstalling : t.depInstall,
+      () => runInstall(), working));
+    /* The status line above already carries the reason, so the block below
+       states only what the button does. */
+    setText(el.depNote, depInstallError || t.depInstallNote);
+    el.depSection.hidden = false;
+  }
+
+  el.busy.hidden = working === false;
+  if (working) setText(el.busy, busy);
+
+  el.rootReason.hidden = true;
+
+  el.wrapToken.hidden = mode === 'local';
+  el.localFields.hidden = mode !== 'local';
+  /* Once a tunnel is configured, creating another one is no longer the next
+     step, so the dashboard handoff folds away and the live state owns the page. */
+  el.createActions.hidden = configured;
+  el.createHint.hidden = configured;
+  /* The saved state reads once, as the hint; the placeholder only invites a
+     replacement, so a configured token never appears twice in a row. */
+  el.tokenHint.textContent = cfg.tokenConfigured ? t.tokenSavedHint : t.tokenHint;
+  el.token.placeholder = cfg.tokenConfigured ? t.tokenReplace : t.tokenPlaceholder;
+  el.apitoken.placeholder = status?.account?.apiToken ? t.tokenSavedHint : t.apiTokenPlaceholder;
+  el.save.disabled = working;
+  el.login.disabled = working;
+  el.reuse.disabled = working;
+  el.create.disabled = working;
+  el.autoStart.disabled = working;
+
+  /* cloudflared can finish before the user has acted on the URL, so the
+     sign-in block stays until the user dismisses it or starts again. */
+  if (login.state === 'idle' || login.state === 'complete') lastLoginUrl = '';
+  const signInVisible = login.state === 'pending' || login.state === 'error' || lastLoginUrl !== '';
+  el.loginPanel.hidden = !signInVisible && !loginDismissed;
+  if (login.state === 'pending') {
+    setText(el.loginState, login.url ? t.loginPending : t.loginWaiting);
+    el.loginLink.hidden = !login.url;
+    el.cancelLogin.hidden = false;
+    el.loginUrl.hidden = !login.url;
+    if (login.url) {
+      el.loginLink.href = login.url;
+      setText(el.loginUrl, login.url);
+      /* cloudflared prints the URL only after the login call returns, so hand
+         it to the host on whichever status first reports one. */
+      if (login.url !== lastLoginUrl) { lastLoginUrl = login.url; openExternal(login.url); }
+    }
+  } else if (login.state === 'error') {
+    setText(el.loginState, login.error ? normalizeError(login.error) : t.err.unknown);
+    lastLoginUrl = '';
+    el.loginLink.hidden = true;
+    el.loginUrl.hidden = true;
+    el.cancelLogin.hidden = true;
+  }
+
+  el.savedNote.hidden = savedNote === '';
+  if (savedNote) setText(el.savedNote, savedNote);
+
+  el.certFact.textContent = status?.account?.certificate
+    ? t.certPresent.replace('{path}', cfg.certificatePath || '')
+    : t.certAbsent;
+
+  schedulePoll();
+}
+
+function schedulePoll() {
+  clearTimeout(pollTimer);
+  const svc = status?.service;
+  const login = status?.login;
+  const watch = busy !== '' || login?.state === 'pending' || svc?.state === 'starting' || svc?.state === 'retrying';
+  if (watch) pollTimer = setTimeout(() => { void refresh(); }, 2000);
+}
+
+/* When the host refuses the bridge (an older Kiki, or no session), every action
+   here is a dead click. Say so once and stop offering the form. */
+function block(message) {
+  blocked = message;
+  el.dot.dataset.tone = 'error';
+  setText(el.stat, t.unavailable);
+  setText(el.reason, '');
+  el.rootReason.hidden = false;
+  el.rootReason.dataset.tone = 'error';
+  setText(el.rootReason, message);
+  el.setup.hidden = true;
+  el.ruleSetup.hidden = true;
+  el.advanced.hidden = true;
+  el.ruleAdvanced.hidden = true;
+  el.depSection.hidden = true;
+  el.ruleDep.hidden = true;
+  el.lifecycle.replaceChildren();
+  el.lifecycle.hidden = true;
+  el.loginPanel.hidden = true;
+  el.reusePanel.hidden = true;
+  el.savedNote.hidden = true;
+  el.busy.hidden = true;
+  clearTimeout(pollTimer);
+  announce(message);
+}
+
+async function refresh() {
+  try {
+    render(await call('status'));
+  } catch (error) {
+    block(normalizeError(error));
+  }
+}
+
+async function run(action, args) {
+  busy = action === 'stop' ? t.stopped_note : t.started_note;
+  render();
+  try {
+    render(await call(action, args));
+    savedNote = action === 'stop' ? t.stopped_note : t.started_note;
+  } catch (error) {
+    showFormError(normalizeError(error));
+  } finally {
+    busy = '';
+    render();
+  }
+}
+
+async function runInstall() {
+  busy = t.depInstalling;
+  render();
+  try {
+    await installPrerequisite(PREREQUISITE);
+  } catch (error) {
+    busy = '';
+    depInstallError = normalizeError(error);
+    render();
+    return;
+  }
+  /* The host persists the path and its own setting; poll until the probe agrees. */
+  busy = t.depInstalling;
+  render();
+  for (let i = 0; i < 20; i += 1) {
+    await new Promise((r) => setTimeout(r, 1500));
+    try {
+      const next = await call('status');
+      busy = '';
+      if (next?.dependency?.state === 'ready') depInstallError = '';
+      render(next);
+      if (next?.dependency?.state === 'ready') {
+        savedNote = t.depInstalled;
+        render();
+        return;
+      }
+    } catch { /* keep waiting for the host */ }
+  }
+  busy = '';
+  render();
+}
+
+function syncFields() {
+  const cfg = status?.configuration || {};
+  mode = cfg.mode === 'local' ? 'local' : 'token';
+  const radio = el.mode.querySelector('input[value="' + mode + '"]');
+  if (radio && !radio.checked) radio.checked = true;
+  /* A field the user is typing in keeps its value; the rest show what is
+     actually stored, so a status refresh never discards an edit. */
+  const fill = (node, value) => {
+    if (node !== document.activeElement) node.value = value;
+  };
+  fill(el.tunnelid, cfg.tunnelId || '');
+  fill(el.configpath, cfg.configPath || '');
+  fill(el.accountid, cfg.accountId || '');
+  fill(el.tokenfile, cfg.tokenFile || '');
+  /* The default certificate lives in the Kiki home, so only a custom one is shown. */
+  fill(el.certpath, cfg.certificatePath && cfg.certificatePath.indexOf('.cloudflared') === -1 ? cfg.certificatePath : '');
+  fill(el.credfile, cfg.credentialsFile || '');
+  fill(el.binarypath, cfg.cloudflaredPath || '');
+  fill(el.publicurl, cfg.publicUrl || '');
+  el.autoStart.checked = cfg.autoStart !== false;
+}
+
+el.mode.addEventListener('change', (event) => {
+  if (event.target.name !== 'mode') return;
+  mode = event.target.value;
+  clearFormError();
+  render();
+});
+el.token.addEventListener('input', clearFormError);
+el.apitoken.addEventListener('input', clearFormError);
+
+/* A sandboxed frame has no allow-forms, so there is no <form> to submit; the
+   primary button is the one action and Enter still reaches it. */
+el.save.addEventListener('click', async () => {
+  const issue = validate();
+  if (issue) { showFormError(issue); return; }
+  clearFormError();
+  busy = t.saving;
+  render();
+  try {
+    const next = await call('configure', { values: collect() });
+    el.token.value = '';
+    el.apitoken.value = '';
+    syncFields();
+    savedNote = t.saved;
+    render(next);
+    announce(t.saved);
+  } catch (error) {
+    showFormError(normalizeError(error));
+  } finally {
+    busy = '';
+    render();
+  }
+});
+
+/* The dashboard owns tunnel creation, DNS and billing, so this hands the user
+   to the official page instead of pretending to create a resource here. */
+/* Enter in a field runs the same single action as the primary button. */
+for (const node of [el.token, el.tunnelid, el.configpath, el.accountid, el.tokenfile, el.certpath, el.credfile, el.binarypath, el.publicurl, el.apitoken]) {
+  node.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.shiftKey) return;
+    event.preventDefault();
+    el.save.click();
+  });
+}
+
+el.create.addEventListener('click', async () => {
+  try {
+    const result = await call('setup');
+    if (result?.url) openExternal(result.url);
+    if (result?.docsUrl) el.docs.href = result.docsUrl;
+  } catch (error) {
+    showFormError(normalizeError(error));
+  }
+});
+
+el.docs.addEventListener('click', (event) => {
+  event.preventDefault();
+  openExternal(el.docs.href);
+});
+
+el.login.addEventListener('click', async () => {
+  loginDismissed = false;
+  lastLoginUrl = '';
+  busy = t.loginWaiting;
+  render();
+  try {
+    const next = await call('login');
+    render(next);
+  } catch (error) {
+    showFormError(normalizeError(error));
+  } finally {
+    busy = '';
+    render();
+  }
+});
+
+el.cancelLogin.addEventListener('click', async () => {
+  loginDismissed = true;
+  lastLoginUrl = '';
+  await run('cancelLogin');
+});
+
+el.loginLink.addEventListener('click', (event) => {
+  event.preventDefault();
+  openExternal(el.loginLink.href);
+});
+
+/* Listing tunnels needs a saved API token or an existing certificate. A user
+   who typed one but has not saved yet would get a confusing refusal, so the
+   listing saves those credentials first and then asks. */
+el.reuse.addEventListener('click', async () => {
+  el.reusePanel.hidden = false;
+  el.tunnels.replaceChildren();
+  setText(el.reuseState, t.reuseLoading);
+  try {
+    const pendingValues = {};
+    const apiToken = el.apitoken.value.trim();
+    const accountId = el.accountid.value.trim();
+    if (apiToken) pendingValues.apiToken = apiToken;
+    if (accountId) pendingValues.accountId = accountId;
+    if (Object.keys(pendingValues).length > 0) {
+      const saved = await call('configure', { values: { mode, ...pendingValues } });
+      el.apitoken.value = '';
+      syncFields();
+      render(saved);
+    }
+    const result = await call('tunnels');
+    const items = Array.isArray(result?.items) ? result.items : [];
+    el.tunnels.replaceChildren();
+    setText(el.reuseState, items.length === 0 ? t.reuseEmpty : '');
+    for (const item of items) {
+      const row = document.createElement('li');
+      const node = document.createElement('button');
+      node.type = 'button';
+      const name = document.createElement('span');
+      name.className = 'tname';
+      name.textContent = item.name || item.id;
+      const id = document.createElement('span');
+      id.className = 'tid mono';
+      id.textContent = String(item.id || '').slice(0, 8);
+      node.append(name, id);
+      node.addEventListener('click', async () => {
+        node.disabled = true;
+        busy = t.saving;
+        render();
+        try {
+          const next = await call('selectTunnel', { id: item.id });
+          el.reusePanel.hidden = true;
+          clearFormError();
+          savedNote = t.saved;
+          render(next);
+          announce(t.saved);
+        } catch (error) {
+          showFormError(normalizeError(error));
+        } finally {
+          busy = '';
+          render();
+        }
+      });
+      row.append(node);
+      el.tunnels.append(row);
+    }
+  } catch (error) {
+    setText(el.reuseState, normalizeError(error));
+  }
+});
+
+el.reuseClose.addEventListener('click', () => { el.reusePanel.hidden = true; });
+
+el.autoStart.addEventListener('change', async () => {
+  clearFormError();
+  const wanted = el.autoStart.checked;
+  try {
+    render(await call('configure', { values: { autoStart: wanted } }));
+  } catch (error) {
+    el.autoStart.checked = !wanted;
+    showFormError(normalizeError(error));
+  }
+});
+
+window.addEventListener('message', (event) => {
+  if (event.source !== window.parent || !event.data || event.data.channel !== CHANNEL) return;
+  if (event.data.kind === 'init') {
+    bridgeReady = true;
+    void refresh();
+    return;
+  }
+  if (event.data.kind === 'response') {
+    const slot = pending.get(event.data.id);
+    if (!slot) return;
+    pending.delete(event.data.id);
+    if (event.data.ok) slot.resolve(event.data.result);
+    else slot.reject(new Error(event.data.error || t.err.unknown));
+  }
+});
+
+applyStrings();
+setText(el.stat, t.readingState);
+})();
+</script>
+</body>
+</html>
