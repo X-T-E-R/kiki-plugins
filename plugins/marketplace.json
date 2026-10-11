@@ -221,6 +221,87 @@
       }
     },
     {
+      "id": "kiki-work",
+      "tier": "official",
+      "displayName": "Kiki Work",
+      "version": "0.1.0",
+      "description": "Local table checks for office work: audit CSV keys and reconcile two tables without modifying or uploading them.",
+      "keywords": [
+        "work",
+        "csv",
+        "table",
+        "reconcile"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-work",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-work",
+      "localizations": {
+        "zh": {
+          "description": "在本机核对 CSV/TSV 键并对照两张表，不改原文件，也不上传。",
+          "keywords": [
+            "工作",
+            "表格",
+            "核对",
+            "csv"
+          ]
+        }
+      }
+    },
+    {
+      "id": "kiki-pet",
+      "tier": "official",
+      "displayName": "Desktop Pet",
+      "version": "0.1.0",
+      "description": "An isolated native desktop companion that reacts to Kiki tasks, imports Codex pets and carries a pet-making skill.",
+      "keywords": [
+        "pet",
+        "desktop",
+        "companion"
+      ],
+      "author": "Kiki",
+      "license": "GPL-3.0-or-later",
+      "source": "./official/kiki-pet",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-pet",
+      "localizations": {
+        "zh": {
+          "description": "随 Kiki 任务反应的隔离桌面伴侣，可导入 Codex 宠物，并带制作 skill。",
+          "keywords": [
+            "桌宠",
+            "宠物",
+            "伴侣"
+          ]
+        }
+      }
+    },
+    {
+      "id": "kiki-sites",
+      "tier": "official",
+      "displayName": "Kiki Sites",
+      "version": "0.1.0",
+      "description": "Connect code hosting and deploy sites or apps through official service CLIs and APIs.",
+      "keywords": [
+        "sites",
+        "deploy",
+        "github",
+        "hosting"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-sites",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-sites",
+      "localizations": {
+        "zh": {
+          "description": "连接代码托管，并用官方服务 CLI 与 API 部署站点或应用。",
+          "keywords": [
+            "站点",
+            "部署",
+            "代码托管"
+          ]
+        }
+      }
+    },
+    {
       "id": "kimi-datasource",
       "tier": "official",
       "displayName": "Kimi Datasource",

@@ -1,0 +1,4 @@
+Deterministic scripts and upstream references from OpenAI Skills, hatch-pet.
+Source: https://github.com/openai/skills/tree/49f948faa9258a0c61caceaf225e179651397431/skills/.curated/hatch-pet
+Licensed under Apache License 2.0 (LICENSE.txt).
+Scripts and upstream references are unchanged; Kiki workflow and integration are new.

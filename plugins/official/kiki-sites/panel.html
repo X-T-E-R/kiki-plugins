@@ -1,0 +1,1494 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sites</title>
+  <style>
+    /* The panel runs in a sandboxed opaque-origin iframe under
+       `default-src 'none'`, so Kiki's light paper-and-ink tokens are pinned
+       here instead of being inherited from the host document. */
+    :root {
+      color-scheme: light;
+      --canvas: #f2efe8;
+      --paper: #fbfaf6;
+      --panel: #fffdfa;
+      --hairline: #e4ddd0;
+      --hairline-strong: #cdc3b1;
+      --ink: #1b1a17;
+      --ink-soft: #4b453e;
+      --ink-faint: #665e54;
+      --accent: #c8401a;
+      --accent-deep: #9c3012;
+      --accent-press: #7c270e;
+      --accent-ink: #9c3012;
+      --accent-soft: #f8e3d8;
+      --amber-ink: #87480b;
+      --amber-card: #f8eedd;
+      --amber-rule: #d9a441;
+      --success: #2f6b45;
+      --danger: #b0261e;
+      --selected: #dfe8f0;
+      --selected-ink: #1d4d6d;
+      --sans: 'Instrument Sans', ui-sans-serif, system-ui, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+      --display: 'Newsreader', Georgia, 'Songti SC', 'Noto Serif SC', SimSun, serif;
+      --mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', monospace;
+      --radius: 6px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--canvas);
+      color: var(--ink);
+      font: 12px/1.5 var(--sans);
+      -webkit-font-smoothing: antialiased;
+    }
+    main { max-width: 860px; margin: 0 auto; padding: 18px 20px 48px; }
+    h1 { font: 400 17px/1.3 var(--display); letter-spacing: -0.01em; margin: 0; }
+    .masthead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .langs { margin-left: auto; display: flex; gap: 3px; }
+    .note { margin: 5px 0 0; color: var(--ink-faint); max-width: 64ch; }
+    .session { margin: 2px 0 0; color: var(--ink-faint); font: 11.5px/1.5 var(--mono); }
+    .session b { font-weight: 500; color: var(--ink-soft); }
+
+    section { margin-top: 24px; }
+    .head { display: flex; align-items: center; gap: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--hairline-strong); }
+    .head h2 {
+      margin: 0;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+    .count { font: 11.5px/1 var(--mono); color: var(--ink-faint); }
+    .push { margin-left: auto; }
+
+    .banner { margin-top: 12px; padding: 8px 10px; border-radius: var(--radius); display: flex; gap: 10px; align-items: flex-start; }
+    .banner p { margin: 0; min-width: 0; }
+    .banner .rec { display: block; margin-top: 3px; color: var(--ink-soft); }
+    .t-danger { background: var(--accent-soft); color: var(--accent-ink); }
+    .t-warn { background: var(--amber-card); color: var(--amber-ink); }
+    .t-good { background: var(--selected); color: var(--selected-ink); }
+
+    .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; padding: 10px 0; border-bottom: 1px solid var(--hairline); align-items: start; }
+    .row:last-child { border-bottom: 0; }
+    .row.on { background: var(--selected); border-radius: var(--radius); padding-left: 9px; padding-right: 9px; margin: 0 -9px; }
+    .title { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+    .title h3 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: -0.005em; overflow-wrap: anywhere; }
+    .title .lbl { font-weight: 400; color: var(--ink-soft); }
+    .meta { grid-column: 1; color: var(--ink-faint); font-size: 11.5px; min-width: 0; }
+    /* Each fact is its own inline run so a long path or link never welds
+       itself to the sentence before it. */
+    .fact { display: block; margin-top: 2px; overflow-wrap: anywhere; }
+    .fact button { min-height: 22px; padding: 0 6px; font: 11.5px/1.2 var(--mono); border-radius: 4px; }
+    .acts { grid-row: 1 / span 2; grid-column: 2; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+    .state { display: inline-flex; align-items: center; gap: 5px; color: var(--ink-soft); white-space: nowrap; }
+    .state::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--hairline-strong); flex: none; }
+    .state[data-tone='good'] { color: var(--success); }
+    .state[data-tone='good']::before { background: var(--success); }
+    .state[data-tone='bad'] { color: var(--danger); }
+    .state[data-tone='bad']::before { background: var(--danger); }
+    .state[data-tone='warn'] { color: var(--amber-ink); }
+    .state[data-tone='warn']::before { background: var(--amber-rule); }
+    .state[data-tone='busy'] { color: var(--accent-ink); }
+    .state[data-tone='busy']::before { background: var(--accent); animation: beat 1.9s ease-in-out infinite; }
+    @keyframes beat { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+    .tag { font: 11.5px/1 var(--mono); color: var(--ink-faint); }
+
+    button {
+      font: 12px/1.2 var(--sans);
+      min-height: 28px;
+      padding: 0 10px;
+      border-radius: var(--radius);
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--ink-soft);
+      cursor: pointer;
+      transition: background-color 110ms ease, border-color 110ms ease, color 110ms ease;
+    }
+    button:hover:not(:disabled) { border-color: var(--hairline-strong); color: var(--ink); }
+    button:disabled { cursor: default; color: var(--ink-faint); opacity: 0.65; }
+    button.sec { border-color: var(--hairline); background: var(--paper); }
+    button.sec:hover:not(:disabled) { border-color: var(--hairline-strong); }
+    button.pri { background: var(--accent-deep); border-color: var(--accent-deep); color: #fff; font-weight: 600; }
+    button.pri:hover:not(:disabled) { background: var(--accent-press); border-color: var(--accent-press); color: #fff; }
+    button.pri:disabled { background: var(--hairline); border-color: var(--hairline); color: var(--ink-faint); opacity: 1; }
+    button.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+    :is(button, input, select, .switch):focus-visible { outline: 2px solid var(--selected-ink); outline-offset: 1px; }
+    .switch { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 2px; cursor: pointer; }
+    .switch[aria-checked='true'] { color: var(--selected-ink); }
+    .switch:disabled { cursor: default; opacity: 0.65; }
+    .track { width: 26px; height: 15px; border-radius: 8px; background: var(--hairline-strong); position: relative; flex: none; transition: background-color 110ms ease; }
+    .track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--paper); transition: transform 110ms ease; }
+    .switch[aria-checked='true'] .track { background: var(--selected-ink); }
+    .switch[aria-checked='true'] .track::after { transform: translateX(11px); }
+
+    form { padding: 12px 0 6px; border-bottom: 1px solid var(--hairline); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 14px; align-items: end; }
+    .field { display: block; min-width: 0; }
+    .field > span { display: block; margin-bottom: 3px; color: var(--ink-soft); }
+    .req { color: var(--accent-ink); }
+    .hint { display: block; margin-top: 3px; font-size: 11px; color: var(--ink-faint); }
+    input[type='text'], input[type='password'], select {
+      width: 100%;
+      height: 30px;
+      padding: 0 8px;
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius);
+      background: var(--panel);
+      color: var(--ink);
+      font: 12px/1.2 var(--sans);
+    }
+    input.mono { font-family: var(--mono); font-size: 11.5px; }
+    input::placeholder { color: var(--ink-faint); }
+    input:disabled, select:disabled { background: var(--canvas); color: var(--ink-faint); }
+    input:focus, select:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 2px var(--accent-soft); }
+    .check { display: flex; align-items: center; gap: 7px; color: var(--ink-soft); cursor: pointer; min-height: 30px; }
+    .check input { width: 14px; height: 14px; accent-color: var(--accent-deep); flex: none; }
+    .modes { display: flex; flex-wrap: wrap; gap: 16px; padding: 4px 0 0; }
+    .modes label { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-soft); cursor: pointer; }
+    .modes input { accent-color: var(--accent-deep); }
+    .formfoot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px 0 10px; }
+    .formfoot .push { margin-left: auto; }
+
+    .block { padding: 12px 0 4px; }
+    .blockhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .blockhead h3 { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.02em; }
+    .kv { display: grid; grid-template-columns: minmax(88px, max-content) minmax(0, 1fr); gap: 3px 14px; margin: 10px 0 0; }
+    .kv dt { color: var(--ink-faint); }
+    .kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+    pre.cmd {
+      margin: 5px 0 0;
+      padding: 8px 9px;
+      border-radius: var(--radius);
+      background: var(--paper);
+      border: 1px solid var(--hairline);
+      font: 11.5px/1.55 var(--mono);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    pre.cmd.long { max-height: 168px; overflow: auto; }
+    .warns { margin: 7px 0 0; padding: 0; list-style: none; border-left: 2px solid var(--amber-rule); }
+    .warns li { padding: 2px 0 2px 9px; color: var(--amber-ink); }
+    .caution { margin: 8px 0 0; color: var(--amber-ink); max-width: 68ch; }
+    .errorline { color: var(--danger); }
+    .urlrow { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .urlrow .url { font: 11.5px/1.45 var(--mono); overflow-wrap: anywhere; min-width: 0; }
+    .urlrow .url[data-tone='warn'] { color: var(--amber-ink); }
+    .urlrow .url[data-tone='good'] { color: var(--success); }
+    .rule { height: 1px; background: var(--hairline); margin: 12px 0 0; }
+    .detail { margin-top: 9px; }
+    .empty { color: var(--ink-faint); }
+    .busy { color: var(--ink-faint); padding: 10px 0; }
+
+    @media (max-width: 560px) {
+      main { padding: 14px 14px 40px; }
+      .row { grid-template-columns: minmax(0, 1fr); }
+      .acts { grid-row: auto; grid-column: 1; justify-content: flex-start; margin-top: 4px; }
+      .acts button, .acts .switch { min-height: 38px; }
+      .grid { grid-template-columns: minmax(0, 1fr); }
+      .formfoot button { min-height: 38px; flex: 1 1 8rem; }
+      .banner { flex-direction: column; }
+      .kv { grid-template-columns: minmax(0, 1fr); }
+      .kv dd { margin-bottom: 4px; }
+      .head button { min-height: 34px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="masthead">
+      <h1 data-i18n="title"></h1>
+      <div class="langs" role="group" data-i18n-aria="langGroup">
+        <button type="button" class="sec" data-lang="en">EN</button>
+        <button type="button" class="sec" data-lang="zh">中文</button>
+      </div>
+    </div>
+    <p class="note" id="lead"></p>
+    <p class="session" id="session" aria-live="polite"></p>
+    <div id="banner" role="status" aria-live="polite"></div>
+
+    <section aria-labelledby="h-connections">
+      <div class="head">
+        <h2 id="h-connections" data-i18n="connections"></h2>
+        <span class="count" id="connCount"></span>
+        <span class="push"></span>
+        <button type="button" class="sec" id="addConnection" data-i18n="addConnection"></button>
+      </div>
+      <div id="connectionList"></div>
+    </section>
+
+    <section id="targetSection" aria-labelledby="h-targets">
+      <div class="head">
+        <h2 id="h-targets" data-i18n="targets"></h2>
+        <span class="count" id="targetCount"></span>
+        <span class="push"></span>
+        <button type="button" class="sec" id="addTarget" data-i18n="addTarget"></button>
+      </div>
+      <div id="targetList"></div>
+    </section>
+
+    <section id="jobSection" aria-labelledby="h-jobs" hidden>
+      <div class="head">
+        <h2 id="h-jobs" data-i18n="jobs"></h2>
+        <span class="count" id="jobCount"></span>
+      </div>
+      <div id="jobList"></div>
+    </section>
+  </main>
+  <script>
+    'use strict';
+
+    const CHANNEL = 'kiki.panel.v1';
+    const POLL_MS = 2500;
+    const CALL_TIMEOUT_MS = 45000;
+    const ACTIVE = new Set(['running', 'pending', 'queued']);
+    const READY = new Set(['ready']);
+    const SECRET = /(token|secret|password|authorization|api[-_]?key|credential)/i;
+
+    const S = {
+      title: ['Sites', '站点'],
+      langGroup: ['Language', '语言'],
+      lead: [
+        'A connection authorizes a provider. A deployment target is what you actually publish.',
+        '连接用于授权服务商，部署目标才是真正要发布的内容。'
+      ],
+      firstRun: ['Connect a provider to start. Sites never stores a secret in the browser.', '先连接一个服务商。站点面板不会在浏览器里保存任何凭据。'],
+      session: ['Session', '会话'],
+      noSession: ['No session open. Sites still works from here.', '未打开会话，站点面板仍可正常使用。'],
+      loading: ['Working', '处理中'],
+      tryAgain: ['Try again', '重试'],
+      connections: ['Connections', '服务连接'],
+      targets: ['Deployment targets', '部署目标'],
+      jobs: ['Deployments', '部署记录'],
+      addConnection: ['Connect a service', '连接服务'],
+      addTarget: ['Add target', '添加目标'],
+      edit: ['Edit', '编辑'],
+      remove: ['Remove', '删除'],
+      removeConnection: ['Remove connection', '删除连接'],
+      removeTarget: ['Remove target', '删除目标'],
+      keep: ['Keep', '取消'],
+      removed: ['Removed', '已删除'],
+      saved: ['Saved', '已保存'],
+      saveConnection: ['Save connection', '保存连接'],
+      saveTarget: ['Save target', '保存目标'],
+      service: ['Service', '服务'],
+      connection: ['Connection', '所用连接'],
+      name: ['Name', '名称'],
+      nameHint: ['Optional. Shown in place of the service name.', '可选。用于代替服务名显示。'],
+      enabled: ['Enabled', '启用'],
+      authCli: ['Use the {0} command line', '使用 {0} 命令行'],
+      authToken: ['Use an access token', '使用访问令牌'],
+      instance: ['Instance URL', '实例地址'],
+      instanceHint: ['Optional. Set it for a self-hosted or enterprise instance.', '可选。自建或企业实例时填写。'],
+      cliPath: ['Command path', '命令行路径'],
+      cliPathHint: ['Optional. Set it when the command is not on PATH.', '可选。命令行不在 PATH 中时填写。'],
+      accountId: ['Account ID', '账号 ID'],
+      accountIdHint: ['Optional. Selects one account when the command holds several.', '可选。命令行登录了多个账号时指定其一。'],
+      username: ['Username or email', '用户名或邮箱'],
+      token: ['Access token', '访问令牌'],
+      tokenHint: ['Write only. Cleared once saved, and never sent back by Kiki.', '只写入。保存后即清空，Kiki 不会回显。'],
+      clearToken: ['Remove the stored token', '删除已保存的令牌'],
+      check: ['Check sign-in', '检查登录'],
+      signIn: ['Sign in', '登录'],
+      signInAgain: ['Sign in again', '重新登录'],
+      docs: ['Docs', '文档'],
+      copy: ['Copy', '复制'],
+      copied: ['Copied', '已复制'],
+      copyFailed: ['Select the text and copy it', '请选中该文本后复制'],
+      noServiceConnection: ['No {0} connection yet.', '还没有 {0} 的连接。'],
+      connectService: ['Connect {0}', '连接 {0}'],
+      open: ['Open', '打开'],
+      openFailed: ['Kiki could not open that address. It is copied below so you can open it yourself.', 'Kiki 无法打开该地址。地址已在下方复制，可自行在浏览器中打开。'],
+      copyAddress: ['Copy this address', '复制该地址'],
+      accountDocs: ['Where to get a token', '在哪里获取令牌'],
+      capabilityCode: ['Kiki can list repositories from it.', 'Kiki 可以用它列出仓库。'],
+      capabilityDeploy: ['Kiki can preview and deploy through it.', 'Kiki 可以用它预览并部署。'],
+      capabilityOff: ['Disabled. Kiki will not use it.', '已停用，Kiki 不会使用它。'],
+      project: ['Project directory', '项目目录'],
+      projectHint: ['Absolute path on this machine.', '本机绝对路径。'],
+      projectPlaceholder: ['C:\\work\\my-site', '/home/me/my-site'],
+      notAbsolute: ['Use an absolute path.', '请填写绝对路径。'],
+      needField: ['Fill in {0}.', '请填写 {0}。'],
+      tokenOnly: ['This service has no command line, so there is no sign-in step to start. Add a token to use it.', '该服务没有命令行，因此没有可启动的登录步骤。填写令牌即可使用。'],
+      noTargetsYet: ['Add a target once a connection is signed in.', '登录连接后即可添加目标。'],
+      noJobsYet: ['No deployment has run from this panel.', '本面板还没有发起过部署。'],
+      hide: ['Hide', '收起'],
+      show: ['Show', '展开'],
+      details: ['Details', '详情'],
+      preview: ['Preview', '预览'],
+      refreshPreview: ['Preview again', '重新预览'],
+      needPreview: ['Opening the preview for this target.', '正在打开该目标的预览。'],
+      stalePreview: ['The target or its connection changed. Deploy will make a fresh preview first.', '目标或其连接已变更。部署时会重新生成预览。'],
+      previewGone: ['The stored preview is no longer available. Preview again.', '保存的预览已不可用，请重新预览。'],
+      previewFailed: ['This preview did not load. Deploy will retry it.', '预览未能载入，部署时会重试。'],
+      downloadCli: ['Download CLI', '下载命令行'],
+      downloadNote: ['Downloads {0} {1} into Sites private storage with install scripts off. It is not installed system-wide.', '将 {0} {1} 下载到站点私有目录，并禁用安装脚本；不会全局安装。'],
+      installQueued: ['CLI download started.', '命令行下载已开始。'],
+      deploy: ['Deploy', '部署'],
+      deploying: ['Deploying', '部署中'],
+      mode: ['Mode', '方式'],
+      source: ['Source', '来源'],
+      created: ['Previewed', '预览时间'],
+      command: ['Command that will run', '将执行的命令'],
+      request: ['Request that will be sent', '将提交的请求'],
+      warnings: ['Before this runs', '执行前请知悉'],
+      alreadyRunning: ['This target is already deploying.', '这个目标正在部署中。'],
+      deployNeedsSignIn: ['Sign in on this connection first.', '请先在该连接上完成登录。'],
+      deployNeedsCli: ['The official command line is not available. Download it or set its path on the connection.', '找不到官方命令行。请下载或在连接上设置其路径。'],
+      noCliAvailable: ['This service installs its command line through its own official installer.', '该服务的命令行需要通过其官方安装器安装。'],
+      unknownBeforeRetry: ['A previous submission for this target came back unknown. Confirm with the provider before deploying again.', '这个目标上一次提交的结果未知。再次部署前请先到服务商确认。'],
+      cancelNote: ['Cancelling stops the local wait only. A submission the provider already accepted may still finish.', '取消只会停止本地等待。服务商已受理的提交仍可能完成。'],
+      cancel: ['Cancel deployment', '取消部署'],
+      checkStatus: ['Check status', '查询状态'],
+      result: ['Result', '结果'],
+      resultNone: ['No result recorded yet.', '还没有结果。'],
+      recover: ['How to recover', '如何恢复'],
+      openLogin: ['Copy this address and open it to finish signing in:', '复制下面的地址并在浏览器中打开以完成登录：'],
+      deviceCode: ['If the provider asks for a code, enter:', '如果服务商要求输入验证码，请使用：'],
+      jobUnknown: ['The result is unknown. The provider may or may not have received this. Check the provider before submitting again.', '结果未知。服务商可能已收到，也可能未收到。再次提交前请先到服务商确认。'],
+      jobInterrupted: ['Signing in was interrupted and never finished.', '登录被中断，没有完成。'],
+      jobReady: ['{0} reports this deployment as live.', '{0} 报告该部署已上线。'],
+      jobAccepted: ['{0} accepted the submission. That is not proof the site is live.', '{0} 已受理提交，但这不能证明站点已经上线。'],
+      jobNoUrl: ['The command finished without reporting a deployment address.', '命令已结束，但没有报告部署地址。'],
+      candidateUrl: ['Candidate address', '候选地址'],
+      readyUrl: ['Live address', '线上地址'],
+      noUpdate: ['no update yet', '未收到更新'],
+      signinKind: ['Sign-in', '登录'],
+      deployKind: ['Deploy', '部署'],
+      installKind: ['CLI download', '命令行下载'],
+      installedPath: ['Command path saved on the connection. Sign in to use it.', '命令行路径已保存到该连接，可直接登录使用。'],
+      lostContact: ['Kiki stopped answering for an open job. It may still be running.', 'Kiki 停止回复一个未结束的部署，它可能仍在进行。']
+    };
+
+    let lang = (navigator.language || 'en').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en';
+    const t = (key) => S[key][lang === 'zh' ? 1 : 0];
+    const tf = (key, ...args) => S[key][lang === 'zh' ? 1 : 0].replace(/\{(\d+)\}/g, (match, index) => (index < args.length ? String(args[index]) : match));
+
+    /* ---------- dom ---------- */
+    const h = (tag, props, ...kids) => {
+      const el = document.createElement(tag);
+      if (props) for (const key of Object.keys(props)) {
+        const value = props[key];
+        if (value === undefined || value === null || value === false) continue;
+        if (key === 'class') el.className = value;
+        else if (key === 'text') el.textContent = String(value);
+        else if (key === 'value' && 'value' in el) el.value = String(value);
+        else if (key.slice(0, 2) === 'on') el.addEventListener(key.slice(2), value);
+        else if (value === true) el.setAttribute(key, '');
+        else el.setAttribute(key, String(value));
+      }
+      for (const kid of kids.flat()) {
+        if (kid === undefined || kid === null || kid === false) continue;
+        el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+      }
+      return el;
+    };
+    const $ = (sel) => document.querySelector(sel);
+    const fill = (host, ...kids) => {
+      while (host.firstChild) host.removeChild(host.firstChild);
+      for (const kid of kids.flat()) if (kid) host.append(kid);
+      return host;
+    };
+    const zh = () => lang === 'zh';
+
+    /* ---------- bridge ---------- */
+    let sessionId = null;
+    let sessionTitle = null;
+    let sequence = 0;
+    const inflight = new Map();
+
+    window.addEventListener('message', (event) => {
+      if (event.source !== window.parent || !event.data || event.data.channel !== CHANNEL) return;
+      const data = event.data;
+      if (data.kind === 'init') {
+        sessionId = typeof data.sessionId === 'string' ? data.sessionId : null;
+        void boot();
+        return;
+      }
+      if (data.kind !== 'response') return;
+      const settle = inflight.get(data.id);
+      if (!settle) return;
+      inflight.delete(data.id);
+      if (data.ok === true) settle.resolve(data.result);
+      else settle.reject({ message: String(data.error || 'The panel lost contact with Kiki.'), transport: true });
+    });
+
+    function post(method, extra, timeout) {
+      return new Promise((resolve, reject) => {
+        const id = ++sequence;
+        const timer = setTimeout(() => {
+          if (inflight.delete(id)) reject({ message: t('lostContact'), transport: true });
+        }, timeout || CALL_TIMEOUT_MS);
+        inflight.set(id, {
+          resolve: (value) => { clearTimeout(timer); resolve(value); },
+          reject: (error) => { clearTimeout(timer); reject(error); }
+        });
+        window.parent.postMessage(Object.assign({ channel: CHANNEL, kind: 'request', id, method }, extra), '*');
+      });
+    }
+
+    // The sandboxed frame has no window of its own to navigate, so provider
+    // pages open through the host. A host that does not answer leaves the
+    // address on screen to copy rather than stalling the flow.
+    async function openExternal(url) {
+      try {
+        await post('plugin.openExternal', { url: String(url) }, 5000);
+        return true;
+      } catch { return false; }
+    }
+
+    async function call(action, args) {
+      const result = await post('plugin.call', { action, args: args || {} });
+      if (result && result.ok === true) return result;
+      const error = (result && result.error) || {};
+      throw {
+        message: String(error.message || t('lostContact')),
+        recovery: typeof error.recovery === 'string' ? error.recovery : '',
+        code: typeof error.code === 'string' ? error.code : '',
+        backend: true
+      };
+    }
+
+    /* ---------- view state ---------- */
+    const view = {
+      status: 'idle',
+      connections: [],
+      targets: [],
+      jobs: [],
+      catalog: [],
+      guidance: null,
+      selectedTarget: null,
+      selectedJob: null,
+      previews: new Map(),
+      connectionForm: null,
+      pendingTarget: null,
+      targetForm: null,
+      removing: new Set(),
+      busy: new Set(),
+      stale: new Set(),
+      banner: null
+    };
+
+    const svc = (id) => view.catalog.find((item) => item.id === id) || null;
+    const connOf = (id) => view.connections.find((item) => item.id === id) || null;
+    const authOf = (conn) => (conn && conn.auth) || { state: 'unknown' };
+    const live = (job) => !!job && ACTIVE.has(String(job.state));
+    const labelOf = (serviceId) => {
+      const meta = svc(serviceId);
+      return meta ? meta.label : String(serviceId || '');
+    };
+
+    function upsert(job) {
+      if (!job || typeof job.id !== 'string') return;
+      const at = view.jobs.findIndex((item) => item.id === job.id);
+      if (at === -1) view.jobs.push(job);
+      else view.jobs[at] = job;
+    }
+
+    function busy(key, on) {
+      if (on) view.busy.add(key);
+      else view.busy.delete(key);
+      render();
+    }
+
+    function complain(error, retry) {
+      view.banner = { tone: 'danger', text: String(error.message || error), recovery: error.recovery || '', retry: retry || null };
+      render();
+    }
+    function flashed(tone, text) {
+      view.banner = { tone, text, recovery: '', retry: null };
+      render();
+    }
+
+    /* ---------- data ---------- */
+    async function load() {
+      const result = await call('state', {});
+      view.catalog = Array.isArray(result.catalog) ? result.catalog : [];
+      view.connections = Array.isArray(result.connections) ? result.connections : [];
+      view.targets = Array.isArray(result.targets) ? result.targets : [];
+      view.jobs = Array.isArray(result.jobs) ? result.jobs : [];
+      view.guidance = result.guidance || null;
+      for (const id of [...view.previews.keys()]) {
+        if (!view.targets.some((item) => item.id === id)) view.previews.delete(id);
+      }
+    }
+
+    async function syncSession() {
+      if (!sessionId) { sessionTitle = null; return; }
+      try {
+        const summary = await post('session.summary', {});
+        sessionTitle = summary && typeof summary.title === 'string' ? summary.title : null;
+        const root = summary && (summary.workspaceRoot || summary.workspace || summary.workspacePath);
+        const form = view.targetForm;
+        if (typeof root === 'string' && form && !form.project) form.project = root;
+      } catch { sessionTitle = null; }
+    }
+
+    /* ---------- polling ---------- */
+    let pollTimer = 0;
+    let polling = false;
+    function schedulePoll() {
+      clearTimeout(pollTimer);
+      if (view.status !== 'ready' || !view.jobs.some(live)) return;
+      pollTimer = setTimeout(() => { void poll(); }, POLL_MS);
+    }
+    async function poll() {
+      if (polling) return;
+      polling = true;
+      const settled = [];
+      try {
+        for (const job of view.jobs.filter(live).slice()) {
+          try {
+            const result = await call('job', { id: job.id });
+            upsert(result.job);
+            view.stale.delete(job.id);
+            if (!live(result.job) && result.job.connectionId) settled.push(result.job.connectionId);
+          } catch (error) {
+            view.stale.add(job.id);
+            view.banner = { tone: 'warn', text: String(error.message || t('lostContact')), recovery: error.recovery || '', retry: null };
+          }
+        }
+      } finally {
+        polling = false;
+        // A finished sign-in or CLI download changes the connection it
+        // belongs to, so the row it was started from is re-read once.
+        if (settled.length) {
+          try { await load(); } catch { /* the next tick retries */ }
+        }
+        render();
+        schedulePoll();
+      }
+    }
+
+    /* ---------- formatting ---------- */
+    function when(iso) {
+      if (typeof iso !== 'string' || iso === '') return '';
+      const at = Date.parse(iso);
+      if (Number.isNaN(at)) return iso;
+      if (Date.now() - at < 60000) return zh() ? '刚刚' : 'just now';
+      return new Date(at).toLocaleString(zh() ? 'zh-CN' : 'en-GB', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    const AUTH_TEXT = {
+      valid: ['Signed in', '已登录'],
+      not_logged_in: ['Not signed in', '未登录'],
+      expired: ['Session expired', '登录已过期'],
+      offline: ['Provider unreachable', '无法连接服务商'],
+      missing_cli: ['Command not found', '找不到命令行'],
+      error: ['Check failed', '检查失败'],
+      unknown: ['Not checked', '尚未检查']
+    };
+    function authText(conn) {
+      const entry = AUTH_TEXT[String(authOf(conn).state)];
+      return entry ? entry[lang === 'zh' ? 1 : 0] : String(authOf(conn).state);
+    }
+    function authTone(conn) {
+      const state = String(authOf(conn).state);
+      if (state === 'valid') return 'good';
+      if (state === 'offline' || state === 'expired' || state === 'error') return 'warn';
+      if (state === 'not_logged_in' || state === 'missing_cli') return 'bad';
+      return '';
+    }
+    function kindOf(job) {
+      if (job.kind === 'login') return t('signinKind');
+      if (job.kind === 'install') return t('installKind');
+      return t('deployKind');
+    }
+
+    function jobTone(job) {
+      const state = String(job.state);
+      if (ACTIVE.has(state)) return 'busy';
+      if (state === 'failed') return 'bad';
+      if (state === 'unknown' || state === 'interrupted') return 'warn';
+      if (READY.has(state)) return 'good';
+      if (state === 'completed') return 'good';
+      return '';
+    }
+    function jobText(job) {
+      const state = String(job.state);
+      if (ACTIVE.has(state)) return zh() ? '进行中' : 'Working';
+      if (READY.has(state)) return zh() ? '已上线' : 'Live';
+      if (state === 'completed') return zh() ? '已完成' : 'Completed';
+      if (state === 'unknown') return zh() ? '结果未知' : 'Unknown';
+      if (state === 'interrupted') return zh() ? '已中断' : 'Interrupted';
+      if (state === 'failed') return zh() ? '失败' : 'Failed';
+      if (state === 'cancelled' || state === 'canceled') return zh() ? '已取消' : 'Cancelled';
+      if (state === 'submitted') return zh() ? '已受理' : 'Accepted';
+      if (state === 'completed_without_url') return zh() ? '已完成，无地址' : 'Done, no address';
+      return state;
+    }
+
+    function redact(value) {
+      if (Array.isArray(value)) return value.map(redact);
+      if (value && typeof value === 'object') {
+        const out = {};
+        for (const key of Object.keys(value)) out[key] = SECRET.test(key) ? '[redacted]' : redact(value[key]);
+        return out;
+      }
+      return value;
+    }
+    function flatten(value, prefix, out) {
+      if (value === undefined || value === null) return out;
+      if (Array.isArray(value)) {
+        value.forEach((item, index) => flatten(item, prefix + '[' + index + ']', out));
+        return out;
+      }
+      if (typeof value === 'object') {
+        for (const key of Object.keys(value)) flatten(value[key], prefix ? prefix + '.' + key : key, out);
+        return out;
+      }
+      out.push([prefix, String(value)]);
+      return out;
+    }
+    function commandText(value) {
+      if (typeof value === 'string') return value;
+      if (Array.isArray(value)) return value.map((part) => String(part)).join(' ');
+      if (value && typeof value === 'object') {
+        const exe = value.executable || value.program || value.file || '';
+        const argv = Array.isArray(value.args) ? value.args : Array.isArray(value.argv) ? value.argv : [];
+        return [exe].concat(argv).filter(Boolean).join(' ');
+      }
+      return String(value);
+    }
+    function hostOf(url) {
+      try { return new URL(String(url)).host; } catch { return String(url); }
+    }
+    function copyRow(caption, value, tone) {
+      return h('div', { class: 'urlrow' },
+        h('button', {
+          type: 'button', class: 'sec',
+          onclick: (event) => {
+            const button = event.currentTarget;
+            const settle = (ok) => {
+              button.textContent = ok ? t('copied') : t('copyFailed');
+              setTimeout(() => { button.textContent = t('copy'); }, 2800);
+            };
+            if (!navigator.clipboard) { settle(false); return; }
+            navigator.clipboard.writeText(String(value)).then(() => settle(true), () => settle(false));
+          }
+        }, t('copy')),
+        h('button', {
+          type: 'button', class: 'sec',
+          onclick: async (event) => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            const opened = await openExternal(value);
+            if (!opened) flashed('warn', t('openFailed'));
+            button.disabled = false;
+          }
+        }, t('open')),
+        h('span', { class: 'url', 'data-tone': tone, text: value }),
+        caption ? h('span', { class: 'tag', text: caption }) : null);
+    }
+    function linkButton(url, label) {
+      return h('button', {
+        type: 'button', class: 'sec',
+        onclick: async (event) => {
+          const button = event.currentTarget;
+          button.disabled = true;
+          const opened = await openExternal(url);
+          if (!opened) flashed('warn', t('openFailed'));
+          button.disabled = false;
+        }
+      }, label);
+    }
+    function kv(pairs) {
+      const list = h('dl', { class: 'kv' });
+      for (const [key, value] of pairs) {
+        if (value === undefined || value === null || value === '') continue;
+        list.append(h('dt', { text: key }), h('dd', { text: String(value) }));
+      }
+      return list;
+    }
+
+    /* ---------- chrome ---------- */
+    function renderChrome() {
+      for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+      for (const el of document.querySelectorAll('[data-i18n-aria]')) el.setAttribute('aria-label', t(el.dataset.i18nAria));
+      document.documentElement.lang = zh() ? 'zh-CN' : 'en';
+      for (const button of document.querySelectorAll('[data-lang]')) {
+        const on = button.dataset.lang === lang;
+        button.setAttribute('aria-pressed', String(on));
+        button.disabled = on;
+      }
+      const lead = $('#lead');
+      lead.textContent = view.connections.length === 0 && !view.connectionForm ? t('firstRun') : t('lead');
+      const line = $('#session');
+      line.hidden = false;
+      if (!sessionId) line.textContent = t('noSession');
+      else if (sessionTitle) line.textContent = t('session') + '  ' + sessionTitle;
+      else line.textContent = t('session');
+      $('#connCount').textContent = view.connections.length ? String(view.connections.length) : '';
+      $('#targetCount').textContent = view.targets.length ? String(view.targets.length) : '';
+      $('#jobCount').textContent = view.jobs.length ? String(view.jobs.length) : '';
+      $('#jobSection').hidden = view.jobs.length === 0;
+    }
+
+    function renderBanner() {
+      const host = $('#banner');
+      const banner = view.banner;
+      if (!banner) return fill(host);
+      fill(host, h('div', { class: 'banner t-' + banner.tone },
+        h('p', null,
+          h('span', { text: banner.text }),
+          banner.recovery ? h('span', { class: 'rec', text: banner.recovery }) : null),
+        banner.retry ? h('button', { type: 'button', class: 'sec', onclick: () => { const run = banner.retry; view.banner = null; render(); run(); } }, t('tryAgain')) : null));
+    }
+
+    /* ---------- connections ---------- */
+    function removeButton(key, confirmLabel, run) {
+      if (view.removing.has(key)) {
+        return [
+          h('button', { type: 'button', class: 'pri danger', onclick: () => { view.removing.delete(key); void run(); } }, confirmLabel),
+          h('button', { type: 'button', class: 'sec', onclick: () => { view.removing.delete(key); render(); } }, t('keep'))
+        ];
+      }
+      return h('button', { type: 'button', class: 'danger', onclick: () => { view.removing.add(key); render(); } }, t('remove'));
+    }
+
+    function connectionRow(conn) {
+      const meta = svc(conn.service);
+      const kind = meta ? meta.kind : null;
+      const offered = view.guidance && Array.isArray(view.guidance.services)
+        ? view.guidance.services.find((item) => item.connectionId === conn.id) : null;
+      const capability = !conn.enabled
+        ? t('capabilityOff')
+        : offered ? (kind === 'deploy' ? t('capabilityDeploy') : t('capabilityCode')) : '';
+      const state = String(authOf(conn).state);
+      const canLogin = conn.authMode === 'cli' && !!(meta && meta.cli);
+      const pack = meta && meta.installable;
+      const acts = [
+        h('button', {
+          type: 'button', class: 'sec', disabled: view.busy.has('check:' + conn.id),
+          onclick: () => { void checkAuth(conn); }
+        }, view.busy.has('check:' + conn.id) ? t('loading') : t('check'))
+      ];
+      if (canLogin && (state === 'not_logged_in' || state === 'expired' || state === 'error' || state === 'unknown')) {
+        acts.push(h('button', {
+          type: 'button', class: 'pri', disabled: view.busy.has('login:' + conn.id),
+          onclick: () => { void startLogin(conn); }
+        }, view.busy.has('login:' + conn.id) ? t('loading') : (state === 'expired' || state === 'error' ? t('signInAgain') : t('signIn'))));
+      }
+      if (pack && conn.authMode === 'cli') {
+        acts.push(h('button', {
+          type: 'button', class: 'sec', disabled: view.busy.has('install:' + conn.id),
+          title: tf('downloadNote', pack.package, pack.version),
+          onclick: () => { void installCli(conn); }
+        }, view.busy.has('install:' + conn.id) ? t('loading') : t('downloadCli')));
+      }
+      acts.push(h('button', { type: 'button', onclick: () => openConnectionForm(conn) }, t('edit')));
+      acts.push(removeButton('connection:' + conn.id, t('removeConnection'), () => removeConnection(conn)));
+      acts.push(h('button', {
+        type: 'button', class: 'switch', role: 'switch', 'aria-checked': String(!!conn.enabled),
+        'aria-label': t('enabled'), disabled: view.busy.has('enabled:' + conn.id),
+        onclick: () => setEnabled(conn, !conn.enabled)
+      }, h('span', { class: 'track', 'aria-hidden': 'true' }), h('span', { text: t('enabled') })));
+
+      const facts = [
+        conn.authMode === 'cli' ? (meta && meta.cli ? meta.cli + ' login' : 'cli') : 'token',
+        conn.cliPath ? (zh() ? '路径 ' : 'Path ') + conn.cliPath : null,
+        authOf(conn).checkedAt ? when(authOf(conn).checkedAt) : null,
+        capability || null
+      ].filter(Boolean);
+
+      return h('div', { class: 'row' },
+        h('div', { class: 'title' },
+          h('h3', null, meta ? meta.label : conn.service,
+            conn.label && conn.label !== (meta && meta.label) ? h('span', { class: 'lbl', text: ' ' + conn.label }) : null),
+          h('span', { class: 'state', 'data-tone': authTone(conn) }, authText(conn))),
+        h('div', { class: 'meta' },
+          h('span', { class: 'fact', text: facts.join(' · ') }),
+          state === 'missing_cli' && !pack && meta && meta.cli ? h('span', { class: 'fact', text: t('noCliAvailable') }) : null,
+          conn.baseUrl ? h('span', { class: 'fact', text: conn.baseUrl }) : null,
+          meta && meta.docs ? h('span', { class: 'fact' }, t('docs') + ': ', linkButton(meta.docs, hostOf(meta.docs))) : null),
+        h('div', { class: 'acts' }, ...acts));
+    }
+
+    async function installCli(conn) {
+      busy('install:' + conn.id, true);
+      try {
+        const result = await call('install_cli', { id: conn.id });
+        upsert(result.job);
+        if (result.job) view.selectedJob = result.job.id;
+        flashed('good', t('installQueued'));
+      } catch (error) { complain(error, () => installCli(conn)); }
+      await refresh();
+    }
+
+    async function checkAuth(conn) {
+      busy('check:' + conn.id, true);
+      try {
+        const result = await call('check_auth', { id: conn.id });
+        const current = connOf(conn.id);
+        if (current) current.auth = result.auth;
+        view.banner = null;
+      } catch (error) { complain(error, () => checkAuth(conn)); }
+      await refresh();
+    }
+
+    async function startLogin(conn) {
+      busy('login:' + conn.id, true);
+      try {
+        const result = await call('login', { id: conn.id });
+        upsert(result.job);
+        if (result.job) view.selectedJob = result.job.id;
+        view.banner = null;
+      } catch (error) { complain(error, () => startLogin(conn)); }
+      await refresh();
+    }
+
+    async function setEnabled(conn, enabled) {
+      busy('enabled:' + conn.id, true);
+      try {
+        const result = await call('set_enabled', { id: conn.id, enabled });
+        view.previews.clear();
+        if (result.guidance) view.guidance = result.guidance;
+        view.banner = null;
+      } catch (error) { complain(error, () => setEnabled(conn, enabled)); }
+      await refresh();
+    }
+
+    async function removeConnection(conn) {
+      view.removing.delete('connection:' + conn.id);
+      try {
+        await call('remove_connection', { id: conn.id });
+        view.previews.clear();
+        flashed('good', t('removed'));
+      } catch (error) { complain(error, null); }
+      await refresh();
+    }
+
+    function openConnectionForm(seed) {
+      const existing = seed && typeof seed === 'object' ? connOf(seed.id) : null;
+      const preset = typeof seed === 'string' ? seed : null;
+      const fallback = existing ? existing.service : (preset || (view.catalog.find((item) => item.kind === 'code') || {}).id || '');
+      const meta = svc(fallback);
+      const draft = {
+        id: existing ? existing.id : null,
+        service: fallback,
+        label: existing ? existing.label || '' : '',
+        enabled: existing ? !!existing.enabled : true,
+        authMode: existing ? existing.authMode : (meta && meta.authModes.includes('cli') ? 'cli' : 'token'),
+        baseUrl: existing ? existing.baseUrl || '' : '',
+        cliPath: existing ? existing.cliPath || '' : '',
+        accountId: existing ? existing.accountId || '' : '',
+        username: existing ? existing.username || '' : '',
+        token: '',
+        clearToken: false
+      };
+      view.connectionForm = draft;
+      if (view.afterConnection === 'target') view.targetForm = null;
+      render();
+      const field = $('#connectionService');
+      if (field) field.focus();
+    }
+
+    function connectionFormNode() {
+      const draft = view.connectionForm;
+      if (!draft) return null;
+      const meta = svc(draft.service);
+      const modes = (meta && meta.authModes) || [];
+      const field = (label, control, hint, required) => h('label', { class: 'field' },
+        h('span', null, label, required ? h('span', { class: 'req', text: ' *' }) : null), control,
+        hint ? h('span', { class: 'hint', text: hint }) : null);
+      const input = (key, props) => h('input', Object.assign({
+        type: 'text', autocomplete: 'off', spellcheck: 'false', value: draft[key]
+      }, props || {}, {
+        oninput: (event) => { draft[key] = event.target.value; }
+      }));
+
+      const grid = [
+        field(t('service'), existing(draft) ? h('input', { type: 'text', value: meta ? meta.label : draft.service, disabled: '' })
+          : h('select', {
+            id: 'connectionService',
+            onchange: (event) => {
+              draft.service = event.target.value;
+              const next = svc(draft.service);
+              draft.authMode = next && next.authModes.includes('cli') ? 'cli' : 'token';
+              render();
+            }
+          }, ...view.catalog.map((item) => h('option', { value: item.id, selected: item.id === draft.service, text: item.label })))),
+        field(t('name'), input('label', { placeholder: ' ' }), t('nameHint')),
+        field(t('instance'), input('baseUrl', { class: 'mono', placeholder: (meta && meta.baseUrl) || 'https://' }), t('instanceHint'))
+      ];
+      if (draft.authMode === 'cli') {
+        grid.push(field(t('cliPath'), input('cliPath', { class: 'mono', placeholder: (meta && meta.cli) || 'command' }), t('cliPathHint')));
+        grid.push(field(t('accountId'), input('accountId', { class: 'mono' }), t('accountIdHint')));
+      }
+      grid.push(field(t('username'), input('username', {})));
+
+      const modeBox = h('div', {});
+      if (modes.length > 1) {
+        modeBox.append(h('div', { class: 'modes' }, ...modes.map((mode) => h('label', null,
+          h('input', {
+            type: 'radio', name: 'sites-auth', value: mode, checked: mode === draft.authMode,
+            onchange: () => { draft.authMode = mode; render(); }
+          }),
+          h('span', { text: mode === 'cli' ? tf('authCli', (meta && meta.cli) || 'the') : t('authToken') })))));
+      } else {
+        modeBox.append(h('p', { class: 'meta', text: modes[0] === 'cli' ? tf('authCli', (meta && meta.cli) || 'the') : t('authToken') }));
+      }
+      if (draft.authMode === 'token') {
+        modeBox.append(field(t('token'), h('input', {
+          type: 'password', autocomplete: 'new-password', spellcheck: 'false', autocapitalize: 'off',
+          placeholder: draft.id ? '••••••••' : 'token', value: draft.token,
+          oninput: (event) => { draft.token = event.target.value; }
+        }), t('tokenHint')));
+        if (existing(draft) && existing(draft).hasToken) {
+          modeBox.append(h('label', { class: 'check' },
+            h('input', { type: 'checkbox', checked: draft.clearToken, onchange: (event) => { draft.clearToken = event.target.checked; } }),
+            h('span', { text: t('clearToken') })));
+        }
+        if (meta && !meta.cli) modeBox.append(h('p', { class: 'note', text: t('tokenOnly') }));
+      }
+
+      // The save buttons carry the action directly: the host renders this
+      // document in a sandboxed opaque-origin frame, where implicit form
+      // submission is not reliable, and a real browser only submits the form
+      // on Enter when it has never been submitted.
+      return h('form', { novalidate: 'novalidate' },
+        h('div', { class: 'grid' }, ...grid),
+        modeBox,
+        meta && meta.notes ? h('p', { class: 'note', text: meta.notes }) : null,
+        h('div', { class: 'formfoot' },
+          h('button', { type: 'button', class: 'pri', disabled: view.busy.has('connection:save'), onclick: () => saveConnection() },
+            view.busy.has('connection:save') ? t('loading') : t('saveConnection')),
+          h('button', { type: 'button', class: 'sec', onclick: () => { view.connectionForm = null; render(); } }, t('keep')),
+          h('span', { class: 'push' }),
+          h('label', { class: 'check' },
+            h('input', { type: 'checkbox', checked: draft.enabled, onchange: (event) => { draft.enabled = event.target.checked; } }),
+            h('span', { text: t('enabled') }))));
+    }
+    const existing = (draft) => (draft.id ? connOf(draft.id) : null);
+
+    async function saveConnection() {
+      const draft = view.connectionForm;
+      if (!draft) return;
+      const meta = svc(draft.service);
+      if (!meta) { complain({ message: tf('needField', t('service')) }, null); return; }
+      const connection = { service: draft.service, enabled: !!draft.enabled, authMode: draft.authMode };
+      if (draft.id) connection.id = draft.id;
+      const cut = (value) => String(value || '').trim();
+      if (cut(draft.label)) connection.label = cut(draft.label);
+      if (cut(draft.baseUrl)) connection.baseUrl = cut(draft.baseUrl);
+      if (draft.authMode === 'cli') {
+        if (cut(draft.cliPath)) connection.cliPath = cut(draft.cliPath);
+        if (cut(draft.accountId)) connection.accountId = cut(draft.accountId);
+      }
+      if (cut(draft.username)) connection.username = cut(draft.username);
+      const args = { connection };
+      if (draft.authMode === 'token' && draft.token !== '') args.token = draft.token;
+      if (draft.authMode === 'token' && draft.clearToken) args.clearToken = true;
+
+      busy('connection:save', true);
+      let ok = false;
+      try {
+        await call('save_connection', args);
+        ok = true;
+        view.connectionForm = null;
+        view.previews.clear();
+      } catch (error) {
+        draft.token = '';
+        complain(error, () => saveConnection());
+      }
+      if (ok && view.afterConnection === 'target') {
+        // Return to the target the user was filling in, keeping everything they
+        // already typed, and preselect the connection that was just created.
+        const pending = view.pendingTarget;
+        view.afterConnection = null;
+        view.pendingTarget = null;
+        if (pending) {
+          const created = view.connections.find((item) => item.service === pending.service);
+          view.targetForm = Object.assign({}, pending, { open: true, connectionId: created ? created.id : pending.connectionId });
+        }
+      }
+      if (ok) flashed('good', t('saved'));
+      await refresh();
+    }
+
+    function renderConnections() {
+      const host = fill($('#connectionList'), connectionFormNode());
+      if (view.connections.length === 0) return host;
+      for (const conn of view.connections) host.append(connectionRow(conn));
+      return host;
+    }
+
+    /* ---------- targets ---------- */
+    function openTargetForm(seed) {
+      const found = seed && typeof seed === 'object' ? view.targets.find((item) => item.id === seed.id) : null;
+      if (found) {
+        view.targetForm = Object.assign({}, found, { open: true });
+      } else {
+        const serviceId = typeof seed === 'string' ? seed : (view.catalog.find((item) => item.kind === 'deploy') || {}).id || '';
+        const first = view.connections.find((item) => item.service === serviceId);
+        view.targetForm = { open: true, service: serviceId, connectionId: first ? first.id : '', label: '', project: '' };
+      }
+      view.afterConnection = null;
+      render();
+      const field = $('#targetProject');
+      if (field) field.focus();
+    }
+
+    function targetFormNode() {
+      const draft = view.targetForm;
+      if (!draft || !draft.open) return null;
+      const meta = svc(draft.service);
+      const deployers = view.catalog.filter((item) => item.kind === 'deploy');
+      const candidates = view.connections.filter((item) => item.service === draft.service);
+      const field = (label, control, hint, required) => h('label', { class: 'field' },
+        h('span', null, label, required ? h('span', { class: 'req', text: ' *' }) : null), control,
+        hint ? h('span', { class: 'hint', text: hint }) : null);
+
+      const grid = [
+        field(t('service'), h('select', {
+          onchange: (event) => {
+            draft.service = event.target.value;
+            const next = view.connections.find((item) => item.service === draft.service);
+            draft.connectionId = next ? next.id : '';
+            render();
+          }
+        }, ...deployers.map((item) => h('option', { value: item.id, selected: item.id === draft.service, text: item.label })))),
+        field(t('name'), h('input', { type: 'text', autocomplete: 'off', value: draft.label || '', oninput: (event) => { draft.label = event.target.value; } })),
+        field(t('project'), h('input', {
+          type: 'text', class: 'mono', id: 'targetProject', autocomplete: 'off', spellcheck: 'false',
+          placeholder: t('projectPlaceholder'), value: draft.project || '',
+          oninput: (event) => { draft.project = event.target.value; }
+        }), t('projectHint'), true)
+      ];
+      if (meta) for (const item of meta.fields || []) {
+        if (item.type === 'boolean') {
+          grid.push(h('label', { class: 'check' },
+            h('input', { type: 'checkbox', checked: !!draft[item.key], onchange: (event) => { draft[item.key] = event.target.checked; } }),
+            h('span', { text: item.label })));
+        } else {
+          grid.push(field(item.label, h('input', {
+            type: 'text', class: 'mono', autocomplete: 'off', spellcheck: 'false',
+            value: draft[item.key] === undefined || draft[item.key] === null ? '' : String(draft[item.key]),
+            oninput: (event) => { draft[item.key] = event.target.value; }
+          }), null, !!item.required));
+        }
+      }
+
+      const connectionBox = candidates.length === 0
+        ? h('div', { class: 'banner t-warn' },
+          h('p', { text: tf('noServiceConnection', meta ? meta.label : draft.service) }),
+          h('button', {
+            type: 'button', class: 'sec',
+            onclick: () => {
+              view.pendingTarget = Object.assign({}, draft);
+              view.afterConnection = 'target';
+              openConnectionForm(draft.service);
+            }
+          }, tf('connectService', meta ? meta.label : draft.service)))
+        : field(t('connection'), h('select', { onchange: (event) => { draft.connectionId = event.target.value; } },
+          ...candidates.map((item) => h('option', { value: item.id, selected: item.id === draft.connectionId, text: item.label || labelOf(item.service) }))));
+
+      return h('form', { novalidate: 'novalidate' },
+        h('div', { class: 'grid' }, ...grid),
+        h('div', { style: 'padding-top:10px' }, connectionBox),
+        meta && meta.notes ? h('p', { class: 'note', text: meta.notes }) : null,
+        h('div', { class: 'formfoot' },
+          h('button', { type: 'button', class: 'pri', disabled: view.busy.has('target:save'), onclick: () => saveTarget() },
+            view.busy.has('target:save') ? t('loading') : t('saveTarget')),
+          h('button', { type: 'button', class: 'sec', onclick: () => { view.targetForm = null; render(); } }, t('keep'))));
+    }
+
+    async function saveTarget() {
+      const draft = view.targetForm;
+      if (!draft) return;
+      const meta = svc(draft.service);
+      const project = String(draft.project || '').trim();
+      const missing = [];
+      if (!project) missing.push(t('project'));
+      else if (!/^([A-Za-z]:[\\/]|\\\\|\/)/.test(project)) missing.push(t('notAbsolute'));
+      if (meta) for (const item of meta.fields || []) {
+        if (item.required && item.type === 'string' && !String(draft[item.key] || '').trim()) missing.push(item.label);
+      }
+      if (missing.length) { complain({ message: missing.map((item) => tf('needField', item)).join(' ') }, null); return; }
+
+      const target = { service: draft.service, connectionId: draft.connectionId, project };
+      if (draft.id) target.id = draft.id;
+      const label = String(draft.label || '').trim();
+      if (label) target.label = label;
+      if (meta) for (const item of meta.fields || []) {
+        if (item.type === 'boolean') target[item.key] = !!draft[item.key];
+        else {
+          const value = String(draft[item.key] || '').trim();
+          if (value) target[item.key] = value;
+        }
+      }
+      busy('target:save', true);
+      let ok = false;
+      try {
+        const result = await call('save_target', { target });
+        view.previews.delete(result.target.id);
+        view.targetForm = null;
+        view.selectedTarget = result.target.id;
+        ok = true;
+      } catch (error) { complain(error, () => saveTarget()); }
+      if (ok) flashed('good', t('saved'));
+      await refresh();
+    }
+
+    async function removeTarget(target) {
+      view.removing.delete('target:' + target.id);
+      try {
+        await call('remove_target', { id: target.id });
+        view.previews.delete(target.id);
+        if (view.selectedTarget === target.id) view.selectedTarget = null;
+        flashed('good', t('removed'));
+      } catch (error) { complain(error, null); }
+      await refresh();
+    }
+
+    function targetRow(target) {
+      const conn = connOf(target.connectionId);
+      const open = view.selectedTarget === target.id;
+      const acts = [
+        h('button', { type: 'button', class: 'sec', onclick: () => openTargetForm(target) }, t('edit')),
+        h('button', {
+          type: 'button', class: 'sec',
+          'aria-expanded': open ? 'true' : 'false',
+          onclick: () => { if (open) { view.selectedTarget = null; render(); } else void selectTarget(target); }
+        }, open ? t('hide') : t('preview')),
+        removeButton('target:' + target.id, t('removeTarget'), () => removeTarget(target))
+      ];
+      return h('div', { class: 'row' },
+        h('div', { class: 'title' }, h('h3', null, labelOf(target.service),
+          target.label && target.label !== labelOf(target.service) ? h('span', { class: 'lbl', text: ' ' + target.label }) : null)),
+        h('div', { class: 'meta' },
+          h('span', { text: target.project + (conn ? ' · ' + (conn.label || labelOf(conn.service)) : '') })),
+        h('div', { class: 'acts' }, ...acts),
+        open ? deployBlock(target) : null);
+    }
+
+    function renderTargets() {
+      const host = fill($('#targetList'), targetFormNode());
+      if (view.targets.length === 0) {
+        host.append(h('p', { class: 'empty', text: view.connections.length === 0 ? '' : t('noTargetsYet') }));
+        return host;
+      }
+      for (const target of view.targets) host.append(targetRow(target));
+      return host;
+    }
+
+    /* ---------- preview and deploy ---------- */
+
+    function targetStamp(target) {
+      const conn = connOf(target.connectionId);
+      return JSON.stringify([target, conn ? [conn.id, conn.enabled, conn.authMode, authOf(conn).state] : null]);
+    }
+
+    function deployBlock(target) {
+      const meta = svc(target.service);
+      const label = meta ? meta.label : target.service;
+      const conn = connOf(target.connectionId);
+      const entry = view.previews.get(target.id);
+      const preview = entry ? entry.preview : null;
+      const stale = !!preview && entry.stamp !== targetStamp(target);
+      const running = view.jobs.some((job) => job.targetId === target.id && live(job));
+      const unknown = view.jobs.some((job) => job.targetId === target.id && String(job.state) === 'unknown');
+      const authState = String(authOf(conn).state);
+      const loading = view.busy.has('preview:' + target.id);
+      const deploying = view.busy.has('deploy:' + target.id);
+
+      const head = h('div', { class: 'blockhead' },
+        h('h3', { text: t('preview') }),
+        preview ? h('span', { class: 'tag', text: when(preview.createdAt) }) : null,
+        h('span', { class: 'push' }),
+        h('button', {
+          type: 'button', class: 'sec', disabled: loading,
+          onclick: () => makePreview(target)
+        }, loading ? t('loading') : (preview ? t('refreshPreview') : t('preview'))));
+
+      let body;
+      if (loading && !preview) {
+        body = h('p', { class: 'empty', text: t('needPreview') });
+      } else if (!preview) {
+        body = h('p', { class: 'empty', text: conn ? t('previewFailed') : tf('noServiceConnection', label) });
+      } else {
+        const parts = [kv([
+          [t('mode'), preview.mode],
+          [zh() ? '项目' : 'Project', preview.project],
+          [t('created'), when(preview.createdAt)]
+        ])];
+        if (preview.command) {
+          parts.push(h('p', { class: 'tag', style: 'margin:10px 0 0', text: t('command') }));
+          parts.push(h('pre', { class: 'cmd long', text: commandText(preview.command) }));
+          if (Array.isArray(preview.command.environmentKeys) && preview.command.environmentKeys.length) {
+            parts.push(h('p', { class: 'tag', style: 'margin:6px 0 0', text: preview.command.environmentKeys.join('  ') }));
+          }
+        }
+        if (preview.request) {
+          const rendered = typeof preview.request === 'string' ? preview.request : JSON.stringify(redact(preview.request), null, 2);
+          parts.push(h('p', { class: 'tag', style: 'margin:10px 0 0', text: t('request') }));
+          parts.push(h('pre', { class: 'cmd long', text: rendered }));
+        }
+        if (preview.source) {
+          const source = typeof preview.source === 'string' ? { kind: preview.source } : preview.source;
+          const facts = [];
+          if (source.kind === 'existing_remote_repository') {
+            facts.push(zh() ? '来源为服务商已有的仓库/服务，不会上传本机文件。' : 'This uses the existing remote repository or service. Nothing is uploaded from this machine.');
+            if (source.serviceId) facts.push(source.serviceId);
+          } else {
+            if (source.directory) facts.push((zh() ? '目录 ' : 'Directory ') + source.directory);
+            if (Array.isArray(source.configurationFiles) && source.configurationFiles.length) {
+              facts.push((zh() ? '读取配置 ' : 'Configuration read ') + source.configurationFiles.join(', '));
+            }
+          }
+          if (facts.length) parts.push(h('p', { class: 'tag', style: 'margin:10px 0 0', text: t('source') }), h('p', { class: 'meta', text: facts.join(' · ') }));
+        }
+        if (Array.isArray(preview.warnings) && preview.warnings.length) {
+          parts.push(h('p', { class: 'tag', style: 'margin:12px 0 0', text: t('warnings') }));
+          parts.push(h('ul', { class: 'warns' }, ...preview.warnings.map((item) => h('li', { text: String(item) }))));
+        }
+        body = h('div', {}, ...parts);
+      }
+
+      const notes = [];
+      if (conn && !conn.enabled) notes.push(h('p', { class: 'caution', text: t('capabilityOff') }));
+      if (conn && authState === 'not_logged_in') notes.push(h('p', { class: 'caution', text: t('deployNeedsSignIn') }));
+      if (conn && authState === 'expired') notes.push(h('p', { class: 'caution', text: t('deployNeedsSignIn') }));
+      if (conn && authState === 'missing_cli') notes.push(h('p', { class: 'caution', text: t('deployNeedsCli') }));
+      if (stale) notes.push(h('p', { class: 'meta', text: t('stalePreview') }));
+      if (unknown) notes.push(h('p', { class: 'caution', text: t('unknownBeforeRetry') }));
+
+      const foot = h('div', { class: 'formfoot' },
+        h('button', {
+          type: 'button', class: 'pri',
+          disabled: !conn || !conn.enabled || running || deploying,
+          onclick: () => deploy(target)
+        }, deploying ? t('deploying') : t('deploy')),
+        running ? h('span', { class: 'tag', text: t('alreadyRunning') }) : null,
+        ...notes);
+
+      return h('div', { class: 'block' }, head, body, foot);
+    }
+
+    async function makePreview(target, quiet) {
+      busy('preview:' + target.id, true);
+      try {
+        const result = await call('preview', { id: target.id });
+        view.previews.set(target.id, { preview: result.preview, stamp: targetStamp(target) });
+        if (!quiet) view.banner = null;
+      } catch (error) {
+        if (quiet) view.previews.delete(target.id);
+        else complain(error, () => makePreview(target));
+      } finally {
+        view.busy.delete('preview:' + target.id);
+      }
+      await refresh();
+    }
+
+    // Selecting a target loads its preview in place: deploy stays a single
+    // action and the backend still re-derives the snapshot it executes.
+    async function selectTarget(target) {
+      view.selectedTarget = target.id;
+      render();
+      if (!view.previews.has(target.id)) await makePreview(target, true);
+    }
+
+    async function deploy(target) {
+      busy('deploy:' + target.id, true);
+      try {
+        const entry = view.previews.get(target.id);
+        const fresh = entry && entry.stamp === targetStamp(target);
+        const result = await call('deploy', fresh ? { previewId: entry.preview.id } : { id: target.id });
+        upsert(result.job);
+        if (result.job) view.selectedJob = result.job.id;
+        view.banner = null;
+      } catch (error) {
+        // The target or its configuration moved under the stored preview. The
+        // deploy is retried once against the current snapshot, which is the
+        // same path as deploying without a stored preview, so the user is not
+        // asked to click a refresh step before continuing.
+        if (error.code === 'preview_stale' || error.code === 'preview_required' || error.code === 'preview_used') {
+          view.previews.delete(target.id);
+          try {
+            const retry = await call('deploy', { id: target.id });
+            upsert(retry.job);
+            if (retry.job) view.selectedJob = retry.job.id;
+            view.banner = null;
+            await makePreview(target, true);
+            return;
+          } catch (retryError) { complain(retryError, () => deploy(target)); }
+        } else complain(error, () => deploy(target));
+      } finally {
+        view.busy.delete('deploy:' + target.id);
+      }
+      await refresh();
+    }
+
+    /* ---------- deployments ---------- */
+    // The backend already polls provider status inside the job, so this is a
+    // recovery refresh for a settled job, not a required continuation step.
+    function canRefresh(job) {
+      if (job.kind !== 'deploy' || !job.result || !job.result.remoteId) return false;
+      return ['submitted', 'unknown', 'completed_without_url'].includes(String(job.state));
+    }
+
+    function jobRow(job) {
+      const target = job.targetId ? view.targets.find((item) => item.id === job.targetId) : null;
+      const kind = kindOf(job);
+      const title = (target && (target.label || labelOf(target.service))) || (job.service ? labelOf(job.service) : kind);
+      const open = view.selectedJob === job.id;
+      const acts = [];
+      if (live(job)) {
+        acts.push(h('button', {
+          type: 'button', class: 'danger', disabled: view.busy.has('cancel:' + job.id),
+          onclick: () => cancelJob(job)
+        }, t('cancel')));
+      } else if (canRefresh(job)) {
+        acts.push(h('button', {
+          type: 'button', class: 'sec', disabled: view.busy.has('status:' + job.id),
+          onclick: () => checkStatus(job)
+        }, t('checkStatus')));
+      }
+      acts.push(h('button', {
+        type: 'button', class: 'sec', 'aria-expanded': open ? 'true' : 'false',
+        onclick: () => { view.selectedJob = open ? null : job.id; render(); }
+      }, open ? t('hide') : t('details')));
+
+      return h('div', { class: 'row' },
+        h('div', { class: 'title' },
+          h('h3', { text: title }),
+          h('span', { class: 'state', 'data-tone': jobTone(job) }, jobText(job))),
+        h('div', { class: 'meta' },
+          h('span', { text: kind + ' · ' + when(job.createdAt)
+            + (view.stale.has(job.id) ? ' · ' + t('noUpdate') : '') })),
+        h('div', { class: 'acts' }, ...acts),
+        open ? jobDetail(job) : null);
+    }
+
+    function jobDetail(job) {
+      const target = job.targetId ? view.targets.find((item) => item.id === job.targetId) : null;
+      const label = labelOf(job.service || (target && target.service)) || (zh() ? '服务商' : 'The provider');
+      const state = String(job.state);
+      const parts = [];
+
+      if (job.loginUrl) {
+        parts.push(h('p', { class: 'meta', text: t('openLogin') }), copyRow('', job.loginUrl));
+      }
+      if (job.deviceCode) {
+        parts.push(h('p', { class: 'meta', text: t('deviceCode') }), h('p', { class: 'meta mono', text: job.deviceCode }));
+      }
+      if (state === 'unknown') parts.push(h('p', { class: 'caution', text: t('jobUnknown') }));
+      if (state === 'interrupted') parts.push(h('p', { class: 'caution', text: t('jobInterrupted') }));
+      if (READY.has(state)) parts.push(h('p', { class: 'meta', text: tf('jobReady', label) }));
+      if (state === 'submitted') {
+        const url = findUrl(job.result);
+        parts.push(h('p', { class: 'caution', text: url ? tf('jobAccepted', label) : t('jobNoUrl') }));
+      }
+      if (state === 'completed_without_url') parts.push(h('p', { class: 'caution', text: t('jobNoUrl') }));
+      if (job.kind === 'install' && state === 'completed') parts.push(h('p', { class: 'meta', text: t('installedPath') }));
+
+      if (job.result && typeof job.result === 'object') {
+        const flat = flatten(redact(job.result), '', []);
+        parts.push(h('div', { class: 'rule' }));
+        parts.push(h('p', { class: 'tag', style: 'margin:8px 0 0', text: t('result') }));
+        if (flat.length) parts.push(kv(flat));
+        else parts.push(h('p', { class: 'meta', text: t('resultNone') }));
+        const url = findUrl(job.result);
+        if (url) parts.push(copyRow(READY.has(state) ? t('readyUrl') : t('candidateUrl'), url, READY.has(state) ? 'good' : 'warn'));
+      } else if (!parts.length) {
+        parts.push(h('p', { class: 'meta', text: t('resultNone') }));
+      }
+
+      if (job.error) {
+        const error = typeof job.error === 'string' ? { message: job.error, recovery: '' } : job.error;
+        parts.push(h('div', { class: 'rule' }));
+        parts.push(h('p', { class: 'errorline', text: String(error.message || '') }));
+        if (error.recovery) parts.push(h('p', { class: 'meta', text: t('recover') + ': ' + String(error.recovery) }));
+      }
+      if (live(job)) parts.push(h('p', { class: 'caution', text: t('cancelNote') }));
+      return h('div', { class: 'detail' }, ...parts);
+    }
+
+    function findUrl(result) {
+      if (!result || typeof result !== 'object') return null;
+      for (const value of flatten(result, '', [])) {
+        if (/^https?:\/\/\S+$/.test(value[1])) return value[1];
+      }
+      return null;
+    }
+
+    async function cancelJob(job) {
+      busy('cancel:' + job.id, true);
+      try {
+        const result = await call('cancel_job', { id: job.id });
+        upsert(result.job);
+        view.banner = null;
+      } catch (error) { complain(error, () => cancelJob(job)); }
+      await refresh();
+    }
+
+    async function checkStatus(job) {
+      busy('status:' + job.id, true);
+      try {
+        const result = await call('deployment_status', { jobId: job.id });
+        upsert(result.job);
+        view.banner = null;
+      } catch (error) { complain(error, () => checkStatus(job)); }
+      await refresh();
+    }
+
+    function renderJobs() {
+      const host = fill($('#jobList'));
+      const jobs = view.jobs.slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+      for (const job of jobs) host.append(jobRow(job));
+      return host;
+    }
+
+    /* ---------- render ---------- */
+    function render() {
+      renderChrome();
+      renderBanner();
+      if (view.status === 'loading' && view.connections.length === 0) {
+        fill($('#connectionList'), h('p', { class: 'busy', text: t('loading') }));
+        return;
+      }
+      if (view.status === 'error' && view.connections.length === 0) {
+        fill($('#connectionList'), h('p', { class: 'empty', text: view.banner ? view.banner.text : t('lostContact') }));
+        return;
+      }
+      renderConnections();
+      renderTargets();
+      renderJobs();
+    }
+
+    async function refresh() {
+      try {
+        await load();
+        view.status = 'ready';
+      } catch (error) {
+        if (view.status !== 'ready') view.status = 'error';
+        view.banner = { tone: 'danger', text: String(error.message || error), recovery: error.recovery || '', retry: () => boot(true) };
+      }
+      render();
+      schedulePoll();
+    }
+
+    let started = false;
+    async function boot(force) {
+      if (started && !force) { await syncSession(); render(); return; }
+      started = true;
+      view.status = 'loading';
+      render();
+      await syncSession();
+      await refresh();
+    }
+
+    for (const button of document.querySelectorAll('[data-lang]')) {
+      button.addEventListener('click', () => { lang = button.dataset.lang === 'zh' ? 'zh' : 'en'; render(); });
+    }
+    $('#addConnection').addEventListener('click', () => { view.afterConnection = null; openConnectionForm(null); });
+    $('#addTarget').addEventListener('click', () => openTargetForm(null));
+    render();
+  </script>
+</body>
+</html>

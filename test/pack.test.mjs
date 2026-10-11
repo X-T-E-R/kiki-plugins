@@ -15,9 +15,9 @@ test('deterministic ZIPs, complete digest/icon contract, metadata reuse and immu
  try{
   await cp('plugins',join(dir,'plugins'),{recursive:true});
   const opts={pluginsRoot:join(dir,'plugins'),outDir:join(dir,'first'),tag:'batch-1',revision:'a'.repeat(40)};
-  const first=await pack(opts);assert.equal(first.newPackages.length,6);assert.equal(first.index.plugins.length,11);assert.deepEqual(first.index.plugins.filter(p=>p.id.startsWith('kiki-media')).map(p=>p.id),['kiki-media']);assert.ok(first.newPackages.some(p=>p.id==='kiki-cloudflare'));
+  const first=await pack(opts);assert.equal(first.newPackages.length,9);assert.equal(first.index.plugins.length,14);assert.deepEqual(first.index.plugins.filter(p=>p.id.startsWith('kiki-media')).map(p=>p.id),['kiki-media']);assert.ok(first.newPackages.some(p=>p.id==='kiki-cloudflare'));assert.deepEqual(['kiki-pet','kiki-sites','kiki-work'].filter(id=>first.newPackages.some(p=>p.id===id)),['kiki-pet','kiki-sites','kiki-work']);
   const second=await pack({...opts,outDir:join(dir,'second')});
-  for(const p of first.newPackages){assert.equal(p.sha256,second.newPackages.find(x=>x.id===p.id).sha256);assert.equal(sha(await readFile(join(opts.outDir,'assets',p.filename))),p.sha256);const entry=first.index.plugins.find(x=>x.id===p.id);const manifest=JSON.parse(await readFile(join(opts.pluginsRoot,'official',p.id,'kimi.plugin.json')));assert.equal(entry.engines?.kiki,manifest['x-kiki']?.engines?.kiki);assert.ok(entry.icon.endsWith(`/icon-${manifest.version}.svg`));}
+  for(const p of first.newPackages){assert.equal(p.sha256,second.newPackages.find(x=>x.id===p.id).sha256);assert.equal(sha(await readFile(join(opts.outDir,'assets',p.filename))),p.sha256);const entry=first.index.plugins.find(x=>x.id===p.id);const manifest=JSON.parse(await readFile(join(opts.pluginsRoot,'official',p.id,'kimi.plugin.json')));assert.equal(entry.engines?.kiki,manifest['x-kiki']?.engines?.kiki);assert.equal(entry.version,manifest.version);if(manifest.icon)assert.ok(entry.icon.endsWith(`/icon-${manifest.version}.svg`));else assert.equal(entry.icon,undefined);}
   const lineEndingFile=join(opts.pluginsRoot,'official/kiki-writing/panel.html');
   await writeFile(lineEndingFile,(await readFile(lineEndingFile,'utf8')).replaceAll('\r\n','\n').replaceAll('\n','\r\n'));
   const oldTz=process.env.TZ;process.env.TZ='Pacific/Honolulu';

@@ -1,0 +1,207 @@
+{
+  "name": "kiki-sites",
+  "version": "0.1.0",
+  "description": "Connect code hosting and deploy sites or apps through official service CLIs and APIs.",
+  "license": "MIT",
+  "icon": "./icon.svg",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Kiki Sites",
+    "shortDescription": "Connect repositories and publish projects"
+  },
+  "x-kiki": {
+    "engines": {
+      "kiki": "^0.4.0"
+    },
+    "entry": "./entry.mjs",
+    "permissions": {
+      "fs": "outside",
+      "net": [
+        "*"
+      ],
+      "exec": [
+        "gh",
+        "glab",
+        "vercel",
+        "netlify",
+        "wrangler",
+        "railway",
+        "flyctl"
+      ],
+      "secrets": true,
+      "uiPanel": true
+    },
+    "settings": {
+      "schemaVersion": 1,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "dataDirectory": {
+            "type": "string",
+            "title": "Sites data directory",
+            "description": "Optional absolute server directory. Defaults to KIKI_HOME/plugin-data/kiki-sites (or the normal Kiki home). API tokens are private, write-only in the panel."
+          }
+        }
+      }
+    },
+    "panels": [
+      {
+        "schemaVersion": 1,
+        "id": "sites",
+        "label": "Sites",
+        "slot": "workspace",
+        "path": "./panel.html"
+      }
+    ],
+    "tools": [
+      {
+        "schemaVersion": 1,
+        "name": "sites",
+        "disclosure": "deferred",
+        "description": "Read current Kiki Sites connections, enabled-service guidance, authentication, repositories or deployment jobs. Login consumes the official CLI browser/device flow; API tokens are entered in the panel, never in tool parameters. Code hosting is not a deployment.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "state",
+                "guidance",
+                "check_auth",
+                "repositories",
+                "login",
+                "job",
+                "cancel_job",
+                "deployment_status"
+              ]
+            },
+            "id": {
+              "type": "string"
+            },
+            "owner": {
+              "type": "string"
+            },
+            "page": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "jobId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        "accesses": [
+          {
+            "kind": "all"
+          }
+        ]
+      },
+      {
+        "schemaVersion": 1,
+        "name": "sites_project",
+        "disclosure": "deferred",
+        "description": "Configure, preview or deploy a project using an enabled Kiki Sites deployment connection. project is the workspace-relative or approved absolute project directory. Deployment automatically performs necessary preview/checks and waits for the result; existing cloud targets are required. Uses official CLIs/API, may upload code, run provider builds and incur provider costs.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "save_target",
+                "preview",
+                "deploy"
+              ]
+            },
+            "project": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "previewId": {
+              "type": "string"
+            },
+            "target": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "service": {
+                  "type": "string"
+                },
+                "connectionId": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "projectId": {
+                  "type": "string"
+                },
+                "orgId": {
+                  "type": "string"
+                },
+                "production": {
+                  "type": "boolean"
+                },
+                "prebuilt": {
+                  "type": "boolean"
+                },
+                "siteId": {
+                  "type": "string"
+                },
+                "directory": {
+                  "type": "string"
+                },
+                "projectName": {
+                  "type": "string"
+                },
+                "branch": {
+                  "type": "string"
+                },
+                "config": {
+                  "type": "string"
+                },
+                "environment": {
+                  "type": "string"
+                },
+                "serviceId": {
+                  "type": "string"
+                },
+                "app": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "service",
+                "connectionId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "action",
+            "project"
+          ],
+          "additionalProperties": false
+        },
+        "accesses": [
+          {
+            "kind": "file",
+            "operation": "readwrite",
+            "path": "$.project",
+            "recursive": true
+          },
+          {
+            "kind": "all"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Desk Pet</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="sheet">
+    <header class="masthead">
+      <h1>Desk Pet</h1>
+      <div class="runtime" data-runtime-status>
+        <span class="lamp" aria-hidden="true"></span>
+        <span class="runtime-text">Connecting to the pet runtime…</span>
+      </div>
+      <div class="masthead-actions">
+        <button type="button" class="btn pri" data-action="start">Start pet</button>
+        <button type="button" class="btn sec" data-action="stop" disabled>Stop</button>
+      </div>
+    </header>
+
+    <p class="failure" data-runtime-error hidden></p>
+
+    <section class="now" data-now hidden>
+      <div class="now-phase">
+        <span class="phase-mark" data-phase-mark aria-hidden="true"></span>
+        <span class="phase-label" data-phase-label>Idle</span>
+        <span class="phase-detail" data-phase-detail></span>
+      </div>
+      <button type="button" class="btn ghost" data-action="focus" data-has-session="false" hidden>
+        Open session
+      </button>
+    </section>
+
+    <section class="block">
+      <div class="block-head">
+        <h2>Companion</h2>
+        <span class="count" data-pet-count>—</span>
+      </div>
+      <div class="pet-card">
+        <div class="pet-stage" data-preview aria-live="polite"></div>
+        <div class="pet-id">
+          <strong class="pet-name" data-active-name>—</strong>
+          <p class="attr" data-active-attr></p>
+          <div class="play" data-play-strip role="group" aria-label="Play a pet action"></div>
+        </div>
+      </div>
+      <div class="library" data-library role="radiogroup" aria-label="Installed pets"></div>
+    </section>
+
+    <section class="block">
+      <div class="block-head">
+        <h2>Import</h2>
+        <span class="count">Pet package, sprite, or public page URL</span>
+      </div>
+      <form class="import" data-import-form novalidate>
+        <label class="field">
+          <span class="field-label">Source</span>
+          <input type="text" data-import-source spellcheck="false" autocomplete="off"
+                 placeholder="https://codexpet.top/… or C:\Pets\kiri">
+        </label>
+        <div class="import-extra" data-import-extra hidden>
+          <label class="field">
+            <span class="field-label">Author</span>
+            <input type="text" data-import-author autocomplete="off" spellcheck="false">
+          </label>
+          <label class="field">
+            <span class="field-label">License seen on the source</span>
+            <input type="text" data-import-license autocomplete="off" spellcheck="false"
+                   placeholder="unknown">
+          </label>
+        </div>
+        <div class="import-actions">
+          <button type="button" class="btn linky" data-import-more>Add author / license</button>
+          <span class="import-note" data-import-note>Imports keep the source's own terms; they are not a license grant.</span>
+          <button type="button" class="btn pri import-go" data-import-submit>Import</button>
+        </div>
+        <p class="inline-error" data-import-error hidden role="alert"></p>
+      </form>
+      <div class="sources" data-sources></div>
+    </section>
+
+    <section class="block">
+      <div class="block-head">
+        <h2>Behavior</h2>
+        <span class="count" data-scale-readout>100%</span>
+      </div>
+      <div class="behave">
+        <label class="slider">
+          <span class="slider-label">Size</span>
+          <input type="range" data-setting="scale" min="0.5" max="2.5" step="0.05" value="1">
+        </label>
+        <button type="button" class="toggle" data-toggle="paused" role="switch" aria-checked="false">
+          <span class="track" aria-hidden="true"></span>
+          <span class="toggle-label">Pause pet</span>
+        </button>
+      </div>
+      <details class="more">
+        <summary>More behavior</summary>
+        <div class="more-body">
+          <button type="button" class="toggle" data-toggle="autonomousWalking" role="switch" aria-checked="false">
+            <span class="track" aria-hidden="true"></span>
+            <span class="toggle-label">Walk on its own</span>
+          </button>
+          <button type="button" class="toggle" data-toggle="hoverPause" role="switch" aria-checked="false">
+            <span class="track" aria-hidden="true"></span>
+            <span class="toggle-label">Pause on hover</span>
+          </button>
+          <p class="hint" data-hover-hint hidden>Pausing on hover also stops the pet from following your cursor with its eyes.</p>
+          <button type="button" class="toggle" data-toggle="reducedMotion" role="switch" aria-checked="false">
+            <span class="track" aria-hidden="true"></span>
+            <span class="toggle-label">Reduce motion</span>
+          </button>
+          <button type="button" class="toggle" data-toggle="idleSelfPlay" role="switch" aria-checked="false">
+            <span class="track" aria-hidden="true"></span>
+            <span class="toggle-label">Play actions while idle</span>
+          </button>
+          <button type="button" class="toggle" data-toggle="eventReactions" role="switch" aria-checked="false">
+            <span class="track" aria-hidden="true"></span>
+            <span class="toggle-label">React to task activity</span>
+          </button>
+          <button type="button" class="toggle" data-toggle="eventBubbles" role="switch" aria-checked="false">
+            <span class="track" aria-hidden="true"></span>
+            <span class="toggle-label">Show speech bubbles</span>
+          </button>
+          <label class="slider">
+            <span class="slider-label">Bubble stays</span>
+            <input type="range" data-setting="bubbleTtlMs" min="1000" max="10000" step="500" value="4000">
+          </label>
+        </div>
+      </details>
+    </section>
+  </main>
+  <script type="module" src="./panel.js"></script>
+</body>
+</html>

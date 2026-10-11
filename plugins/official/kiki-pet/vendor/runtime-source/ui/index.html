@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Kiki Pet</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="pet" data-pet>
+    <div class="bubble" data-bubble hidden>
+      <p class="bubble-text" data-bubble-text></p>
+      <span class="bubble-tail" aria-hidden="true"></span>
+    </div>
+    <div class="shadow" aria-hidden="true"></div>
+    <canvas class="sprite" data-sprite width="1" height="1"></canvas>
+    <p class="connecting" data-connecting>Connecting to Kiki…</p>
+  </div>
+  <div class="menu" data-menu hidden role="menu" aria-label="Desk pet">
+    <button type="button" class="menu-item" data-menu="status" role="menuitem">What are you working on</button>
+    <button type="button" class="menu-item" data-menu="pause" role="menuitemcheckbox" aria-checked="false">Pause animations</button>
+    <button type="button" class="menu-item" data-menu="walk" role="menuitemcheckbox" aria-checked="false">Walk on its own</button>
+    <div class="menu-rule" role="separator"></div>
+    <button type="button" class="menu-item" data-menu="stop" role="menuitem">Close the desk pet</button>
+  </div>
+  <script type="module" src="./pet.mjs"></script>
+</body>
+</html>

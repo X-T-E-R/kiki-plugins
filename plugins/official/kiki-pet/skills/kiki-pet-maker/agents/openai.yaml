@@ -1,0 +1,4 @@
+interface:
+  display_name: "Kiki Pet Maker"
+  short_description: "Create and validate animated desktop pet packages"
+  default_prompt: "Use $kiki-pet-maker to create or repair this animated pet, validate its atlas, visually inspect QA media, preserve asset terms and deliver an importable package."

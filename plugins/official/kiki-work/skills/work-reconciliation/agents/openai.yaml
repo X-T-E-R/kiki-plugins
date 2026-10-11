@@ -1,0 +1,4 @@
+interface:
+  display_name: "Work Reconciliation"
+  short_description: "Compare office tables and produce a traceable report"
+  default_prompt: "Use $work-reconciliation to compare these tables by explicit keys and create a source-linked report without modifying the originals."

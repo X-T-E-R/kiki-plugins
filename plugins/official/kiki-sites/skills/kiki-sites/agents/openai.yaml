@@ -1,0 +1,4 @@
+interface:
+  display_name: "Kiki Sites"
+  short_description: "Connect repositories and publish projects"
+  default_prompt: "Use $kiki-sites to check enabled connections and deploy this project to the selected target."

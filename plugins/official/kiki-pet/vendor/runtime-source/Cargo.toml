@@ -1,0 +1,18 @@
+[package]
+name = "kiki-pet-runtime"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Isolated native window and bounded image decoder for the Kiki pet plugin"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde_json = "1"
+tauri = { version = "2", features = ["macos-private-api"] }
+image = { version = "0.25", default-features = false, features = ["webp", "png"] }

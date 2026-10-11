@@ -1,0 +1,8 @@
+{
+  "id": "momo",
+  "displayName": "Momo",
+  "description": "A quiet little paper-and-ink companion. Original Kiki artwork.",
+  "spritesheetPath": "spritesheet.webp",
+  "author": "Kiki contributors",
+  "license": "CC0-1.0"
+}
