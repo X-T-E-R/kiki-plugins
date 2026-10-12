@@ -1,5 +1,6 @@
 node_modules/
 .tmp/
+/.worktrees/
 /dist/
 plugins/cdn/
 *.log
