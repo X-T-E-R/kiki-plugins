@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Task board</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #f3efe6;
+      --paper: #fffdf8;
+      --ink: #1c1915;
+      --soft: #5c564c;
+      --faint: #8a8175;
+      --line: #e3d9c8;
+      --accent: #c8401a;
+      --accent-ink: #fff8f4;
+      --ok: #1f6b45;
+      --danger: #9d2c24;
+      --sans: "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.45 var(--sans); }
+    main { padding: 16px; }
+    header { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 14px; }
+    h1 { font-size: 20px; font-weight: 650; letter-spacing: -0.02em; margin: 0; }
+    label { display: grid; gap: 4px; color: var(--soft); font-size: 12px; }
+    select, input, textarea, button { font: inherit; color: inherit; }
+    select, input, textarea { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; }
+    textarea { min-height: 64px; resize: vertical; }
+    button { border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-ink); padding: 8px 12px; cursor: pointer; }
+    button.quiet { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+    button:disabled { opacity: 0.55; cursor: default; }
+    .grow { margin-left: auto; }
+    .columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+    section { background: transparent; min-width: 0; }
+    section h2 { margin: 0 0 8px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+    article { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 8px; }
+    article h3 { margin: 0 0 4px; font-size: 14px; overflow-wrap: anywhere; }
+    article p { margin: 0; color: var(--soft); font-size: 12.5px; }
+    .meta { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .meta span, .meta select { font-size: 12px; color: var(--faint); }
+    form { display: grid; gap: 8px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 14px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .row > * { flex: 1 1 140px; }
+    #status { min-height: 1.2em; color: var(--danger); font-size: 12.5px; }
+    #status.ok { color: var(--ok); }
+    @media (max-width: 640px) {
+      main { padding: 12px; }
+      .columns { grid-template-columns: 1fr; }
+      header { align-items: stretch; }
+      .grow { margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1 id="title">Task board</h1>
+      </div>
+      <label class="grow" id="workspace-label">Workspace
+        <select id="workspace"></select>
+      </label>
+      <button id="lang" class="quiet" type="button">中文</button>
+    </header>
+    <form id="create">
+      <div class="row">
+        <label id="title-label">Title
+          <input id="card-title" required maxlength="1000">
+        </label>
+        <label id="priority-label">Priority
+          <select id="priority">
+            <option>P1</option><option>P0</option><option>P2</option><option>P3</option>
+          </select>
+        </label>
+      </div>
+      <label id="detail-label">Detail
+        <textarea id="detail" maxlength="100000"></textarea>
+      </label>
+      <div class="row">
+        <button id="save" type="button">Save card</button>
+      </div>
+    </form>
+    <p id="status" role="status"></p>
+    <div id="columns" class="columns"></div>
+  </main>
+  <script>
+    const copy = {
+      en: {
+        title: 'Task board',
+        workspace: 'Workspace', titleField: 'Title', priority: 'Priority', detail: 'Detail', save: 'Save card', empty: 'No cards in this column.',
+        saved: 'Card saved.', none: 'No registered workspace.', missing: 'Kiki did not provide a home for this panel.',
+        failed: 'Not saved. The text is still here.',
+        unknownSave: 'No save result came back. The text is still here. Saving again retries the same request.',
+        unknownUpdate: 'No result came back for that change. It was not sent again.',
+        unavailable: 'The panel did not get a result.',
+        accepted: 'The earlier save was accepted. The text now in the form was left as it is.',
+        lang: '中文', statuses: { active: 'To do', in_progress: 'In progress', paused: 'Paused', done: 'Done', cancelled: 'Cancelled', superseded: 'Superseded' },
+      },
+      zh: {
+        title: '任务看板',
+        workspace: '工作区', titleField: '标题', priority: '优先级', detail: '说明', save: '保存卡片', empty: '这一列还没有卡片。',
+        saved: '卡片已保存。', none: '没有已注册的工作区。', missing: '面板没有拿到 Kiki 的 home。',
+        failed: '没有保存。填写的内容还在。',
+        unknownSave: '没有收到保存结果。填写的内容还在。再保存会重试同一次请求。',
+        unknownUpdate: '没有收到这次修改的结果。没有再发送一次。',
+        unavailable: '面板没有收到结果。',
+        accepted: '上一次保存已经接受。表单里现在的文字保持原样。',
+        lang: 'English', statuses: { active: '待办', in_progress: '进行中', paused: '暂停', done: '完成', cancelled: '取消', superseded: '已替代' },
+      },
+    };
+    const statuses = ['active', 'in_progress', 'paused', 'done', 'cancelled', 'superseded'];
+    let lang = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+    let workspaces = [];
+    let page = { cards: [] };
+    const POST_WAIT_MS = 12000;
+    const pending = new Map();
+    const late = new Map();
+    let sequence = 0;
+    let openCreate = null;
+    const text = () => copy[lang];
+    const $ = (id) => document.getElementById(id);
+
+    window.addEventListener('message', (event) => {
+      if (event.source !== window.parent || !event.data || event.data.channel !== 'kiki.panel.v1') return;
+      if (event.data.kind === 'init') void refresh();
+      if (event.data.kind === 'response') pending.get(event.data.id)?.(event.data);
+    });
+
+    function post(action, args) {
+      const id = ++sequence;
+      let settled = false;
+      const response = new Promise((resolve, reject) => {
+        const finish = (message) => {
+          if (settled) {
+            clearTimeout(timer);
+            pending.delete(id);
+            const follow = late.get(id);
+            late.delete(id);
+            if (follow) follow(message);
+            return;
+          }
+          settled = true;
+          clearTimeout(timer);
+          pending.delete(id);
+          if (!message || message.ok !== true) {
+            const reason = message && typeof message.error === 'string' && message.error !== '' ? message.error : text().failed;
+            reject(Object.assign(new Error(reason), { outcome: 'rejected' }));
+            return;
+          }
+          resolve(message.result);
+        };
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          reject(Object.assign(new Error(text().unavailable), { outcome: 'unknown', id }));
+        }, POST_WAIT_MS);
+        pending.set(id, finish);
+        try {
+          window.parent.postMessage({ channel: 'kiki.panel.v1', kind: 'request', id, method: 'plugin.call', action, args }, '*');
+        } catch (error) {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          pending.delete(id);
+          reject(Object.assign(error instanceof Error ? error : new Error(text().failed), { outcome: 'rejected' }));
+        }
+      });
+      response.id = id;
+      return response;
+    }
+
+    function paintChrome() {
+      const t = text();
+      document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+      $('title').textContent = t.title;
+      $('workspace-label').firstChild.textContent = t.workspace + ' ';
+      $('title-label').firstChild.textContent = t.titleField + ' ';
+      $('priority-label').firstChild.textContent = t.priority + ' ';
+      $('detail-label').firstChild.textContent = t.detail + ' ';
+      $('save').textContent = t.save;
+      $('lang').textContent = t.lang;
+      $('workspace').setAttribute('aria-label', t.workspace);
+    }
+
+    function paint() {
+      paintChrome();
+      const select = $('workspace');
+      const current = select.value;
+      select.replaceChildren();
+      if (workspaces.length === 0) {
+        const option = document.createElement('option');
+        option.textContent = text().none;
+        select.append(option);
+      }
+      for (const workspace of workspaces) {
+        const option = document.createElement('option');
+        option.value = workspace.id;
+        option.textContent = workspace.name || workspace.id;
+        select.append(option);
+      }
+      if ([...select.options].some((option) => option.value === current)) select.value = current;
+      const root = $('columns');
+      root.replaceChildren();
+      for (const status of statuses) {
+        const section = document.createElement('section');
+        const heading = document.createElement('h2');
+        const cards = (page.cards || []).filter((card) => card.status === status);
+        heading.textContent = text().statuses[status] + ' · ' + cards.length;
+        section.append(heading);
+        for (const card of cards) {
+          const article = document.createElement('article');
+          article.dataset.card = card.id;
+          const title = document.createElement('h3');
+          title.textContent = card.title;
+          const detail = document.createElement('p');
+          detail.textContent = card.description || '';
+          const meta = document.createElement('div');
+          meta.className = 'meta';
+          const priority = document.createElement('span');
+          priority.textContent = card.priority || '';
+          const choice = document.createElement('select');
+          choice.setAttribute('aria-label', card.title);
+          for (const item of statuses) {
+            const option = document.createElement('option');
+            option.value = item;
+            option.textContent = text().statuses[item];
+            if (item === card.status) option.selected = true;
+            choice.append(option);
+          }
+          choice.addEventListener('change', () => { void update(card, choice.value); });
+          meta.append(priority, choice);
+          article.append(title, ...(card.description ? [detail] : []), meta);
+          section.append(article);
+        }
+        root.append(section);
+      }
+    }
+
+    function note(message, ok) {
+      const status = $('status');
+      status.textContent = message || '';
+      status.className = ok ? 'ok' : '';
+    }
+
+    async function refresh() {
+      note('');
+      try {
+        const listed = await post('workspaces', {});
+        if (!listed.ok) { note(listed.error?.message || text().missing); return; }
+        workspaces = listed.value.workspaces;
+        paint();
+        const workspaceId = $('workspace').value;
+        if (!workspaceId) return;
+        const read = await post('read', { action: 'list', workspaceId, limit: 100 });
+        page = read.ok ? read.value : { cards: [] };
+        if (!read.ok) note(read.error?.message || text().unavailable);
+        paint();
+      } catch (error) {
+        note(error && error.outcome === 'unknown' ? text().unavailable : (error && error.message) || text().unavailable);
+      }
+    }
+
+    async function update(card, status) {
+      note('');
+      try {
+        const request = post('write', {
+          action: 'update', workspaceId: card.workspaceId, storage: card.storage, id: card.id,
+          expectedRevision: card.revision, patch: { status },
+        });
+        const result = await request;
+        if (!result.ok) { note(result.error?.message || text().failed); await refresh(); return; }
+        await refresh();
+      } catch (error) {
+        note(error && error.outcome === 'unknown' ? text().unknownUpdate : (error && error.message) || text().failed);
+        if (error && error.outcome === 'unknown' && error.id !== undefined) {
+          late.set(error.id, (message) => {
+            if (message && message.ok === true && message.result && message.result.ok === true) { void refresh(); return; }
+            const reason = message && typeof message.error === 'string' && message.error !== '' ? message.error : message && message.result && message.result.error && message.result.error.message;
+            note(reason || text().failed);
+          });
+        }
+      }
+    }
+
+    function sameCreate(draft) {
+      return openCreate !== null && openCreate.workspaceId === draft.workspaceId && openCreate.title === draft.title && openCreate.description === draft.description && openCreate.priority === draft.priority;
+    }
+
+    function draftMatches(attempt) {
+      return $('workspace').value === attempt.workspaceId && $('card-title').value.trim() === attempt.title && $('detail').value === attempt.description && $('priority').value === attempt.priority;
+    }
+
+    async function settleCreate(attempt) {
+      if (openCreate !== null && openCreate.requestKey === attempt.requestKey) openCreate = null;
+      const same = draftMatches(attempt);
+      if (same) {
+        $('card-title').value = '';
+        $('detail').value = '';
+      }
+      await refresh();
+      if ($('status').textContent === '') note(same ? text().saved : text().accepted, same);
+    }
+
+    async function applyLateCreate(attempt, message) {
+      if (openCreate === null || openCreate.requestKey !== attempt.requestKey || openCreate.phase === 'sending') return;
+      if (!message || message.ok !== true || !message.result || message.result.ok !== true) {
+        const reason = message && typeof message.error === 'string' && message.error !== '' ? message.error : message && message.result && message.result.error && message.result.error.message;
+        openCreate.phase = 'rejected';
+        note(reason || text().failed);
+        return;
+      }
+      await settleCreate(attempt);
+    }
+
+    $('lang').addEventListener('click', () => { lang = lang === 'en' ? 'zh' : 'en'; paint(); });
+    $('workspace').addEventListener('change', () => { void refresh(); });
+    $('save').addEventListener('click', async () => {
+      const workspaceId = $('workspace').value;
+      const title = $('card-title').value.trim();
+      const description = $('detail').value;
+      const priority = $('priority').value;
+      if (!workspaceId || !title) return;
+      if (openCreate !== null && openCreate.phase === 'sending') return;
+      const draft = { workspaceId, title, description, priority };
+      const requestKey = sameCreate(draft) ? openCreate.requestKey : 'panel-' + Date.now().toString(36) + '-' + (sequence + 1).toString(36);
+      $('save').disabled = true;
+      const request = post('write', { action: 'create', workspaceId, requestKey, title, description, priority });
+      openCreate = { requestKey, title, description, priority, workspaceId, phase: 'sending', id: request.id };
+      try {
+        const result = await request;
+        if (openCreate === null || openCreate.requestKey !== requestKey) return;
+        if (!result || result.ok !== true) {
+          openCreate.phase = 'rejected';
+          note((result && result.error && result.error.message) || text().failed);
+          return;
+        }
+        await settleCreate(openCreate);
+      } catch (error) {
+        if (openCreate !== null && openCreate.requestKey === requestKey) {
+          openCreate.phase = error && error.outcome === 'unknown' ? 'unknown' : 'rejected';
+          note(error && error.outcome === 'unknown' ? text().unknownSave : (error && error.message) || text().failed);
+          if (error && error.outcome === 'unknown') {
+            const attempt = openCreate;
+            late.set(error.id, (message) => { void applyLateCreate(attempt, message); });
+          }
+        }
+      } finally {
+        $('save').disabled = false;
+      }
+    });
+    paint();
+  </script>
+</body>
+</html>

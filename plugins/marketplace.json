@@ -172,7 +172,7 @@
       "id": "kiki-media",
       "tier": "official",
       "displayName": "Kiki Media",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "description": "One media plugin with OpenAI, Google, Ark, xAI, MiniMax, StepFun, Novita, Agnes, NewAPI and ComfyUI sources. Configure or disable each service inside Media, or add your own local script. Requires a Kiki host with grouped media sources and script-source management. Cloud generation requires media API access and can incur charges.",
       "keywords": [
         "media",
@@ -216,6 +216,32 @@
             "agnes",
             "newapi",
             "comfyui"
+          ]
+        }
+      }
+    },
+    {
+      "id": "kiki-task-board",
+      "tier": "official",
+      "displayName": "Task board",
+      "version": "0.1.0",
+      "description": "Persistent requirement cards for a workspace.",
+      "keywords": [
+        "tasks",
+        "board",
+        "requirements"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-task-board",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-task-board",
+      "localizations": {
+        "zh": {
+          "description": "工作区里长期保存的需求卡片。",
+          "keywords": [
+            "任务",
+            "看板",
+            "需求"
           ]
         }
       }

@@ -1,0 +1,82 @@
+{
+  "name": "kiki-task-board",
+  "version": "0.1.0",
+  "description": "Optional task board for persistent requirement cards. Cards stay at their original Own Work addresses.",
+  "license": "MIT",
+  "icon": "./icon.svg",
+  "interface": {
+    "displayName": "Task board",
+    "shortDescription": "Persistent requirement cards for a workspace",
+    "localization": {
+      "zh-CN": {
+        "displayName": "任务看板",
+        "shortDescription": "工作区里长期保存的需求卡片"
+      }
+    }
+  },
+  "x-kiki": {
+    "engines": { "kiki": ">=0.4.1" },
+    "entry": "./entry.mjs",
+    "permissions": { "fs": "outside", "uiPanel": true },
+    "panels": [{
+      "schemaVersion": 1,
+      "id": "board",
+      "label": "Task board",
+      "slot": "workspace",
+      "path": "./panel.html"
+    }],
+    "tools": [
+      {
+        "schemaVersion": 1,
+        "name": "BoardRead",
+        "description": "Read persistent Own Work requirements in the current workspace, optionally filtered by active, in_progress, paused, done, cancelled, or superseded status. Overview requires explicit authorized workspace IDs. These cards are not agent runs or TodoList entries.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": { "type": "string", "enum": ["preview", "list", "show", "overview"] },
+            "workspaceId": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "workspaceIds": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 512 }, "minItems": 1, "maxItems": 32 },
+            "configuration": { "type": "object", "properties": { "mode": { "type": "string", "enum": ["auto", "global", "fixed"] }, "path": { "type": "string", "maxLength": 4096 } }, "required": ["mode"], "additionalProperties": false },
+            "storage": { "type": "object", "properties": { "root": { "type": "string", "minLength": 1, "maxLength": 4096 }, "storageId": { "type": "string", "minLength": 1, "maxLength": 512 }, "kind": { "type": "string", "enum": ["workspace", "embedded"] } }, "required": ["root", "storageId", "kind"], "additionalProperties": false },
+            "sessionId": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "status": { "type": "string", "enum": ["active", "in_progress", "paused", "done", "cancelled", "superseded"] },
+            "archived": { "type": "boolean" },
+            "cursor": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+            "id": { "type": "string", "minLength": 1, "maxLength": 512 }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        },
+        "accesses": [{ "kind": "all" }]
+      },
+      {
+        "schemaVersion": 1,
+        "name": "BoardWrite",
+        "description": "Create or update a persistent Own Work requirement without starting a session or execution. Creation always starts an active card; do not pass status to create. Use a stable requestKey and a BoardRead preview target for creation retries. Updates require the card's original storage address and expectedRevision. Reopen a terminal card by setting status back to active, in_progress, or paused.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": { "type": "string", "enum": ["create", "update"] },
+            "workspaceId": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "requestKey": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "target": { "type": "object", "properties": { "root": { "type": "string", "minLength": 1, "maxLength": 4096 }, "storageId": { "type": "string", "minLength": 1, "maxLength": 512 }, "kind": { "type": "string", "enum": ["workspace", "embedded"] } }, "required": ["root", "kind"], "additionalProperties": false },
+            "title": { "type": "string", "minLength": 1, "maxLength": 1000 },
+            "description": { "type": "string", "maxLength": 100000 },
+            "priority": { "type": "string", "enum": ["P0", "P1", "P2", "P3"] },
+            "category": { "type": "string", "maxLength": 256 },
+            "sessionIds": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 512 }, "maxItems": 256 },
+            "executionIds": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 512 }, "maxItems": 256 },
+            "storage": { "type": "object", "properties": { "root": { "type": "string", "minLength": 1, "maxLength": 4096 }, "storageId": { "type": "string", "minLength": 1, "maxLength": 512 }, "kind": { "type": "string", "enum": ["workspace", "embedded"] } }, "required": ["root", "storageId", "kind"], "additionalProperties": false },
+            "id": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "expectedRevision": { "type": "integer", "minimum": 0 },
+            "patch": { "type": "object", "properties": { "title": { "type": "string", "minLength": 1, "maxLength": 1000 }, "description": { "type": "string", "maxLength": 100000 }, "priority": { "type": "string", "enum": ["P0", "P1", "P2", "P3"] }, "category": { "type": "string", "maxLength": 256 }, "sessionIds": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 512 }, "maxItems": 256 }, "executionIds": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 512 }, "maxItems": 256 }, "status": { "type": "string", "enum": ["active", "in_progress", "paused", "done", "cancelled", "superseded"] } }, "additionalProperties": false }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        },
+        "accesses": [{ "kind": "all" }]
+      }
+    ]
+  }
+}
