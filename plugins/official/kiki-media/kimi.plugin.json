@@ -1,6 +1,6 @@
 {
   "name": "kiki-media",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Generate images, videos and speech with built-in services and your own scripts in one media plugin.",
   "license": "MIT AND Apache-2.0",
   "skills": "./skills/",
@@ -21,7 +21,8 @@
       "secrets": true,
       "exec": [
         "*"
-      ]
+      ],
+      "uiPanel": true
     },
     "tools": [
       {
@@ -481,360 +482,1049 @@
         "properties": {
           "defaultImageProvider": {
             "type": "string",
-            "title": "Default image provider"
+            "title": "Default image provider",
+            "enum": [
+              "openai-image",
+              "google-image",
+              "ark-image",
+              "xai-image",
+              "minimax-image",
+              "comfyui-workflow",
+              "custom-script"
+            ],
+            "localizations": {
+              "zh": {
+                "title": "默认图像来源"
+              }
+            }
           },
           "defaultVideoProvider": {
             "type": "string",
-            "title": "Default video provider"
+            "title": "Default video provider",
+            "enum": [
+              "google-video",
+              "ark-video",
+              "xai-video",
+              "minimax-video",
+              "novita-video",
+              "agnes-video",
+              "newapi-video",
+              "comfyui-workflow",
+              "custom-script"
+            ],
+            "localizations": {
+              "zh": {
+                "title": "默认视频来源"
+              }
+            }
           },
           "defaultTtsProvider": {
             "type": "string",
-            "title": "Default speech provider"
+            "title": "Default speech provider",
+            "enum": [
+              "openai-speech",
+              "minimax-speech",
+              "stepfun-speech",
+              "custom-script"
+            ],
+            "localizations": {
+              "zh": {
+                "title": "默认语音来源"
+              }
+            }
           },
           "openai__connectionId": {
             "type": "string",
             "title": "Kiki connection (optional)",
-            "description": "Use a media-capable API connection. Selected endpoint and authentication replace this plugin's key; OAuth login alone does not imply image or speech entitlement."
+            "description": "Use a media-capable API connection. Selected endpoint and authentication replace this plugin's key; OAuth login alone does not imply image or speech entitlement.",
+            "group": "openai",
+            "groupTitle": "OpenAI Media",
+            "localizations": {
+              "zh": {
+                "title": "Kiki 连接（可选）",
+                "description": "使用支持媒体的 API 连接。所选端点与认证会替代本插件的密钥；仅登录 OAuth 并不代表拥有图像或语音权限。",
+                "groupTitle": "OpenAI 媒体"
+              }
+            }
           },
           "openai__apiKey": {
             "type": "string",
             "title": "API key",
-            "secret": true
+            "secret": true,
+            "group": "openai",
+            "groupTitle": "OpenAI Media",
+            "localizations": {
+              "zh": {
+                "title": "API 密钥",
+                "groupTitle": "OpenAI 媒体"
+              }
+            }
           },
           "openai__baseUrl": {
             "type": "string",
             "title": "API base URL",
-            "default": "https://api.openai.com/v1"
+            "default": "https://api.openai.com/v1",
+            "group": "openai",
+            "groupTitle": "OpenAI Media",
+            "localizations": {
+              "zh": {
+                "title": "API 基础地址",
+                "groupTitle": "OpenAI 媒体"
+              }
+            }
           },
           "openai__imageModel": {
             "type": "string",
             "title": "Default image model",
-            "default": "gpt-image-1.5"
+            "default": "gpt-image-1.5",
+            "group": "openai",
+            "groupTitle": "OpenAI Media",
+            "localizations": {
+              "zh": {
+                "title": "默认图像模型",
+                "groupTitle": "OpenAI 媒体"
+              }
+            }
           },
           "openai__speechModel": {
             "type": "string",
             "title": "Default speech model",
-            "default": "gpt-4o-mini-tts"
+            "default": "gpt-4o-mini-tts",
+            "group": "openai",
+            "groupTitle": "OpenAI Media",
+            "localizations": {
+              "zh": {
+                "title": "默认语音模型",
+                "groupTitle": "OpenAI 媒体"
+              }
+            }
           },
           "openai__enabled": {
             "type": "boolean",
-            "default": true
+            "default": true,
+            "title": "Enabled",
+            "group": "openai",
+            "groupTitle": "OpenAI Media",
+            "localizations": {
+              "zh": {
+                "title": "启用",
+                "groupTitle": "OpenAI 媒体"
+              }
+            }
           },
           "openai__removed": {
             "type": "boolean",
-            "default": false
+            "default": false,
+            "hidden": true,
+            "title": "Removed",
+            "group": "openai",
+            "groupTitle": "OpenAI Media",
+            "localizations": {
+              "zh": {
+                "title": "已移除",
+                "groupTitle": "OpenAI 媒体"
+              }
+            }
           },
           "openai__cleared": {
             "type": "string",
-            "default": "[]"
+            "default": "[]",
+            "hidden": true,
+            "group": "openai",
+            "groupTitle": "OpenAI Media",
+            "localizations": {
+              "zh": {
+                "groupTitle": "OpenAI 媒体"
+              }
+            }
           },
           "google__connectionId": {
             "type": "string",
             "title": "Kiki Google connection (optional)",
-            "description": "Use a Gemini API endpoint with x-goog-api-key authentication. Other OAuth products are not assumed compatible."
+            "description": "Use a Gemini API endpoint with x-goog-api-key authentication. Other OAuth products are not assumed compatible.",
+            "group": "google",
+            "groupTitle": "Google Media",
+            "localizations": {
+              "zh": {
+                "title": "Kiki Google 连接（可选）",
+                "description": "使用以 x-goog-api-key 认证的 Gemini API 端点。其他 OAuth 产品不视为兼容。",
+                "groupTitle": "Google 媒体"
+              }
+            }
           },
           "google__apiKey": {
             "type": "string",
             "title": "API key",
-            "secret": true
+            "secret": true,
+            "group": "google",
+            "groupTitle": "Google Media",
+            "localizations": {
+              "zh": {
+                "title": "API 密钥",
+                "groupTitle": "Google 媒体"
+              }
+            }
           },
           "google__baseUrl": {
             "type": "string",
             "title": "API base URL",
-            "default": "https://generativelanguage.googleapis.com/v1beta"
+            "default": "https://generativelanguage.googleapis.com/v1beta",
+            "group": "google",
+            "groupTitle": "Google Media",
+            "localizations": {
+              "zh": {
+                "title": "API 基础地址",
+                "groupTitle": "Google 媒体"
+              }
+            }
           },
           "google__imageModel": {
             "type": "string",
             "title": "Default image model",
-            "default": "gemini-2.5-flash-image"
+            "default": "gemini-2.5-flash-image",
+            "group": "google",
+            "groupTitle": "Google Media",
+            "localizations": {
+              "zh": {
+                "title": "默认图像模型",
+                "groupTitle": "Google 媒体"
+              }
+            }
           },
           "google__videoModel": {
             "type": "string",
             "title": "Default Veo model",
-            "default": "veo-3.1-generate-preview"
+            "default": "veo-3.1-generate-preview",
+            "group": "google",
+            "groupTitle": "Google Media",
+            "localizations": {
+              "zh": {
+                "title": "默认 Veo 模型",
+                "groupTitle": "Google 媒体"
+              }
+            }
           },
           "google__enabled": {
             "type": "boolean",
-            "default": true
+            "default": true,
+            "title": "Enabled",
+            "group": "google",
+            "groupTitle": "Google Media",
+            "localizations": {
+              "zh": {
+                "title": "启用",
+                "groupTitle": "Google 媒体"
+              }
+            }
           },
           "google__removed": {
             "type": "boolean",
-            "default": false
+            "default": false,
+            "hidden": true,
+            "title": "Removed",
+            "group": "google",
+            "groupTitle": "Google Media",
+            "localizations": {
+              "zh": {
+                "title": "已移除",
+                "groupTitle": "Google 媒体"
+              }
+            }
           },
           "google__cleared": {
             "type": "string",
-            "default": "[]"
+            "default": "[]",
+            "hidden": true,
+            "group": "google",
+            "groupTitle": "Google Media",
+            "localizations": {
+              "zh": {
+                "groupTitle": "Google 媒体"
+              }
+            }
           },
           "ark__connectionId": {
             "type": "string",
             "title": "Kiki Ark connection (optional)",
-            "description": "Selected Ark API endpoint and authentication replace this plugin's key; use an endpoint with media entitlement."
+            "description": "Selected Ark API endpoint and authentication replace this plugin's key; use an endpoint with media entitlement.",
+            "group": "ark",
+            "groupTitle": "Ark Media",
+            "localizations": {
+              "zh": {
+                "title": "Kiki Ark 连接（可选）",
+                "description": "所选 Ark API 端点与认证会替代本插件的密钥；请使用具备媒体权限的端点。",
+                "groupTitle": "Ark 媒体"
+              }
+            }
           },
           "ark__apiKey": {
             "type": "string",
             "title": "API key",
-            "secret": true
+            "secret": true,
+            "group": "ark",
+            "groupTitle": "Ark Media",
+            "localizations": {
+              "zh": {
+                "title": "API 密钥",
+                "groupTitle": "Ark 媒体"
+              }
+            }
           },
           "ark__baseUrl": {
             "type": "string",
             "title": "Ark API base URL",
-            "default": "https://ark.cn-beijing.volces.com/api/v3"
+            "default": "https://ark.cn-beijing.volces.com/api/v3",
+            "group": "ark",
+            "groupTitle": "Ark Media",
+            "localizations": {
+              "zh": {
+                "title": "Ark API 基础地址",
+                "groupTitle": "Ark 媒体"
+              }
+            }
           },
           "ark__imageModel": {
             "type": "string",
             "title": "Default Seedream model",
-            "default": "doubao-seedream-4-0-250828"
+            "default": "doubao-seedream-4-0-250828",
+            "group": "ark",
+            "groupTitle": "Ark Media",
+            "localizations": {
+              "zh": {
+                "title": "默认 Seedream 模型",
+                "groupTitle": "Ark 媒体"
+              }
+            }
           },
           "ark__videoModel": {
             "type": "string",
             "title": "Seedance 2.0 model or endpoint ID",
-            "description": "Use your actual Seedance 2.0 model/endpoint. 2.5 is not this protocol profile."
+            "description": "Use your actual Seedance 2.0 model/endpoint. 2.5 is not this protocol profile.",
+            "group": "ark",
+            "groupTitle": "Ark Media",
+            "localizations": {
+              "zh": {
+                "title": "Seedance 2.0 模型或端点 ID",
+                "description": "填写你实际使用的 Seedance 2.0 模型/端点。2.5 不属于此协议配置。",
+                "groupTitle": "Ark 媒体"
+              }
+            }
           },
           "ark__enabled": {
             "type": "boolean",
-            "default": true
+            "default": true,
+            "title": "Enabled",
+            "group": "ark",
+            "groupTitle": "Ark Media",
+            "localizations": {
+              "zh": {
+                "title": "启用",
+                "groupTitle": "Ark 媒体"
+              }
+            }
           },
           "ark__removed": {
             "type": "boolean",
-            "default": false
+            "default": false,
+            "hidden": true,
+            "title": "Removed",
+            "group": "ark",
+            "groupTitle": "Ark Media",
+            "localizations": {
+              "zh": {
+                "title": "已移除",
+                "groupTitle": "Ark 媒体"
+              }
+            }
           },
           "ark__cleared": {
             "type": "string",
-            "default": "[]"
+            "default": "[]",
+            "hidden": true,
+            "group": "ark",
+            "groupTitle": "Ark Media",
+            "localizations": {
+              "zh": {
+                "groupTitle": "Ark 媒体"
+              }
+            }
           },
           "xai__connectionId": {
             "type": "string",
             "title": "Kiki xAI API connection (optional)",
-            "description": "Use an xAI media API connection; Grok web/OAuth subscriptions are not assumed to support this API."
+            "description": "Use an xAI media API connection; Grok web/OAuth subscriptions are not assumed to support this API.",
+            "group": "xai",
+            "groupTitle": "xAI Media",
+            "localizations": {
+              "zh": {
+                "title": "Kiki xAI API 连接（可选）",
+                "description": "使用 xAI 媒体 API 连接；Grok 网页版/OAuth 订阅不视为支持此 API。",
+                "groupTitle": "xAI 媒体"
+              }
+            }
           },
           "xai__apiKey": {
             "type": "string",
             "title": "API key",
-            "secret": true
+            "secret": true,
+            "group": "xai",
+            "groupTitle": "xAI Media",
+            "localizations": {
+              "zh": {
+                "title": "API 密钥",
+                "groupTitle": "xAI 媒体"
+              }
+            }
           },
           "xai__baseUrl": {
             "type": "string",
             "title": "API base URL",
-            "default": "https://api.x.ai/v1"
+            "default": "https://api.x.ai/v1",
+            "group": "xai",
+            "groupTitle": "xAI Media",
+            "localizations": {
+              "zh": {
+                "title": "API 基础地址",
+                "groupTitle": "xAI 媒体"
+              }
+            }
           },
           "xai__imageModel": {
             "type": "string",
             "title": "Default image model",
-            "default": "grok-imagine-image"
+            "default": "grok-imagine-image",
+            "group": "xai",
+            "groupTitle": "xAI Media",
+            "localizations": {
+              "zh": {
+                "title": "默认图像模型",
+                "groupTitle": "xAI 媒体"
+              }
+            }
           },
           "xai__videoModel": {
             "type": "string",
             "title": "Default video model",
-            "default": "grok-imagine-video"
+            "default": "grok-imagine-video",
+            "group": "xai",
+            "groupTitle": "xAI Media",
+            "localizations": {
+              "zh": {
+                "title": "默认视频模型",
+                "groupTitle": "xAI 媒体"
+              }
+            }
           },
           "xai__enabled": {
             "type": "boolean",
-            "default": true
+            "default": true,
+            "title": "Enabled",
+            "group": "xai",
+            "groupTitle": "xAI Media",
+            "localizations": {
+              "zh": {
+                "title": "启用",
+                "groupTitle": "xAI 媒体"
+              }
+            }
           },
           "xai__removed": {
             "type": "boolean",
-            "default": false
+            "default": false,
+            "hidden": true,
+            "title": "Removed",
+            "group": "xai",
+            "groupTitle": "xAI Media",
+            "localizations": {
+              "zh": {
+                "title": "已移除",
+                "groupTitle": "xAI 媒体"
+              }
+            }
           },
           "xai__cleared": {
             "type": "string",
-            "default": "[]"
+            "default": "[]",
+            "hidden": true,
+            "group": "xai",
+            "groupTitle": "xAI Media",
+            "localizations": {
+              "zh": {
+                "groupTitle": "xAI 媒体"
+              }
+            }
           },
           "minimax__connectionId": {
             "type": "string",
             "title": "Kiki MiniMax connection (optional)",
-            "description": "Selected MiniMax API authentication replaces this plugin's key. Media requires corresponding pay-as-you-go entitlement; text Token Plan/OAuth does not imply it."
+            "description": "Selected MiniMax API authentication replaces this plugin's key. Media requires corresponding pay-as-you-go entitlement; text Token Plan/OAuth does not imply it.",
+            "group": "minimax",
+            "groupTitle": "MiniMax Media",
+            "localizations": {
+              "zh": {
+                "title": "Kiki MiniMax 连接（可选）",
+                "description": "所选 MiniMax API 认证会替代本插件的密钥。媒体功能需要相应的按量付费权限；文本 Token Plan/OAuth 不代表拥有该权限。",
+                "groupTitle": "MiniMax 媒体"
+              }
+            }
           },
           "minimax__apiKey": {
             "type": "string",
             "title": "API key",
-            "secret": true
+            "secret": true,
+            "group": "minimax",
+            "groupTitle": "MiniMax Media",
+            "localizations": {
+              "zh": {
+                "title": "API 密钥",
+                "groupTitle": "MiniMax 媒体"
+              }
+            }
           },
           "minimax__baseUrl": {
             "type": "string",
             "title": "API base URL (no /v1 or /v2 suffix)",
-            "default": "https://api.minimax.io"
+            "default": "https://api.minimax.io",
+            "group": "minimax",
+            "groupTitle": "MiniMax Media",
+            "localizations": {
+              "zh": {
+                "title": "API 基础地址（不带 /v1 或 /v2 后缀）",
+                "groupTitle": "MiniMax 媒体"
+              }
+            }
           },
           "minimax__imageModel": {
             "type": "string",
             "title": "Default image model",
-            "default": "image-01"
+            "default": "image-01",
+            "group": "minimax",
+            "groupTitle": "MiniMax Media",
+            "localizations": {
+              "zh": {
+                "title": "默认图像模型",
+                "groupTitle": "MiniMax 媒体"
+              }
+            }
           },
           "minimax__videoModel": {
             "type": "string",
             "title": "Default video model",
-            "default": "MiniMax-H3"
+            "default": "MiniMax-H3",
+            "group": "minimax",
+            "groupTitle": "MiniMax Media",
+            "localizations": {
+              "zh": {
+                "title": "默认视频模型",
+                "groupTitle": "MiniMax 媒体"
+              }
+            }
           },
           "minimax__speechModel": {
             "type": "string",
             "title": "Default speech model",
-            "default": "speech-2.8-hd"
+            "default": "speech-2.8-hd",
+            "group": "minimax",
+            "groupTitle": "MiniMax Media",
+            "localizations": {
+              "zh": {
+                "title": "默认语音模型",
+                "groupTitle": "MiniMax 媒体"
+              }
+            }
           },
           "minimax__enabled": {
             "type": "boolean",
-            "default": true
+            "default": true,
+            "title": "Enabled",
+            "group": "minimax",
+            "groupTitle": "MiniMax Media",
+            "localizations": {
+              "zh": {
+                "title": "启用",
+                "groupTitle": "MiniMax 媒体"
+              }
+            }
           },
           "minimax__removed": {
             "type": "boolean",
-            "default": false
+            "default": false,
+            "hidden": true,
+            "title": "Removed",
+            "group": "minimax",
+            "groupTitle": "MiniMax Media",
+            "localizations": {
+              "zh": {
+                "title": "已移除",
+                "groupTitle": "MiniMax 媒体"
+              }
+            }
           },
           "minimax__cleared": {
             "type": "string",
-            "default": "[]"
+            "default": "[]",
+            "hidden": true,
+            "group": "minimax",
+            "groupTitle": "MiniMax Media",
+            "localizations": {
+              "zh": {
+                "groupTitle": "MiniMax 媒体"
+              }
+            }
           },
           "stepfun__connectionId": {
             "type": "string",
             "title": "Kiki StepFun connection (optional)",
-            "description": "Selected StepFun API endpoint and authentication replace this plugin's key; choose an endpoint with TTS entitlement."
+            "description": "Selected StepFun API endpoint and authentication replace this plugin's key; choose an endpoint with TTS entitlement.",
+            "group": "stepfun",
+            "groupTitle": "StepFun Speech",
+            "localizations": {
+              "zh": {
+                "title": "Kiki StepFun 连接（可选）",
+                "description": "所选 StepFun API 端点与认证会替代本插件的密钥；请选择具备语音合成权限的端点。",
+                "groupTitle": "StepFun 语音"
+              }
+            }
           },
           "stepfun__apiKey": {
             "type": "string",
             "title": "API key",
-            "secret": true
+            "secret": true,
+            "group": "stepfun",
+            "groupTitle": "StepFun Speech",
+            "localizations": {
+              "zh": {
+                "title": "API 密钥",
+                "groupTitle": "StepFun 语音"
+              }
+            }
           },
           "stepfun__baseUrl": {
             "type": "string",
             "title": "API base URL",
-            "default": "https://api.stepfun.ai/v1"
+            "default": "https://api.stepfun.ai/v1",
+            "group": "stepfun",
+            "groupTitle": "StepFun Speech",
+            "localizations": {
+              "zh": {
+                "title": "API 基础地址",
+                "groupTitle": "StepFun 语音"
+              }
+            }
           },
           "stepfun__speechModel": {
             "type": "string",
             "title": "Default speech model",
-            "default": "stepaudio-3-tts"
+            "default": "stepaudio-3-tts",
+            "group": "stepfun",
+            "groupTitle": "StepFun Speech",
+            "localizations": {
+              "zh": {
+                "title": "默认语音模型",
+                "groupTitle": "StepFun 语音"
+              }
+            }
           },
           "stepfun__enabled": {
             "type": "boolean",
-            "default": true
+            "default": true,
+            "title": "Enabled",
+            "group": "stepfun",
+            "groupTitle": "StepFun Speech",
+            "localizations": {
+              "zh": {
+                "title": "启用",
+                "groupTitle": "StepFun 语音"
+              }
+            }
           },
           "stepfun__removed": {
             "type": "boolean",
-            "default": false
+            "default": false,
+            "hidden": true,
+            "title": "Removed",
+            "group": "stepfun",
+            "groupTitle": "StepFun Speech",
+            "localizations": {
+              "zh": {
+                "title": "已移除",
+                "groupTitle": "StepFun 语音"
+              }
+            }
           },
           "stepfun__cleared": {
             "type": "string",
-            "default": "[]"
+            "default": "[]",
+            "hidden": true,
+            "group": "stepfun",
+            "groupTitle": "StepFun Speech",
+            "localizations": {
+              "zh": {
+                "groupTitle": "StepFun 语音"
+              }
+            }
           },
           "novita__connectionId": {
             "type": "string",
             "title": "Kiki compatible endpoint connection (optional)",
-            "description": "Selected endpoint and authentication replace this plugin's own configuration; endpoint must implement this video profile."
+            "description": "Selected endpoint and authentication replace this plugin's own configuration; endpoint must implement this video profile.",
+            "group": "novita",
+            "groupTitle": "Novita Compatible Video",
+            "localizations": {
+              "zh": {
+                "title": "Kiki 兼容端点连接（可选）",
+                "description": "所选端点与认证会替代本插件自身的配置；端点需实现此视频协议配置。",
+                "groupTitle": "Novita 视频"
+              }
+            }
           },
           "novita__apiKey": {
             "type": "string",
             "title": "Endpoint API key",
-            "secret": true
+            "secret": true,
+            "group": "novita",
+            "groupTitle": "Novita Compatible Video",
+            "localizations": {
+              "zh": {
+                "title": "端点 API 密钥",
+                "groupTitle": "Novita 视频"
+              }
+            }
           },
           "novita__baseUrl": {
             "type": "string",
-            "title": "Compatible API base URL"
+            "title": "Compatible API base URL",
+            "group": "novita",
+            "groupTitle": "Novita Compatible Video",
+            "localizations": {
+              "zh": {
+                "title": "兼容 API 基础地址",
+                "groupTitle": "Novita 视频"
+              }
+            }
           },
           "novita__videoModel": {
             "type": "string",
-            "title": "Actual endpoint model"
+            "title": "Actual endpoint model",
+            "group": "novita",
+            "groupTitle": "Novita Compatible Video",
+            "localizations": {
+              "zh": {
+                "title": "实际端点模型",
+                "groupTitle": "Novita 视频"
+              }
+            }
           },
           "novita__enabled": {
             "type": "boolean",
-            "default": true
+            "default": true,
+            "title": "Enabled",
+            "group": "novita",
+            "groupTitle": "Novita Compatible Video",
+            "localizations": {
+              "zh": {
+                "title": "启用",
+                "groupTitle": "Novita 视频"
+              }
+            }
           },
           "novita__removed": {
             "type": "boolean",
-            "default": false
+            "default": false,
+            "hidden": true,
+            "title": "Removed",
+            "group": "novita",
+            "groupTitle": "Novita Compatible Video",
+            "localizations": {
+              "zh": {
+                "title": "已移除",
+                "groupTitle": "Novita 视频"
+              }
+            }
           },
           "novita__cleared": {
             "type": "string",
-            "default": "[]"
+            "default": "[]",
+            "hidden": true,
+            "group": "novita",
+            "groupTitle": "Novita Compatible Video",
+            "localizations": {
+              "zh": {
+                "groupTitle": "Novita 视频"
+              }
+            }
           },
           "agnes__connectionId": {
             "type": "string",
             "title": "Kiki Agnes endpoint connection (optional)",
-            "description": "Selected endpoint and authentication replace this plugin's own configuration; endpoint must implement Agnes video."
+            "description": "Selected endpoint and authentication replace this plugin's own configuration; endpoint must implement Agnes video.",
+            "group": "agnes",
+            "groupTitle": "Agnes Video",
+            "localizations": {
+              "zh": {
+                "title": "Kiki Agnes 端点连接（可选）",
+                "description": "所选端点与认证会替代本插件自身的配置；端点需实现 Agnes 视频。",
+                "groupTitle": "Agnes 视频"
+              }
+            }
           },
           "agnes__apiKey": {
             "type": "string",
             "title": "Endpoint API key",
-            "secret": true
+            "secret": true,
+            "group": "agnes",
+            "groupTitle": "Agnes Video",
+            "localizations": {
+              "zh": {
+                "title": "端点 API 密钥",
+                "groupTitle": "Agnes 视频"
+              }
+            }
           },
           "agnes__baseUrl": {
             "type": "string",
-            "title": "Compatible API base URL"
+            "title": "Compatible API base URL",
+            "group": "agnes",
+            "groupTitle": "Agnes Video",
+            "localizations": {
+              "zh": {
+                "title": "兼容 API 基础地址",
+                "groupTitle": "Agnes 视频"
+              }
+            }
           },
           "agnes__videoModel": {
             "type": "string",
             "title": "Default video model",
-            "default": "agnes-video-2.5"
+            "default": "agnes-video-2.5",
+            "group": "agnes",
+            "groupTitle": "Agnes Video",
+            "localizations": {
+              "zh": {
+                "title": "默认视频模型",
+                "groupTitle": "Agnes 视频"
+              }
+            }
           },
           "agnes__enabled": {
             "type": "boolean",
-            "default": true
+            "default": true,
+            "title": "Enabled",
+            "group": "agnes",
+            "groupTitle": "Agnes Video",
+            "localizations": {
+              "zh": {
+                "title": "启用",
+                "groupTitle": "Agnes 视频"
+              }
+            }
           },
           "agnes__removed": {
             "type": "boolean",
-            "default": false
+            "default": false,
+            "hidden": true,
+            "title": "Removed",
+            "group": "agnes",
+            "groupTitle": "Agnes Video",
+            "localizations": {
+              "zh": {
+                "title": "已移除",
+                "groupTitle": "Agnes 视频"
+              }
+            }
           },
           "agnes__cleared": {
             "type": "string",
-            "default": "[]"
+            "default": "[]",
+            "hidden": true,
+            "group": "agnes",
+            "groupTitle": "Agnes Video",
+            "localizations": {
+              "zh": {
+                "groupTitle": "Agnes 视频"
+              }
+            }
           },
           "newapi__connectionId": {
             "type": "string",
             "title": "Kiki gateway connection (optional)",
-            "description": "Selected gateway endpoint and authentication replace this plugin's own configuration; model availability remains endpoint-specific."
+            "description": "Selected gateway endpoint and authentication replace this plugin's own configuration; model availability remains endpoint-specific.",
+            "group": "newapi",
+            "groupTitle": "NewAPI Compatible Video",
+            "localizations": {
+              "zh": {
+                "title": "Kiki 网关连接（可选）",
+                "description": "所选网关端点与认证会替代本插件自身的配置；模型可用性仍取决于具体端点。",
+                "groupTitle": "NewAPI 视频"
+              }
+            }
           },
           "newapi__apiKey": {
             "type": "string",
             "title": "Gateway API key",
-            "secret": true
+            "secret": true,
+            "group": "newapi",
+            "groupTitle": "NewAPI Compatible Video",
+            "localizations": {
+              "zh": {
+                "title": "网关 API 密钥",
+                "groupTitle": "NewAPI 视频"
+              }
+            }
           },
           "newapi__baseUrl": {
             "type": "string",
-            "title": "Compatible API base URL"
+            "title": "Compatible API base URL",
+            "group": "newapi",
+            "groupTitle": "NewAPI Compatible Video",
+            "localizations": {
+              "zh": {
+                "title": "兼容 API 基础地址",
+                "groupTitle": "NewAPI 视频"
+              }
+            }
           },
           "newapi__videoModel": {
             "type": "string",
-            "title": "Actual gateway model"
+            "title": "Actual gateway model",
+            "group": "newapi",
+            "groupTitle": "NewAPI Compatible Video",
+            "localizations": {
+              "zh": {
+                "title": "实际网关模型",
+                "groupTitle": "NewAPI 视频"
+              }
+            }
           },
           "newapi__enabled": {
             "type": "boolean",
-            "default": true
+            "default": true,
+            "title": "Enabled",
+            "group": "newapi",
+            "groupTitle": "NewAPI Compatible Video",
+            "localizations": {
+              "zh": {
+                "title": "启用",
+                "groupTitle": "NewAPI 视频"
+              }
+            }
           },
           "newapi__removed": {
             "type": "boolean",
-            "default": false
+            "default": false,
+            "hidden": true,
+            "title": "Removed",
+            "group": "newapi",
+            "groupTitle": "NewAPI Compatible Video",
+            "localizations": {
+              "zh": {
+                "title": "已移除",
+                "groupTitle": "NewAPI 视频"
+              }
+            }
           },
           "newapi__cleared": {
             "type": "string",
-            "default": "[]"
+            "default": "[]",
+            "hidden": true,
+            "group": "newapi",
+            "groupTitle": "NewAPI Compatible Video",
+            "localizations": {
+              "zh": {
+                "groupTitle": "NewAPI 视频"
+              }
+            }
           },
           "comfyui__connectionId": {
             "type": "string",
             "title": "Kiki ComfyUI endpoint connection (optional)",
-            "description": "Optional endpoint/custom-header connection; otherwise use your local ComfyUI URL without authentication."
+            "description": "Optional endpoint/custom-header connection; otherwise use your local ComfyUI URL without authentication.",
+            "group": "comfyui",
+            "groupTitle": "ComfyUI Workflow",
+            "localizations": {
+              "zh": {
+                "title": "Kiki ComfyUI 端点连接（可选）",
+                "description": "可选的端点/自定义请求头连接；否则直接使用本地 ComfyUI 地址，无需认证。",
+                "groupTitle": "ComfyUI 工作流"
+              }
+            }
           },
           "comfyui__baseUrl": {
             "type": "string",
             "title": "Your ComfyUI endpoint",
-            "default": "http://127.0.0.1:8188"
+            "default": "http://127.0.0.1:8188",
+            "group": "comfyui",
+            "groupTitle": "ComfyUI Workflow",
+            "localizations": {
+              "zh": {
+                "title": "你的 ComfyUI 端点",
+                "groupTitle": "ComfyUI 工作流"
+              }
+            }
           },
           "comfyui__apiKey": {
             "type": "string",
             "title": "Optional endpoint API key",
-            "secret": true
+            "secret": true,
+            "group": "comfyui",
+            "groupTitle": "ComfyUI Workflow",
+            "localizations": {
+              "zh": {
+                "title": "可选的端点 API 密钥",
+                "groupTitle": "ComfyUI 工作流"
+              }
+            }
           },
           "comfyui__enabled": {
             "type": "boolean",
-            "default": true
+            "default": true,
+            "title": "Enabled",
+            "group": "comfyui",
+            "groupTitle": "ComfyUI Workflow",
+            "localizations": {
+              "zh": {
+                "title": "启用",
+                "groupTitle": "ComfyUI 工作流"
+              }
+            }
           },
           "comfyui__removed": {
             "type": "boolean",
-            "default": false
+            "default": false,
+            "hidden": true,
+            "title": "Removed",
+            "group": "comfyui",
+            "groupTitle": "ComfyUI Workflow",
+            "localizations": {
+              "zh": {
+                "title": "已移除",
+                "groupTitle": "ComfyUI 工作流"
+              }
+            }
           },
           "comfyui__cleared": {
             "type": "string",
-            "default": "[]"
+            "default": "[]",
+            "hidden": true,
+            "group": "comfyui",
+            "groupTitle": "ComfyUI Workflow",
+            "localizations": {
+              "zh": {
+                "groupTitle": "ComfyUI 工作流"
+              }
+            }
           },
           "scriptSources": {
             "type": "string",
             "default": "[]",
-            "title": "Custom media scripts"
+            "title": "Custom media scripts",
+            "multiline": true,
+            "advanced": true,
+            "localizations": {
+              "zh": {
+                "title": "自定义媒体脚本"
+              }
+            }
           }
         }
       }
@@ -1142,7 +1832,16 @@
         "required": []
       }
     ],
-    "mediaScriptProvider": "custom-script"
+    "mediaScriptProvider": "custom-script",
+    "panels": [
+      {
+        "schemaVersion": 1,
+        "id": "settings",
+        "label": "Settings",
+        "slot": "settings",
+        "path": "./settings.html"
+      }
+    ]
   },
   "icon": "./icon.svg"
 }

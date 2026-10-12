@@ -1,7 +1,30 @@
 import { readFile } from 'node:fs/promises';
 
+async function readManifest() {
+  return JSON.parse(await readFile(new URL('./kimi.plugin.json', import.meta.url), 'utf8'));
+}
+
+export async function handlePanelRequest(action) {
+  if (action !== 'catalog') return { error: 'unknown action' };
+  const manifest = await readManifest();
+  return {
+    sources: manifest['x-kiki'].mediaSources.map((source) => ({
+      id: source.id,
+      label: source.label,
+      prefix: source.settingsPrefix,
+      providerIds: source.providerIds,
+      required: source.required,
+    })),
+    providers: manifest['x-kiki'].mediaProviders.map((provider) => ({
+      id: provider.id,
+      label: provider.label,
+      kinds: provider.kinds,
+    })),
+  };
+}
+
 export async function register(api) {
-  const manifest = JSON.parse(await readFile(new URL('./kimi.plugin.json', import.meta.url), 'utf8'));
+  const manifest = await readManifest();
   for (const source of manifest['x-kiki'].mediaSources) {
     const { adapters } = await import(`./lib/sources/${source.id}.mjs`);
     for (const id of source.providerIds) {

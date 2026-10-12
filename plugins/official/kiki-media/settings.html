@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Media settings</title>
+<style>
+  /* Kiki paper-and-ink tokens, mirrored from the host's index.css so the panel
+   * reads as the same settings page. The host may pass live token values in the
+   * init presentation (skins, future palette shifts); these are the fallback. */
+  :root {
+    --color-paper: #fbfaf6;
+    --color-panel: #fffdfa;
+    --color-hairline: #e4ddd0;
+    --color-hairline-strong: #cdc3b1;
+    --color-ink: #1b1a17;
+    --color-ink-soft: #4b453e;
+    --color-ink-faint: #665e54;
+    --color-accent: #c8401a;
+    --color-accent-deep: #9c3012;
+    --color-on-accent: #ffffff;
+    --color-selected: #dfe8f0;
+    --color-selected-ink: #1d4d6d;
+    --color-success: #2f6b45;
+    --color-danger: #b0261e;
+    --motion-quick: 160ms;
+    color-scheme: light;
+  }
+  [data-theme='dark'] {
+    --color-paper: #1B2226;
+    --color-panel: #252D31;
+    --color-hairline: #354047;
+    --color-hairline-strong: #596870;
+    --color-ink: #EEEAE2;
+    --color-ink-soft: #C1C5C5;
+    --color-ink-faint: #A2ACAF;
+    --color-accent: #EB946F;
+    --color-accent-deep: #F4B08F;
+    --color-on-accent: #261A14;
+    --color-selected: #24323B;
+    --color-selected-ink: #A3CBDE;
+    --color-success: #9AC6AE;
+    --color-danger: #F1A29A;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--color-paper);
+    color: var(--color-ink);
+    /* The host's sans stack. Instrument Sans is a bundled webfont of the host
+     * document and cannot load inside this opaque sandbox, so the stack
+     * deliberately lands on the same system/CJK faces the host itself falls
+     * back to. */
+    font-family: 'Instrument Sans Variable', 'Instrument Sans', ui-sans-serif, system-ui, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; margin: -1px;
+    padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+  /* The frame scrolls its own document; keep focused fields clear of the dock. */
+  html { scroll-padding-bottom: 72px; }
+  /* 2px side/top gutter keeps the keyboard ring from clipping at the frame edge. */
+  main { min-width: 0; padding: 2px 2px 20px; }
+  main > section + section { margin-top: 20px; }
+  .section-label { margin: 0 0 8px; font-size: 12px; font-weight: 500; color: var(--color-ink-soft); }
+  .field { margin: 0 0 12px; min-width: 0; max-width: 36rem; }
+  .field:last-child { margin-bottom: 0; }
+  .defaults { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: 12px; min-width: 0; }
+  .defaults .field { margin: 0; max-width: none; }
+  label.f-label { display: block; font-size: 13px; font-weight: 500; color: var(--color-ink); margin-bottom: 4px; }
+  input[type='text'], input[type='password'], input[type='url'], select, textarea {
+    width: 100%; max-width: 100%; min-width: 0;
+    height: 32px; padding: 0 12px;
+    font: inherit; font-size: 12px; color: var(--color-ink);
+    background: var(--color-paper);
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    outline: none;
+    transition: border-color var(--motion-quick) ease-out;
+  }
+  input:hover, select:hover, textarea:hover { border-color: var(--color-hairline-strong); }
+  input:focus, select:focus, textarea:focus { border-color: var(--color-accent); }
+  input::placeholder, textarea::placeholder { color: var(--color-ink-faint); }
+  input.mono { font-family: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', monospace; font-feature-settings: 'liga' 0, 'calt' 0; }
+  select {
+    appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23665e54' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 12px;
+    padding-right: 30px;
+  }
+  [data-theme='dark'] select {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23A2ACAF' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  }
+  textarea { min-height: 4.5rem; height: auto; padding: 6px 12px; }
+  .help { margin: 6px 0 0; max-width: 62ch; font-size: 12px; line-height: 1.4; color: var(--color-ink-faint); }
+  /* Secret value + its Clear/Undo action on one row, like the generic form. */
+  .secret-row { display: flex; gap: 8px; align-items: center; min-width: 0; }
+  .secret-row input { flex: 1; min-width: 0; }
+  .secret-row .btn { flex-shrink: 0; }
+  input:disabled, select:disabled, textarea:disabled { opacity: 0.55; cursor: not-allowed; }
+  /* Source tabs: the same quiet bordered chips the generic settings form uses. */
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; margin-bottom: 16px; }
+  .chip {
+    height: 28px; padding: 0 8px;
+    font: inherit; font-size: 12px;
+    color: var(--color-ink-soft);
+    background: transparent;
+    border: 1px solid var(--color-hairline);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: color var(--motion-quick) ease-out, border-color var(--motion-quick) ease-out;
+  }
+  .chip:hover { color: var(--color-ink); border-color: var(--color-hairline-strong); }
+  .chip[aria-selected='true'] { color: var(--color-ink); border-color: var(--color-ink); }
+  /* The Kiki switch: tinted track + solid knob; ON takes the ink-blue
+   * "selected" role. The real checkbox stays focusable and shows its ring on
+   * the track. */
+  .switch {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    min-height: 28px; max-width: 36rem; margin-bottom: 12px;
+    font-size: 13px; color: var(--color-ink);
+    cursor: pointer;
+  }
+  .switch input { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .switch .track {
+    position: relative; flex-shrink: 0;
+    width: 32px; height: 18px; border-radius: 999px;
+    background: var(--color-hairline);
+    box-shadow: 0 0 0 1px var(--color-hairline-strong);
+    transition: background-color var(--motion-quick) ease-out, box-shadow var(--motion-quick) ease-out;
+  }
+  .switch .knob {
+    position: absolute; top: 3px; left: 3px;
+    width: 12px; height: 12px; border-radius: 999px;
+    background: var(--color-ink-faint);
+    transition: transform var(--motion-quick) ease-out, background-color var(--motion-quick) ease-out;
+  }
+  .switch input:checked + .track { background: var(--color-selected); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-selected-ink) 45%, transparent); }
+  .switch input:checked + .track .knob { transform: translateX(14px); background: var(--color-selected-ink); }
+  .switch input:focus-visible + .track { outline: 2px solid var(--color-selected-ink); outline-offset: 2px; }
+  .restore-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 36rem; }
+  .restore-row[hidden] { display: none; }
+  .restore-row p { margin: 0; min-width: 0; flex: 1; font-size: 13px; color: var(--color-ink); }
+  .btn {
+    height: 32px; padding: 0 12px;
+    font: inherit; font-size: 12px;
+    border: 1px solid transparent; border-radius: 6px;
+    cursor: pointer;
+    transition: background-color var(--motion-quick) ease-out, border-color var(--motion-quick) ease-out, color var(--motion-quick) ease-out;
+  }
+  .btn-primary { background: var(--color-accent); color: var(--color-on-accent); font-weight: 600; }
+  .btn-primary:hover:not(:disabled) { background: var(--color-accent-deep); }
+  .btn-primary:disabled { background: var(--color-hairline); color: var(--color-ink-faint); cursor: not-allowed; }
+  .btn-secondary { background: var(--color-paper); border-color: var(--color-hairline); color: var(--color-ink-soft); }
+  .btn-secondary:hover:not(:disabled) { border-color: var(--color-hairline-strong); color: var(--color-ink); }
+  .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+  /* The transaction dock: invisible while clean; when a draft exists it sticks
+   * to the bottom of the frame's own viewport so Save is never below the fold
+   * of a tall source. After a save it carries the transient ✓ Saved, then
+   * disappears. */
+  .dock {
+    position: sticky; bottom: 0;
+    margin-top: 16px; padding: 12px 2px 8px;
+    background: var(--color-paper);
+    border-top: 1px solid var(--color-hairline);
+  }
+  .dock[hidden] { display: none; }
+  .savebar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .savebar[hidden] { display: none; }
+  .status { font-size: 12px; color: var(--color-ink-faint); }
+  .saved-line { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; color: var(--color-success); }
+  .saved-line[hidden] { display: none; }
+  .error { margin: 0 0 8px; font-size: 12px; line-height: 1.4; color: var(--color-danger); }
+  .error[hidden] { display: none; }
+  .loading { margin: 0; font-size: 12px; color: var(--color-ink-faint); }
+  button:focus-visible, .chip:focus-visible { outline: 2px solid var(--color-selected-ink); outline-offset: 2px; }
+  @keyframes kiki-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .anim-enter { animation: kiki-enter 200ms ease-out both; }
+  @media (prefers-reduced-motion: reduce) {
+    .anim-enter { animation: none; }
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1 class="sr-only" id="title">Media settings</h1>
+  <p class="loading" id="loading" role="status"></p>
+  <div id="boot-error" class="restore-row" hidden style="margin-bottom: 16px;">
+    <p id="boot-error-text" class="error" role="alert" style="margin: 0;"></p>
+    <button id="boot-retry" class="btn btn-secondary" type="button"></button>
+  </div>
+  <div id="content" hidden>
+    <section aria-labelledby="defaults-label">
+      <h2 class="section-label" id="defaults-label"></h2>
+      <div id="defaults" class="defaults"></div>
+    </section>
+    <section>
+      <div id="chips" class="chips" role="tablist"></div>
+      <div id="source"></div>
+    </section>
+    <div class="dock" id="dock" hidden>
+      <p id="error" class="error" role="alert" hidden></p>
+      <div class="savebar" id="savebar" hidden>
+        <button id="save" class="btn btn-primary" type="button"></button>
+        <button id="discard" class="btn btn-secondary" type="button"></button>
+        <span id="status" class="status" role="status"></span>
+      </div>
+      <span id="saved" class="saved-line" role="status" hidden>
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 4.8 9 10 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span id="saved-text"></span>
+      </span>
+    </div>
+  </div>
+</main>
+<script>
+const CHANNEL = 'kiki.panel.v1';
+const lifecycle = new Set(['enabled', 'removed', 'cleared']);
+let seq = 1;
+const waiting = new Map();
+let catalog = { sources: [], providers: [] };
+let view = { schema: { schema: { properties: {} } }, values: {}, secretsConfigured: [] };
+let draft = {};
+let secrets = {};
+let sourceId = '';
+let dirty = false;
+let saving = false;
+let booted = false;
+let savedTimer = 0;
+
+const STRINGS = {
+  en: {
+    title: 'Media settings', defaults: 'Default providers', image: 'Image', video: 'Video', speech: 'Speech',
+    sources: 'Media sources', enabled: 'Enabled', restore: 'Restore', loading: 'Loading…', retry: 'Retry',
+    save: 'Save', saving: 'Saving…', discard: 'Discard changes', unsaved: 'Unsaved changes', saved: 'Saved',
+    secretSet: 'Saved in Kiki credentials', secretUnset: 'Not set', secretReplace: 'Type a new value to replace', secretNew: 'Paste a value',
+    secretClear: 'Clear', secretUndo: 'Undo', secretClearPending: 'Will be removed when you save',
+    loadError: 'Could not load settings', saveError: 'Could not save', timeoutError: 'Connection timed out',
+  },
+  zh: {
+    title: '媒体设置', defaults: '默认提供方', image: '图像', video: '视频', speech: '语音',
+    sources: '媒体来源', enabled: '启用', restore: '恢复', loading: '加载中…', retry: '重试',
+    save: '保存', saving: '正在保存…', discard: '放弃更改', unsaved: '有未保存的更改', saved: '已保存',
+    secretSet: '已保存在 Kiki 凭据中', secretUnset: '未设置', secretReplace: '输入新值以替换', secretNew: '粘贴值',
+    secretClear: '清除', secretUndo: '撤销', secretClearPending: '保存后将移除',
+    loadError: '无法加载设置', saveError: '保存失败', timeoutError: '连接超时',
+  },
+};
+let locale = typeof navigator === 'object' && String(navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+function t(key) { return (STRINGS[locale] ?? STRINGS.en)[key] ?? STRINGS.en[key] ?? key; }
+
+/* Host-supplied presentation (all fields optional): the panel keeps working
+ * with none — theme falls back to the OS query, locale to the navigator, and
+ * tokens to the mirrored defaults above. */
+const TOKEN_KEYS = ['--color-paper', '--color-panel', '--color-hairline', '--color-hairline-strong',
+  '--color-ink', '--color-ink-soft', '--color-ink-faint', '--color-accent', '--color-accent-deep',
+  '--color-on-accent', '--color-selected', '--color-selected-ink', '--color-success', '--color-danger'];
+let hostTheme = '';
+function applyPresentation(presentation) {
+  if (!presentation || typeof presentation !== 'object') return;
+  if (typeof presentation.locale === 'string') {
+    locale = presentation.locale.toLowerCase().startsWith('zh') ? 'zh' : 'en';
+    document.documentElement.lang = locale === 'zh' ? 'zh-CN' : 'en';
+  }
+  if (presentation.theme === 'light' || presentation.theme === 'dark') {
+    hostTheme = presentation.theme;
+    document.documentElement.dataset.theme = presentation.theme;
+  }
+  if (presentation.tokens && typeof presentation.tokens === 'object') {
+    for (const key of TOKEN_KEYS) {
+      const value = presentation.tokens[key];
+      /* Colors only: a token that could smuggle a url() or script never applies. */
+      if (typeof value === 'string' && value.length < 120 && /^(#[0-9a-fA-F]{3,9}|rgba?\(|hsla?\(|color-mix\(|[a-zA-Z ]+$)/.test(value.trim())) {
+        document.documentElement.style.setProperty(key, value.trim());
+      }
+    }
+  }
+}
+if (typeof matchMedia === 'function') {
+  const osDark = matchMedia('(prefers-color-scheme: dark)');
+  const followOs = () => { if (!hostTheme) document.documentElement.dataset.theme = osDark.matches ? 'dark' : 'light'; };
+  followOs();
+  if (typeof osDark.addEventListener === 'function') osDark.addEventListener('change', followOs);
+} else {
+  document.documentElement.dataset.theme = 'light';
+}
+document.documentElement.lang = locale === 'zh' ? 'zh-CN' : 'en';
+
+function ask(method, extra, timeoutMs = 10000) {
+  const id = seq++;
+  return new Promise((resolve, reject) => {
+    let timer = 0;
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        if (waiting.has(id)) {
+          waiting.delete(id);
+          reject(new Error(t('timeoutError')));
+        }
+      }, timeoutMs);
+    }
+    waiting.set(id, {
+      resolve: (res) => { clearTimeout(timer); resolve(res); },
+      reject: (err) => { clearTimeout(timer); reject(err); },
+    });
+    parent.postMessage({ channel: CHANNEL, kind: 'request', id, method, ...extra }, '*');
+  });
+}
+function properties() { return view.schema?.schema?.properties ?? {}; }
+/* Manifest text follows the host form's rule: a property's own text for the
+ * reader's language wins field by field, and anything the package did not
+ * translate keeps the string it wrote. The host sends the locale in the init
+ * presentation, so this page and the generic form name a field the same way. */
+function localizedText(property, field) {
+  if (!property) return undefined;
+  const localizations = property.localizations;
+  if (localizations && typeof localizations === 'object') {
+    let text = localizations[locale];
+    if (!text) {
+      const primary = locale.split('-')[0];
+      for (const tag of Object.keys(localizations)) {
+        if (tag.toLowerCase().split('-')[0] === primary) { text = localizations[tag]; break; }
+      }
+    }
+    if (text && typeof text[field] === 'string' && text[field] !== '') return text[field];
+  }
+  return typeof property[field] === 'string' && property[field] !== '' ? property[field] : undefined;
+}
+function mark(next) {
+  const transitioned = dirty !== next;
+  dirty = next;
+  if (next) {
+    clearTimeout(savedTimer);
+    document.getElementById('saved').hidden = true;
+    setError(null);
+  }
+  renderSaveBar();
+  /* The host rate-limits frame requests, so the guard only hears about the
+   * boolean edge — a long value typed in one go must not crowd out the save. */
+  if (transitioned) void ask('plugin.dirty', { dirty: next }).catch(() => undefined);
+}
+function valueOf(key, property) {
+  if (Object.prototype.hasOwnProperty.call(draft, key)) return draft[key];
+  const stored = view.values[key];
+  if (property?.type === 'boolean') return typeof stored === 'boolean' ? stored : property.default === true;
+  return stored === undefined || stored === null ? '' : String(stored);
+}
+function providersFor(kind) {
+  return catalog.providers.filter((provider) => Array.isArray(provider.kinds) && provider.kinds.includes(kind));
+}
+function selectedSource() {
+  return catalog.sources.find((source) => source.id === sourceId) ?? catalog.sources[0];
+}
+
+/* A source's heading is the same manifest group title the host form shows on
+ * its tab, so both settings routes name one group the same way. */
+function sourceLabel(source) {
+  const property = properties()[source.prefix + 'enabled'];
+  return localizedText(property, 'groupTitle') ?? property?.groupTitle ?? source.label;
+}
+
+function switchRow(key, labelText, checked) {
+  const wrap = document.createElement('label');
+  wrap.className = 'switch';
+  const text = document.createElement('span');
+  text.textContent = labelText;
+  const input = document.createElement('input');
+  input.id = key;
+  input.type = 'checkbox';
+  input.checked = checked;
+  input.onchange = () => { draft[key] = input.checked; mark(true); };
+  const track = document.createElement('span');
+  track.className = 'track';
+  const knob = document.createElement('span');
+  knob.className = 'knob';
+  track.append(knob);
+  wrap.append(text, input, track);
+  return wrap;
+}
+
+function renderDefaults() {
+  const root = document.getElementById('defaults');
+  root.replaceChildren();
+  for (const [key, labelKey, kind] of [['defaultImageProvider', 'image', 'image'], ['defaultVideoProvider', 'video', 'video'], ['defaultTtsProvider', 'speech', 'tts']]) {
+    const wrap = document.createElement('div');
+    wrap.className = 'field';
+    const name = document.createElement('label');
+    name.className = 'f-label';
+    name.textContent = t(labelKey);
+    name.htmlFor = key;
+    const select = document.createElement('select');
+    select.id = key;
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = '—';
+    select.append(empty);
+    for (const provider of providersFor(kind)) {
+      const option = document.createElement('option');
+      option.value = provider.id;
+      option.textContent = provider.label || provider.id;
+      select.append(option);
+    }
+    select.value = valueOf(key) || '';
+    if (select.value === '' && valueOf(key)) {
+      const option = document.createElement('option');
+      option.value = valueOf(key);
+      option.textContent = valueOf(key);
+      select.append(option);
+      select.value = valueOf(key);
+    }
+    select.onchange = () => { draft[key] = select.value; mark(true); };
+    wrap.append(name, select);
+    root.append(wrap);
+  }
+}
+
+function render() {
+  document.getElementById('title').textContent = t('title');
+  document.getElementById('defaults-label').textContent = t('defaults');
+  document.getElementById('chips').setAttribute('aria-label', t('sources'));
+  document.getElementById('save').textContent = saving ? t('saving') : t('save');
+  document.getElementById('discard').textContent = t('discard');
+  document.getElementById('saved-text').textContent = t('saved');
+  renderDefaults();
+  const source = selectedSource();
+  sourceId = source?.id ?? '';
+  const chips = document.getElementById('chips');
+  chips.replaceChildren();
+  for (const item of catalog.sources) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.role = 'tab';
+    button.className = 'chip';
+    button.textContent = sourceLabel(item);
+    button.setAttribute('aria-selected', item.id === sourceId ? 'true' : 'false');
+    button.onclick = () => { sourceId = item.id; render(); };
+    chips.append(button);
+  }
+  const body = document.getElementById('source');
+  body.replaceChildren();
+  renderSaveBar();
+  if (!source) { applyBusy(); return; }
+  const removedKey = source.prefix + 'removed';
+  if (valueOf(removedKey, { type: 'boolean' }) === true) {
+    const row = document.createElement('div');
+    row.className = 'restore-row';
+    const name = document.createElement('p');
+    name.textContent = sourceLabel(source);
+    const restore = document.createElement('button');
+    restore.type = 'button';
+    restore.className = 'btn btn-secondary';
+    restore.textContent = t('restore') + ' ' + sourceLabel(source);
+    restore.onclick = () => { draft[removedKey] = false; mark(true); render(); };
+    row.append(name, restore);
+    body.append(row);
+    applyBusy();
+    return;
+  }
+  const enabledKey = source.prefix + 'enabled';
+  body.append(switchRow(enabledKey, t('enabled'), valueOf(enabledKey, properties()[enabledKey]) !== false));
+  for (const [key, property] of Object.entries(properties())) {
+    if (!key.startsWith(source.prefix) || lifecycle.has(key.slice(source.prefix.length)) || property.hidden === true) continue;
+    const field = document.createElement('div');
+    field.className = 'field';
+    const name = document.createElement('label');
+    name.className = 'f-label';
+    name.htmlFor = key;
+    name.textContent = localizedText(property, 'title') ?? key.slice(source.prefix.length);
+    field.append(name);
+    if (property.secret === true) {
+      /* Write-only, same contract as the generic form's SecretField: a stored
+       * value is only ever reported as configured; a draft is the typist's own
+       * value and survives re-renders; Clear stages a null patch, Undo drops it. */
+      const configured = (view.secretsConfigured ?? []).includes(key);
+      const pending = Object.prototype.hasOwnProperty.call(secrets, key) ? secrets[key] : undefined;
+      const clearing = pending === null;
+      const row = document.createElement('div');
+      row.className = 'secret-row';
+      const input = document.createElement('input');
+      input.id = key;
+      input.type = 'password';
+      input.autocomplete = 'off';
+      input.placeholder = clearing ? t('secretClearPending') : configured ? t('secretReplace') : t('secretNew');
+      if (clearing) input.dataset.locked = '1';
+      if (typeof pending === 'string') input.value = pending;
+      input.oninput = () => {
+        if (input.value === '') delete secrets[key]; else secrets[key] = input.value;
+        mark(true);
+      };
+      row.append(input);
+      if (clearing) {
+        const undo = document.createElement('button');
+        undo.type = 'button';
+        undo.className = 'btn btn-secondary';
+        undo.textContent = t('secretUndo');
+        undo.onclick = () => { delete secrets[key]; mark(true); render(); };
+        row.append(undo);
+      } else if (configured) {
+        const clear = document.createElement('button');
+        clear.type = 'button';
+        clear.className = 'btn btn-secondary';
+        clear.dataset.secretClear = key;
+        clear.textContent = t('secretClear');
+        clear.onclick = () => { secrets[key] = null; mark(true); render(); };
+        row.append(clear);
+      }
+      field.append(row);
+      const state = document.createElement('p');
+      state.className = 'help';
+      state.textContent = (configured ? t('secretSet') : t('secretUnset')) + (clearing ? ' · ' + t('secretClearPending') : '');
+      field.append(state);
+    } else if (property.type === 'boolean') {
+      field.replaceChildren();
+      field.append(switchRow(key, localizedText(property, 'title') ?? key.slice(source.prefix.length), valueOf(key, property) === true));
+    } else if (Array.isArray(property.enum) && property.enum.length > 0) {
+      const select = document.createElement('select');
+      select.id = key;
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = '—';
+      select.append(empty);
+      for (const choice of property.enum) {
+        const option = document.createElement('option');
+        option.value = choice;
+        option.textContent = choice;
+        select.append(option);
+      }
+      select.value = valueOf(key, property);
+      select.onchange = () => { draft[key] = select.value; mark(true); };
+      field.append(select);
+    } else if (property.multiline === true) {
+      const input = document.createElement('textarea');
+      input.id = key;
+      input.value = valueOf(key, property);
+      input.oninput = () => { draft[key] = input.value; mark(true); };
+      field.append(input);
+    } else {
+      const input = document.createElement('input');
+      input.id = key;
+      input.type = 'text';
+      if (property.type === 'number') input.className = 'mono';
+      input.value = valueOf(key, property);
+      input.placeholder = property.default === undefined ? '' : String(property.default);
+      input.oninput = () => { draft[key] = input.value; mark(true); };
+      field.append(input);
+    }
+    if (localizedText(property, 'description') !== undefined) {
+      const help = document.createElement('p');
+      help.className = 'help';
+      help.textContent = localizedText(property, 'description');
+      field.append(help);
+    }
+    body.append(field);
+  }
+  applyBusy();
+}
+
+/* A save in flight owns the form: every control locks so the async patch can
+ * never swallow an edit made after it was read. `data-locked` marks the one
+ * control that stays disabled either way — the input of a staged secret clear. */
+function applyBusy() {
+  const controls = document.querySelectorAll('#content input, #content select, #content textarea, #content button');
+  for (const control of controls) control.disabled = saving || control.dataset.locked === '1';
+}
+
+function renderSaveBar() {
+  const shown = dirty || saving;
+  const bar = document.getElementById('savebar');
+  if (shown && bar.hidden) bar.classList.add('anim-enter');
+  if (!shown) bar.classList.remove('anim-enter');
+  bar.hidden = !shown;
+  document.getElementById('save').disabled = !dirty || saving;
+  document.getElementById('discard').disabled = !dirty || saving;
+  document.getElementById('status').textContent = dirty && !saving ? t('unsaved') : '';
+  updateDock();
+}
+
+function updateDock() {
+  const dock = document.getElementById('dock');
+  const visible = !document.getElementById('savebar').hidden
+    || !document.getElementById('saved').hidden
+    || !document.getElementById('error').hidden;
+  if (visible && dock.hidden) dock.classList.add('anim-enter');
+  if (!visible) dock.classList.remove('anim-enter');
+  dock.hidden = !visible;
+}
+
+function showSaved() {
+  const line = document.getElementById('saved');
+  line.hidden = false;
+  line.classList.remove('anim-enter');
+  void line.offsetWidth;
+  line.classList.add('anim-enter');
+  updateDock();
+  clearTimeout(savedTimer);
+  savedTimer = setTimeout(() => { line.hidden = true; updateDock(); }, 2400);
+}
+
+function setError(message) {
+  const node = document.getElementById('error');
+  node.textContent = message ?? '';
+  node.hidden = message === null || message === undefined;
+  updateDock();
+}
+
+function patchOf() {
+  const values = {};
+  const props = properties();
+  for (const [key, next] of Object.entries(draft)) {
+    const property = props[key];
+    const current = view.values[key];
+    if (property?.type === 'boolean' || typeof next === 'boolean') {
+      if (next !== (typeof current === 'boolean' ? current : property?.default === true)) values[key] = next;
+      continue;
+    }
+    const text = String(next).trim();
+    const before = current === undefined || current === null ? '' : String(current);
+    if (text === before) continue;
+    if (text === '') values[key] = null;
+    else if (property?.type === 'number') values[key] = Number(text);
+    else values[key] = text;
+  }
+  for (const [key, text] of Object.entries(secrets)) {
+    if (text === null) values[key] = null;
+    else if (text !== '') values[key] = text;
+  }
+  return values;
+}
+
+async function boot() {
+  setError(null);
+  const bootErrorEl = document.getElementById('boot-error');
+  if (bootErrorEl) bootErrorEl.hidden = true;
+  const loadingEl = document.getElementById('loading');
+  loadingEl.textContent = t('loading');
+  loadingEl.hidden = false;
+  try {
+    const [nextCatalog, nextView] = await Promise.all([
+      ask('plugin.call', { action: 'catalog', args: {} }),
+      ask('plugin.settings.get'),
+    ]);
+    catalog = nextCatalog;
+    view = nextView;
+    draft = {};
+    secrets = {};
+    saving = false;
+    booted = true;
+    dirty = false;
+    loadingEl.hidden = true;
+    document.getElementById('content').hidden = false;
+    void ask('plugin.dirty', { dirty: false }).catch(() => undefined);
+    render();
+  } catch (error) {
+    loadingEl.hidden = true;
+    document.getElementById('content').hidden = true;
+    const msg = error.message || t('loadError');
+    setError(msg);
+    if (bootErrorEl) {
+      bootErrorEl.hidden = false;
+      const text = document.getElementById('boot-error-text');
+      if (text) text.textContent = msg;
+      const retry = document.getElementById('boot-retry');
+      if (retry) {
+        retry.textContent = t('retry');
+        retry.onclick = () => void boot();
+      }
+    }
+  }
+}
+
+document.getElementById('save').onclick = async () => {
+  const values = patchOf();
+  setError(null);
+  if (Object.keys(values).length === 0) { mark(false); return; }
+  saving = true;
+  renderSaveBar();
+  render();
+  try {
+    view = await ask('plugin.settings.patch', { values });
+    draft = {};
+    secrets = {};
+    saving = false;
+    mark(false);
+    render();
+    showSaved();
+  } catch (error) {
+    saving = false;
+    setError(error.message || t('saveError'));
+    render();
+  }
+};
+document.getElementById('discard').onclick = () => { draft = {}; secrets = {}; setError(null); mark(false); render(); };
+window.addEventListener('message', (event) => {
+  const data = event.data;
+  if (!data || data.channel !== CHANNEL) return;
+  if (data.kind === 'init') {
+    applyPresentation(data.presentation);
+    document.getElementById('loading').textContent = t('loading');
+    document.getElementById('loading').hidden = false;
+    if (!booted) void boot();
+    else render();
+    return;
+  }
+  if (data.kind === 'presentation') {
+    applyPresentation(data.presentation);
+    if (booted) render();
+    return;
+  }
+  if (data.kind !== 'response') return;
+  const item = waiting.get(data.id);
+  if (!item) return;
+  waiting.delete(data.id);
+  if (data.ok) item.resolve(data.result); else item.reject(new Error(data.error || 'failed'));
+});
+document.getElementById('loading').textContent = t('loading');
+</script>
+</body>
+</html>
