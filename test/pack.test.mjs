@@ -4,6 +4,8 @@ import { mkdtemp, readFile, writeFile, cp, rm, readdir, mkdir } from 'node:fs/pr
 import { resolve, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { inc } from 'semver';
+import yauzl from 'yauzl';
+import { packageFiles } from '../scripts/package-files.mjs';
 import { retainHistoricalIcons, readArchiveIcon } from '../scripts/historical-icons.mjs';
 import { pack } from '../scripts/pack.mjs';
 import { changedPackages } from '../scripts/changes.mjs';
@@ -86,4 +88,56 @@ test('versioned icons survive a new site build and retired entries without overw
   await writeFile(join(site,path),'different immutable bytes');
   await assert.rejects(retainHistoricalIcons(first.index,site,async()=>archive),/Refusing to overwrite immutable icon/);
  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('ships settings documents in immutable plugin ZIPs without packaging proofs', async () => {
+  const dir = await mkdtemp(resolve('.tmp/settings-pack-test-'));
+  try {
+    const pluginsRoot = join(dir, 'plugins');
+    const root = join(pluginsRoot, 'official/example-settings');
+    await mkdir(join(root, 'test'), { recursive: true });
+    const html = '<!doctype html><title>Example settings</title>\n';
+    const manifest = {
+      name: 'example-settings', version: '0.1.0', license: 'MIT',
+      'x-kiki': { panels: [{ schemaVersion: 1, id: 'settings', slot: 'settings', path: './settings.html' }] },
+    };
+    await writeFile(join(root, 'kimi.plugin.json'), JSON.stringify(manifest));
+    await writeFile(join(root, 'LICENSE'), 'MIT\n');
+    await writeFile(join(root, 'settings.html'), html);
+    await writeFile(join(root, 'test/proof.mjs'), 'throw new Error("not a package asset");\n');
+    await writeFile(join(pluginsRoot, 'marketplace.json'), JSON.stringify({ version: '1', plugins: [{
+      id: manifest.name, tier: 'official', version: manifest.version, author: 'Example', license: 'MIT',
+      source: './official/example-settings', displayName: 'Example settings',
+    }] }));
+    const files = await packageFiles(root);
+    assert.ok(files.includes('settings.html'));
+    assert.ok(!files.some(file => file.startsWith('test/')));
+    const outDir = join(dir, 'first');
+    const first = await pack({ pluginsRoot, outDir, tag: 'settings-fixture' });
+    const bytes = await readFile(join(outDir, 'assets', first.newPackages[0].filename));
+    const entries = await new Promise((resolveEntries, reject) => {
+      yauzl.fromBuffer(bytes, { lazyEntries: true }, (error, zip) => {
+        if (error) { reject(error); return; }
+        const found = new Map();
+        zip.on('error', reject);
+        zip.on('end', () => resolveEntries(found));
+        zip.on('entry', entry => {
+          zip.openReadStream(entry, (error, stream) => {
+            if (error) { reject(error); zip.close(); return; }
+            const chunks = [];
+            stream.on('error', reject);
+            stream.on('data', chunk => chunks.push(chunk));
+            stream.on('end', () => { found.set(entry.fileName, Buffer.concat(chunks)); zip.readEntry(); });
+          });
+        });
+        zip.readEntry();
+      });
+    });
+    assert.deepEqual(entries.get('example-settings/settings.html'), Buffer.from(html));
+    assert.ok(![...entries.keys()].some(name => name.includes('/test/')));
+    await writeFile(join(root, 'settings.html'), html + '<p>Changed setting</p>\n');
+    await assert.rejects(pack({ pluginsRoot, outDir: join(dir, 'second'), tag: 'settings-fixture-2', previous: first.index }), /Immutable example-settings@0.1.0 changed/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

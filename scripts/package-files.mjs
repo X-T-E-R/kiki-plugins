@@ -2,7 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 const directories = new Set(['lib', 'skills', 'vendor']);
-const topFile = /^(kimi\.plugin\.json|entry\.mjs|adapters\.mjs|runtime\.mjs|panel\.html|icon\.(svg|png|webp|jpg|jpeg)|README(?:\.[a-zA-Z-]+)?\.md|LICENSE(?:\.[a-zA-Z0-9.-]+)?|NOTICE|THIRD_PARTY_NOTICES\.md)$/;
+const topFile = /^(kimi\.plugin\.json|entry\.mjs|adapters\.mjs|runtime\.mjs|panel\.html|settings\.html|icon\.(svg|png|webp|jpg|jpeg)|README(?:\.[a-zA-Z-]+)?\.md|LICENSE(?:\.[a-zA-Z0-9.-]+)?|NOTICE|THIRD_PARTY_NOTICES\.md)$/;
 export async function packageFiles(root) {
   const out = [];
   async function walk(directory, prefix = '') {
