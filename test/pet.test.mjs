@@ -4,6 +4,8 @@ import {mkdtemp,readFile,writeFile,mkdir,rm} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {createHash} from 'node:crypto';
+import childProcess from 'node:child_process';
+import {syncBuiltinESMExports} from 'node:module';
 import yazl from 'yazl';
 import {normalizeAtlas} from '../plugins/official/kiki-pet/lib/atlas.mjs';
 import {readPetZip} from '../plugins/official/kiki-pet/lib/zip.mjs';
@@ -38,14 +40,23 @@ test('public HTTPS boundaries reject private IPv4/IPv6, credentials and non-HTTP
  for(const value of ['10.0.0.1','172.16.1.1','192.168.1.2','100.64.1.2','169.254.1.2','::ffff:127.0.0.1'])assert.equal(publicAddress(value),false);
  assert.equal(publicAddress('8.8.8.8'),true);
 });
-test('native full decoder rejects magic-only/truncated and oversized input; local import retains rights',async()=>{
- const executable=runtimeExecutable(root);assert.deepEqual(await validateImage(image,executable),{width:1536,height:1872});
- await assert.rejects(validateImage(Buffer.from('RIFF0000WEBPVP8 '+String.fromCharCode(0).repeat(8)),executable),/Invalid image/);
- await assert.rejects(validateImage(image.subarray(0,500),executable));
+test('bundled native decoder follows the Windows x64-only distribution contract',async()=>{
+ const executable=runtimeExecutable(root);
  await assert.rejects(validateImage(Buffer.alloc(11*1024*1024+1),executable),/11 MiB/);
  assert.ok(Buffer.alloc(11*1024*1024).toString('base64').length+65536<16*1024*1024-1024);
+ if(process.platform==='win32'&&process.arch==='x64'){
+  assert.deepEqual(await validateImage(image,executable),{width:1536,height:1872});
+  await assert.rejects(validateImage(Buffer.from('RIFF0000WEBPVP8 '+String.fromCharCode(0).repeat(8)),executable),/Invalid image/);
+  await assert.rejects(validateImage(image.subarray(0,500),executable));
+ }else{
+  // Linux/macOS binaries are not shipped (plugin README, Compatibility).
+  await assert.rejects(validateImage(image,executable),{code:'ENOENT',path:executable});
+ }
+});
+test('local import retains rights and rejects escaping spritesheets with a fixture decoder',async()=>{
+ const decoder=async bytes=>{assert.deepEqual(bytes,image);return {width:1536,height:1872};};
  const temp=await mkdtemp(path.join(tmpdir(),'kiki-pet-test-'));try{
-  const importer=new PetImporter({root,dataDir:temp});const pet=await importer.import({source:path.join(root,'lib/assets/momo')});assert.equal(pet.provenance.license,'CC0-1.0');assert.equal(pet.atlas.rows,9);assert.equal((await importer.list()).length,1);
+  const importer=new PetImporter({root,dataDir:temp,decoder});const pet=await importer.import({source:path.join(root,'lib/assets/momo')});assert.equal(pet.provenance.license,'CC0-1.0');assert.equal(pet.atlas.rows,9);assert.equal((await importer.list()).length,1);
   const bad=path.join(temp,'bad');await mkdir(bad);await writeFile(path.join(bad,'pet.json'),JSON.stringify({...manifest,spritesheetPath:'../image.webp'}));await assert.rejects(importer.import({source:bad}),/stay inside/);
   assert.equal((await importer.list()).length,1);
  }finally{await rm(temp,{recursive:true,force:true});}
@@ -86,8 +97,23 @@ test('owned runtime supervisor detects exit/hang without unbounded restart and s
 });
 test('manifest tool declarations equal registered definitions',async()=>{const m=JSON.parse(await readFile(path.join(root,'kimi.plugin.json'),'utf8'));assert.deepEqual(m['x-kiki'].tools,tools);});
 
-test('local tool resolves workspace-relative packages and retains manifest license from ZIP',async()=>{
+test('local tool resolves workspace-relative ZIP and retains manifest license with a fixture decoder',async t=>{
+ const spawn=childProcess.spawn;let decoderCalls=0;
+ // Exercise real entry/service/importer paths; only the native decoder is a protocol fixture.
+ t.mock.method(childProcess,'spawn',(executable,args,options)=>{
+  assert.equal(executable,runtimeExecutable(root));assert.deepEqual(args,['--validate-image']);decoderCalls++;
+  return spawn(process.execPath,['--input-type=commonjs','-e',"const assert=require('node:assert/strict'),fs=require('node:fs');const chunks=[];process.stdin.on('data',b=>chunks.push(b));process.stdin.on('end',()=>{assert.deepEqual(Buffer.concat(chunks),fs.readFileSync(process.argv[1]));console.log(JSON.stringify({width:1536,height:1872}));});",path.join(root,'lib/assets/momo/spritesheet.webp')],options);
+ });
+ syncBuiltinESMExports();
+ t.after(()=>{t.mock.restoreAll();syncBuiltinESMExports();});
  const temp=await mkdtemp(path.join(tmpdir(),'kiki-pet-tool-')),lifetime=new AbortController(),toolAbort=new AbortController();const entry=await import('../plugins/official/kiki-pet/entry.mjs');const registered=new Map();entry.register({registerTool(definition,execute){registered.set(definition.name,execute);}});
- try{await writeFile(path.join(temp,'petpack.zip'),await zip([['pet.json',JSON.stringify(manifest)],['spritesheet.webp',image]]));await entry.activate({dataDir:path.join(temp,'data'),settings:{autoStart:false},signal:lifetime.signal});const result=await registered.get('pet_import_local')({source:'petpack.zip'},{workspaceRoot:temp,approvedPaths:[temp],signal:toolAbort.signal});assert.equal(result.isError,undefined);assert.match(result.output,/License: CC0-1.0/);const state=await entry.handlePanelRequest('state');assert.match(state.activePet.provenance.sha256,/^[a-f0-9]{64}$/);}
+ try{
+  await writeFile(path.join(temp,'petpack.zip'),await zip([['pet.json',JSON.stringify(manifest)],['spritesheet.webp',image]]));
+  await entry.activate({dataDir:path.join(temp,'data'),settings:{autoStart:false},signal:lifetime.signal});
+  const execute=registered.get('pet_import_local'),context={workspaceRoot:temp,approvedPaths:[temp],signal:toolAbort.signal};
+  const result=await execute({source:'petpack.zip'},context);assert.equal(result.isError,undefined,result.output);assert.match(result.output,/License: CC0-1.0/);assert.equal(decoderCalls,1);
+  const state=await entry.handlePanelRequest('state');assert.match(state.activePet.provenance.sha256,/^[a-f0-9]{64}$/);
+  const missing=await execute({source:'missing.zip'},context);assert.equal(missing.isError,true);assert.match(missing.output,/ENOENT/);assert.equal(decoderCalls,1);assert.equal((await entry.handlePanelRequest('state')).activePet.id,state.activePet.id);
+ }
  finally{await entry.deactivate();await rm(temp,{recursive:true,force:true});}
 });

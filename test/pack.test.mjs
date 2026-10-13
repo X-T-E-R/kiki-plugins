@@ -17,7 +17,14 @@ test('deterministic ZIPs, complete digest/icon contract, metadata reuse and immu
  try{
   await cp('plugins',join(dir,'plugins'),{recursive:true});
   const opts={pluginsRoot:join(dir,'plugins'),outDir:join(dir,'first'),tag:'batch-1',revision:'a'.repeat(40)};
-  const first=await pack(opts);assert.equal(first.newPackages.length,9);assert.equal(first.index.plugins.length,14);assert.deepEqual(first.index.plugins.filter(p=>p.id.startsWith('kiki-media')).map(p=>p.id),['kiki-media']);assert.ok(first.newPackages.some(p=>p.id==='kiki-cloudflare'));assert.deepEqual(['kiki-pet','kiki-sites','kiki-work'].filter(id=>first.newPackages.some(p=>p.id===id)),['kiki-pet','kiki-sites','kiki-work']);
+  const catalog=JSON.parse(await readFile(join(opts.pluginsRoot,'marketplace.json'),'utf8'));
+  const packagedIds=['kiki-cloudflare','kiki-office','kiki-writing','kiki-extract','kiki-notion','kiki-media','kiki-task-board','kiki-work','kiki-pet','kiki-sites'];
+  const external=catalog.plugins.filter(p=>!p.source.startsWith('./official/'));
+  assert.deepEqual(catalog.plugins.filter(p=>p.source.startsWith('./official/')).map(p=>p.id),packagedIds);
+  assert.deepEqual(external.map(p=>p.id),['kimi-datasource','kimi-webbridge','superpowers','vercel-plugin','modern-web-guidance']);
+  const first=await pack(opts);assert.deepEqual(first.newPackages.map(p=>p.id),packagedIds);assert.deepEqual(first.index.plugins.map(p=>p.id),catalog.plugins.map(p=>p.id));assert.equal(first.index.plugins.length,15);assert.deepEqual(first.index.plugins.filter(p=>p.id.startsWith('kiki-media')).map(p=>p.id),['kiki-media']);
+  for(const p of external){const entry=first.index.plugins.find(x=>x.id===p.id);for(const field of ['version','source','sha256','license','compatibility'])assert.deepEqual(entry[field],p[field]);}
+  assert.deepEqual((await readdir(join(opts.outDir,'assets'))).sort(),['marketplace.json','SHA256SUMS',...first.newPackages.map(p=>p.filename)].sort());
   const second=await pack({...opts,outDir:join(dir,'second')});
   for(const p of first.newPackages){assert.equal(p.sha256,second.newPackages.find(x=>x.id===p.id).sha256);assert.equal(sha(await readFile(join(opts.outDir,'assets',p.filename))),p.sha256);const entry=first.index.plugins.find(x=>x.id===p.id);const manifest=JSON.parse(await readFile(join(opts.pluginsRoot,'official',p.id,'kimi.plugin.json')));assert.equal(entry.engines?.kiki,manifest['x-kiki']?.engines?.kiki);assert.equal(entry.version,manifest.version);if(manifest.icon)assert.ok(entry.icon.endsWith(`/icon-${manifest.version}.svg`));else assert.equal(entry.icon,undefined);}
   const lineEndingFile=join(opts.pluginsRoot,'official/kiki-writing/panel.html');
@@ -25,7 +32,7 @@ test('deterministic ZIPs, complete digest/icon contract, metadata reuse and immu
   const oldTz=process.env.TZ;process.env.TZ='Pacific/Honolulu';
   let alternate;try{alternate=await pack({...opts,outDir:join(dir,'alternate-platform')});}finally{if(oldTz===undefined)delete process.env.TZ;else process.env.TZ=oldTz;}
   for(const p of first.newPackages)assert.equal(alternate.newPackages.find(x=>x.id===p.id).sha256,p.sha256);
-  const catalogPath=join(opts.pluginsRoot,'marketplace.json'),catalog=JSON.parse(await readFile(catalogPath));catalog.plugins[0].description='Changed description only';catalog.plugins[0].localizations={zh:{description:'本地办公文档'},'example-locale':{keywords:['fixture']}};await writeFile(catalogPath,JSON.stringify(catalog));
+  const catalogPath=join(opts.pluginsRoot,'marketplace.json');catalog.plugins[0].description='Changed description only';catalog.plugins[0].localizations={zh:{description:'本地办公文档'},'example-locale':{keywords:['fixture']}};await writeFile(catalogPath,JSON.stringify(catalog));
   const reused=await pack({...opts,outDir:join(dir,'reuse'),tag:'batch-2',previous:first.index});assert.equal(reused.newPackages.length,0);for(const p of first.index.plugins)assert.equal(reused.index.plugins.find(x=>x.id===p.id).source,p.source);
   assert.deepEqual(reused.index.plugins[0].localizations,catalog.plugins[0].localizations);
   const panel=join(opts.pluginsRoot,'official/kiki-writing/panel.html');await writeFile(panel,(await readFile(panel,'utf8'))+'\n');
