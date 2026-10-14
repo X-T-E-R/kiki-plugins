@@ -1,0 +1,32 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { configuration, defaultPresets } from '../plugins/official/kiki-output-layer/lib/configuration.mjs';
+import { register, handlePanelRequest } from '../plugins/official/kiki-output-layer/entry.mjs';
+import { packageFiles } from '../scripts/package-files.mjs';
+import { fileURLToPath } from 'node:url';
+
+test('output layer package contains no model tools and provides editable defaults through its panel backend', async () => {
+  const root = fileURLToPath(new URL('../plugins/official/kiki-output-layer/', import.meta.url));
+  const manifest = JSON.parse(await readFile(new URL('../plugins/official/kiki-output-layer/kimi.plugin.json', import.meta.url), 'utf8'));
+  const catalog = JSON.parse(await readFile(new URL('../plugins/marketplace.json', import.meta.url), 'utf8'));
+  assert.equal(manifest.version, '0.1.0');
+  assert.equal(catalog.plugins.find(item => item.id === manifest.name).version, manifest.version);
+  assert.equal(manifest['x-kiki'].tools, undefined);
+  assert.equal(manifest['x-kiki'].commands, undefined);
+  assert.equal(manifest['x-kiki'].systemPrompt, undefined);
+  assert.equal(manifest['x-kiki'].permissions.secrets, undefined);
+  register({ registerTool() { assert.fail('display layer must not register a model tool'); } });
+  assert.deepEqual(handlePanelRequest('configuration', {}, { settings: {} }), configuration());
+  assert.deepEqual(configuration().settings, { groupChars: 600, preloadBefore: 1, preloadAfter: 1, historyTokens: 16384 });
+  assert.deepEqual(configuration().presets.map(preset => preset.id), ['translate', 'plain', 'custom']);
+  const edited = [{ ...defaultPresets[0], instruction: 'Translate into Japanese', connectionId: 'existing-connection', customModelId: 'remote/model' }];
+  assert.deepEqual(configuration({ presets: JSON.stringify(edited), historyTokens: 0, groupChars: 800 }).presets, edited);
+  assert.equal(configuration({ historyTokens: 0 }).settings.historyTokens, 0);
+  assert.throws(() => configuration({ presets: 'bad json' }));
+  assert.throws(() => configuration({ presets: JSON.stringify([edited[0], edited[0]]) }), /不能重复/);
+  const files = await packageFiles(root);
+  assert.ok(files.includes('entry.mjs'));
+  assert.ok(files.includes('lib/configuration.mjs'));
+  assert.ok(files.includes('settings.html'));
+});

@@ -1,0 +1,26 @@
+{
+  "name": "kiki-output-layer",
+  "version": "0.1.0",
+  "description": "Stream translations and plain-language rewrites while keeping the original conversation unchanged.",
+  "license": "MIT",
+  "icon": "./icon.svg",
+  "x-kiki": {
+    "engines": { "kiki": "^0.4.1" },
+    "entry": "./entry.mjs",
+    "permissions": { "uiPanel": true },
+    "settings": {
+      "schemaVersion": 1,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "presets": { "type": "string", "title": "输出预设", "description": "预设 JSON；包含提示词及宿主模型或已有连接上的自定义模型 ID。" },
+          "groupChars": { "type": "number", "title": "每组字符数", "default": 600 },
+          "preloadBefore": { "type": "number", "title": "向前预加载组数", "default": 1 },
+          "preloadAfter": { "type": "number", "title": "向后预加载组数", "default": 1 },
+          "historyTokens": { "type": "number", "title": "历史 token 预算（0 关闭）", "default": 16384 }
+        }
+      }
+    },
+    "panels": [{ "schemaVersion": 1, "id": "settings", "label": "输出层", "slot": "settings", "path": "./settings.html" }]
+  }
+}
