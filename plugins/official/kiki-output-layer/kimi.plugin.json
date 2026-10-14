@@ -1,6 +1,6 @@
 {
   "name": "kiki-output-layer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Stream translations and plain-language rewrites while keeping the original conversation unchanged.",
   "license": "MIT",
   "icon": "./icon.svg",

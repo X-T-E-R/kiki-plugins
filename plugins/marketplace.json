@@ -5,7 +5,7 @@
       "id": "kiki-output-layer",
       "tier": "official",
       "displayName": "Kiki Output Layer",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Stream translations and plain-language rewrites without changing the conversation.",
       "keywords": ["translation", "rewrite", "reading"],
       "author": "Kiki",
