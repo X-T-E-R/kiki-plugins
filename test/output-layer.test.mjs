@@ -5,6 +5,7 @@ import { configuration, defaultPresets } from '../plugins/official/kiki-output-l
 import { register, handlePanelRequest } from '../plugins/official/kiki-output-layer/entry.mjs';
 import { packageFiles } from '../scripts/package-files.mjs';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 
 test('output layer package contains no model tools and provides editable defaults through its panel backend', async () => {
   const root = fileURLToPath(new URL('../plugins/official/kiki-output-layer/', import.meta.url));
@@ -29,4 +30,40 @@ test('output layer package contains no model tools and provides editable default
   assert.ok(files.includes('entry.mjs'));
   assert.ok(files.includes('lib/configuration.mjs'));
   assert.ok(files.includes('settings.html'));
+});
+
+
+test('settings panel correlates numeric bridge request and response IDs when loading and saving', async () => {
+  const html = await readFile(new URL('../plugins/official/kiki-output-layer/settings.html', import.meta.url), 'utf8');
+  const script = html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(script);
+  const elements = new Map();
+  const element = () => ({ value: '', disabled: false, textContent: '', className: '',
+    replaceChildren() {}, append() {}, addEventListener() {}, checkValidity: () => true, focus() {} });
+  const get = id => { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); };
+  const requests = [];
+  let receive;
+  const parent = { postMessage(request) {
+    assert.ok(Number.isSafeInteger(request.id));
+    assert.equal(request.channel, 'kiki.panel.v1');
+    requests.push(request);
+    let result;
+    if (request.method === 'plugin.call') result = structuredClone(configuration());
+    else if (request.method === 'plugin.models.list') result = { models: [], connections: [] };
+    else if (request.method === 'plugin.settings.patch') result = { values: request.values, secretsConfigured: [] };
+    else assert.fail(`Unexpected bridge method ${request.method}`);
+    queueMicrotask(() => receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: true, result } }));
+  } };
+  runInNewContext(script, { document: { getElementById: get, createElement: element, querySelector: () => element() },
+    window: { addEventListener: (type, listener) => { assert.equal(type, 'message'); receive = listener; } },
+    parent, setTimeout, clearTimeout, crypto: { randomUUID: () => 'example-preset' } });
+  receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'init' } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(get('label').value, configuration().presets[0].label);
+  assert.equal(get('status').textContent, '');
+  get('instruction').value = 'Translate into Japanese';
+  await get('save').onclick();
+  assert.equal(get('status').textContent, '已保存');
+  assert.deepEqual(requests.map(request => request.id), [1, 2, 3]);
+  assert.equal(JSON.parse(requests.at(-1).values.presets)[0].instruction, 'Translate into Japanese');
 });
