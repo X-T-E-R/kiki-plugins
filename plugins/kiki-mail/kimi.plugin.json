@@ -1,6 +1,6 @@
 {
   "name": "kiki-mail",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Read and send mail through the IMAP and SMTP accounts you configure. Optional new-mail notices need a host IM bridge.",
   "license": "MIT",
   "icon": "./icon.svg",
@@ -84,7 +84,8 @@
                 "allowInsecureAuth": { "type": "boolean" },
                 "watch": { "type": "boolean" },
                 "imEnabled": { "type": "boolean" },
-                "imSessionId": { "type": "string" },
+                "imChannelId": { "type": "string" },
+                "imRouteRevision": { "type": "string" },
                 "imPreview": { "type": "boolean" },
                 "oauthClientId": { "type": "string" },
                 "oauthTokenUrl": { "type": "string" },

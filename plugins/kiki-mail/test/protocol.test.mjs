@@ -63,6 +63,7 @@ async function session(spec = {}) {
     onActivity() {},
     focusSession() {},
   };
+  if (spec.im) context.im = spec.im;
   await service.activate(context);
   return {
     fx, dir, settings, service, context,
@@ -358,7 +359,7 @@ test('bad auth, disconnect, cancel, redact, and uncertain send do not resend or 
   }
 });
 
-test('watch records only mail that arrives after startup, and IM stays unclaimed without a host sender', { timeout: 20000 }, async () => {
+test('watch records only mail that arrives after startup, and an old host leaves IM unsupported', { timeout: 20000 }, async () => {
   const existing = message({
     id: 'old@example.test', from: 'Bea <bea@example.test>', to: 'Ada <ada@example.test>',
     subject: 'Already there', text: `body ${PASS}`,
@@ -369,7 +370,7 @@ test('watch records only mail that arrives after startup, and IM stays unclaimed
   try {
     await active.service.panel('save', {
       watchEnabled: true,
-      account: loopback(active.fx, { watch: true, imEnabled: true, imSessionId: 'session-1' }),
+      account: loopback(active.fx, { watch: true, imEnabled: true, imChannelId: 'telegram:desk', imRouteRevision: 'ab'.repeat(32) }),
       credential: { password: PASS },
     }, active.context);
     await active.service.deactivate();
@@ -385,11 +386,12 @@ test('watch records only mail that arrives after startup, and IM stays unclaimed
     const events = await readEvents(active.dir, 'ada');
     assert.equal(events.filter((event) => event.kind === 'arrived').length, 1);
     assert.equal(events[0].subject, 'Just arrived');
-    assert.equal(events[0].im.reason, 'host-im-unavailable');
+    assert.equal(events[0].im.diagnosticCode, 'im_unsupported');
+    assert.equal(events[0].im.sent, false);
     assert.equal(JSON.stringify(events).includes(PASS), false);
     const state = await tool(active, 'MailAccount', { action: 'list' });
-    assert.equal(state.body.imBridge.available, false);
-    assert.equal(state.body.imBridge.reason, 'host-im-unavailable');
+    assert.equal(state.body.imBridge.supported, false);
+    assert.equal(state.body.imBridge.reason, 'unsupported');
     await active.service.deactivate();
     await waitFor(() => active.fx.state.imapSockets === 0, 'watch sockets closed');
   } finally {
@@ -397,14 +399,21 @@ test('watch records only mail that arrives after startup, and IM stays unclaimed
   }
 
   const calls = [];
+  const revision = 'cd'.repeat(32);
   const bridged = await session({
-    deps: { imSend: async (input) => { calls.push(input); return { delivered: true, id: 'local-1' }; } },
+    im: {
+      async capabilities() { return { outbound: true, inbound: false }; },
+      async listRoutes() { return [{ channelId: 'telegram:desk', providerId: 'telegram', label: 'Desk', routeRevision: revision }]; },
+      async send(request) { calls.push(request); return { status: 'accepted', retryable: false }; },
+    },
     users: [{ user: 'ada@example.test', password: PASS, mailboxes: { INBOX: box([]) } }],
   });
   try {
     await bridged.service.panel('save', {
       watchEnabled: true,
-      account: loopback(bridged.fx, { watch: true, imEnabled: true, imSessionId: 'session-9' }),
+      account: loopback(bridged.fx, {
+        watch: true, imEnabled: true, imChannelId: 'telegram:desk', imRouteRevision: revision,
+      }),
       credential: { password: PASS },
     }, bridged.context);
     await bridged.service.deactivate();
@@ -415,15 +424,16 @@ test('watch records only mail that arrives after startup, and IM stays unclaimed
       subject: 'Ping', text: `hidden ${PASS}`,
     }));
     await waitFor(() => calls.length === 1, 'im send');
-    assert.equal(calls[0].sessionId, 'session-9');
+    assert.equal(calls[0].channelId, 'telegram:desk');
+    assert.equal(calls[0].routeRevision, revision);
+    assert.equal(calls[0].accountRef, 'ada');
+    assert.equal(calls[0].sessionId, undefined);
     assert.equal(calls[0].text.includes('Ping'), true);
     assert.equal(calls[0].text.includes(PASS), false);
-    assert.equal(calls[0].idempotencyKey.includes('ada'), true);
+    assert.equal(calls[0].idempotencyKey.includes(calls[0].routeRevision), false);
     const events = await readEvents(bridged.dir, 'ada');
-    assert.equal(events[0].im.delivered, true);
-    const state = await tool(bridged, 'MailAccount', { action: 'list' });
-    assert.equal(state.body.imBridge.available, true);
-    assert.equal(state.body.imBridge.consumed, false);
+    assert.equal(events[0].im.status, 'accepted');
+    assert.equal(events[0].im.attempts, 1);
   } finally {
     await bridged.stop();
   }

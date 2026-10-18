@@ -66,7 +66,8 @@ export function normalizeAccount(input, { allowSecrets = false } = {}) {
     allowInsecureAuth: input.allowInsecureAuth === true || preset.allowInsecureAuth === true,
     watch: input.watch === true,
     imEnabled: input.imEnabled === true,
-    imSessionId: optionalText(input.imSessionId, 'imSessionId', 128),
+    imChannelId: optionalText(input.imChannelId, 'imChannelId', 120),
+    imRouteRevision: optionalText(input.imRouteRevision, 'imRouteRevision', 64),
     imPreview: input.imPreview === true,
     oauthClientId: optionalText(input.oauthClientId, 'oauthClientId', 256),
     oauthTokenUrl: optionalText(input.oauthTokenUrl, 'oauthTokenUrl', 500) || (input.auth === 'oauth2' ? preset.oauthTokenUrl || '' : ''),
@@ -75,6 +76,8 @@ export function normalizeAccount(input, { allowSecrets = false } = {}) {
     timeoutMs: timeoutValue(input.timeoutMs),
   };
   if (!ID_RE.test(account.id)) throw coded('account_invalid', 'Account id must start with a letter or digit and use only letters, digits, _ or -.');
+  if (account.imChannelId && !/^[A-Za-z0-9_.:-]{1,120}$/.test(account.imChannelId)) throw coded('account_invalid', 'IM channel id must be a listed route id.');
+  if (account.imRouteRevision && !/^[a-f0-9]{64}$/.test(account.imRouteRevision)) throw coded('account_invalid', 'IM route revision must be the 64-character value from the route list.');
   for (const host of [account.imapHost, account.smtpHost]) {
     if (!HOST_RE.test(host) && host !== '::1') throw coded('account_invalid', `Host is not a DNS name or IP address: ${host || '(empty)'}`);
   }

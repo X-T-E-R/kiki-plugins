@@ -10,7 +10,7 @@ This directory already contains the bundled mail runtime in `vendor/`. From a Ki
 /plugins install --trust <path-to-kiki-mail>
 ```
 
-Enable **kiki-mail** and open the **Mail** panel. An offline zip of the same files is `kiki-mail-0.1.0.zip`, produced by `node plugins/kiki-mail/scripts/pack.mjs` from this repository. Installing it does not need another npm install and does not change the public plugin catalog.
+Enable **kiki-mail** and open the **Mail** panel. An offline zip of the same files is `kiki-mail-0.1.1.zip`, produced by `node plugins/kiki-mail/scripts/pack.mjs` from this repository. Installing it does not need another npm install and does not change the public plugin catalog.
 
 Rebuilding that bundle from the lockfile is separate from installing:
 
@@ -54,7 +54,7 @@ A message identity is the account, folder, UIDVALIDITY, and UID. After UIDVALIDI
 
 Watch is off until you enable both **Watch while Kiki is open** and **Watch this inbox**. New mail is recorded while the plugin is active. Closing or cancelling stops the connection. Nothing is forwarded or answered automatically.
 
-**Ask host IM on new mail** needs a host bridge that this Kiki build does not provide. The panel says when that bridge is absent. A preview is included only if you check **Include a short preview**.
+**Forward new mail to a notification channel** is off until you check it and choose a channel from the list. The list comes from Kiki's notification settings. This plugin does not ask for an IM session id and does not store that channel's credentials. A Kiki build without the bridge shows IM as unsupported, and mail still works. If outbound is not up yet, open the panel again after Kiki finishes starting. A preview is included only if you check **Include a short preview**. An unclear send is not forwarded again under a new id. If the channel's route changes, pick the channel again; the plugin does not switch targets by itself.
 
 You can also ask Kiki through `/skill:kiki-mail`. The tools are `plugin__kiki_mail__MailAccount`, `plugin__kiki_mail__Mailbox`, and `plugin__kiki_mail__MailSend`.
 

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { coded, loadState, mergeCredential, normalizeAccount, publicAccount } from './accounts.mjs';
 import { idempotencyKey, messageIdentity, normalizeId } from './identity.mjs';
 import { listMailboxes, readSource, searchPage, withImap } from './imap.mjs';
-import { notifyIm, resolveImSender, summaryText } from './im.mjs';
+import { bridgeFrom, forwardMailDigest, idleBridgeView, inspectIm, summaryText } from './im.mjs';
 import { resolveAuth } from './oauth.mjs';
 import { contentBytes, parseMessage } from './parse.mjs';
 import { allowedAttachment, safeSegment, writeInside } from './paths.mjs';
@@ -34,10 +34,10 @@ class MailService {
     await this.deactivate();
     this.context = context;
     this.closed = false;
-    this.imSender = resolveImSender(context, this.deps.imSend);
+    this.im = bridgeFrom(context);
     context.signal?.addEventListener('abort', () => { void this.deactivate(); }, { once: true });
     await this.startWatchers();
-    return this.publicState(loadState(context.settings));
+    return this.publicState(loadState(context.settings), { probe: false });
   }
 
   async deactivate() {
@@ -60,7 +60,8 @@ class MailService {
   async panel(action, args, context) {
     const secrets = this.secrets(context);
     try {
-      const result = action === 'state' ? this.publicState(this.stateOf(context))
+      const result = action === 'state' ? await this.publicState(this.stateOf(context), { list: true })
+        : action === 'routes' ? await this.routeState(context)
         : action === 'presets' ? { ok: true, presets: publicPresets() }
         : await this.dispatch(this.panelTool(action), { ...(args ?? {}), action: this.panelAction(action) }, context ?? {}, true);
       return JSON.parse(redactJson(result, secrets));
@@ -98,20 +99,17 @@ class MailService {
     try { return secretValues(this.stateOf(context).credentials); } catch { return []; }
   }
 
-  publicState(state) {
+  async publicState(state, options = {}) {
     return {
       ok: true,
       watchEnabled: state.watchEnabled,
-      imBridge: this.bridgeState(),
+      imBridge: options.probe === false ? idleBridgeView(this.im) : await inspectIm(this.im ?? bridgeFrom(this.context), this.context?.signal, { list: options.list === true }),
       accounts: state.accounts.map((account) => publicAccount(account, state.credentials)),
     };
   }
 
-  bridgeState() {
-    const available = typeof (this.imSender ?? resolveImSender(this.context, this.deps.imSend)) === 'function';
-    return available
-      ? { available: true, consumed: false }
-      : { available: false, reason: 'host-im-unavailable' };
+  routeState() {
+    return inspectIm(this.im ?? bridgeFrom(this.context), this.context?.signal, { list: true }).then((view) => ({ ok: true, ...view }));
   }
 
   async accountAction(args, context, allowSecrets) {
@@ -422,7 +420,7 @@ class MailService {
         client.on('exists', poke);
         try {
           while (!signal.aborted && !this.closed) {
-            last = await this.consumeNew(client, account, uidValidity, last);
+            last = await this.consumeNew(client, account, uidValidity, last, signal);
             if (signal.aborted || this.closed) break;
             await client.idle();
           }
@@ -436,7 +434,7 @@ class MailService {
     }
   }
 
-  async consumeNew(client, account, uidValidity, last) {
+  async consumeNew(client, account, uidValidity, last, signal) {
     const found = await client.search({ uid: `${last + 1n}:*` }, { uid: true });
     const uids = (Array.isArray(found) ? found : []).map((uid) => BigInt(normalizeId(uid))).filter((uid) => uid > last).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     let cursor = last;
@@ -455,17 +453,14 @@ class MailService {
         }
       }
       const event = { kind: 'arrived', identity, subject, from, at: Date.now() };
-      const sender = this.imSender ?? resolveImSender(this.context, this.deps.imSend);
-      if (account.imEnabled) {
-        event.im = await notifyIm(sender, {
-          enabled: true,
-          sessionId: account.imSessionId,
-          idempotencyKey: idempotencyKey(identity),
-          text: summaryText({ label: account.label, accountId: account.id, mailbox: 'INBOX', from, subject, preview, identity }),
-        });
-      } else {
-        event.im = { delivered: false, skipped: true, reason: 'disabled' };
-      }
+      event.im = await forwardMailDigest(this.im ?? bridgeFrom(this.context), {
+        enabled: account.imEnabled === true,
+        channelId: account.imChannelId,
+        routeRevision: account.imRouteRevision,
+        accountRef: account.id,
+        idempotencyKey: idempotencyKey(identity),
+        text: summaryText({ label: account.label, accountId: account.id, mailbox: 'INBOX', from, subject, preview, identity }),
+      }, signal);
       await this.recordEvent(account.id, event);
       await this.markSeen(account.id, uidValidity, cursor);
     }

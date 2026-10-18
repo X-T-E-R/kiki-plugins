@@ -80,10 +80,12 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px
       <label><input id="allowInsecure" type="checkbox"> Loopback cleartext</label>
       <label><input id="watch" type="checkbox"> Watch this inbox</label>
       <label><input id="watchEnabled" type="checkbox"> Watch while Kiki is open</label>
-      <label><input id="imEnabled" type="checkbox"> Ask host IM on new mail</label>
+      <label><input id="imEnabled" type="checkbox"> Forward new mail to a notification channel</label>
       <label><input id="imPreview" type="checkbox"> Include a short preview</label>
     </div>
-    <label>IM session id <input id="imSession" autocomplete="off" spellcheck="false"></label>
+    <label>Notification channel <select id="imChannel"><option value="">None</option></select></label>
+    <input id="imRouteRevision" type="hidden">
+    <p id="imRoutes" class="note"></p>
     <div class="row">
       <button id="save" type="button">Save</button>
       <button id="load" class="quiet" type="button">Load</button>
@@ -136,6 +138,7 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px
   let seq = 0;
   const pending = new Map();
   let presets = [];
+  let routes = [];
   let lastState = { accounts: [] };
   let requestId = '';
 
@@ -167,9 +170,7 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px
     lastState = state;
     const accounts = state.accounts || [];
     el('accounts').textContent = accounts.map((account) => `${account.label} · ${account.user} · ${secretLine(account)}`).join('\n');
-    el('im').textContent = state.imBridge && state.imBridge.available
-      ? 'An IM sender is present in this process. Host delivery is not confirmed.'
-      : 'Host IM bridge is not available.';
+    el('im').textContent = imSentence(state.imBridge);
     el('watchEnabled').checked = state.watchEnabled === true;
   }
 
@@ -193,7 +194,8 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px
     el('watch').checked = account.watch === true;
     el('imEnabled').checked = account.imEnabled === true;
     el('imPreview').checked = account.imPreview === true;
-    el('imSession').value = account.imSessionId || '';
+    el('imChannel').value = account.imChannelId || '';
+    el('imRouteRevision').value = account.imRouteRevision || '';
     el('password').value = '';
     el('clientSecret').value = '';
     el('refreshToken').value = '';
@@ -219,7 +221,8 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px
       allowInsecureAuth: checked('allowInsecure'),
       watch: checked('watch'),
       imEnabled: checked('imEnabled'),
-      imSessionId: text('imSession'),
+      imChannelId: text('imChannel'),
+      imRouteRevision: text('imRouteRevision'),
       imPreview: checked('imPreview'),
       oauthClientId: text('oauthClientId'),
       oauthTokenUrl: text('oauthTokenUrl'),
@@ -298,7 +301,48 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px
     if (result.ok === true && result.outcome === 'accepted') requestId = '';
   }
 
+  function imSentence(view) {
+    if (!view || view.probed === false) return 'Notification channels load when you open this panel.';
+    if (view.supported !== true) return 'IM bridge is unsupported on this Kiki. Mail works without it.';
+    if (view.outbound !== true) return 'IM outbound is not available in this process yet.';
+    if (!Array.isArray(view.routes)) return 'IM outbound is available.';
+    if (view.routes.length === 0) return 'No notification channel is ready.';
+    return 'Choose a notification channel. Mail does not store its credentials.';
+  }
+
+  function fillChannelSelect(view) {
+    routes = Array.isArray(view?.routes) ? view.routes : [];
+    const select = el('imChannel');
+    const current = select.value;
+    if (typeof document.createElement === 'function' && typeof select.replaceChildren === 'function') {
+      select.replaceChildren();
+      const none = document.createElement('option');
+      none.value = '';
+      none.textContent = 'None';
+      select.append(none);
+      for (const route of routes) {
+        const option = document.createElement('option');
+        option.value = route.channelId;
+        option.textContent = route.label || route.channelId;
+        option.dataset.revision = route.routeRevision;
+        select.append(option);
+      }
+      if (routes.some((route) => route.channelId === current)) select.value = current;
+    }
+    const selected = routes.find((route) => route.channelId === select.value);
+    if (selected) el('imRouteRevision').value = selected.routeRevision;
+    el('im').textContent = imSentence(view);
+    el('imRoutes').textContent = routes.map((route) => route.label || route.channelId).join('\n');
+  }
+
   el('preset').onchange = () => applyPreset();
+  el('imChannel').onchange = () => {
+    const selected = routes.find((route) => route.channelId === text('imChannel'));
+    el('imRouteRevision').value = selected?.routeRevision || '';
+  };
+  el('imEnabled').onchange = async () => {
+    if (checked('imEnabled')) fillChannelSelect(await call('routes', {}));
+  };
   el('save').onclick = async () => {
     const result = await call('save', { account: accountBody(), credential: credentialBody(), watchEnabled: checked('watchEnabled') });
     clearSecrets();
@@ -360,9 +404,10 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px
   });
 
   async function boot() {
-    const [state, presetResult] = await Promise.all([call('state', {}), call('presets', {})]);
+    const [state, presetResult, routeView] = await Promise.all([call('state', {}), call('presets', {}), call('routes', {})]);
     presets = presetResult.presets || [];
     render(state);
+    fillChannelSelect(routeView);
     applyPreset();
     el('status').textContent = 'Not tested';
   }

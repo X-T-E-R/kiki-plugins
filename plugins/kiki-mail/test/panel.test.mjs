@@ -65,7 +65,7 @@ test('mail panel saves, tests, and does not resend an uncertain message', { time
     await new Promise((resolve) => setImmediate(resolve));
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(get('status').textContent, 'Not tested');
-    assert.equal(get('im').textContent.includes('not available'), true);
+    assert.equal(get('im').textContent.includes('unsupported'), true);
     assert.equal(get('sendAgain').hidden, true);
 
     get('id').value = 'ada';

@@ -25,6 +25,6 @@ If the outcome is `uncertain`, or the code is `uncertain_send` or `uncertain_not
 
 Inline `text` or `html` can be a preview (`textComplete` or `htmlComplete` is false). Use `textPath`, `htmlPath`, or the attachment `path` for the complete bytes. Do not describe a preview as the whole message.
 
-`im` on a watch event is delivered only when a host sender exists. `host-im-unavailable` means this host has no IM bridge. Do not substitute the current chat, `focusSession`, or a webhook. Leave watch and IM off unless the user enabled them.
+New-mail forwarding uses the host bridge on the app activate context: `capabilities`, `listRoutes`, and `send` with `channelId`, `routeRevision`, `idempotencyKey`, `accountRef`, and `text`. It is off until the user enables it and chooses a listed channel. The target is that channel, not a Kiki session. Do not substitute the current chat, `focusSession`, `session.sendMessage`, or a webhook, and do not copy IM credentials into mail settings. `im_unsupported` means this host has no bridge; mail still works. `outbound-unavailable` means the process cannot send yet, so probe again before the next send. `accepted` and `unknown` keep the same idempotency key and are not forwarded again. `route_changed` means refresh the route list and wait for the user to choose again.
 
 Provider presets for Gmail, Outlook, QQ, 163, iCloud, Fastmail, and Proton Bridge are unverified against those services. Say which requirement is still missing instead of claiming the account is signed in. This plugin does not open an OAuth consent screen.
