@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { coded } from './accounts.mjs';
@@ -13,6 +14,13 @@ export function assertInside(root, target) {
 export function safeSegment(value, fallback = 'item') {
   const cleaned = String(value ?? '').replace(/[^A-Za-z0-9._@-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80);
   return cleaned || fallback;
+}
+
+export function storageKey(value, fallback = 'item') {
+  const raw = String(value ?? '').normalize('NFC');
+  const slug = raw.replace(/[^A-Za-z0-9._@-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 32);
+  const digest = createHash('sha256').update(raw, 'utf8').digest('hex').slice(0, 20);
+  return `${slug || fallback}-${digest}`;
 }
 
 export async function writeInside(root, parts, bytes) {

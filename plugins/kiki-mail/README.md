@@ -10,7 +10,7 @@ This directory already contains the bundled mail runtime in `vendor/`. From a Ki
 /plugins install --trust <path-to-kiki-mail>
 ```
 
-Enable **kiki-mail** and open the **Mail** panel. An offline zip of the same files is `kiki-mail-0.1.2.zip`, produced by `node plugins/kiki-mail/scripts/pack.mjs` from this repository. Installing it does not need another npm install and does not change the public plugin catalog.
+Enable **kiki-mail** and open the **Mail** panel. An offline zip of the same files is `kiki-mail-0.1.3.zip`, produced by `node plugins/kiki-mail/scripts/pack.mjs` from this repository. Installing it does not need another npm install and does not change the public plugin catalog.
 
 Rebuilding that bundle from the lockfile is separate from installing:
 
@@ -52,7 +52,7 @@ A message identity is the account, folder, UIDVALIDITY, and UID. After UIDVALIDI
 
 **Send** and **Reply** submit one SMTP transaction. `accepted` means that server accepted the listed recipients. It is not a delivery receipt. If the connection stops or the send is cancelled after the message data was written, the result is uncertain and that send is not repeated. **Send again** appears only for a definite failure before the data was submitted. An accepted message whose local receipt cannot be saved stays accepted and is not sent again.
 
-Watch is off until you enable both **Watch while Kiki is open** and **Watch this inbox**. New mail is recorded while the plugin is active. Closing or cancelling stops the connection. Nothing is forwarded or answered automatically.
+Watch is off until you enable both **Watch while Kiki is open** and **Watch this inbox**. New mail is recorded while the plugin is active. If the connection drops while Kiki stays open, watch tries again: the wait starts at one second and doubles up to one minute, then returns to one second after the mailbox opens. A failed login or STARTTLS stops watch. Closing Kiki, cancelling, or turning watch off stops it immediately. Nothing is forwarded or answered automatically.
 
 **Forward new mail to a notification channel** is off until you check it and choose a channel from the list. The list comes from Kiki's notification settings. This plugin does not ask for an IM session id and does not store that channel's credentials. A Kiki build without the bridge shows IM as unsupported, and mail still works. If outbound is not up yet, open the panel again after Kiki finishes starting. A preview is included only if you check **Include a short preview**. An unclear send is not forwarded again under a new id. If the channel's route changes, pick the channel again; the plugin does not switch targets by itself.
 

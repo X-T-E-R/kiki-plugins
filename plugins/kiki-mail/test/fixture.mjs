@@ -1,5 +1,6 @@
 import http from 'node:http';
 import net from 'node:net';
+import iconv from 'iconv-lite';
 
 export async function startFixture(spec = {}) {
   const users = new Map((spec.users ?? []).map((user) => [user.user, {
@@ -9,11 +10,12 @@ export async function startFixture(spec = {}) {
       messages: box.messages.map((message) => ({ ...message, flags: new Set(message.flags ?? []) })),
     }])),
   }]));
-  const state = { users, smtpMessages: [], smtpData: 0, smtpAuthFailures: 0, imapSockets: 0, imapAccepts: 0, imapAuthCommands: 0, idling: 0, tokenRequests: 0, held: [] };
+  const state = { users, smtpMessages: [], smtpData: 0, smtpAuthFailures: 0, imapSockets: 0, imapAccepts: 0, imapAuthCommands: 0, idling: 0, tokenRequests: 0, held: [], dropRemaining: spec.dropFirst ?? 0 };
   const sessions = new Set();
   const imap = net.createServer((socket) => {
     state.imapAccepts += 1;
-    if (spec.dropOnConnect) {
+    if (spec.dropOnConnect || state.dropRemaining > 0) {
+      if (state.dropRemaining > 0) state.dropRemaining -= 1;
       socket.destroy();
       return;
     }
@@ -452,18 +454,32 @@ function unquote(value) {
   return value.startsWith('"') && value.endsWith('"') ? value.slice(1, -1) : value;
 }
 
+function decodeMailbox(name) {
+  if (!name.includes('&')) return name;
+  try {
+    const decoded = iconv.decode(Buffer.from(name, 'ascii'), 'utf-7-imap');
+    return decoded || name;
+  } catch {
+    return name;
+  }
+}
+
 function findBox(account, name) {
+  const decoded = decodeMailbox(name);
+  if (account.mailboxes.has(decoded)) return account.mailboxes.get(decoded);
   if (account.mailboxes.has(name)) return account.mailboxes.get(name);
-  const upper = name.toUpperCase();
+  const upper = decoded.toUpperCase();
   for (const [key, box] of account.mailboxes) if (key.toUpperCase() === upper) return box;
   return undefined;
 }
 
 function canonicalName(account, name) {
+  const decoded = decodeMailbox(name);
+  if (account.mailboxes.has(decoded)) return decoded;
   if (account.mailboxes.has(name)) return name;
-  const upper = name.toUpperCase();
+  const upper = decoded.toUpperCase();
   for (const key of account.mailboxes.keys()) if (key.toUpperCase() === upper) return key;
-  return name;
+  return decoded;
 }
 
 function addressOf(value) {

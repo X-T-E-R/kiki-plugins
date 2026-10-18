@@ -7,15 +7,17 @@ import { listMailboxes, readSource, searchPage, withImap } from './imap.mjs';
 import { bridgeFrom, forwardMailDigest, idleBridgeView, inspectIm, summaryText } from './im.mjs';
 import { resolveAuth } from './oauth.mjs';
 import { contentBytes, parseMessage } from './parse.mjs';
-import { allowedAttachment, safeSegment, writeInside } from './paths.mjs';
+import { allowedAttachment, safeSegment, storageKey, writeInside } from './paths.mjs';
 import { publicPresets } from './providers.mjs';
 import { redactJson, redactText, secretValues } from './redact.mjs';
 import { sendSmtp } from './smtp.mjs';
 
 const PAGE_DEFAULT = 20;
-const WATCH_RETRY_BASE_MS = 200;
-const WATCH_RETRY_MAX_MS = 1000;
-const WATCH_RETRY_LIMIT = 4;
+// While Kiki is open, a dropped inbox watch keeps reconnecting. The delay doubles from
+// one second up to one minute, and a mailbox that opens resets it. Authentication, TLS,
+// and cancellation stop the loop. Closing aborts the wait immediately.
+const WATCH_RETRY_BASE_MS = 1000;
+const WATCH_RETRY_MAX_MS = 60_000;
 
 export function createMailService(deps = {}) {
   return new MailService(deps);
@@ -204,8 +206,8 @@ class MailService {
     const directory = this.directory(context);
     let textPath;
     let htmlPath;
-    if (!parsed.textComplete && directory) textPath = await writeInside(directory, ['bodies', account.id, identity.mailbox, identity.uidValidity, identity.uid, 'body.txt'], Buffer.from(parsed.text));
-    if (!parsed.htmlComplete && parsed.html && directory) htmlPath = await writeInside(directory, ['bodies', account.id, identity.mailbox, identity.uidValidity, identity.uid, 'body.html'], Buffer.from(parsed.html));
+    if (!parsed.textComplete && directory) textPath = await writeInside(directory, ['bodies', account.id, storageKey(identity.mailbox, 'box'), identity.uidValidity, identity.uid, 'body.txt'], Buffer.from(parsed.text));
+    if (!parsed.htmlComplete && parsed.html && directory) htmlPath = await writeInside(directory, ['bodies', account.id, storageKey(identity.mailbox, 'box'), identity.uidValidity, identity.uid, 'body.html'], Buffer.from(parsed.html));
     return {
       ok: true,
       identity,
@@ -236,7 +238,7 @@ class MailService {
     const parsed = await parseMessage(raw);
     const part = parsed.attachments.find((item) => item.partId === String(args.partId));
     if (!part) throw coded('not_found', 'That attachment is not on this message.');
-    const saved = await writeInside(directory, ['attachments', account.id, identity.mailbox, identity.uidValidity, identity.uid, part.partId, part.filename], contentBytes(part.content));
+    const saved = await writeInside(directory, ['attachments', account.id, storageKey(identity.mailbox, 'box'), identity.uidValidity, identity.uid, part.partId, storageKey(part.filename, 'file')], contentBytes(part.content));
     return { ok: true, identity, partId: part.partId, filename: part.filename, mimeType: part.mimeType, size: part.size, sha256: part.sha256, path: saved };
   }
 
@@ -246,22 +248,40 @@ class MailService {
     const requestId = clean(args.requestId, 80) || randomUUID();
     const flightKey = `${account.id}\0${requestId}`;
     const current = this.inflight.get(flightKey);
-    if (current) return current;
-    const work = this.performSend(state, account, args, context, requestId);
-    this.inflight.set(flightKey, work);
+    if (current) {
+      const draft = args.action === 'reply' ? await this.replyDraft(account, state, args, context) : await this.composeDraft(account, args, context);
+      const fingerprint = payloadFingerprint(draft);
+      if (current.fingerprint && current.fingerprint !== fingerprint) return payloadConflict(account.id, requestId);
+      const winner = await current.promise;
+      if (winner.fingerprint !== fingerprint) return payloadConflict(account.id, requestId);
+      if (winner.error) throw winner.error;
+      return winner.result;
+    }
+    let resolveFlight;
+    const promise = new Promise((resolve) => { resolveFlight = resolve; });
+    const flight = { promise, fingerprint: undefined };
+    this.inflight.set(flightKey, flight);
     try {
-      return await work;
+      const result = await this.performSend(state, account, args, context, requestId, (fingerprint) => { flight.fingerprint = fingerprint; });
+      resolveFlight({ fingerprint: flight.fingerprint, result });
+      return result;
+    } catch (error) {
+      resolveFlight({ fingerprint: flight.fingerprint, error });
+      throw error;
     } finally {
-      if (this.inflight.get(flightKey) === work) this.inflight.delete(flightKey);
+      if (this.inflight.get(flightKey) === flight) this.inflight.delete(flightKey);
     }
   }
 
-  async performSend(state, account, args, context, requestId) {
+  async performSend(state, account, args, context, requestId, onFingerprint) {
     const draft = args.action === 'reply' ? await this.replyDraft(account, state, args, context) : await this.composeDraft(account, args, context);
     const fingerprint = payloadFingerprint(draft);
+    onFingerprint(fingerprint);
     const loaded = await this.readSend(account.id, requestId, context);
-    if (loaded.source === 'corrupt') {
-      throw coded('receipt_unreadable', 'The stored send receipt is unreadable. The message was not sent again.');
+    if (loaded.source === 'unreadable') {
+      const error = coded('receipt_unreadable', 'The stored send receipt is unreadable. The message was not sent again.');
+      error.outcome = 'unknown';
+      throw error;
     }
     const blocked = resendBlock(loaded.record, fingerprint);
     if (blocked) return { ...blocked, requestId, accountId: account.id };
@@ -393,41 +413,44 @@ class MailService {
   async readSend(accountId, requestId, context) {
     const directory = this.directory(context);
     if (!directory) throw coded('send_store_failed', 'Reading a send receipt needs the plugin data directory.');
-    const file = sendPath(directory, accountId, requestId);
-    try {
-      const text = await readFile(file, 'utf8');
-      let record;
-      try { record = JSON.parse(text); } catch { return { source: 'corrupt', record: null }; }
-      if (!record || typeof record !== 'object' || Array.isArray(record) || record.accountId !== accountId || record.requestId !== requestId) {
-        return { source: 'corrupt', record: null };
+    const exact = exactSendPaths(directory, accountId, requestId);
+    let sawExact = false;
+    for (const file of exact) {
+      const hit = await readReceiptBytes(file);
+      if (hit.status === 'absent') continue;
+      sawExact = true;
+      if (hit.status === 'error') throw coded('send_store_failed', 'The send receipt could not be read.');
+      const kind = receiptKind(hit.record, accountId, requestId);
+      if (kind === 'usable') {
+        this.memorySends.set(sendKey(accountId, requestId), hit.record);
+        return { source: 'disk', record: hit.record };
       }
-      this.memorySends.set(sendKey(accountId, requestId), record);
-      return { source: 'disk', record };
-    } catch (error) {
-      if (error?.code === 'ENOENT') {
-        const memory = this.memorySends.get(sendKey(accountId, requestId));
-        return memory ? { source: 'memory', record: memory } : { source: 'missing', record: null };
-      }
-      throw coded('send_store_failed', 'The send receipt could not be read.');
     }
+    if (sawExact) return { source: 'unreadable', record: null };
+    for (const file of legacySendPaths(directory, accountId, requestId)) {
+      const hit = await readReceiptBytes(file);
+      if (hit.status === 'absent') continue;
+      if (hit.status === 'error') throw coded('send_store_failed', 'The send receipt could not be read.');
+      const kind = receiptKind(hit.record, accountId, requestId);
+      if (kind === 'foreign') continue;
+      if (kind !== 'usable') return { source: 'unreadable', record: null };
+      this.memorySends.set(sendKey(accountId, requestId), hit.record);
+      return { source: 'disk', record: hit.record };
+    }
+    const memory = this.memorySends.get(sendKey(accountId, requestId));
+    return memory ? { source: 'memory', record: memory } : { source: 'missing', record: null };
   }
 
   async writeSend(accountId, requestId, record, context) {
     if (this.deps.failPersist?.(record)) throw coded('send_store_failed', 'The send receipt could not be written.');
     const directory = this.directory(context);
     if (!directory) throw coded('send_store_failed', 'Saving a send receipt needs the plugin data directory.');
-    const file = sendPath(directory, accountId, requestId);
+    const file = exactSendPaths(directory, accountId, requestId)[0];
     await mkdir(path.dirname(file), { recursive: true });
     const temporary = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
     try {
       await writeFile(temporary, JSON.stringify(record));
-      try {
-        await rename(temporary, file);
-      } catch (error) {
-        if (error?.code !== 'EEXIST' && error?.code !== 'EPERM') throw error;
-        await rm(file, { force: true });
-        await rename(temporary, file);
-      }
+      await this.installReceipt(temporary, file);
     } catch (error) {
       await rm(temporary, { force: true }).catch(() => {});
       if (error?.code === 'send_store_failed') throw error;
@@ -436,6 +459,42 @@ class MailService {
       throw wrapped;
     }
     this.memorySends.set(sendKey(accountId, requestId), record);
+  }
+
+  async installReceipt(temporary, file) {
+    const backup = `${file}.bak`;
+    const moved = await this.moveReceiptAside(file, backup);
+    if (moved && this.deps.failReceiptInstall) {
+      const failed = coded('send_store_failed', 'The send receipt could not be replaced.');
+      failed.causeCode = 'EPERM';
+      throw failed;
+    }
+    try {
+      await rename(temporary, file);
+    } catch (error) {
+      const failed = coded('send_store_failed', 'The send receipt could not be replaced.');
+      failed.causeCode = error?.code;
+      throw failed;
+    }
+    if (moved) await rm(backup, { force: true }).catch(() => {});
+  }
+
+  async moveReceiptAside(file, backup) {
+    try {
+      await rename(file, backup);
+      return true;
+    } catch (error) {
+      if (error?.code === 'ENOENT') return false;
+      if (error?.code !== 'EEXIST' && error?.code !== 'EPERM') throw error;
+    }
+    await rm(backup, { force: true });
+    try {
+      await rename(file, backup);
+      return true;
+    } catch (error) {
+      if (error?.code === 'ENOENT') return false;
+      throw error;
+    }
   }
 
   failureBody(error) {
@@ -475,33 +534,38 @@ class MailService {
   }
 
   async watchAccount(account, signal) {
+    const pace = { delay: WATCH_RETRY_BASE_MS };
     let attempt = 0;
-    let delay = WATCH_RETRY_BASE_MS;
     while (!signal.aborted && !this.closed) {
       try {
-        await this.watchOnce(account, signal);
+        await this.watchOnce(account, signal, pace);
         return;
       } catch (error) {
         if (signal.aborted || this.closed) return;
         attempt += 1;
         await this.recordEvent(account.id, { kind: 'watch-error', code: error.code || 'disconnected', message: error.message, attempt });
-        const terminal = error.code === 'auth_failed' || error.code === 'tls_required' || error.code === 'cancelled' || attempt >= WATCH_RETRY_LIMIT;
-        if (terminal) {
-          await this.recordEvent(account.id, { kind: 'watch-stopped', code: error.code || 'disconnected', attempt });
+        if (error.code === 'auth_failed' || error.code === 'tls_required' || error.code === 'cancelled') {
+          await this.recordEvent(account.id, { kind: 'watch-stopped', code: error.code, attempt });
           return;
         }
-        const wait = delay;
-        delay = Math.min(delay * 2, WATCH_RETRY_MAX_MS);
-        if (await pause(signal, wait) || this.closed) return;
+        const wait = pace.delay;
+        pace.delay = Math.min(pace.delay * 2, WATCH_RETRY_MAX_MS);
+        if (await this.wait(signal, wait) || this.closed) return;
       }
     }
   }
 
-  async watchOnce(account, signal) {
+  async wait(signal, ms) {
+    if (typeof this.deps.wait === 'function') return (await this.deps.wait(ms, signal)) === true;
+    return pause(signal, ms);
+  }
+
+  async watchOnce(account, signal, pace) {
     const state = loadState(this.context.settings);
     const auth = await resolveAuth(account, state.credentials[account.id], (patch) => this.rememberCredential(this.context, account.id, patch));
     await withImap(account, auth, { signal }, async (client) => {
       const opened = await client.mailboxOpen('INBOX');
+      if (pace) pace.delay = WATCH_RETRY_BASE_MS;
       const uidValidity = normalizeId(opened.uidValidity);
       let last = await this.lastSeen(account.id, uidValidity);
       if (last == null) {
@@ -646,8 +710,31 @@ function sendKey(accountId, requestId) {
   return `${accountId}\0${requestId}`;
 }
 
-function sendPath(directory, accountId, requestId) {
-  return path.join(directory, 'sends', safeSegment(accountId, 'account'), `${safeSegment(requestId, 'send')}.json`);
+function exactSendPaths(directory, accountId, requestId) {
+  const file = path.join(directory, 'sends', accountId, `${storageKey(requestId, 'send')}.json`);
+  return [file, `${file}.bak`];
+}
+
+function legacySendPaths(directory, accountId, requestId) {
+  const slug = safeSegment(requestId, 'send');
+  return [
+    path.join(directory, 'sends', safeSegment(accountId, 'account'), `${slug}.json`),
+    path.join(directory, 'sends', `${slug}.json`),
+  ];
+}
+
+function payloadConflict(accountId, requestId) {
+  return {
+    ok: false,
+    code: 'payload_conflict',
+    outcome: 'uncertain',
+    requestId,
+    accountId,
+    resent: false,
+    automaticRetry: false,
+    finalDelivery: false,
+    message: 'Another send with this request id is already in progress for a different message. This one was not sent.',
+  };
 }
 
 function payloadFingerprint(draft) {
@@ -688,6 +775,31 @@ function resendBlock(prior, fingerprint) {
       ? 'This send was already accepted by SMTP. It was not sent again.'
       : 'The earlier send has no proof it was not submitted. It was not sent again.',
   };
+}
+
+const RETRYABLE_OUTCOMES = new Set(['failed', 'auth_failed', 'rejected', 'cancelled']);
+const BLOCKING_OUTCOMES = new Set(['accepted', 'uncertain', 'sending']);
+
+function receiptKind(record, accountId, requestId) {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) return 'unreadable';
+  if (record.accountId !== accountId || record.requestId !== requestId) return 'foreign';
+  if (record.phase === 'sending') return 'usable';
+  if (record.phase === 'done' && (BLOCKING_OUTCOMES.has(record.outcome) || RETRYABLE_OUTCOMES.has(record.outcome))) return 'usable';
+  return 'unreadable';
+}
+
+async function readReceiptBytes(file) {
+  try {
+    const text = await readFile(file, 'utf8');
+    try {
+      return { status: 'json', record: JSON.parse(text) };
+    } catch {
+      return { status: 'json', record: null };
+    }
+  } catch (error) {
+    if (error?.code === 'ENOENT') return { status: 'absent' };
+    return { status: 'error', code: error?.code };
+  }
 }
 
 function pause(signal, ms) {
