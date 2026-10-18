@@ -1,6 +1,6 @@
 {
   "name": "kiki-mail",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Read and send mail through the IMAP and SMTP accounts you configure. Optional new-mail notices need a host IM bridge.",
   "license": "MIT",
   "icon": "./icon.svg",

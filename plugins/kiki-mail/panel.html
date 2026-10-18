@@ -6,131 +6,687 @@
 <title>Mail</title>
 <style>
 :root {
-  --paper: #fbfaf6;
-  --panel: #fffdfa;
-  --ink: #1b1a17;
-  --soft: #5c564c;
-  --line: #e4ddd0;
-  --accent: #c8401a;
+  color-scheme: light dark;
+  --canvas: #f2efe8;
+  --paper: var(--color-paper, #fbfaf6);
+  --panel: var(--color-panel, #fffdfa);
+  --ink: var(--color-ink, #1b1a17);
+  --ink-soft: var(--color-ink-soft, #4b453e);
+  --ink-faint: var(--color-ink-faint, #665e54);
+  --hairline: var(--color-hairline, #e4ddd0);
+  --hairline-strong: var(--color-hairline-strong, #cdc3b1);
+  --accent: var(--color-accent, #c8401a);
+  --accent-deep: var(--color-accent-deep, #9c3012);
+  --on-accent: var(--color-on-accent, #ffffff);
+  --selected: var(--color-selected, #dfe8f0);
+  --selected-ink: var(--color-selected-ink, #1d4d6d);
+  --ok: var(--color-success, #2f6b45);
+  --warn: #87480b;
+  --warn-bg: #f8eedd;
+  --danger: var(--color-danger, #b0261e);
+  --danger-bg: #f8e3d8;
+  --wash: rgb(27 26 23 / 0.045);
+  --sans: "Instrument Sans", ui-sans-serif, system-ui, "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --display: "Newsreader", Georgia, "Iowan Old Style", "Songti SC", "Noto Serif SC", serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: #161c20;
+    --paper: var(--color-paper, #1b2226);
+    --panel: var(--color-panel, #252d31);
+    --ink: var(--color-ink, #eeeae2);
+    --ink-soft: var(--color-ink-soft, #c1c5c5);
+    --ink-faint: var(--color-ink-faint, #a2acaf);
+    --hairline: var(--color-hairline, #354047);
+    --hairline-strong: var(--color-hairline-strong, #596870);
+    --accent: var(--color-accent, #eb946f);
+    --accent-deep: var(--color-accent-deep, #f4ae8d);
+    --on-accent: var(--color-on-accent, #261a14);
+    --selected: var(--color-selected, #24323b);
+    --selected-ink: var(--color-selected-ink, #a3cbde);
+    --ok: var(--color-success, #9ac6ae);
+    --warn: #f4ae8d;
+    --warn-bg: #33271e;
+    --danger: var(--color-danger, #f1a29a);
+    --danger-bg: #382221;
+    --wash: rgb(238 234 226 / 0.06);
+  }
+}
+:root[data-theme="dark"] {
+  --canvas: #161c20;
+  --paper: var(--color-paper, #1b2226);
+  --panel: var(--color-panel, #252d31);
+  --ink: var(--color-ink, #eeeae2);
+  --ink-soft: var(--color-ink-soft, #c1c5c5);
+  --ink-faint: var(--color-ink-faint, #a2acaf);
+  --hairline: var(--color-hairline, #354047);
+  --hairline-strong: var(--color-hairline-strong, #596870);
+  --accent: var(--color-accent, #eb946f);
+  --accent-deep: var(--color-accent-deep, #f4ae8d);
+  --on-accent: var(--color-on-accent, #261a14);
+  --selected: var(--color-selected, #24323b);
+  --selected-ink: var(--color-selected-ink, #a3cbde);
+  --ok: var(--color-success, #9ac6ae);
+  --warn: #f4ae8d;
+  --warn-bg: #33271e;
+  --danger: var(--color-danger, #f1a29a);
+  --danger-bg: #382221;
+  --wash: rgb(238 234 226 / 0.06);
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.35 Georgia, "Iowan Old Style", Palatino, serif; }
-main { max-width: 760px; margin: 0 auto; padding: 16px; }
-h1 { font-size: 22px; font-weight: 600; margin: 0; }
-h2 { font-size: 15px; margin: 0 0 8px; }
-.status, .note, .im { color: var(--soft); margin: 4px 0 0; }
-section { background: var(--panel); border: 1px solid var(--line); padding: 12px; margin-top: 12px; }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-label { display: grid; gap: 2px; font-size: 12px; color: var(--soft); }
-.wide { grid-column: 1 / -1; }
-input, select, textarea { width: 100%; font: inherit; color: var(--ink); background: #fff; border: 1px solid var(--line); padding: 6px 8px; }
-textarea { min-height: 72px; resize: vertical; }
-.checks, .row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 8px; }
-.checks label { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--ink); }
-button { font: inherit; background: var(--accent); color: #fff; border: 0; padding: 6px 10px; }
-button.quiet { background: transparent; color: var(--ink); border: 1px solid var(--line); }
-pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px/1.4 Consolas, ui-monospace, monospace; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 13px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+main {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 18px 20px 44px;
+}
+.masthead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--hairline-strong);
+}
+h1 {
+  font: 500 20px/1.25 var(--display);
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+h2 {
+  font: 600 13px/1.3 var(--sans);
+  letter-spacing: 0.01em;
+  color: var(--ink);
+  margin: 0;
+}
+h3 {
+  font: 600 14px/1.35 var(--sans);
+  margin: 0;
+}
+.status-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  flex: none;
+}
+.dot[data-tone="ok"] { background: var(--ok); }
+.dot[data-tone="warn"] { background: var(--warn); }
+.dot[data-tone="danger"] { background: var(--danger); }
+.dot[data-tone="busy"] { background: var(--accent); }
+.status {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+.status[data-tone="ok"] { color: var(--ok); }
+.status[data-tone="warn"] { color: var(--warn); }
+.status[data-tone="danger"] { color: var(--danger); }
+.push { margin-left: auto; }
+.account-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.account-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 2px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--hairline-strong);
+  background: var(--panel);
+  color: var(--ink-soft);
+  font-size: 12px;
+  cursor: pointer;
+}
+.pill[aria-current="true"] {
+  background: var(--selected);
+  border-color: var(--selected-ink);
+  color: var(--selected-ink);
+  font-weight: 600;
+}
+.pill-sub {
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+.vis-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
 #accounts:empty { display: none; }
+
+section {
+  padding: 14px 0 4px;
+  border-bottom: 1px solid var(--hairline);
+}
+.sec-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.note, .im {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-faint);
+}
+.note[data-tone="ok"] { color: var(--ok); }
+.note[data-tone="warn"] {
+  color: var(--warn);
+  background: var(--warn-bg);
+  padding: 6px 9px;
+  border-radius: var(--radius);
+}
+.note[data-tone="danger"] {
+  color: var(--danger);
+  background: var(--danger-bg);
+  padding: 6px 9px;
+  border-radius: var(--radius);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  align-items: end;
+}
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 10px;
+  align-items: end;
+}
+label {
+  display: grid;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  min-width: 0;
+}
+.wide { grid-column: 1 / -1; }
+input, select, textarea {
+  width: 100%;
+  min-height: 32px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+}
+input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--selected-ink);
+  flex: none;
+}
+.mono, #id, #imapHost, #imapPort, #smtpHost, #smtpPort, #uid, #uidValidity, #cursor, #partId, #since {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+textarea {
+  min-height: 96px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.checks, .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-top: 10px;
+}
+.checks label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12.5px;
+  color: var(--ink);
+  cursor: pointer;
+}
+button {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  min-height: 30px;
+  padding: 0 11px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: var(--on-accent);
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+button:hover:not(:disabled) { background: var(--accent-deep); }
+button.quiet {
+  background: transparent;
+  color: var(--ink-soft);
+  border-color: var(--hairline-strong);
+  font-weight: 400;
+}
+button.quiet:hover:not(:disabled) {
+  background: var(--wash);
+  color: var(--ink);
+}
+button.danger-btn:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+button:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+:is(button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--selected-ink);
+  outline-offset: 2px;
+}
+
+details {
+  margin-top: 10px;
+  border-top: 1px solid var(--hairline);
+}
+#accountSheet {
+  margin-top: 0;
+  border-top: 0;
+}
+summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ink-soft);
+  list-style: none;
+  user-select: none;
+}
+summary::-webkit-details-marker { display: none; }
+summary::after {
+  content: "+";
+  margin-left: auto;
+  font-family: var(--mono);
+  color: var(--ink-faint);
+}
+details[open] > summary::after { content: "-"; }
+.fold-body {
+  padding: 6px 0 8px;
+}
+
+.folder-strip {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+.msg-list {
+  margin-top: 10px;
+  border-top: 1px solid var(--hairline);
+}
+.msg-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--hairline);
+  align-items: baseline;
+  cursor: pointer;
+}
+.msg-row:hover { background: var(--wash); }
+.msg-row[data-selected="true"] {
+  background: var(--selected);
+  border-radius: var(--radius);
+}
+.msg-title {
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.msg-sub {
+  font-size: 12px;
+  color: var(--ink-faint);
+  overflow-wrap: anywhere;
+}
+.msg-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.reader {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+}
+.reader-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--hairline);
+}
+.reader-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ink-faint);
+  overflow-wrap: anywhere;
+}
+.mail-body {
+  margin: 10px 0 0;
+  padding: 10px;
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  font: 12.5px/1.55 var(--mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 360px;
+  overflow: auto;
+}
+.att-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+}
+.att-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.reply-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 9px;
+  margin-bottom: 8px;
+  background: var(--selected);
+  color: var(--selected-ink);
+  border-radius: var(--radius);
+  font-size: 12px;
+}
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 8px 0 0;
+  font: 11.5px/1.45 var(--mono);
+  color: var(--ink-soft);
+}
+
+@media (max-width: 560px) {
+  main { padding: 14px 12px 36px; }
+  .grid, .grid-3 { grid-template-columns: minmax(0, 1fr); }
+  .msg-row { grid-template-columns: minmax(0, 1fr); }
+  .row button { min-height: 34px; }
+}
+@media (pointer: coarse) {
+  button, select, input { min-height: 38px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
 </style>
 </head>
 <body>
 <main>
-  <h1>Mail</h1>
-  <p id="status" class="status">Not tested</p>
-  <p id="im" class="im"></p>
-  <pre id="accounts"></pre>
+  <header class="masthead">
+    <h1 id="title" data-i18n="title">Mail</h1>
+    <div class="status-wrap">
+      <span id="statusDot" class="dot" aria-hidden="true"></span>
+      <p id="status" class="status" role="status">Not tested</p>
+    </div>
+    <span class="push"></span>
+    <button id="langToggle" class="quiet" type="button">中文</button>
+  </header>
 
-  <section>
-    <h2>Account</h2>
-    <div class="grid">
-      <label>Id <input id="id" autocomplete="off" spellcheck="false"></label>
-      <label>Label <input id="label" autocomplete="off"></label>
-      <label>User <input id="user" autocomplete="off" spellcheck="false"></label>
-      <label>From <input id="from" autocomplete="off" spellcheck="false"></label>
-      <label>Preset <select id="preset">
-        <option value="custom">Custom</option>
-        <option value="gmail">Gmail</option>
-        <option value="outlook">Outlook</option>
-        <option value="qq">QQ</option>
-        <option value="163">163</option>
-        <option value="icloud">iCloud</option>
-        <option value="fastmail">Fastmail</option>
-        <option value="proton-bridge">Proton Bridge</option>
-      </select></label>
-      <label>Auth <select id="auth">
-        <option value="password">Password or app password</option>
-        <option value="oauth2">OAuth2 token</option>
-      </select></label>
-      <label>IMAP host <input id="imapHost" autocomplete="off" spellcheck="false"></label>
-      <label>IMAP port <input id="imapPort" inputmode="numeric"></label>
-      <label>SMTP host <input id="smtpHost" autocomplete="off" spellcheck="false"></label>
-      <label>SMTP port <input id="smtpPort" inputmode="numeric"></label>
-      <label class="wide">OAuth client id <input id="oauthClientId" autocomplete="off" spellcheck="false"></label>
-      <label class="wide">OAuth token URL <input id="oauthTokenUrl" autocomplete="off" spellcheck="false"></label>
-      <label class="wide">OAuth scope <input id="oauthScope" autocomplete="off" spellcheck="false"></label>
-      <label>Password or app password <input id="password" type="password" autocomplete="new-password"></label>
-      <label>Client secret <input id="clientSecret" type="password" autocomplete="new-password"></label>
-      <label>Refresh token <input id="refreshToken" type="password" autocomplete="new-password"></label>
-      <label>Access token <input id="accessToken" type="password" autocomplete="new-password"></label>
-    </div>
-    <p id="presetNote" class="note"></p>
-    <div class="checks">
-      <label><input id="imapSecure" type="checkbox"> IMAP implicit TLS</label>
-      <label><input id="smtpSecure" type="checkbox"> SMTP implicit TLS</label>
-      <label><input id="allowInsecure" type="checkbox"> Loopback cleartext</label>
-      <label><input id="watch" type="checkbox"> Watch this inbox</label>
-      <label><input id="watchEnabled" type="checkbox"> Watch while Kiki is open</label>
-      <label><input id="imEnabled" type="checkbox"> Forward new mail to a notification channel</label>
-      <label><input id="imPreview" type="checkbox"> Include a short preview</label>
-    </div>
-    <label>Notification channel <select id="imChannel"><option value="">None</option></select></label>
-    <input id="imRouteRevision" type="hidden">
-    <p id="imRoutes" class="note"></p>
-    <div class="row">
-      <button id="save" type="button">Save</button>
-      <button id="load" class="quiet" type="button">Load</button>
-      <button id="test" class="quiet" type="button">Test</button>
-      <button id="remove" class="quiet" type="button">Delete</button>
-    </div>
+  <div class="account-bar" aria-label="Configured accounts">
+    <div id="accountList" class="account-pills"></div>
+    <label style="display:inline-flex;align-items:center;gap:6px">
+      <span data-i18n="activeAccountLabel">Account</span>
+      <select id="accountSelect" aria-label="Select configured account" style="width:auto;min-width:140px"></select>
+    </label>
+    <button id="newAccount" class="quiet" type="button" data-i18n="newAccountBtn">New account</button>
+    <button id="test" class="quiet" type="button" data-i18n="testBtn">Test</button>
+  </div>
+  <pre id="accounts" class="vis-hidden"></pre>
+
+  <section id="accountSection">
+    <details id="accountSheet" open>
+      <summary><strong id="accountHeading" data-i18n="accountHeading">Account configuration</strong> <span id="accountSummary" class="note" style="margin:0"></span></summary>
+      <div class="fold-body">
+        <div class="grid">
+          <label><span data-i18n="presetLabel">Preset</span> <select id="preset">
+            <option value="custom">Custom</option>
+            <option value="gmail">Gmail</option>
+            <option value="outlook">Outlook / Microsoft 365</option>
+            <option value="qq">QQ Mail</option>
+            <option value="163">NetEase 163</option>
+            <option value="icloud">iCloud</option>
+            <option value="fastmail">Fastmail</option>
+            <option value="proton-bridge">Proton Bridge (local)</option>
+          </select></label>
+          <label><span data-i18n="authLabel">Auth</span> <select id="auth">
+            <option value="password" data-i18n="authPassword">Password or app password</option>
+            <option value="oauth2" data-i18n="authOauth">OAuth2 token</option>
+          </select></label>
+          <label><span data-i18n="userLabel">Email or username</span> <input id="user" autocomplete="off" spellcheck="false" placeholder="ada@example.com"></label>
+          <label><span data-i18n="labelField">Display label</span> <input id="label" autocomplete="off" placeholder="Work / Personal"></label>
+          <label><span data-i18n="idLabel">Account ID</span> <input id="id" autocomplete="off" spellcheck="false" placeholder="ada"></label>
+          <label><span data-i18n="fromLabel">From header (optional)</span> <input id="from" autocomplete="off" spellcheck="false" placeholder="Ada <ada@example.com>"></label>
+        </div>
+
+        <p id="presetNote" class="note"></p>
+        <p id="secretStatus" class="note" hidden></p>
+
+        <div id="passwordGroup" class="grid" style="margin-top:8px">
+          <label class="wide"><span data-i18n="passwordLabel">Password or app password</span> <input id="password" type="password" autocomplete="new-password" placeholder="Write-only; leave blank to keep stored secret"></label>
+        </div>
+
+        <div id="oauthGroup" class="grid" style="margin-top:8px" hidden>
+          <label><span data-i18n="accessTokenLabel">Access token</span> <input id="accessToken" type="password" autocomplete="new-password" placeholder="Write-only"></label>
+          <label><span data-i18n="refreshTokenLabel">Refresh token</span> <input id="refreshToken" type="password" autocomplete="new-password" placeholder="Write-only"></label>
+          <label><span data-i18n="clientIdLabel">OAuth client ID</span> <input id="oauthClientId" autocomplete="off" spellcheck="false"></label>
+          <label><span data-i18n="clientSecretLabel">Client secret</span> <input id="clientSecret" type="password" autocomplete="new-password" placeholder="Write-only"></label>
+          <label class="wide"><span data-i18n="tokenUrlLabel">OAuth token URL</span> <input id="oauthTokenUrl" autocomplete="off" spellcheck="false"></label>
+          <label class="wide"><span data-i18n="scopeLabel">OAuth scope</span> <input id="oauthScope" autocomplete="off" spellcheck="false"></label>
+        </div>
+
+        <details id="serverDetails">
+          <summary><span data-i18n="serverSummaryTitle">IMAP &amp; SMTP server settings</span> <span id="serverSummary" class="mono" style="color:var(--ink-faint)"></span></summary>
+          <div class="fold-body">
+            <div class="grid">
+              <label><span data-i18n="imapHostLabel">IMAP host</span> <input id="imapHost" autocomplete="off" spellcheck="false"></label>
+              <label><span data-i18n="imapPortLabel">IMAP port</span> <input id="imapPort" inputmode="numeric"></label>
+              <label><span data-i18n="smtpHostLabel">SMTP host</span> <input id="smtpHost" autocomplete="off" spellcheck="false"></label>
+              <label><span data-i18n="smtpPortLabel">SMTP port</span> <input id="smtpPort" inputmode="numeric"></label>
+            </div>
+            <div class="checks">
+              <label><input id="imapSecure" type="checkbox"> <span data-i18n="imapTlsLabel">IMAP implicit TLS</span></label>
+              <label><input id="smtpSecure" type="checkbox"> <span data-i18n="smtpTlsLabel">SMTP implicit TLS</span></label>
+              <label><input id="allowInsecure" type="checkbox"> <span data-i18n="loopbackLabel">Loopback cleartext</span></label>
+            </div>
+          </div>
+        </details>
+
+        <details id="watchDetails">
+          <summary><span data-i18n="watchSummaryTitle">Inbox watch &amp; IM notifications</span></summary>
+          <div class="fold-body">
+            <p id="im" class="im" style="margin-top:0"></p>
+            <div class="checks" style="margin-top:6px">
+              <label><input id="watchEnabled" type="checkbox"> <span data-i18n="watchGlobalLabel">Watch while Kiki is open</span></label>
+              <label><input id="watch" type="checkbox"> <span data-i18n="watchAccountLabel">Watch this inbox</span></label>
+              <label><input id="imEnabled" type="checkbox"> <span data-i18n="imEnableLabel">Forward new mail to a notification channel</span></label>
+              <label><input id="imPreview" type="checkbox"> <span data-i18n="imPreviewLabel">Include a short preview</span></label>
+            </div>
+            <div class="grid" style="margin-top:8px">
+              <label class="wide"><span data-i18n="imChannelLabel">Notification channel</span> <select id="imChannel"><option value="">None</option></select></label>
+            </div>
+            <input id="imRouteRevision" type="hidden">
+            <p id="imRoutes" class="note"></p>
+          </div>
+        </details>
+
+        <div class="row">
+          <button id="save" type="button" data-i18n="saveBtn">Save</button>
+          <button id="load" class="quiet" type="button" data-i18n="loadBtn">Load</button>
+          <button id="remove" class="quiet danger-btn" type="button" data-i18n="deleteBtn">Delete</button>
+          <span id="accountFeedback" class="note" style="margin:0"></span>
+        </div>
+      </div>
+    </details>
   </section>
 
-  <section>
-    <h2>Mailbox</h2>
-    <div class="grid">
-      <label>Folder <input id="mailbox" value="INBOX" spellcheck="false"></label>
-      <label>Query <input id="query" spellcheck="false"></label>
-      <label>From <input id="fromQuery" spellcheck="false"></label>
-      <label>Since <input id="since" placeholder="YYYY-MM-DD" spellcheck="false"></label>
-      <label>Page size <input id="limit" value="20" inputmode="numeric"></label>
-      <label>Cursor <input id="cursor" spellcheck="false"></label>
-      <label>UIDVALIDITY <input id="uidValidity" spellcheck="false"></label>
-      <label>UID <input id="uid" spellcheck="false"></label>
-      <label>Attachment part <input id="partId" spellcheck="false"></label>
+  <section id="mailboxSection">
+    <div class="sec-head">
+      <h2 data-i18n="mailboxHeading">Mailbox</h2>
+      <span id="mailboxSummary" class="note" style="margin:0"></span>
+      <span class="push"></span>
+      <button id="folders" class="quiet" type="button" data-i18n="foldersBtn">Folders</button>
+      <button id="search" type="button" data-i18n="searchBtn">Search</button>
     </div>
-    <div class="checks"><label><input id="unseen" type="checkbox"> Unseen only</label></div>
-    <div class="row">
-      <button id="folders" class="quiet" type="button">Folders</button>
-      <button id="search" class="quiet" type="button">Search</button>
-      <button id="read" class="quiet" type="button">Read</button>
-      <button id="attachment" class="quiet" type="button">Save attachment</button>
+
+    <div id="folderList" class="folder-strip"></div>
+
+    <div class="grid-3">
+      <label><span data-i18n="folderLabel">Folder</span> <input id="mailbox" value="INBOX" spellcheck="false"></label>
+      <label><span data-i18n="queryLabel">Search text</span> <input id="query" spellcheck="false" placeholder="Keyword in message"></label>
+      <label><span data-i18n="fromFilterLabel">From sender</span> <input id="fromQuery" spellcheck="false" placeholder="sender@example.com"></label>
+      <label><span data-i18n="sinceLabel">Since date</span> <input id="since" placeholder="YYYY-MM-DD" spellcheck="false"></label>
+      <label><span data-i18n="limitLabel">Page size</span> <input id="limit" value="20" inputmode="numeric"></label>
+      <div class="checks" style="margin-top:0;min-height:32px">
+        <label><input id="unseen" type="checkbox"> <span data-i18n="unseenLabel">Unseen only</span></label>
+      </div>
     </div>
+
+    <div class="row" id="paginationBar">
+      <button id="prevPage" class="quiet" type="button" disabled data-i18n="prevPageBtn">Previous page</button>
+      <button id="nextPage" class="quiet" type="button" disabled data-i18n="nextPageBtn">Next page</button>
+      <span id="pageStatus" class="note" style="margin:0"></span>
+    </div>
+
+    <div id="messageList" class="msg-list"></div>
+
+    <div id="messageView" class="reader" hidden>
+      <div class="reader-head">
+        <div style="min-width:0;flex:1">
+          <h3 id="readSubject"></h3>
+          <div id="readFrom" class="reader-meta"></div>
+          <div id="readMeta" class="reader-meta"></div>
+        </div>
+        <button id="replyFromRead" class="quiet" type="button" data-i18n="replyThisBtn">Reply to this message</button>
+      </div>
+      <p id="readCompleteness" class="note" data-tone="warn" hidden></p>
+      <pre id="readBody" class="mail-body"></pre>
+      <details id="htmlSourceDetails" hidden>
+        <summary data-i18n="htmlSourceSummary">HTML source</summary>
+        <pre id="readHtml" class="mail-body"></pre>
+      </details>
+      <div id="attachmentList" class="att-list" hidden></div>
+      <p id="attachmentStatus" class="note" hidden></p>
+    </div>
+
+    <details id="protocolDetails">
+      <summary data-i18n="protocolSummary">Message identity &amp; cursor (UID / UIDVALIDITY / attachment part)</summary>
+      <div class="fold-body">
+        <div class="grid">
+          <label>Cursor <input id="cursor" spellcheck="false"></label>
+          <label>UIDVALIDITY <input id="uidValidity" spellcheck="false"></label>
+          <label>UID <input id="uid" spellcheck="false"></label>
+          <label><span data-i18n="partIdLabel">Attachment part</span> <input id="partId" spellcheck="false"></label>
+        </div>
+        <div class="row">
+          <button id="read" class="quiet" type="button" data-i18n="readBtn">Read by UID</button>
+          <button id="attachment" class="quiet" type="button" data-i18n="saveAttBtn">Save attachment</button>
+        </div>
+      </div>
+    </details>
   </section>
 
-  <section>
-    <h2>Send</h2>
+  <section id="sendSection" style="border-bottom:0">
+    <div class="sec-head">
+      <h2 data-i18n="composeHeading">Compose &amp; Reply</h2>
+    </div>
+
+    <div id="replyTargetBar" class="reply-banner" hidden>
+      <span id="replyTargetText"></span>
+      <span class="push"></span>
+      <button id="clearReplyTarget" class="quiet" type="button" data-i18n="clearReplyBtn">Clear reply target</button>
+    </div>
+
     <div class="grid">
-      <label>To <input id="to" autocomplete="off" spellcheck="false"></label>
-      <label>Subject <input id="subject"></label>
-      <label class="wide">Message <textarea id="text"></textarea></label>
+      <label><span data-i18n="toLabel">To</span> <input id="to" autocomplete="off" spellcheck="false" placeholder="recipient@example.com"></label>
+      <label><span data-i18n="subjectLabel">Subject</span> <input id="subject"></label>
+      <label class="wide"><span data-i18n="messageLabel">Message</span> <textarea id="text"></textarea></label>
     </div>
+    <p id="bodyTrimNote" class="note" hidden data-i18n="bodyTrimHint">Outer leading/trailing whitespace on the message body is trimmed on send; internal line breaks and spacing are kept.</p>
+
+    <details id="composeMore">
+      <summary data-i18n="composeMoreSummary">Cc, Bcc &amp; attachment file paths</summary>
+      <div class="fold-body grid">
+        <label>Cc <input id="cc" autocomplete="off" spellcheck="false"></label>
+        <label>Bcc <input id="bcc" autocomplete="off" spellcheck="false"></label>
+        <label class="wide"><span data-i18n="attPathsLabel">Attachment paths (one path per line)</span> <textarea id="attachmentPaths" style="min-height:52px" spellcheck="false"></textarea></label>
+      </div>
+    </details>
+
     <div class="row">
-      <button id="send" type="button">Send</button>
-      <button id="reply" class="quiet" type="button">Reply</button>
-      <button id="sendAgain" class="quiet" type="button" hidden>Send again</button>
+      <button id="send" type="button" data-i18n="sendBtn">Send</button>
+      <button id="reply" class="quiet" type="button" data-i18n="replyBtn">Reply</button>
+      <button id="sendAgain" class="quiet" type="button" hidden data-i18n="sendAgainBtn">Send again</button>
     </div>
-    <p id="sendNote" class="note"></p>
+    <p id="sendNote" class="note" role="status"></p>
   </section>
-  <pre id="result"></pre>
+
+  <details id="diagnosticDetails">
+    <summary data-i18n="diagSummary">Protocol receipt (raw JSON)</summary>
+    <pre id="result"></pre>
+  </details>
 </main>
 <script>
 (() => {
@@ -141,14 +697,220 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px
   let routes = [];
   let lastState = { accounts: [] };
   let requestId = '';
+  let lastDraftSig = '';
+  let lastSendAction = 'send';
+  let sendingInFlight = false;
+  let activeAccount = '';
+  let cursorStack = [];
+  let currentFolders = [];
+  let currentMessages = [];
+  let currentRead = null;
+  let userPinnedLang = false;
+
+  const COPY = {
+    en: {
+      title: 'Mail',
+      langBtn: '中文',
+      activeAccountLabel: 'Account',
+      newAccountBtn: 'New account',
+      testBtn: 'Test',
+      accountHeading: 'Account configuration',
+      presetLabel: 'Preset',
+      authLabel: 'Auth',
+      authPassword: 'Password or app password',
+      authOauth: 'OAuth2 token',
+      userLabel: 'Email or username',
+      labelField: 'Display label',
+      idLabel: 'Account ID',
+      fromLabel: 'From header (optional)',
+      passwordLabel: 'Password or app password',
+      accessTokenLabel: 'Access token',
+      refreshTokenLabel: 'Refresh token',
+      clientIdLabel: 'OAuth client ID',
+      clientSecretLabel: 'Client secret',
+      tokenUrlLabel: 'OAuth token URL',
+      scopeLabel: 'OAuth scope',
+      serverSummaryTitle: 'IMAP & SMTP server settings',
+      imapHostLabel: 'IMAP host',
+      imapPortLabel: 'IMAP port',
+      smtpHostLabel: 'SMTP host',
+      smtpPortLabel: 'SMTP port',
+      imapTlsLabel: 'IMAP implicit TLS',
+      smtpTlsLabel: 'SMTP implicit TLS',
+      loopbackLabel: 'Loopback cleartext',
+      watchSummaryTitle: 'Inbox watch & IM notifications',
+      watchGlobalLabel: 'Watch while Kiki is open',
+      watchAccountLabel: 'Watch this inbox',
+      imEnableLabel: 'Forward new mail to a notification channel',
+      imPreviewLabel: 'Include a short preview',
+      imChannelLabel: 'Notification channel',
+      saveBtn: 'Save',
+      loadBtn: 'Load',
+      deleteBtn: 'Delete',
+      mailboxHeading: 'Mailbox',
+      foldersBtn: 'Folders',
+      searchBtn: 'Search',
+      folderLabel: 'Folder',
+      queryLabel: 'Search text',
+      fromFilterLabel: 'From sender',
+      sinceLabel: 'Since date',
+      limitLabel: 'Page size',
+      unseenLabel: 'Unseen only',
+      prevPageBtn: 'Previous page',
+      nextPageBtn: 'Next page',
+      replyThisBtn: 'Reply to this message',
+      htmlSourceSummary: 'HTML source',
+      protocolSummary: 'Message identity & cursor (UID / UIDVALIDITY / attachment part)',
+      partIdLabel: 'Attachment part',
+      readBtn: 'Read by UID',
+      saveAttBtn: 'Save attachment',
+      composeHeading: 'Compose & Reply',
+      clearReplyBtn: 'Clear reply target',
+      toLabel: 'To',
+      subjectLabel: 'Subject',
+      messageLabel: 'Message',
+      composeMoreSummary: 'Cc, Bcc & attachment file paths',
+      attPathsLabel: 'Attachment paths (one path per line)',
+      bodyTrimHint: 'Outer leading/trailing whitespace on the message body is trimmed on send; internal line breaks and spacing are kept.',
+      sendBtn: 'Send',
+      replyBtn: 'Reply',
+      sendAgainBtn: 'Send again',
+      diagSummary: 'Protocol receipt (raw JSON)',
+      noAccountsOption: 'No saved account',
+      emptyMessages: 'No messages loaded for this folder yet.',
+      noSubject: '(No subject)',
+      unknownSender: '(Unknown sender)',
+      readBtnShort: 'Read',
+      replyBtnShort: 'Reply',
+      savePartBtn: 'Save attachment',
+      savedTo: 'Saved to: ',
+      previewNotice: 'Inline preview only (first 4,000 characters). Complete message bytes saved at: ',
+      replyingTo: 'Reply target: ',
+    },
+    zh: {
+      title: '邮件',
+      langBtn: 'EN',
+      activeAccountLabel: '当前账号',
+      newAccountBtn: '新建账号',
+      testBtn: '测试连接',
+      accountHeading: '账号与服务配置',
+      presetLabel: '服务预设',
+      authLabel: '认证方式',
+      authPassword: '密码或应用专用密码',
+      authOauth: 'OAuth2 令牌',
+      userLabel: '邮箱或用户名',
+      labelField: '显示名称',
+      idLabel: '账号 ID',
+      fromLabel: '发件人 From（可选）',
+      passwordLabel: '密码或应用专用密码',
+      accessTokenLabel: 'Access token',
+      refreshTokenLabel: 'Refresh token',
+      clientIdLabel: 'OAuth client ID',
+      clientSecretLabel: 'Client secret',
+      tokenUrlLabel: 'OAuth token URL',
+      scopeLabel: 'OAuth scope',
+      serverSummaryTitle: 'IMAP 与 SMTP 服务器参数',
+      imapHostLabel: 'IMAP 主机',
+      imapPortLabel: 'IMAP 端口',
+      smtpHostLabel: 'SMTP 主机',
+      smtpPortLabel: 'SMTP 端口',
+      imapTlsLabel: 'IMAP 隐式 TLS',
+      smtpTlsLabel: 'SMTP 隐式 TLS',
+      loopbackLabel: '本地回环明文（仅 127.0.0.1 / localhost）',
+      watchSummaryTitle: '收件箱后台监听与 IM 通知',
+      watchGlobalLabel: 'Kiki 打开期间启用收件监听',
+      watchAccountLabel: '监听此账号收件箱',
+      imEnableLabel: '将新邮件摘要转发到系统通知渠道',
+      imPreviewLabel: '包含简短正文预览',
+      imChannelLabel: '系统通知渠道',
+      saveBtn: '保存账号',
+      loadBtn: '读取已存',
+      deleteBtn: '删除账号',
+      mailboxHeading: '收件箱与邮件浏览',
+      foldersBtn: '加载文件夹',
+      searchBtn: '搜索 / 刷新',
+      folderLabel: '文件夹',
+      queryLabel: '搜索正文关键词',
+      fromFilterLabel: '发件人筛选',
+      sinceLabel: '起始日期',
+      limitLabel: '每页条数',
+      unseenLabel: '仅看未读',
+      prevPageBtn: '上一页',
+      nextPageBtn: '下一页',
+      replyThisBtn: '回复此邮件',
+      htmlSourceSummary: 'HTML 源码',
+      protocolSummary: '邮件标识与分页游标（UID / UIDVALIDITY / 附件分段）',
+      partIdLabel: '附件分段 ID',
+      readBtn: '按 UID 读取',
+      saveAttBtn: '保存附件',
+      composeHeading: '写信与回复',
+      clearReplyBtn: '取消绑定回复对象',
+      toLabel: '收件人 To',
+      subjectLabel: '主题 Subject',
+      messageLabel: '正文内容',
+      composeMoreSummary: '抄送 Cc、密送 Bcc 与本地附件路径',
+      attPathsLabel: '本地附件绝对路径（每行一个）',
+      bodyTrimHint: '发送时正文首尾空白字符会被去除，正文内部的换行与缩进原样保留。',
+      sendBtn: '发送邮件',
+      replyBtn: '回复选中邮件',
+      sendAgainBtn: '重试发送',
+      diagSummary: '协议回执（原始 JSON）',
+      noAccountsOption: '尚无已保存账号',
+      emptyMessages: '当前文件夹尚未加载或没有匹配的邮件。',
+      noSubject: '（无主题）',
+      unknownSender: '（未知发件人）',
+      readBtnShort: '阅读',
+      replyBtnShort: '回复',
+      savePartBtn: '保存附件',
+      savedTo: '已保存至：',
+      previewNotice: '当前仅显示前 4,000 字符预览，完整邮件字节已保存在：',
+      replyingTo: '当前回复目标：',
+    },
+  };
+
+  let lang = typeof navigator !== 'undefined' && String(navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+  const tr = (key) => (COPY[lang] && COPY[lang][key]) || COPY.en[key] || key;
 
   const el = (id) => document.getElementById(id);
-  const text = (id) => el(id).value.trim();
-  const checked = (id) => el(id).checked === true;
+  const rawVal = (id) => String(el(id)?.value ?? '');
+  const text = (id) => rawVal(id).trim();
+  const checked = (id) => el(id)?.checked === true;
   const num = (id) => {
     const value = text(id);
     return value === '' ? undefined : Number(value);
   };
+  const canDom = () => typeof document.createElement === 'function';
+
+  function applyLocale() {
+    if (document.documentElement) document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+    const langBtn = el('langToggle');
+    if (langBtn) langBtn.textContent = tr('langBtn');
+    if (typeof document.querySelectorAll === 'function') {
+      for (const node of document.querySelectorAll('[data-i18n]')) {
+        const key = node.getAttribute('data-i18n');
+        if (key) node.textContent = tr(key);
+      }
+    }
+  }
+
+  function applyPresentation(pres) {
+    if (!pres || typeof pres !== 'object') return;
+    if (!userPinnedLang && typeof pres.locale === 'string') {
+      lang = pres.locale.toLowerCase().startsWith('zh') ? 'zh' : 'en';
+      applyLocale();
+    }
+    const root = document.documentElement;
+    if (root && typeof root.setAttribute === 'function' && (pres.theme === 'dark' || pres.theme === 'light')) {
+      root.setAttribute('data-theme', pres.theme);
+    }
+    if (root && root.style && typeof root.style.setProperty === 'function' && pres.tokens && typeof pres.tokens === 'object') {
+      for (const [k, v] of Object.entries(pres.tokens)) {
+        if (typeof k === 'string' && k.startsWith('--color-') && typeof v === 'string' && v.trim() !== '') {
+          root.style.setProperty(k, v.trim());
+        }
+      }
+    }
+  }
 
   function call(action, args) {
     const id = ++seq;
@@ -156,8 +918,19 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px
     return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
   }
 
+  function setStatus(message, tone = '') {
+    const node = el('status');
+    const dot = el('statusDot');
+    if (node) {
+      node.textContent = message;
+      if (node.dataset) node.dataset.tone = tone;
+    }
+    if (dot && dot.dataset) dot.dataset.tone = tone;
+  }
+
   function show(value) {
-    el('result').textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    const out = el('result');
+    if (out) out.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
   }
 
   function secretLine(account) {
@@ -166,12 +939,152 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px
     return 'No secret saved';
   }
 
+  function syncAuthVisibility() {
+    const mode = text('auth') || 'password';
+    const isOauth = mode === 'oauth2';
+    if (el('passwordGroup')) el('passwordGroup').hidden = isOauth;
+    if (el('oauthGroup')) el('oauthGroup').hidden = !isOauth;
+    const currentAcc = (lastState.accounts || []).find((item) => item.id === text('id'));
+    const secNode = el('secretStatus');
+    if (secNode) {
+      if (currentAcc && currentAcc.credentialStored) {
+        secNode.hidden = false;
+        secNode.textContent = `${secretLine(currentAcc)}. Leave secret fields blank to keep it.`;
+      } else {
+        secNode.hidden = true;
+        secNode.textContent = '';
+      }
+    }
+  }
+
+  function syncServerSummary() {
+    const imap = text('imapHost') ? `${text('imapHost')}:${text('imapPort') || '993'} (${checked('imapSecure') ? 'TLS' : checked('allowInsecure') ? 'cleartext' : 'STARTTLS'})` : '';
+    const smtp = text('smtpHost') ? `${text('smtpHost')}:${text('smtpPort') || '465'} (${checked('smtpSecure') ? 'TLS' : checked('allowInsecure') ? 'cleartext' : 'STARTTLS'})` : '';
+    if (el('serverSummary')) {
+      el('serverSummary').textContent = [imap, smtp].filter(Boolean).join(' · ');
+    }
+    if (el('serverDetails')) {
+      const p = text('preset') || 'custom';
+      if (p === 'custom') el('serverDetails').open = true;
+    }
+  }
+
+  function syncBodyTrimNote() {
+    const raw = rawVal('text');
+    const hasOuterWs = raw.length > 0 && raw !== raw.trim();
+    if (el('bodyTrimNote')) el('bodyTrimNote').hidden = !hasOuterWs;
+  }
+
+  function syncReplyTargetBar() {
+    const uid = text('uid');
+    const uidv = text('uidValidity');
+    const box = text('mailbox') || 'INBOX';
+    const bar = el('replyTargetBar');
+    const label = el('replyTargetText');
+    if (!bar || !label) return;
+    if (uid && uidv) {
+      const subj = currentRead && currentRead.identity && currentRead.identity.uid === uid && currentRead.identity.uidValidity === uidv
+        ? (currentRead.subject || tr('noSubject'))
+        : '';
+      label.textContent = `${tr('replyingTo')}${subj ? subj + ' · ' : ''}${box} · UID ${uid} (UIDVALIDITY ${uidv})`;
+      bar.hidden = false;
+    } else {
+      label.textContent = '';
+      bar.hidden = true;
+    }
+  }
+
+  function clearMailboxViewForAccountSwitch() {
+    cursorStack = [];
+    currentFolders = [];
+    currentMessages = [];
+    currentRead = null;
+    requestId = '';
+    lastDraftSig = '';
+    if (el('cursor')) el('cursor').value = '';
+    if (el('uidValidity')) el('uidValidity').value = '';
+    if (el('uid')) el('uid').value = '';
+    if (el('partId')) el('partId').value = '';
+    if (el('mailbox') && !text('mailbox')) el('mailbox').value = 'INBOX';
+    if (el('messageView')) el('messageView').hidden = true;
+    if (el('sendAgain')) el('sendAgain').hidden = true;
+    if (el('sendNote')) el('sendNote').textContent = '';
+    renderFolders();
+    renderMessages();
+    syncReplyTargetBar();
+  }
+
+  function selectAccountById(accountId) {
+    const account = (lastState.accounts || []).find((item) => item.id === accountId);
+    if (!account) return;
+    const changed = activeAccount !== '' && activeAccount !== account.id;
+    activeAccount = account.id;
+    fill(account);
+    if (changed) clearMailboxViewForAccountSwitch();
+    renderAccountControls();
+  }
+
+  function renderAccountControls() {
+    const accounts = lastState.accounts || [];
+    const currentId = text('id') || activeAccount;
+    const select = el('accountSelect');
+    if (select && canDom() && typeof select.replaceChildren === 'function') {
+      select.replaceChildren();
+      if (accounts.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = tr('noAccountsOption');
+        select.append(opt);
+      } else {
+        for (const acc of accounts) {
+          const opt = document.createElement('option');
+          opt.value = acc.id;
+          opt.textContent = `${acc.label} (${acc.user})`;
+          select.append(opt);
+        }
+        if (accounts.some((acc) => acc.id === currentId)) select.value = currentId;
+      }
+    }
+    const list = el('accountList');
+    if (list && canDom() && typeof list.replaceChildren === 'function') {
+      list.replaceChildren();
+      for (const acc of accounts) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'pill';
+        if (acc.id === currentId) btn.setAttribute('aria-current', 'true');
+        btn.textContent = `${acc.label} · ${acc.user}`;
+        const sub = document.createElement('span');
+        sub.className = 'pill-sub';
+        sub.textContent = secretLine(acc);
+        btn.append(sub);
+        btn.onclick = () => selectAccountById(acc.id);
+        list.append(btn);
+      }
+    }
+    if (el('accountSummary')) {
+      const active = accounts.find((item) => item.id === currentId);
+      el('accountSummary').textContent = active ? `${active.label} · ${active.user} · ${secretLine(active)}` : '';
+    }
+  }
+
   function render(state) {
-    lastState = state;
-    const accounts = state.accounts || [];
+    lastState = state || { accounts: [] };
+    const accounts = lastState.accounts || [];
     el('accounts').textContent = accounts.map((account) => `${account.label} · ${account.user} · ${secretLine(account)}`).join('\n');
-    el('im').textContent = imSentence(state.imBridge);
-    el('watchEnabled').checked = state.watchEnabled === true;
+    el('im').textContent = imSentence(lastState.imBridge);
+    el('watchEnabled').checked = lastState.watchEnabled === true;
+    if (accounts.length > 0 && !text('id')) {
+      activeAccount = accounts[0].id;
+      fill(accounts[0]);
+      if (el('accountSheet')) el('accountSheet').open = false;
+    } else if (text('id')) {
+      activeAccount = text('id');
+    } else if (el('accountSheet')) {
+      el('accountSheet').open = true;
+    }
+    renderAccountControls();
+    syncAuthVisibility();
   }
 
   function fill(account) {
@@ -202,14 +1115,28 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px
     el('accessToken').value = '';
     const preset = presets.find((item) => item.id === el('preset').value);
     el('presetNote').textContent = preset?.note || '';
+    syncAuthVisibility();
+    syncServerSummary();
+  }
+
+  function deriveAccountId() {
+    const existing = text('id');
+    if (existing) return existing;
+    const base = (text('label') || text('user').split('@')[0] || '').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+    if (base && /^[A-Za-z0-9]/.test(base)) {
+      el('id').value = base.slice(0, 64);
+      return el('id').value;
+    }
+    return '';
   }
 
   function accountBody() {
+    const id = deriveAccountId();
     return {
-      id: text('id'),
-      label: text('label'),
+      id,
+      label: text('label') || id,
       user: text('user'),
-      from: text('from'),
+      from: text('from') || text('user'),
       preset: text('preset') || 'custom',
       auth: text('auth') || 'password',
       imapHost: text('imapHost'),
@@ -249,21 +1176,33 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px
   function applyPreset() {
     const preset = presets.find((item) => item.id === text('preset'));
     el('presetNote').textContent = preset?.note || '';
-    if (!preset) return;
+    if (!preset) {
+      syncAuthVisibility();
+      syncServerSummary();
+      return;
+    }
     if (preset.auth) el('auth').value = preset.auth;
-    for (const key of ['imapHost', 'smtpHost', 'oauthTokenUrl', 'oauthScope']) {
+    for (const key of ['imapHost', 'smtpHost']) {
       if (preset[key]) el(key).value = String(preset[key]);
     }
+    el('oauthTokenUrl').value = preset.oauthTokenUrl ? String(preset.oauthTokenUrl) : '';
+    el('oauthScope').value = preset.oauthScope ? String(preset.oauthScope) : '';
     if (preset.imapPort != null) el('imapPort').value = String(preset.imapPort);
     if (preset.smtpPort != null) el('smtpPort').value = String(preset.smtpPort);
     if (typeof preset.imapSecure === 'boolean') el('imapSecure').checked = preset.imapSecure;
     if (typeof preset.smtpSecure === 'boolean') el('smtpSecure').checked = preset.smtpSecure;
     if (typeof preset.allowInsecureAuth === 'boolean') el('allowInsecure').checked = preset.allowInsecureAuth;
+    syncAuthVisibility();
+    syncServerSummary();
+  }
+
+  function activeAccountId() {
+    return text('id') || el('accountSelect')?.value?.trim() || activeAccount;
   }
 
   function mailboxArgs() {
     return {
-      accountId: text('id'),
+      accountId: activeAccountId(),
       mailbox: text('mailbox') || 'INBOX',
       query: text('query'),
       from: text('fromQuery'),
@@ -277,10 +1216,39 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px
     };
   }
 
+  function attachmentPathsList() {
+    const raw = rawVal('attachmentPaths');
+    if (!raw.trim()) return undefined;
+    const list = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    return list.length ? list : undefined;
+  }
+
+  function draftSignature() {
+    const att = (attachmentPathsList() || []).join('\n');
+    return [
+      activeAccountId(),
+      text('to'),
+      text('cc'),
+      text('bcc'),
+      text('subject'),
+      text('text'),
+      text('mailbox') || 'INBOX',
+      text('uidValidity'),
+      text('uid'),
+      att,
+    ].join('\0');
+  }
+
   function sendArgs(confirmResend) {
+    syncBodyTrimNote();
+    const sig = draftSignature();
+    if (!confirmResend && lastDraftSig && sig !== lastDraftSig) {
+      requestId = '';
+    }
     if (!requestId) requestId = crypto.randomUUID();
-    return {
-      accountId: text('id'),
+    lastDraftSig = sig;
+    const payload = {
+      accountId: activeAccountId(),
       to: text('to'),
       subject: text('subject'),
       text: text('text'),
@@ -290,15 +1258,241 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px
       requestId,
       confirmResend,
     };
+    if (text('cc')) payload.cc = text('cc');
+    if (text('bcc')) payload.bcc = text('bcc');
+    const paths = attachmentPathsList();
+    if (paths) payload.attachmentPaths = paths;
+    return payload;
   }
 
   function showSend(result) {
     show(result);
-    const retryable = result.outcome === 'failed' || result.outcome === 'rejected';
+    const retryable = result.outcome === 'failed' || result.outcome === 'rejected' || result.outcome === 'auth_failed' || result.outcome === 'cancelled';
     el('sendAgain').hidden = !retryable;
-    el('sendNote').textContent = result.message || '';
-    el('status').textContent = result.message || el('status').textContent;
-    if (result.ok === true && result.outcome === 'accepted') requestId = '';
+    const noteNode = el('sendNote');
+    const summaryText = result.message || result.note || '';
+    if (noteNode) {
+      noteNode.textContent = summaryText;
+      if (noteNode.dataset) {
+        noteNode.dataset.tone = result.ok === true && result.outcome === 'accepted'
+          ? 'ok'
+          : result.outcome === 'uncertain'
+            ? 'warn'
+            : retryable
+              ? 'danger'
+              : '';
+      }
+    }
+    el('status').textContent = result.message || result.note || el('status').textContent;
+    if (result.ok === true && result.outcome === 'accepted') {
+      requestId = '';
+      lastDraftSig = '';
+    }
+  }
+
+  function renderFolders() {
+    const host = el('folderList');
+    if (!host) return;
+    if (!canDom() || typeof host.replaceChildren !== 'function') {
+      host.textContent = currentFolders.map((f) => f.path).join(', ');
+      return;
+    }
+    host.replaceChildren();
+    const activeBox = text('mailbox') || 'INBOX';
+    for (const box of currentFolders) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'pill';
+      if (box.path === activeBox) btn.setAttribute('aria-current', 'true');
+      btn.textContent = box.name && box.name !== box.path ? `${box.name} (${box.path})` : box.path;
+      btn.onclick = async () => {
+        el('mailbox').value = box.path;
+        cursorStack = [];
+        el('cursor').value = '';
+        el('uidValidity').value = '';
+        el('uid').value = '';
+        el('partId').value = '';
+        renderFolders();
+        syncReplyTargetBar();
+        await el('search').onclick();
+      };
+      host.append(btn);
+    }
+  }
+
+  function formatBytes(bytes) {
+    const n = Number(bytes);
+    if (!Number.isFinite(n) || n < 0) return '';
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function renderMessages(nextCursor) {
+    const host = el('messageList');
+    if (el('prevPage')) el('prevPage').disabled = cursorStack.length === 0;
+    if (el('nextPage')) el('nextPage').disabled = !nextCursor;
+    if (el('pageStatus')) {
+      el('pageStatus').textContent = currentMessages.length
+        ? `${text('mailbox') || 'INBOX'} · ${currentMessages.length} item(s)${nextCursor ? ' · more available' : ''}`
+        : '';
+    }
+    if (!host) return;
+    if (!canDom() || typeof host.replaceChildren !== 'function') {
+      host.textContent = currentMessages.map((m) => `${m.uid} · ${m.subject || tr('noSubject')} · ${m.from || ''}`).join('\n');
+      return;
+    }
+    host.replaceChildren();
+    if (currentMessages.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'note';
+      empty.textContent = tr('emptyMessages');
+      host.append(empty);
+      return;
+    }
+    for (const item of currentMessages) {
+      const row = document.createElement('div');
+      row.className = 'msg-row';
+      if (text('uid') === String(item.uid) && text('uidValidity') === String(item.uidValidity)) {
+        row.setAttribute('data-selected', 'true');
+      }
+      const left = document.createElement('div');
+      const title = document.createElement('div');
+      title.className = 'msg-title';
+      const unseen = Array.isArray(item.flags) && !item.flags.includes('\\Seen');
+      title.textContent = `${unseen ? '[Unread] ' : ''}${item.subject || tr('noSubject')}`;
+      const sub = document.createElement('div');
+      sub.className = 'msg-sub';
+      sub.textContent = [item.from || tr('unknownSender'), item.date ? item.date.slice(0, 16).replace('T', ' ') : '', formatBytes(item.size), `UID ${item.uid}`].filter(Boolean).join(' · ');
+      left.append(title, sub);
+
+      const acts = document.createElement('div');
+      acts.className = 'msg-actions';
+      const readBtn = document.createElement('button');
+      readBtn.type = 'button';
+      readBtn.className = 'quiet';
+      readBtn.textContent = tr('readBtnShort');
+      readBtn.onclick = async (ev) => {
+        ev?.stopPropagation?.();
+        await selectAndReadMessage(item);
+      };
+      const replyBtn = document.createElement('button');
+      replyBtn.type = 'button';
+      replyBtn.className = 'quiet';
+      replyBtn.textContent = tr('replyBtnShort');
+      replyBtn.onclick = (ev) => {
+        ev?.stopPropagation?.();
+        bindMessageForReply(item);
+      };
+      acts.append(readBtn, replyBtn);
+      row.onclick = () => selectAndReadMessage(item);
+      row.append(left, acts);
+      host.append(row);
+    }
+  }
+
+  async function selectAndReadMessage(item) {
+    if (item.accountId && item.accountId !== activeAccountId()) return;
+    el('mailbox').value = item.mailbox || text('mailbox') || 'INBOX';
+    el('uidValidity').value = String(item.uidValidity || '');
+    el('uid').value = String(item.uid || '');
+    el('partId').value = '';
+    syncReplyTargetBar();
+    await el('read').onclick();
+  }
+
+  function bindMessageForReply(item) {
+    const msgAccount = item.accountId ?? item.identity?.accountId;
+    if (msgAccount && msgAccount !== activeAccountId()) return;
+    el('mailbox').value = item.mailbox || item.identity?.mailbox || text('mailbox') || 'INBOX';
+    el('uidValidity').value = String(item.uidValidity ?? item.identity?.uidValidity ?? '');
+    el('uid').value = String(item.uid ?? item.identity?.uid ?? '');
+    const replyAddr = item.replyTo || item.from || '';
+    if (replyAddr) el('to').value = replyAddr;
+    if (item.subject) {
+      el('subject').value = /^re:/i.test(item.subject) ? item.subject : `Re: ${item.subject}`;
+    }
+    syncReplyTargetBar();
+    el('text')?.focus?.();
+  }
+
+  function renderReadMessage(result) {
+    const pane = el('messageView');
+    if (!result || result.ok !== true) {
+      if (pane) pane.hidden = true;
+      return;
+    }
+    currentRead = result;
+    if (result.identity) {
+      el('mailbox').value = result.identity.mailbox || text('mailbox') || 'INBOX';
+      el('uidValidity').value = String(result.identity.uidValidity || '');
+      el('uid').value = String(result.identity.uid || '');
+    }
+    syncReplyTargetBar();
+    if (!pane) return;
+    pane.hidden = false;
+    if (el('readSubject')) el('readSubject').textContent = result.subject || tr('noSubject');
+    if (el('readFrom')) el('readFrom').textContent = `From: ${result.from || tr('unknownSender')}`;
+    if (el('readMeta')) {
+      const metaParts = [
+        result.to ? `To: ${result.to}` : '',
+        result.cc ? `Cc: ${result.cc}` : '',
+        result.date ? `Date: ${result.date}` : '',
+        result.identity ? `${result.identity.mailbox} · UID ${result.identity.uid} (UIDVALIDITY ${result.identity.uidValidity})` : '',
+      ].filter(Boolean);
+      el('readMeta').textContent = metaParts.join(' · ');
+    }
+    if (el('readBody')) {
+      el('readBody').textContent = String(result.text ?? '');
+    }
+    const htmlDetails = el('htmlSourceDetails');
+    if (htmlDetails) {
+      const hasHtml = Boolean(result.html);
+      htmlDetails.hidden = !hasHtml;
+      if (hasHtml && el('readHtml')) el('readHtml').textContent = String(result.html);
+    }
+    const comp = el('readCompleteness');
+    if (comp) {
+      const paths = [result.textPath, result.htmlPath].filter(Boolean);
+      if (result.textComplete === false || result.htmlComplete === false || paths.length > 0) {
+        comp.hidden = false;
+        comp.textContent = `${tr('previewNotice')}${paths.join(' , ')}`;
+      } else {
+        comp.hidden = true;
+        comp.textContent = '';
+      }
+    }
+    const attHost = el('attachmentList');
+    if (attHost) {
+      const list = Array.isArray(result.attachments) ? result.attachments : [];
+      attHost.hidden = list.length === 0;
+      if (canDom() && typeof attHost.replaceChildren === 'function') {
+        attHost.replaceChildren();
+        for (const att of list) {
+          const row = document.createElement('div');
+          row.className = 'att-item';
+          const info = document.createElement('span');
+          info.textContent = `${att.filename || att.partId} (${att.mimeType || 'file'} · ${formatBytes(att.size)} · part ${att.partId})`;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'quiet';
+          btn.textContent = tr('savePartBtn');
+          btn.onclick = async () => {
+            if (result.identity) {
+              el('mailbox').value = result.identity.mailbox;
+              el('uidValidity').value = String(result.identity.uidValidity);
+              el('uid').value = String(result.identity.uid);
+            }
+            el('partId').value = String(att.partId);
+            await el('attachment').onclick();
+          };
+          row.append(info, btn);
+          attHost.append(row);
+        }
+      } else {
+        attHost.textContent = list.map((att) => `${att.partId}: ${att.filename}`).join('\n');
+      }
+    }
   }
 
   function imSentence(view) {
@@ -335,7 +1529,81 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px
     el('imRoutes').textContent = routes.map((route) => route.label || route.channelId).join('\n');
   }
 
+  async function runExclusiveSend(action, confirmResend) {
+    if (sendingInFlight) return;
+    sendingInFlight = true;
+    lastSendAction = action;
+    el('send').disabled = true;
+    el('reply').disabled = true;
+    el('sendAgain').disabled = true;
+    try {
+      const result = await call(action, sendArgs(confirmResend));
+      showSend(result);
+    } catch (error) {
+      const msg = error?.message || 'Send request failed.';
+      if (el('sendNote')) el('sendNote').textContent = msg;
+      setStatus(msg, 'danger');
+    } finally {
+      sendingInFlight = false;
+      el('send').disabled = false;
+      el('reply').disabled = false;
+      el('sendAgain').disabled = false;
+    }
+  }
+
+  if (el('langToggle')) {
+    el('langToggle').onclick = () => {
+      userPinnedLang = true;
+      lang = lang === 'en' ? 'zh' : 'en';
+      applyLocale();
+      renderAccountControls();
+      renderFolders();
+      renderMessages(currentMessages.nextCursor);
+    };
+  }
+  if (el('accountSelect')) {
+    el('accountSelect').onchange = () => {
+      const id = el('accountSelect').value;
+      if (id) selectAccountById(id);
+    };
+  }
+  if (el('newAccount')) {
+    el('newAccount').onclick = () => {
+      activeAccount = '';
+      fill({ preset: 'custom', auth: 'password', imapPort: 993, imapSecure: true, smtpPort: 465, smtpSecure: true });
+      clearMailboxViewForAccountSwitch();
+      if (el('accountSheet')) el('accountSheet').open = true;
+      el('user')?.focus?.();
+    };
+  }
   el('preset').onchange = () => applyPreset();
+  el('auth').onchange = () => syncAuthVisibility();
+  for (const srvKey of ['imapHost', 'imapPort', 'smtpHost', 'smtpPort', 'imapSecure', 'smtpSecure', 'allowInsecure']) {
+    if (el(srvKey)) el(srvKey).onchange = () => syncServerSummary();
+  }
+  if (el('mailbox')) {
+    el('mailbox').onchange = () => {
+      cursorStack = [];
+      el('cursor').value = '';
+      el('uidValidity').value = '';
+      el('uid').value = '';
+      el('partId').value = '';
+      renderFolders();
+      syncReplyTargetBar();
+    };
+  }
+  for (const filterKey of ['query', 'fromQuery', 'since', 'unseen']) {
+    if (el(filterKey)) {
+      el(filterKey).onchange = () => {
+        cursorStack = [];
+        el('cursor').value = '';
+      };
+    }
+  }
+  if (el('text')) {
+    el('text').oninput = () => syncBodyTrimNote();
+    el('text').onchange = () => syncBodyTrimNote();
+  }
   el('imChannel').onchange = () => {
     const selected = routes.find((route) => route.channelId === text('imChannel'));
     el('imRouteRevision').value = selected?.routeRevision || '';
@@ -345,54 +1613,159 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px
   };
   el('save').onclick = async () => {
     const result = await call('save', { account: accountBody(), credential: credentialBody(), watchEnabled: checked('watchEnabled') });
-    clearSecrets();
     if (result.ok) {
+      clearSecrets();
+      activeAccount = result.account?.id || text('id');
+      if (result.account) fill(result.account);
       const state = await call('state', {});
       render(state);
-      el('status').textContent = 'Saved. Not tested.';
+      setStatus('Saved. Not tested.', 'ok');
+      if (el('accountFeedback')) el('accountFeedback').textContent = 'Account saved.';
+    } else {
+      setStatus(result.message || 'Save failed.', 'danger');
+      if (el('accountFeedback')) el('accountFeedback').textContent = result.message || 'Save failed.';
     }
     show(result);
   };
   el('load').onclick = () => {
-    const account = (lastState.accounts || []).find((item) => item.id === text('id'));
-    if (account) fill(account);
+    const id = activeAccountId();
+    const account = (lastState.accounts || []).find((item) => item.id === id);
+    if (account) selectAccountById(account.id);
   };
   el('test').onclick = async () => {
-    const result = await call('test', { accountId: text('id') });
-    el('status').textContent = result.message || 'Not tested';
-    show(result);
+    el('test').disabled = true;
+    try {
+      const result = await call('test', { accountId: activeAccountId() });
+      setStatus(result.message || 'Not tested', result.ok ? 'ok' : 'danger');
+      if (el('accountFeedback')) el('accountFeedback').textContent = result.message || '';
+      show(result);
+    } finally {
+      el('test').disabled = false;
+    }
   };
   el('remove').onclick = async () => {
-    const result = await call('delete', { accountId: text('id') });
-    const state = await call('state', {});
-    render(state);
+    const targetId = activeAccountId();
+    const result = await call('delete', { accountId: targetId });
+    if (result.ok) {
+      clearSecrets();
+      clearMailboxViewForAccountSwitch();
+      const state = await call('state', {});
+      const remaining = state.accounts || [];
+      if (remaining.length > 0) {
+        activeAccount = remaining[0].id;
+        fill(remaining[0]);
+      } else {
+        activeAccount = '';
+        fill({ preset: 'custom', auth: 'password', imapPort: 993, imapSecure: true, smtpPort: 465, smtpSecure: true });
+      }
+      render(state);
+      setStatus('Account deleted.', '');
+    } else {
+      setStatus(result.message || 'Delete failed.', 'danger');
+    }
     show(result);
   };
-  el('folders').onclick = async () => show(await call('folders', mailboxArgs()));
-  el('search').onclick = async () => show(await call('search', mailboxArgs()));
-  el('read').onclick = async () => show(await call('read', mailboxArgs()));
-  el('attachment').onclick = async () => show(await call('attachment', mailboxArgs()));
-  el('send').onclick = async () => {
-    el('send').disabled = true;
-    try { showSend(await call('send', sendArgs(false))); }
-    finally { el('send').disabled = false; }
+  el('folders').onclick = async () => {
+    const result = await call('folders', mailboxArgs());
+    if (result.ok && Array.isArray(result.mailboxes)) {
+      currentFolders = result.mailboxes;
+      renderFolders();
+      if (el('mailboxSummary')) el('mailboxSummary').textContent = `${currentFolders.length} folder(s)`;
+    } else if (result.message) {
+      setStatus(result.message, 'danger');
+    }
+    show(result);
   };
-  el('reply').onclick = async () => {
-    el('reply').disabled = true;
-    try { showSend(await call('reply', sendArgs(false))); }
-    finally { el('reply').disabled = false; }
+  el('search').onclick = async () => {
+    const result = await call('search', mailboxArgs());
+    if (result.ok && Array.isArray(result.messages)) {
+      if (result.uidValidity) {
+        const nextUidv = String(result.uidValidity);
+        if (text('uid') && text('uidValidity') && text('uidValidity') !== nextUidv) {
+          el('uid').value = '';
+          el('partId').value = '';
+          syncReplyTargetBar();
+        }
+        el('uidValidity').value = nextUidv;
+      }
+      currentMessages = result.messages;
+      currentMessages.nextCursor = result.nextCursor || null;
+      renderMessages(result.nextCursor);
+      if (el('mailboxSummary')) {
+        el('mailboxSummary').textContent = `${result.mailbox || text('mailbox') || 'INBOX'} · UIDVALIDITY ${result.uidValidity || '-'}`;
+      }
+    } else if (result.message) {
+      setStatus(result.message, 'danger');
+    }
+    show(result);
   };
-  el('sendAgain').onclick = async () => {
-    el('sendAgain').disabled = true;
-    try { showSend(await call('send', sendArgs(true))); }
-    finally { el('sendAgain').disabled = false; }
+  if (el('nextPage')) {
+    el('nextPage').onclick = async () => {
+      const next = currentMessages.nextCursor;
+      if (!next) return;
+      cursorStack.push(text('cursor'));
+      el('cursor').value = String(next);
+      await el('search').onclick();
+    };
+  }
+  if (el('prevPage')) {
+    el('prevPage').onclick = async () => {
+      if (cursorStack.length === 0) return;
+      const prev = cursorStack.pop() ?? '';
+      el('cursor').value = prev;
+      await el('search').onclick();
+    };
+  }
+  el('read').onclick = async () => {
+    const result = await call('read', mailboxArgs());
+    if (result.ok) {
+      renderReadMessage(result);
+      renderMessages(currentMessages.nextCursor);
+    } else if (result.message) {
+      setStatus(result.message, 'danger');
+    }
+    show(result);
   };
+  el('attachment').onclick = async () => {
+    const result = await call('attachment', mailboxArgs());
+    const attStatus = el('attachmentStatus');
+    if (attStatus) {
+      if (result.ok && result.path) {
+        attStatus.hidden = false;
+        attStatus.textContent = `${tr('savedTo')}${result.path} (${result.filename || result.partId}, ${formatBytes(result.size)})`;
+      } else if (result.message) {
+        attStatus.hidden = false;
+        attStatus.textContent = result.message;
+      }
+    }
+    show(result);
+  };
+  if (el('replyFromRead')) {
+    el('replyFromRead').onclick = () => {
+      if (currentRead) bindMessageForReply(currentRead);
+    };
+  }
+  if (el('clearReplyTarget')) {
+    el('clearReplyTarget').onclick = () => {
+      el('uid').value = '';
+      el('uidValidity').value = '';
+      syncReplyTargetBar();
+    };
+  }
+  el('send').onclick = () => runExclusiveSend('send', false);
+  el('reply').onclick = () => runExclusiveSend('reply', false);
+  el('sendAgain').onclick = () => runExclusiveSend(lastSendAction || 'send', true);
   el('sendAgain').hidden = true;
 
   window.addEventListener('message', (event) => {
     if (event.source !== parent || !event.data || event.data.channel !== channel) return;
+    if (event.data.kind === 'presentation') {
+      applyPresentation(event.data.presentation);
+      return;
+    }
     if (event.data.kind === 'init') {
-      boot().catch((error) => { el('status').textContent = error.message || 'Panel request failed'; });
+      applyPresentation(event.data.presentation);
+      boot().catch((error) => { setStatus(error.message || 'Panel request failed', 'danger'); });
       return;
     }
     if (event.data.kind !== 'response') return;
@@ -404,12 +1777,13 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px
   });
 
   async function boot() {
+    applyLocale();
     const [state, presetResult, routeView] = await Promise.all([call('state', {}), call('presets', {}), call('routes', {})]);
     presets = presetResult.presets || [];
     render(state);
     fillChannelSelect(routeView);
-    applyPreset();
-    el('status').textContent = 'Not tested';
+    if ((state.accounts || []).length === 0) applyPreset();
+    setStatus('Not tested', '');
   }
 })();
 </script>
