@@ -41,7 +41,7 @@ await plugin.register({
   },
 });
 assert.equal(JSON.stringify(registered), JSON.stringify(manifest['x-kiki'].tools));
-const tests = spawnSync(process.execPath, ['--test', 'test/im-bridge.test.mjs', 'test/im-digest.test.mjs', 'test/repairs.test.mjs', 'test/durability.test.mjs', 'test/protocol.test.mjs', 'test/panel.test.mjs'], {
+const tests = spawnSync(process.execPath, ['--test', 'test/im-bridge.test.mjs', 'test/im-digest.test.mjs', 'test/repairs.test.mjs', 'test/durability.test.mjs', 'test/protocol.test.mjs', 'test/panel.test.mjs', 'test/panel-races.test.mjs'], {
   cwd: root,
   stdio: 'inherit',
 });

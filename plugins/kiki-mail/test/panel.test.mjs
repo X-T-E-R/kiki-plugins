@@ -386,11 +386,12 @@ test('mail panel supports humanized multi-account switching, presets, folder/mes
     get('password').value = PASS;
     await get('save').onclick();
     await flush();
-    assert.equal(get('accountList').children.length, 2);
+    assert.equal(html.includes('id="accountList"'), false);
     assert.equal(get('accountSelect').children.length, 2);
 
-    // Switch back to ada via account pill
-    get('accountList').children[0].onclick();
+    // Switch back to ada via the single account selector
+    get('accountSelect').value = 'ada';
+    get('accountSelect').onchange();
     assert.equal(get('id').value, 'ada');
 
     // 4. Browse folders and paginate messages
@@ -512,7 +513,7 @@ test('mail panel supports humanized multi-account switching, presets, folder/mes
     get('accountSelect').onchange();
     await get('remove').onclick();
     await flush();
-    assert.equal(get('accountList').children.length, 1);
+    assert.equal(get('accountSelect').children.length, 1);
     assert.equal(get('id').value, 'ada');
   } finally {
     await service.deactivate();
@@ -520,4 +521,3 @@ test('mail panel supports humanized multi-account switching, presets, folder/mes
     await rm(dir, { recursive: true, force: true });
   }
 });
-

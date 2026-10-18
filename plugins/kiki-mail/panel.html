@@ -7,7 +7,7 @@
 <style>
 :root {
   color-scheme: light dark;
-  --canvas: #f2efe8;
+  --canvas: var(--color-canvas, #f2efe8);
   --paper: var(--color-paper, #fbfaf6);
   --panel: var(--color-panel, #fffdfa);
   --ink: var(--color-ink, #1b1a17);
@@ -21,8 +21,8 @@
   --selected: var(--color-selected, #dfe8f0);
   --selected-ink: var(--color-selected-ink, #1d4d6d);
   --ok: var(--color-success, #2f6b45);
-  --warn: #87480b;
-  --warn-bg: #f8eedd;
+  --warn: var(--color-amber-ink, #87480b);
+  --warn-bg: var(--color-amber-card, #f8eedd);
   --danger: var(--color-danger, #b0261e);
   --danger-bg: #f8e3d8;
   --wash: rgb(27 26 23 / 0.045);
@@ -33,7 +33,7 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --canvas: #161c20;
+    --canvas: var(--color-canvas, #13191c);
     --paper: var(--color-paper, #1b2226);
     --panel: var(--color-panel, #252d31);
     --ink: var(--color-ink, #eeeae2);
@@ -42,20 +42,20 @@
     --hairline: var(--color-hairline, #354047);
     --hairline-strong: var(--color-hairline-strong, #596870);
     --accent: var(--color-accent, #eb946f);
-    --accent-deep: var(--color-accent-deep, #f4ae8d);
+    --accent-deep: var(--color-accent-deep, #f4b08f);
     --on-accent: var(--color-on-accent, #261a14);
     --selected: var(--color-selected, #24323b);
     --selected-ink: var(--color-selected-ink, #a3cbde);
     --ok: var(--color-success, #9ac6ae);
-    --warn: #f4ae8d;
-    --warn-bg: #33271e;
+    --warn: var(--color-amber-ink, #f4ae8d);
+    --warn-bg: var(--color-amber-card, #33271e);
     --danger: var(--color-danger, #f1a29a);
     --danger-bg: #382221;
     --wash: rgb(238 234 226 / 0.06);
   }
 }
 :root[data-theme="dark"] {
-  --canvas: #161c20;
+  --canvas: var(--color-canvas, #13191c);
   --paper: var(--color-paper, #1b2226);
   --panel: var(--color-panel, #252d31);
   --ink: var(--color-ink, #eeeae2);
@@ -64,13 +64,13 @@
   --hairline: var(--color-hairline, #354047);
   --hairline-strong: var(--color-hairline-strong, #596870);
   --accent: var(--color-accent, #eb946f);
-  --accent-deep: var(--color-accent-deep, #f4ae8d);
+  --accent-deep: var(--color-accent-deep, #f4b08f);
   --on-accent: var(--color-on-accent, #261a14);
   --selected: var(--color-selected, #24323b);
   --selected-ink: var(--color-selected-ink, #a3cbde);
   --ok: var(--color-success, #9ac6ae);
-  --warn: #f4ae8d;
-  --warn-bg: #33271e;
+  --warn: var(--color-amber-ink, #f4ae8d);
+  --warn-bg: var(--color-amber-card, #33271e);
   --danger: var(--color-danger, #f1a29a);
   --danger-bg: #382221;
   --wash: rgb(238 234 226 / 0.06);
@@ -146,12 +146,6 @@ h3 {
   padding: 10px 0;
   border-bottom: 1px solid var(--hairline);
 }
-.account-pills {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  align-items: center;
-}
 .pill {
   display: inline-flex;
   align-items: center;
@@ -170,10 +164,6 @@ h3 {
   border-color: var(--selected-ink);
   color: var(--selected-ink);
   font-weight: 600;
-}
-.pill-sub {
-  font-size: 11px;
-  color: var(--ink-faint);
 }
 .vis-hidden {
   position: absolute;
@@ -466,7 +456,7 @@ pre {
   .row button { min-height: 34px; }
 }
 @media (pointer: coarse) {
-  button, select, input { min-height: 38px; }
+  button, .row button, .pill, select, input { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
@@ -485,8 +475,7 @@ pre {
     <button id="langToggle" class="quiet" type="button">中文</button>
   </header>
 
-  <div class="account-bar" aria-label="Configured accounts">
-    <div id="accountList" class="account-pills"></div>
+  <div class="account-bar">
     <label style="display:inline-flex;align-items:center;gap:6px">
       <span data-i18n="activeAccountLabel">Account</span>
       <select id="accountSelect" aria-label="Select configured account" style="width:auto;min-width:140px"></select>
@@ -635,7 +624,7 @@ pre {
       <summary data-i18n="protocolSummary">Message identity &amp; cursor (UID / UIDVALIDITY / attachment part)</summary>
       <div class="fold-body">
         <div class="grid">
-          <label>Cursor <input id="cursor" spellcheck="false"></label>
+          <label><span data-i18n="cursorLabel">Cursor</span> <input id="cursor" spellcheck="false"></label>
           <label>UIDVALIDITY <input id="uidValidity" spellcheck="false"></label>
           <label>UID <input id="uid" spellcheck="false"></label>
           <label><span data-i18n="partIdLabel">Attachment part</span> <input id="partId" spellcheck="false"></label>
@@ -705,7 +694,15 @@ pre {
   let currentFolders = [];
   let currentMessages = [];
   let currentRead = null;
+  let attachmentResult = null;
   let userPinnedLang = false;
+
+  let viewEpoch = 0;
+  const generations = new Map();
+  let statusKey = 'notTestedStatus';
+  let feedbackKey = '';
+  let mailboxSummaryKind = '';
+  let routeView = null;
 
   const COPY = {
     en: {
@@ -786,6 +783,41 @@ pre {
       savedTo: 'Saved to: ',
       previewNotice: 'Inline preview only (first 4,000 characters). Complete message bytes saved at: ',
       replyingTo: 'Reply target: ',
+      notTestedStatus: 'Not tested',
+      savedNotTested: 'Saved. Not tested.',
+      accountSavedFeedback: 'Account saved.',
+      saveFailed: 'Save failed.',
+      accountDeleted: 'Account deleted.',
+      deleteFailed: 'Delete failed.',
+      secretPasswordSaved: 'Password saved',
+      secretTokenSaved: 'Token saved',
+      secretNoSecret: 'No secret saved',
+      secretLeaveBlankHint: '. Leave secret fields blank to keep it.',
+      itemsCount: 'item(s)',
+      moreAvailable: ' · more available',
+      unreadBadge: 'Unread',
+      imLoading: 'Notification channels load when you open this panel.',
+      imUnsupported: 'IM bridge is unsupported on this Kiki. Mail works without it.',
+      imNoOutbound: 'IM outbound is not available in this process yet.',
+      imOutboundReady: 'IM outbound is available.',
+      imNoRoutes: 'No notification channel is ready.',
+      imChooseChannel: 'Choose a notification channel. Mail does not store its credentials.',
+      imNoneOption: 'None',
+      foldersCount: 'folder(s)',
+      dateLabel: 'Date',
+      senderLabel: 'From',
+      ccLabel: 'Cc',
+      selectedMessage: 'Selected message',
+      attachmentFile: 'Attachment',
+      cleartext: 'cleartext',
+      requestFailed: 'Panel request failed. Try again.',
+      sendFailed: 'Send request failed.',
+      customPreset: 'Custom',
+      localBridgePreset: 'Proton Bridge (local)',
+      secretPlaceholder: 'Leave blank to keep the saved secret',
+      labelPlaceholder: 'Work / Personal',
+      queryPlaceholder: 'Keyword in message',
+      cursorLabel: 'Cursor',
     },
     zh: {
       title: '邮件',
@@ -865,6 +897,41 @@ pre {
       savedTo: '已保存至：',
       previewNotice: '当前仅显示前 4,000 字符预览，完整邮件字节已保存在：',
       replyingTo: '当前回复目标：',
+      notTestedStatus: '未测试',
+      savedNotTested: '已保存，尚未测试',
+      accountSavedFeedback: '账号已保存。',
+      saveFailed: '保存失败。',
+      accountDeleted: '账号已删除。',
+      deleteFailed: '删除失败。',
+      secretPasswordSaved: '已保存密码',
+      secretTokenSaved: '已保存令牌',
+      secretNoSecret: '未保存凭据',
+      secretLeaveBlankHint: '。留空则保留已有密钥。',
+      itemsCount: '封邮件',
+      moreAvailable: ' · 还有更多',
+      unreadBadge: '未读',
+      imLoading: '面板打开时正在加载通知渠道。',
+      imUnsupported: '当前 Kiki 环境未启用 IM 桥接，邮件收发不受影响。',
+      imNoOutbound: '当前进程暂不可用 IM 发送能力。',
+      imOutboundReady: 'IM 发送能力已就绪。',
+      imNoRoutes: '暂无可用的系统通知渠道。',
+      imChooseChannel: '请选择通知渠道。邮件插件不存储该渠道凭据。',
+      imNoneOption: '无',
+      foldersCount: '个文件夹',
+      dateLabel: '日期',
+      senderLabel: '发件人',
+      ccLabel: '抄送',
+      selectedMessage: '选中邮件',
+      attachmentFile: '附件',
+      cleartext: '明文',
+      requestFailed: '面板请求失败，请重试。',
+      sendFailed: '发送请求失败。',
+      customPreset: '自定义',
+      localBridgePreset: 'Proton Bridge（本地）',
+      secretPlaceholder: '留空则保留已保存凭据',
+      labelPlaceholder: '工作 / 个人',
+      queryPlaceholder: '邮件关键词',
+      cursorLabel: '分页游标',
     },
   };
 
@@ -891,13 +958,21 @@ pre {
         if (key) node.textContent = tr(key);
       }
     }
+    for (const [id, key] of Object.entries({ label: 'labelPlaceholder', query: 'queryPlaceholder', password: 'secretPlaceholder', accessToken: 'secretPlaceholder', refreshToken: 'secretPlaceholder', clientSecret: 'secretPlaceholder' })) {
+      if (el(id)) el(id).placeholder = tr(key);
+    }
+    for (const option of el('preset')?.children || []) {
+      if (option.value === 'custom') option.textContent = tr('customPreset');
+      if (option.value === 'proton-bridge') option.textContent = tr('localBridgePreset');
+    }
+    el('accountSelect')?.setAttribute?.('aria-label', tr('activeAccountLabel'));
   }
 
   function applyPresentation(pres) {
     if (!pres || typeof pres !== 'object') return;
     if (!userPinnedLang && typeof pres.locale === 'string') {
       lang = pres.locale.toLowerCase().startsWith('zh') ? 'zh' : 'en';
-      applyLocale();
+      refreshLocale();
     }
     const root = document.documentElement;
     if (root && typeof root.setAttribute === 'function' && (pres.theme === 'dark' || pres.theme === 'light')) {
@@ -918,7 +993,35 @@ pre {
     return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
   }
 
+  function requestGuard(action, keys = ['accountId', 'mailbox']) {
+    const generation = (generations.get(action) || 0) + 1;
+    generations.set(action, generation);
+    const epoch = viewEpoch;
+    const args = mailboxArgs();
+    return {
+      args,
+      current: () => epoch === viewEpoch && generations.get(action) === generation
+        && keys.every((key) => mailboxArgs()[key] === args[key]),
+    };
+  }
+
+  async function scopedCall(action, guard) {
+    try {
+      const result = await call(action, guard.args);
+      return guard.current() ? result : null;
+    } catch (error) {
+      if (guard.current()) setStatus(error.message || tr('requestFailed'), 'danger');
+      return null;
+    }
+  }
+
+  function setStatusKey(key, tone = '') {
+    setStatus(tr(key), tone);
+    statusKey = key;
+  }
+
   function setStatus(message, tone = '') {
+    statusKey = '';
     const node = el('status');
     const dot = el('statusDot');
     if (node) {
@@ -934,45 +1037,33 @@ pre {
   }
 
   function secretLine(account) {
-    if (account.hasPassword) return 'Password saved';
-    if (account.hasAccessToken || account.hasRefreshToken) return 'Token saved';
-    return 'No secret saved';
+    if (account.hasPassword) return tr('secretPasswordSaved');
+    if (account.hasAccessToken || account.hasRefreshToken) return tr('secretTokenSaved');
+    return tr('secretNoSecret');
   }
 
   function syncAuthVisibility() {
-    const mode = text('auth') || 'password';
-    const isOauth = mode === 'oauth2';
+    const isOauth = text('auth') === 'oauth2';
     if (el('passwordGroup')) el('passwordGroup').hidden = isOauth;
     if (el('oauthGroup')) el('oauthGroup').hidden = !isOauth;
     const currentAcc = (lastState.accounts || []).find((item) => item.id === text('id'));
     const secNode = el('secretStatus');
     if (secNode) {
-      if (currentAcc && currentAcc.credentialStored) {
-        secNode.hidden = false;
-        secNode.textContent = `${secretLine(currentAcc)}. Leave secret fields blank to keep it.`;
-      } else {
-        secNode.hidden = true;
-        secNode.textContent = '';
-      }
+      secNode.hidden = !currentAcc?.credentialStored;
+      secNode.textContent = currentAcc?.credentialStored ? `${secretLine(currentAcc)}${tr('secretLeaveBlankHint')}` : '';
     }
   }
 
   function syncServerSummary() {
-    const imap = text('imapHost') ? `${text('imapHost')}:${text('imapPort') || '993'} (${checked('imapSecure') ? 'TLS' : checked('allowInsecure') ? 'cleartext' : 'STARTTLS'})` : '';
-    const smtp = text('smtpHost') ? `${text('smtpHost')}:${text('smtpPort') || '465'} (${checked('smtpSecure') ? 'TLS' : checked('allowInsecure') ? 'cleartext' : 'STARTTLS'})` : '';
-    if (el('serverSummary')) {
-      el('serverSummary').textContent = [imap, smtp].filter(Boolean).join(' · ');
-    }
-    if (el('serverDetails')) {
-      const p = text('preset') || 'custom';
-      if (p === 'custom') el('serverDetails').open = true;
-    }
+    const imap = text('imapHost') ? `${text('imapHost')}:${text('imapPort') || '993'} (${checked('imapSecure') ? 'TLS' : checked('allowInsecure') ? tr('cleartext') : 'STARTTLS'})` : '';
+    const smtp = text('smtpHost') ? `${text('smtpHost')}:${text('smtpPort') || '465'} (${checked('smtpSecure') ? 'TLS' : checked('allowInsecure') ? tr('cleartext') : 'STARTTLS'})` : '';
+    if (el('serverSummary')) el('serverSummary').textContent = [imap, smtp].filter(Boolean).join(' · ');
+    if (el('serverDetails') && (text('preset') || 'custom') === 'custom') el('serverDetails').open = true;
   }
 
   function syncBodyTrimNote() {
     const raw = rawVal('text');
-    const hasOuterWs = raw.length > 0 && raw !== raw.trim();
-    if (el('bodyTrimNote')) el('bodyTrimNote').hidden = !hasOuterWs;
+    if (el('bodyTrimNote')) el('bodyTrimNote').hidden = !(raw.length > 0 && raw !== raw.trim());
   }
 
   function syncReplyTargetBar() {
@@ -983,10 +1074,9 @@ pre {
     const label = el('replyTargetText');
     if (!bar || !label) return;
     if (uid && uidv) {
-      const subj = currentRead && currentRead.identity && currentRead.identity.uid === uid && currentRead.identity.uidValidity === uidv
-        ? (currentRead.subject || tr('noSubject'))
-        : '';
-      label.textContent = `${tr('replyingTo')}${subj ? subj + ' · ' : ''}${box} · UID ${uid} (UIDVALIDITY ${uidv})`;
+      const subject = currentRead?.identity && String(currentRead.identity.uid) === uid && String(currentRead.identity.uidValidity) === uidv
+        ? currentRead.subject || tr('noSubject') : tr('selectedMessage');
+      label.textContent = `${tr('replyingTo')}${subject} · ${box}`;
       bar.hidden = false;
     } else {
       label.textContent = '';
@@ -994,21 +1084,42 @@ pre {
     }
   }
 
+  function renderAttachmentStatus() {
+    const node = el('attachmentStatus');
+    if (!node) return;
+    const result = attachmentResult;
+    node.hidden = !result || !(result.path || result.message);
+    node.textContent = result?.ok && result.path
+      ? `${tr('savedTo')}${result.path} (${result.filename || tr('attachmentFile')}, ${formatBytes(result.size)})`
+      : result?.message || '';
+  }
+
+  function clearReader() {
+    generations.set('attachment', (generations.get('attachment') || 0) + 1);
+    currentRead = null;
+    if (el('messageView')) el('messageView').hidden = true;
+    attachmentResult = null;
+    renderAttachmentStatus();
+  }
+
   function clearMailboxViewForAccountSwitch() {
+    viewEpoch += 1;
     cursorStack = [];
     currentFolders = [];
     currentMessages = [];
-    currentRead = null;
+    clearReader();
     requestId = '';
     lastDraftSig = '';
-    if (el('cursor')) el('cursor').value = '';
-    if (el('uidValidity')) el('uidValidity').value = '';
-    if (el('uid')) el('uid').value = '';
-    if (el('partId')) el('partId').value = '';
-    if (el('mailbox') && !text('mailbox')) el('mailbox').value = 'INBOX';
-    if (el('messageView')) el('messageView').hidden = true;
+    for (const id of ['cursor', 'uidValidity', 'uid', 'partId']) if (el(id)) el(id).value = '';
+    if (el('mailbox')) el('mailbox').value = 'INBOX';
     if (el('sendAgain')) el('sendAgain').hidden = true;
     if (el('sendNote')) el('sendNote').textContent = '';
+    if (el('accountFeedback')) el('accountFeedback').textContent = '';
+    feedbackKey = '';
+    mailboxSummaryKind = '';
+    if (el('mailboxSummary')) el('mailboxSummary').textContent = '';
+    show('');
+    setStatusKey('notTestedStatus');
     renderFolders();
     renderMessages();
     syncReplyTargetBar();
@@ -1017,7 +1128,7 @@ pre {
   function selectAccountById(accountId) {
     const account = (lastState.accounts || []).find((item) => item.id === accountId);
     if (!account) return;
-    const changed = activeAccount !== '' && activeAccount !== account.id;
+    const changed = activeAccount !== account.id;
     activeAccount = account.id;
     fill(account);
     if (changed) clearMailboxViewForAccountSwitch();
@@ -1026,61 +1137,40 @@ pre {
 
   function renderAccountControls() {
     const accounts = lastState.accounts || [];
-    const currentId = text('id') || activeAccount;
     const select = el('accountSelect');
     if (select && canDom() && typeof select.replaceChildren === 'function') {
       select.replaceChildren();
-      if (accounts.length === 0) {
+      if (!activeAccount) {
         const opt = document.createElement('option');
         opt.value = '';
-        opt.textContent = tr('noAccountsOption');
+        opt.textContent = tr(accounts.length ? 'newAccountBtn' : 'noAccountsOption');
         select.append(opt);
-      } else {
-        for (const acc of accounts) {
-          const opt = document.createElement('option');
-          opt.value = acc.id;
-          opt.textContent = `${acc.label} (${acc.user})`;
-          select.append(opt);
-        }
-        if (accounts.some((acc) => acc.id === currentId)) select.value = currentId;
       }
-    }
-    const list = el('accountList');
-    if (list && canDom() && typeof list.replaceChildren === 'function') {
-      list.replaceChildren();
       for (const acc of accounts) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'pill';
-        if (acc.id === currentId) btn.setAttribute('aria-current', 'true');
-        btn.textContent = `${acc.label} · ${acc.user}`;
-        const sub = document.createElement('span');
-        sub.className = 'pill-sub';
-        sub.textContent = secretLine(acc);
-        btn.append(sub);
-        btn.onclick = () => selectAccountById(acc.id);
-        list.append(btn);
+        const opt = document.createElement('option');
+        opt.value = acc.id;
+        opt.textContent = `${acc.label} (${acc.user})`;
+        select.append(opt);
       }
+      select.value = activeAccount;
     }
     if (el('accountSummary')) {
-      const active = accounts.find((item) => item.id === currentId);
+      const active = accounts.find((item) => item.id === activeAccount);
       el('accountSummary').textContent = active ? `${active.label} · ${active.user} · ${secretLine(active)}` : '';
     }
+    el('accounts').textContent = accounts.map((account) => `${account.label} · ${account.user} · ${secretLine(account)}`).join('\n');
   }
 
   function render(state) {
     lastState = state || { accounts: [] };
     const accounts = lastState.accounts || [];
-    el('accounts').textContent = accounts.map((account) => `${account.label} · ${account.user} · ${secretLine(account)}`).join('\n');
     el('im').textContent = imSentence(lastState.imBridge);
     el('watchEnabled').checked = lastState.watchEnabled === true;
-    if (accounts.length > 0 && !text('id')) {
+    if (accounts.length > 0 && !activeAccount) {
       activeAccount = accounts[0].id;
       fill(accounts[0]);
       if (el('accountSheet')) el('accountSheet').open = false;
-    } else if (text('id')) {
-      activeAccount = text('id');
-    } else if (el('accountSheet')) {
+    } else if (accounts.length === 0 && el('accountSheet')) {
       el('accountSheet').open = true;
     }
     renderAccountControls();
@@ -1197,7 +1287,7 @@ pre {
   }
 
   function activeAccountId() {
-    return text('id') || el('accountSelect')?.value?.trim() || activeAccount;
+    return activeAccount;
   }
 
   function mailboxArgs() {
@@ -1283,14 +1373,35 @@ pre {
               : '';
       }
     }
-    el('status').textContent = result.message || result.note || el('status').textContent;
+    if (summaryText) setStatus(summaryText, result.outcome === 'accepted' ? 'ok' : result.outcome === 'uncertain' ? 'warn' : retryable ? 'danger' : '');
     if (result.ok === true && result.outcome === 'accepted') {
       requestId = '';
       lastDraftSig = '';
     }
   }
 
+  function syncMailboxSummary() {
+    if (!el('mailboxSummary')) return;
+    el('mailboxSummary').textContent = mailboxSummaryKind === 'folders'
+      ? `${currentFolders.length} ${tr('foldersCount')}`
+      : mailboxSummaryKind === 'messages' ? `${text('mailbox') || 'INBOX'} · ${currentMessages.length} ${tr('itemsCount')}` : '';
+  }
+
+  function changeMailbox() {
+    viewEpoch += 1;
+    cursorStack = [];
+    currentMessages = [];
+    clearReader();
+    for (const id of ['cursor', 'uidValidity', 'uid', 'partId']) el(id).value = '';
+    mailboxSummaryKind = '';
+    syncMailboxSummary();
+    renderFolders();
+    renderMessages();
+    syncReplyTargetBar();
+  }
+
   function renderFolders() {
+    const epoch = viewEpoch;
     const host = el('folderList');
     if (!host) return;
     if (!canDom() || typeof host.replaceChildren !== 'function') {
@@ -1306,14 +1417,9 @@ pre {
       if (box.path === activeBox) btn.setAttribute('aria-current', 'true');
       btn.textContent = box.name && box.name !== box.path ? `${box.name} (${box.path})` : box.path;
       btn.onclick = async () => {
+        if (epoch !== viewEpoch) return;
         el('mailbox').value = box.path;
-        cursorStack = [];
-        el('cursor').value = '';
-        el('uidValidity').value = '';
-        el('uid').value = '';
-        el('partId').value = '';
-        renderFolders();
-        syncReplyTargetBar();
+        changeMailbox();
         await el('search').onclick();
       };
       host.append(btn);
@@ -1329,17 +1435,17 @@ pre {
   }
 
   function renderMessages(nextCursor) {
+    const epoch = viewEpoch;
     const host = el('messageList');
     if (el('prevPage')) el('prevPage').disabled = cursorStack.length === 0;
     if (el('nextPage')) el('nextPage').disabled = !nextCursor;
     if (el('pageStatus')) {
       el('pageStatus').textContent = currentMessages.length
-        ? `${text('mailbox') || 'INBOX'} · ${currentMessages.length} item(s)${nextCursor ? ' · more available' : ''}`
-        : '';
+        ? `${text('mailbox') || 'INBOX'} · ${currentMessages.length} ${tr('itemsCount')}${nextCursor ? tr('moreAvailable') : ''}` : '';
     }
     if (!host) return;
     if (!canDom() || typeof host.replaceChildren !== 'function') {
-      host.textContent = currentMessages.map((m) => `${m.uid} · ${m.subject || tr('noSubject')} · ${m.from || ''}`).join('\n');
+      host.textContent = currentMessages.map((m) => `${m.subject || tr('noSubject')} · ${m.from || ''}`).join('\n');
       return;
     }
     host.replaceChildren();
@@ -1353,17 +1459,15 @@ pre {
     for (const item of currentMessages) {
       const row = document.createElement('div');
       row.className = 'msg-row';
-      if (text('uid') === String(item.uid) && text('uidValidity') === String(item.uidValidity)) {
-        row.setAttribute('data-selected', 'true');
-      }
+      if (text('uid') === String(item.uid) && text('uidValidity') === String(item.uidValidity)) row.setAttribute('data-selected', 'true');
       const left = document.createElement('div');
       const title = document.createElement('div');
       title.className = 'msg-title';
       const unseen = Array.isArray(item.flags) && !item.flags.includes('\\Seen');
-      title.textContent = `${unseen ? '[Unread] ' : ''}${item.subject || tr('noSubject')}`;
+      title.textContent = `${unseen ? '[' + tr('unreadBadge') + '] ' : ''}${item.subject || tr('noSubject')}`;
       const sub = document.createElement('div');
       sub.className = 'msg-sub';
-      sub.textContent = [item.from || tr('unknownSender'), item.date ? item.date.slice(0, 16).replace('T', ' ') : '', formatBytes(item.size), `UID ${item.uid}`].filter(Boolean).join(' · ');
+      sub.textContent = [item.from || tr('unknownSender'), item.date ? item.date.slice(0, 16).replace('T', ' ') : '', formatBytes(item.size)].filter(Boolean).join(' · ');
       left.append(title, sub);
 
       const acts = document.createElement('div');
@@ -1374,7 +1478,7 @@ pre {
       readBtn.textContent = tr('readBtnShort');
       readBtn.onclick = async (ev) => {
         ev?.stopPropagation?.();
-        await selectAndReadMessage(item);
+        if (epoch === viewEpoch) await selectAndReadMessage(item);
       };
       const replyBtn = document.createElement('button');
       replyBtn.type = 'button';
@@ -1382,10 +1486,10 @@ pre {
       replyBtn.textContent = tr('replyBtnShort');
       replyBtn.onclick = (ev) => {
         ev?.stopPropagation?.();
-        bindMessageForReply(item);
+        if (epoch === viewEpoch) bindMessageForReply(item);
       };
       acts.append(readBtn, replyBtn);
-      row.onclick = () => selectAndReadMessage(item);
+      row.onclick = () => epoch === viewEpoch ? selectAndReadMessage(item) : undefined;
       row.append(left, acts);
       host.append(row);
     }
@@ -1423,22 +1527,17 @@ pre {
       return;
     }
     currentRead = result;
-    if (result.identity) {
-      el('mailbox').value = result.identity.mailbox || text('mailbox') || 'INBOX';
-      el('uidValidity').value = String(result.identity.uidValidity || '');
-      el('uid').value = String(result.identity.uid || '');
-    }
     syncReplyTargetBar();
     if (!pane) return;
     pane.hidden = false;
     if (el('readSubject')) el('readSubject').textContent = result.subject || tr('noSubject');
-    if (el('readFrom')) el('readFrom').textContent = `From: ${result.from || tr('unknownSender')}`;
+    if (el('readFrom')) el('readFrom').textContent = `${tr('senderLabel')}: ${result.from || tr('unknownSender')}`;
     if (el('readMeta')) {
       const metaParts = [
-        result.to ? `To: ${result.to}` : '',
-        result.cc ? `Cc: ${result.cc}` : '',
-        result.date ? `Date: ${result.date}` : '',
-        result.identity ? `${result.identity.mailbox} · UID ${result.identity.uid} (UIDVALIDITY ${result.identity.uidValidity})` : '',
+        result.to ? `${tr('toLabel')}: ${result.to}` : '',
+        result.cc ? `${tr('ccLabel')}: ${result.cc}` : '',
+        result.date ? `${tr('dateLabel')}: ${result.date}` : '',
+        result.identity?.mailbox || '',
       ].filter(Boolean);
       el('readMeta').textContent = metaParts.join(' · ');
     }
@@ -1472,17 +1571,17 @@ pre {
           const row = document.createElement('div');
           row.className = 'att-item';
           const info = document.createElement('span');
-          info.textContent = `${att.filename || att.partId} (${att.mimeType || 'file'} · ${formatBytes(att.size)} · part ${att.partId})`;
+          info.textContent = `${att.filename || tr('attachmentFile')} (${att.mimeType || tr('attachmentFile')} · ${formatBytes(att.size)})`;
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'quiet';
           btn.textContent = tr('savePartBtn');
+          const epoch = viewEpoch;
           btn.onclick = async () => {
-            if (result.identity) {
-              el('mailbox').value = result.identity.mailbox;
-              el('uidValidity').value = String(result.identity.uidValidity);
-              el('uid').value = String(result.identity.uid);
-            }
+            const identity = result.identity;
+            if (epoch !== viewEpoch || currentRead !== result || !identity
+              || identity.accountId !== activeAccountId() || identity.mailbox !== (text('mailbox') || 'INBOX')
+              || String(identity.uid) !== text('uid') || String(identity.uidValidity) !== text('uidValidity')) return;
             el('partId').value = String(att.partId);
             await el('attachment').onclick();
           };
@@ -1490,21 +1589,22 @@ pre {
           attHost.append(row);
         }
       } else {
-        attHost.textContent = list.map((att) => `${att.partId}: ${att.filename}`).join('\n');
+        attHost.textContent = list.map((att) => att.filename || tr('attachmentFile')).join('\n');
       }
     }
   }
 
   function imSentence(view) {
-    if (!view || view.probed === false) return 'Notification channels load when you open this panel.';
-    if (view.supported !== true) return 'IM bridge is unsupported on this Kiki. Mail works without it.';
-    if (view.outbound !== true) return 'IM outbound is not available in this process yet.';
-    if (!Array.isArray(view.routes)) return 'IM outbound is available.';
-    if (view.routes.length === 0) return 'No notification channel is ready.';
-    return 'Choose a notification channel. Mail does not store its credentials.';
+    if (!view || view.probed === false) return tr('imLoading');
+    if (view.supported !== true) return tr('imUnsupported');
+    if (view.outbound !== true) return tr('imNoOutbound');
+    if (!Array.isArray(view.routes)) return tr('imOutboundReady');
+    if (view.routes.length === 0) return tr('imNoRoutes');
+    return tr('imChooseChannel');
   }
 
   function fillChannelSelect(view) {
+    routeView = view;
     routes = Array.isArray(view?.routes) ? view.routes : [];
     const select = el('imChannel');
     const current = select.value;
@@ -1512,7 +1612,7 @@ pre {
       select.replaceChildren();
       const none = document.createElement('option');
       none.value = '';
-      none.textContent = 'None';
+      none.textContent = tr('imNoneOption');
       select.append(none);
       for (const route of routes) {
         const option = document.createElement('option');
@@ -1521,7 +1621,7 @@ pre {
         option.dataset.revision = route.routeRevision;
         select.append(option);
       }
-      if (routes.some((route) => route.channelId === current)) select.value = current;
+      select.value = current;
     }
     const selected = routes.find((route) => route.channelId === select.value);
     if (selected) el('imRouteRevision').value = selected.routeRevision;
@@ -1531,18 +1631,25 @@ pre {
 
   async function runExclusiveSend(action, confirmResend) {
     if (sendingInFlight) return;
+    const epoch = viewEpoch;
+    const args = sendArgs(confirmResend);
+    const signature = draftSignature();
+    const current = () => epoch === viewEpoch && args.accountId === activeAccountId()
+      && args.requestId === requestId && signature === draftSignature();
     sendingInFlight = true;
     lastSendAction = action;
     el('send').disabled = true;
     el('reply').disabled = true;
     el('sendAgain').disabled = true;
     try {
-      const result = await call(action, sendArgs(confirmResend));
-      showSend(result);
+      const result = await call(action, args);
+      if (current()) showSend(result);
     } catch (error) {
-      const msg = error?.message || 'Send request failed.';
-      if (el('sendNote')) el('sendNote').textContent = msg;
-      setStatus(msg, 'danger');
+      if (current()) {
+        const msg = error?.message || tr('sendFailed');
+        if (el('sendNote')) el('sendNote').textContent = msg;
+        setStatus(msg, 'danger');
+      }
     } finally {
       sendingInFlight = false;
       el('send').disabled = false;
@@ -1551,14 +1658,27 @@ pre {
     }
   }
 
+  function refreshLocale() {
+    applyLocale();
+    renderAccountControls();
+    syncAuthVisibility();
+    syncServerSummary();
+    renderFolders();
+    renderMessages(currentMessages.nextCursor);
+    syncMailboxSummary();
+    if (currentRead) renderReadMessage(currentRead);
+    renderAttachmentStatus();
+    syncReplyTargetBar();
+    fillChannelSelect(routeView);
+    if (statusKey) el('status').textContent = tr(statusKey);
+    if (feedbackKey) el('accountFeedback').textContent = tr(feedbackKey);
+  }
+
   if (el('langToggle')) {
     el('langToggle').onclick = () => {
       userPinnedLang = true;
       lang = lang === 'en' ? 'zh' : 'en';
-      applyLocale();
-      renderAccountControls();
-      renderFolders();
-      renderMessages(currentMessages.nextCursor);
+      refreshLocale();
     };
   }
   if (el('accountSelect')) {
@@ -1572,26 +1692,18 @@ pre {
       activeAccount = '';
       fill({ preset: 'custom', auth: 'password', imapPort: 993, imapSecure: true, smtpPort: 465, smtpSecure: true });
       clearMailboxViewForAccountSwitch();
+      renderAccountControls();
       if (el('accountSheet')) el('accountSheet').open = true;
       el('user')?.focus?.();
     };
   }
   el('preset').onchange = () => applyPreset();
   el('auth').onchange = () => syncAuthVisibility();
+  if (el('id')) el('id').oninput = () => syncAuthVisibility();
   for (const srvKey of ['imapHost', 'imapPort', 'smtpHost', 'smtpPort', 'imapSecure', 'smtpSecure', 'allowInsecure']) {
     if (el(srvKey)) el(srvKey).onchange = () => syncServerSummary();
   }
-  if (el('mailbox')) {
-    el('mailbox').onchange = () => {
-      cursorStack = [];
-      el('cursor').value = '';
-      el('uidValidity').value = '';
-      el('uid').value = '';
-      el('partId').value = '';
-      renderFolders();
-      syncReplyTargetBar();
-    };
-  }
+  if (el('mailbox')) el('mailbox').onchange = () => changeMailbox();
   for (const filterKey of ['query', 'fromQuery', 'since', 'unseen']) {
     if (el(filterKey)) {
       el(filterKey).onchange = () => {
@@ -1609,34 +1721,51 @@ pre {
     el('imRouteRevision').value = selected?.routeRevision || '';
   };
   el('imEnabled').onchange = async () => {
-    if (checked('imEnabled')) fillChannelSelect(await call('routes', {}));
+    if (!checked('imEnabled')) return;
+    const guard = requestGuard('routes', ['accountId']);
+    const result = await scopedCall('routes', guard);
+    if (result && checked('imEnabled')) fillChannelSelect(result);
   };
   el('save').onclick = async () => {
-    const result = await call('save', { account: accountBody(), credential: credentialBody(), watchEnabled: checked('watchEnabled') });
+    const args = { account: accountBody(), credential: credentialBody(), watchEnabled: checked('watchEnabled') };
+    const guard = requestGuard('save', ['accountId']);
+    guard.args = args;
+    const result = await scopedCall('save', guard);
+    if (!result || text('id') !== args.account.id) return;
     if (result.ok) {
+      const state = await scopedCall('state', { ...guard, args: {} });
+      if (!state || text('id') !== args.account.id) return;
       clearSecrets();
-      activeAccount = result.account?.id || text('id');
+      const nextAccount = result.account?.id || args.account.id;
+      if (nextAccount !== activeAccount) clearMailboxViewForAccountSwitch();
+      activeAccount = nextAccount;
       if (result.account) fill(result.account);
-      const state = await call('state', {});
       render(state);
-      setStatus('Saved. Not tested.', 'ok');
-      if (el('accountFeedback')) el('accountFeedback').textContent = 'Account saved.';
+      setStatusKey('savedNotTested', 'ok');
+      feedbackKey = 'accountSavedFeedback';
+      if (el('accountFeedback')) el('accountFeedback').textContent = tr(feedbackKey);
     } else {
-      setStatus(result.message || 'Save failed.', 'danger');
-      if (el('accountFeedback')) el('accountFeedback').textContent = result.message || 'Save failed.';
+      if (result.message) setStatus(result.message, 'danger');
+      else setStatusKey('saveFailed', 'danger');
+      feedbackKey = result.message ? '' : 'saveFailed';
+      if (el('accountFeedback')) el('accountFeedback').textContent = result.message || tr('saveFailed');
     }
     show(result);
   };
   el('load').onclick = () => {
-    const id = activeAccountId();
-    const account = (lastState.accounts || []).find((item) => item.id === id);
+    const account = (lastState.accounts || []).find((item) => item.id === activeAccountId());
     if (account) selectAccountById(account.id);
   };
   el('test').onclick = async () => {
     el('test').disabled = true;
     try {
-      const result = await call('test', { accountId: activeAccountId() });
-      setStatus(result.message || 'Not tested', result.ok ? 'ok' : 'danger');
+      const guard = requestGuard('test', ['accountId']);
+      guard.args = { accountId: guard.args.accountId };
+      const result = await scopedCall('test', guard);
+      if (!result) return;
+      if (result.message) setStatus(result.message, result.ok ? 'ok' : 'danger');
+      else setStatusKey('notTestedStatus');
+      feedbackKey = '';
       if (el('accountFeedback')) el('accountFeedback').textContent = result.message || '';
       show(result);
     } finally {
@@ -1644,56 +1773,62 @@ pre {
     }
   };
   el('remove').onclick = async () => {
-    const targetId = activeAccountId();
-    const result = await call('delete', { accountId: targetId });
+    const guard = requestGuard('delete', ['accountId']);
+    guard.args = { accountId: guard.args.accountId };
+    const result = await scopedCall('delete', guard);
+    if (!result) return;
     if (result.ok) {
+      const state = await scopedCall('state', { ...guard, args: {} });
+      if (!state) return;
       clearSecrets();
       clearMailboxViewForAccountSwitch();
-      const state = await call('state', {});
       const remaining = state.accounts || [];
-      if (remaining.length > 0) {
-        activeAccount = remaining[0].id;
-        fill(remaining[0]);
-      } else {
-        activeAccount = '';
-        fill({ preset: 'custom', auth: 'password', imapPort: 993, imapSecure: true, smtpPort: 465, smtpSecure: true });
-      }
+      activeAccount = remaining[0]?.id || '';
+      fill(remaining[0] || { preset: 'custom', auth: 'password', imapPort: 993, imapSecure: true, smtpPort: 465, smtpSecure: true });
       render(state);
-      setStatus('Account deleted.', '');
+      setStatusKey('accountDeleted');
     } else {
-      setStatus(result.message || 'Delete failed.', 'danger');
+      if (result.message) setStatus(result.message, 'danger');
+      else setStatusKey('deleteFailed', 'danger');
     }
     show(result);
   };
   el('folders').onclick = async () => {
-    const result = await call('folders', mailboxArgs());
+    const guard = requestGuard('folders');
+    const result = await scopedCall('folders', guard);
+    if (!result) return;
     if (result.ok && Array.isArray(result.mailboxes)) {
       currentFolders = result.mailboxes;
       renderFolders();
-      if (el('mailboxSummary')) el('mailboxSummary').textContent = `${currentFolders.length} folder(s)`;
+      mailboxSummaryKind = 'folders';
+      syncMailboxSummary();
     } else if (result.message) {
       setStatus(result.message, 'danger');
     }
     show(result);
   };
   el('search').onclick = async () => {
-    const result = await call('search', mailboxArgs());
+    const guard = requestGuard('search', ['accountId', 'mailbox', 'query', 'from', 'since', 'unseen', 'limit', 'cursor']);
+    const result = await scopedCall('search', guard);
+    if (!result) return;
     if (result.ok && Array.isArray(result.messages)) {
       if (result.uidValidity) {
         const nextUidv = String(result.uidValidity);
-        if (text('uid') && text('uidValidity') && text('uidValidity') !== nextUidv) {
+        if (text('uidValidity') && text('uidValidity') !== nextUidv) {
+          clearReader();
+          generations.set('read', (generations.get('read') || 0) + 1);
+          generations.set('attachment', (generations.get('attachment') || 0) + 1);
           el('uid').value = '';
           el('partId').value = '';
-          syncReplyTargetBar();
         }
         el('uidValidity').value = nextUidv;
+        syncReplyTargetBar();
       }
-      currentMessages = result.messages;
+      currentMessages = result.messages.map((item) => ({ ...item, accountId: guard.args.accountId, mailbox: guard.args.mailbox }));
       currentMessages.nextCursor = result.nextCursor || null;
       renderMessages(result.nextCursor);
-      if (el('mailboxSummary')) {
-        el('mailboxSummary').textContent = `${result.mailbox || text('mailbox') || 'INBOX'} · UIDVALIDITY ${result.uidValidity || '-'}`;
-      }
+      mailboxSummaryKind = 'messages';
+      syncMailboxSummary();
     } else if (result.message) {
       setStatus(result.message, 'danger');
     }
@@ -1717,8 +1852,11 @@ pre {
     };
   }
   el('read').onclick = async () => {
-    const result = await call('read', mailboxArgs());
-    if (result.ok) {
+    const guard = requestGuard('read', ['accountId', 'mailbox', 'uidValidity', 'uid']);
+    clearReader();
+    const result = await scopedCall('read', guard);
+    if (!result) return;
+    if (result.ok && result.identity && ['accountId', 'mailbox', 'uidValidity', 'uid'].every((key) => String(result.identity[key]) === String(guard.args[key]))) {
       renderReadMessage(result);
       renderMessages(currentMessages.nextCursor);
     } else if (result.message) {
@@ -1727,17 +1865,12 @@ pre {
     show(result);
   };
   el('attachment').onclick = async () => {
-    const result = await call('attachment', mailboxArgs());
-    const attStatus = el('attachmentStatus');
-    if (attStatus) {
-      if (result.ok && result.path) {
-        attStatus.hidden = false;
-        attStatus.textContent = `${tr('savedTo')}${result.path} (${result.filename || result.partId}, ${formatBytes(result.size)})`;
-      } else if (result.message) {
-        attStatus.hidden = false;
-        attStatus.textContent = result.message;
-      }
-    }
+    const guard = requestGuard('attachment', ['accountId', 'mailbox', 'uidValidity', 'uid', 'partId']);
+    const reader = currentRead;
+    const result = await scopedCall('attachment', guard);
+    if (!result || currentRead !== reader) return;
+    attachmentResult = result;
+    renderAttachmentStatus();
     show(result);
   };
   if (el('replyFromRead')) {
@@ -1765,7 +1898,7 @@ pre {
     }
     if (event.data.kind === 'init') {
       applyPresentation(event.data.presentation);
-      boot().catch((error) => { setStatus(error.message || 'Panel request failed', 'danger'); });
+      boot().catch((error) => { setStatus(error.message || tr('requestFailed'), 'danger'); });
       return;
     }
     if (event.data.kind !== 'response') return;
@@ -1773,7 +1906,7 @@ pre {
     if (!waiter) return;
     pending.delete(event.data.id);
     if (event.data.ok) waiter.resolve(event.data.result);
-    else waiter.reject(new Error(event.data.error || 'Panel request failed'));
+    else waiter.reject(new Error(event.data.error || tr('requestFailed')));
   });
 
   async function boot() {
@@ -1783,7 +1916,7 @@ pre {
     render(state);
     fillChannelSelect(routeView);
     if ((state.accounts || []).length === 0) applyPreset();
-    setStatus('Not tested', '');
+    setStatusKey('notTestedStatus');
   }
 })();
 </script>
