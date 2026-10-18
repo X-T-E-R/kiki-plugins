@@ -10,7 +10,7 @@ This directory already contains the bundled mail runtime in `vendor/`. From a Ki
 /plugins install --trust <path-to-kiki-mail>
 ```
 
-Enable **kiki-mail** and open the **Mail** panel. An offline zip of the same files is `kiki-mail-0.1.3.zip`, produced by `node plugins/kiki-mail/scripts/pack.mjs` from this repository. Installing it does not need another npm install and does not change the public plugin catalog.
+Enable **kiki-mail** and open the **Mail** panel. An offline zip of the same files is `kiki-mail-0.1.4.zip`, produced by `node plugins/kiki-mail/scripts/pack.mjs` from this repository. Installing it does not need another npm install and does not change the public plugin catalog.
 
 Rebuilding that bundle from the lockfile is separate from installing:
 
