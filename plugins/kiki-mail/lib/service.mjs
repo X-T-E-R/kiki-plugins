@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { coded, loadState, mergeCredential, normalizeAccount, publicAccount } from './accounts.mjs';
 import { idempotencyKey, messageIdentity, normalizeId } from './identity.mjs';
@@ -13,6 +13,9 @@ import { redactJson, redactText, secretValues } from './redact.mjs';
 import { sendSmtp } from './smtp.mjs';
 
 const PAGE_DEFAULT = 20;
+const WATCH_RETRY_BASE_MS = 200;
+const WATCH_RETRY_MAX_MS = 1000;
+const WATCH_RETRY_LIMIT = 4;
 
 export function createMailService(deps = {}) {
   return new MailService(deps);
@@ -25,6 +28,7 @@ class MailService {
     this.closed = true;
     this.watchers = [];
     this.memorySends = new Map();
+    this.inflight = new Map();
   }
 
   async activate(context) {
@@ -42,9 +46,7 @@ class MailService {
 
   async deactivate() {
     this.closed = true;
-    const jobs = this.watchers.splice(0);
-    for (const watcher of jobs) watcher.controller.abort();
-    await Promise.all(jobs.map((watcher) => watcher.job.catch(() => {})));
+    await this.stopWatchers();
   }
 
   async tool(name, args, context) {
@@ -138,6 +140,7 @@ class MailService {
     if (allowSecrets && credential) credentials[account.id] = mergeCredential(credentials[account.id], credential);
     const watchEnabled = typeof args.watchEnabled === 'boolean' ? args.watchEnabled : state.watchEnabled;
     await this.persist(context, accounts, credentials, watchEnabled);
+    await this.reconcileWatchers();
     return { ok: true, account: publicAccount(account, credentials) };
   }
 
@@ -148,6 +151,7 @@ class MailService {
     const credentials = { ...state.credentials };
     delete credentials[account.id];
     await this.persist(context, accounts, credentials, state.watchEnabled);
+    await this.reconcileWatchers();
     return { ok: true, deleted: account.id };
   }
 
@@ -200,8 +204,8 @@ class MailService {
     const directory = this.directory(context);
     let textPath;
     let htmlPath;
-    if (!parsed.textComplete && directory) textPath = await writeInside(directory, ['bodies', account.id, identity.uidValidity, identity.uid, 'body.txt'], Buffer.from(parsed.text));
-    if (!parsed.htmlComplete && parsed.html && directory) htmlPath = await writeInside(directory, ['bodies', account.id, identity.uidValidity, identity.uid, 'body.html'], Buffer.from(parsed.html));
+    if (!parsed.textComplete && directory) textPath = await writeInside(directory, ['bodies', account.id, identity.mailbox, identity.uidValidity, identity.uid, 'body.txt'], Buffer.from(parsed.text));
+    if (!parsed.htmlComplete && parsed.html && directory) htmlPath = await writeInside(directory, ['bodies', account.id, identity.mailbox, identity.uidValidity, identity.uid, 'body.html'], Buffer.from(parsed.html));
     return {
       ok: true,
       identity,
@@ -232,7 +236,7 @@ class MailService {
     const parsed = await parseMessage(raw);
     const part = parsed.attachments.find((item) => item.partId === String(args.partId));
     if (!part) throw coded('not_found', 'That attachment is not on this message.');
-    const saved = await writeInside(directory, ['attachments', account.id, identity.uidValidity, identity.uid, part.filename], contentBytes(part.content));
+    const saved = await writeInside(directory, ['attachments', account.id, identity.mailbox, identity.uidValidity, identity.uid, part.partId, part.filename], contentBytes(part.content));
     return { ok: true, identity, partId: part.partId, filename: part.filename, mimeType: part.mimeType, size: part.size, sha256: part.sha256, path: saved };
   }
 
@@ -240,33 +244,60 @@ class MailService {
     const state = this.stateOf(context);
     const account = requireAccount(state, args.accountId);
     const requestId = clean(args.requestId, 80) || randomUUID();
-    const prior = await this.readSend(requestId, context);
-    if (prior && ['uncertain', 'accepted', 'sending'].includes(prior.outcome ?? prior.phase) && args.confirmResend !== true) {
-      const outcome = prior.outcome === 'accepted' || prior.phase === 'done' && prior.outcome === 'accepted' ? 'accepted' : 'uncertain';
-      return {
-        ok: false,
-        code: outcome === 'accepted' ? 'already_accepted' : 'uncertain_not_resent',
-        outcome,
-        requestId,
-        resent: false,
-        automaticRetry: false,
-        finalDelivery: false,
-        message: outcome === 'accepted'
-          ? 'This send was already accepted by SMTP. It was not sent again.'
-          : 'The earlier send has no acceptance receipt. It was not sent again.',
-      };
-    }
-    await this.writeSend(requestId, { phase: 'sending', requestId, accountId: account.id, at: Date.now() }, context);
+    const flightKey = `${account.id}\0${requestId}`;
+    const current = this.inflight.get(flightKey);
+    if (current) return current;
+    const work = this.performSend(state, account, args, context, requestId);
+    this.inflight.set(flightKey, work);
     try {
-      const draft = args.action === 'reply' ? await this.replyDraft(account, state, args, context) : await this.composeDraft(account, args, context);
+      return await work;
+    } finally {
+      if (this.inflight.get(flightKey) === work) this.inflight.delete(flightKey);
+    }
+  }
+
+  async performSend(state, account, args, context, requestId) {
+    const draft = args.action === 'reply' ? await this.replyDraft(account, state, args, context) : await this.composeDraft(account, args, context);
+    const fingerprint = payloadFingerprint(draft);
+    const loaded = await this.readSend(account.id, requestId, context);
+    if (loaded.source === 'corrupt') {
+      throw coded('receipt_unreadable', 'The stored send receipt is unreadable. The message was not sent again.');
+    }
+    const blocked = resendBlock(loaded.record, fingerprint);
+    if (blocked) return { ...blocked, requestId, accountId: account.id };
+    const intent = { phase: 'sending', outcome: 'sending', requestId, accountId: account.id, fingerprint, at: Date.now() };
+    await this.writeSend(account.id, requestId, intent, context);
+    try {
       const auth = await resolveAuth(account, state.credentials[account.id], (patch) => this.rememberCredential(context, account.id, patch));
       const sent = await sendSmtp(account, auth, draft, { signal: context.signal, createTransport: this.deps.createTransport });
-      const record = { phase: 'done', outcome: 'accepted', requestId, accountId: account.id, messageId: sent.messageId, at: Date.now() };
-      await this.writeSend(requestId, record, context);
-      return { ok: true, requestId, automaticRetry: false, ...sent, note: 'The SMTP server accepted the message for the listed recipients. That is not a final delivery receipt.' };
+      const record = { phase: 'done', outcome: 'accepted', requestId, accountId: account.id, fingerprint, messageId: sent.messageId, at: Date.now() };
+      this.memorySends.set(sendKey(account.id, requestId), record);
+      try {
+        await this.writeSend(account.id, requestId, record, context);
+      } catch (error) {
+        if (error.code !== 'send_store_failed') throw error;
+        return {
+          ok: true,
+          requestId,
+          accountId: account.id,
+          receiptStored: false,
+          resent: false,
+          automaticRetry: false,
+          ...sent,
+          note: 'SMTP accepted the message. The local receipt could not be saved, so it was not marked failed and will not be sent again.',
+        };
+      }
+      return { ok: true, requestId, accountId: account.id, receiptStored: true, automaticRetry: false, ...sent, note: 'The SMTP server accepted the message for the listed recipients. That is not a final delivery receipt.' };
     } catch (error) {
       const outcome = error.outcome || 'failed';
-      await this.writeSend(requestId, { phase: 'done', outcome, requestId, accountId: account.id, code: error.code, at: Date.now() }, context);
+      const record = { phase: 'done', outcome, requestId, accountId: account.id, fingerprint, code: error.code, at: Date.now() };
+      this.memorySends.set(sendKey(account.id, requestId), record);
+      try {
+        await this.writeSend(account.id, requestId, record, context);
+      } catch (writeError) {
+        if (outcome !== 'uncertain' && outcome !== 'accepted') throw writeError;
+        error.receiptStored = false;
+      }
       error.requestId = requestId;
       throw error;
     }
@@ -359,24 +390,52 @@ class MailService {
     return undefined;
   }
 
-  async readSend(requestId, context) {
-    const memory = this.memorySends.get(requestId);
+  async readSend(accountId, requestId, context) {
     const directory = this.directory(context);
-    if (!directory) return memory;
+    if (!directory) throw coded('send_store_failed', 'Reading a send receipt needs the plugin data directory.');
+    const file = sendPath(directory, accountId, requestId);
     try {
-      return JSON.parse(await readFile(path.join(directory, 'sends', `${safeSegment(requestId)}.json`), 'utf8'));
-    } catch {
-      return memory;
+      const text = await readFile(file, 'utf8');
+      let record;
+      try { record = JSON.parse(text); } catch { return { source: 'corrupt', record: null }; }
+      if (!record || typeof record !== 'object' || Array.isArray(record) || record.accountId !== accountId || record.requestId !== requestId) {
+        return { source: 'corrupt', record: null };
+      }
+      this.memorySends.set(sendKey(accountId, requestId), record);
+      return { source: 'disk', record };
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        const memory = this.memorySends.get(sendKey(accountId, requestId));
+        return memory ? { source: 'memory', record: memory } : { source: 'missing', record: null };
+      }
+      throw coded('send_store_failed', 'The send receipt could not be read.');
     }
   }
 
-  async writeSend(requestId, record, context) {
-    this.memorySends.set(requestId, record);
+  async writeSend(accountId, requestId, record, context) {
+    if (this.deps.failPersist?.(record)) throw coded('send_store_failed', 'The send receipt could not be written.');
     const directory = this.directory(context);
-    if (!directory) return;
-    const file = path.join(directory, 'sends', `${safeSegment(requestId)}.json`);
+    if (!directory) throw coded('send_store_failed', 'Saving a send receipt needs the plugin data directory.');
+    const file = sendPath(directory, accountId, requestId);
     await mkdir(path.dirname(file), { recursive: true });
-    await writeFile(file, JSON.stringify(record));
+    const temporary = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
+    try {
+      await writeFile(temporary, JSON.stringify(record));
+      try {
+        await rename(temporary, file);
+      } catch (error) {
+        if (error?.code !== 'EEXIST' && error?.code !== 'EPERM') throw error;
+        await rm(file, { force: true });
+        await rename(temporary, file);
+      }
+    } catch (error) {
+      await rm(temporary, { force: true }).catch(() => {});
+      if (error?.code === 'send_store_failed') throw error;
+      const wrapped = coded('send_store_failed', 'The send receipt could not be written.');
+      wrapped.causeCode = error?.code;
+      throw wrapped;
+    }
+    this.memorySends.set(sendKey(accountId, requestId), record);
   }
 
   failureBody(error) {
@@ -388,8 +447,20 @@ class MailService {
       message: error instanceof Error ? error.message : 'Mail request failed.',
       automaticRetry: false,
       finalDelivery: false,
-      resent: error.code === 'uncertain_not_resent' || error.code === 'already_accepted' ? false : undefined,
+      resent: ['uncertain_not_resent', 'already_accepted', 'payload_conflict', 'receipt_unreadable', 'send_store_failed'].includes(error.code) ? false : undefined,
     };
+  }
+
+  async stopWatchers() {
+    const jobs = this.watchers.splice(0);
+    for (const watcher of jobs) watcher.controller.abort();
+    await Promise.all(jobs.map((watcher) => watcher.job.catch(() => {})));
+  }
+
+  async reconcileWatchers() {
+    await this.stopWatchers();
+    if (this.closed || !this.context) return;
+    await this.startWatchers();
   }
 
   async startWatchers() {
@@ -399,39 +470,57 @@ class MailService {
       if (!account.watch) continue;
       const controller = new AbortController();
       const job = this.watchAccount(account, controller.signal);
-      this.watchers.push({ controller, job });
+      this.watchers.push({ controller, job, accountId: account.id });
     }
   }
 
   async watchAccount(account, signal) {
-    try {
-      const state = loadState(this.context.settings);
-      const auth = await resolveAuth(account, state.credentials[account.id], (patch) => this.rememberCredential(this.context, account.id, patch));
-      await withImap(account, auth, { signal }, async (client) => {
-        const opened = await client.mailboxOpen('INBOX');
-        const uidValidity = normalizeId(opened.uidValidity);
-        let last = await this.lastSeen(account.id, uidValidity);
-        if (last == null) {
-          const uidNext = BigInt(normalizeId(opened.uidNext || 1));
-          last = uidNext > 0n ? uidNext - 1n : 0n;
-          await this.markSeen(account.id, uidValidity, last);
+    let attempt = 0;
+    let delay = WATCH_RETRY_BASE_MS;
+    while (!signal.aborted && !this.closed) {
+      try {
+        await this.watchOnce(account, signal);
+        return;
+      } catch (error) {
+        if (signal.aborted || this.closed) return;
+        attempt += 1;
+        await this.recordEvent(account.id, { kind: 'watch-error', code: error.code || 'disconnected', message: error.message, attempt });
+        const terminal = error.code === 'auth_failed' || error.code === 'tls_required' || error.code === 'cancelled' || attempt >= WATCH_RETRY_LIMIT;
+        if (terminal) {
+          await this.recordEvent(account.id, { kind: 'watch-stopped', code: error.code || 'disconnected', attempt });
+          return;
         }
-        const poke = () => { void client.noop().catch(() => {}); };
-        client.on('exists', poke);
-        try {
-          while (!signal.aborted && !this.closed) {
-            last = await this.consumeNew(client, account, uidValidity, last, signal);
-            if (signal.aborted || this.closed) break;
-            await client.idle();
-          }
-        } finally {
-          client.off('exists', poke);
-        }
-      });
-    } catch (error) {
-      if (signal.aborted || this.closed) return;
-      await this.recordEvent(account.id, { kind: 'watch-error', code: error.code || 'disconnected', message: error.message });
+        const wait = delay;
+        delay = Math.min(delay * 2, WATCH_RETRY_MAX_MS);
+        if (await pause(signal, wait) || this.closed) return;
+      }
     }
+  }
+
+  async watchOnce(account, signal) {
+    const state = loadState(this.context.settings);
+    const auth = await resolveAuth(account, state.credentials[account.id], (patch) => this.rememberCredential(this.context, account.id, patch));
+    await withImap(account, auth, { signal }, async (client) => {
+      const opened = await client.mailboxOpen('INBOX');
+      const uidValidity = normalizeId(opened.uidValidity);
+      let last = await this.lastSeen(account.id, uidValidity);
+      if (last == null) {
+        const uidNext = BigInt(normalizeId(opened.uidNext || 1));
+        last = uidNext > 0n ? uidNext - 1n : 0n;
+        await this.markSeen(account.id, uidValidity, last);
+      }
+      const poke = () => { void client.noop().catch(() => {}); };
+      client.on('exists', poke);
+      try {
+        while (!signal.aborted && !this.closed) {
+          last = await this.consumeNew(client, account, uidValidity, last, signal);
+          if (signal.aborted || this.closed) break;
+          await client.idle();
+        }
+      } finally {
+        client.off('exists', poke);
+      }
+    });
   }
 
   async consumeNew(client, account, uidValidity, last, signal) {
@@ -551,6 +640,64 @@ async function verifySmtp(account, auth, signal) {
     signal?.removeEventListener('abort', abort);
     transport.close();
   }
+}
+
+function sendKey(accountId, requestId) {
+  return `${accountId}\0${requestId}`;
+}
+
+function sendPath(directory, accountId, requestId) {
+  return path.join(directory, 'sends', safeSegment(accountId, 'account'), `${safeSegment(requestId, 'send')}.json`);
+}
+
+function payloadFingerprint(draft) {
+  const body = JSON.stringify({
+    from: draft.from ?? '',
+    to: draft.to ?? [],
+    cc: draft.cc ?? [],
+    bcc: draft.bcc ?? [],
+    subject: draft.subject ?? '',
+    text: draft.text ?? '',
+    html: draft.html ?? '',
+    inReplyTo: draft.inReplyTo ?? '',
+    references: draft.references ?? '',
+    attachments: (draft.attachments ?? []).map((item) => ({
+      filename: item.filename ?? '',
+      sha256: createHash('sha256').update(item.content ?? Buffer.alloc(0)).digest('hex'),
+    })),
+  });
+  return createHash('sha256').update(body).digest('hex');
+}
+
+function resendBlock(prior, fingerprint) {
+  if (!prior) return null;
+  const outcome = prior.outcome;
+  const submitted = prior.phase === 'sending' || outcome === 'sending' || outcome === 'accepted' || outcome === 'uncertain';
+  if (!submitted) return null;
+  const accepted = outcome === 'accepted';
+  const conflict = accepted && Boolean(prior.fingerprint) && prior.fingerprint !== fingerprint;
+  return {
+    ok: false,
+    code: conflict ? 'payload_conflict' : accepted ? 'already_accepted' : 'uncertain_not_resent',
+    outcome: accepted ? 'accepted' : 'uncertain',
+    accountId: prior.accountId,
+    resent: false,
+    automaticRetry: false,
+    finalDelivery: false,
+    message: accepted
+      ? 'This send was already accepted by SMTP. It was not sent again.'
+      : 'The earlier send has no proof it was not submitted. It was not sent again.',
+  };
+}
+
+function pause(signal, ms) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), ms);
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer);
+      resolve(true);
+    }, { once: true });
+  });
 }
 
 export async function readEvents(directory, accountId) {

@@ -10,7 +10,7 @@ This directory already contains the bundled mail runtime in `vendor/`. From a Ki
 /plugins install --trust <path-to-kiki-mail>
 ```
 
-Enable **kiki-mail** and open the **Mail** panel. An offline zip of the same files is `kiki-mail-0.1.1.zip`, produced by `node plugins/kiki-mail/scripts/pack.mjs` from this repository. Installing it does not need another npm install and does not change the public plugin catalog.
+Enable **kiki-mail** and open the **Mail** panel. An offline zip of the same files is `kiki-mail-0.1.2.zip`, produced by `node plugins/kiki-mail/scripts/pack.mjs` from this repository. Installing it does not need another npm install and does not change the public plugin catalog.
 
 Rebuilding that bundle from the lockfile is separate from installing:
 
@@ -50,7 +50,7 @@ A message identity is the account, folder, UIDVALIDITY, and UID. After UIDVALIDI
 
 **Read** keeps the message bytes. Short text is inline. Longer text is a preview plus `textPath` or `htmlPath`. Attachments are saved only when you ask, under the plugin data directory.
 
-**Send** and **Reply** submit one SMTP transaction. `accepted` means that server accepted the listed recipients. It is not a delivery receipt. If the connection stops after the message data was written, the result is uncertain and the same send is not repeated. **Send again** is the only control that submits it a second time. A failed login or a rejection before the message data is a definite failure and can be tried again.
+**Send** and **Reply** submit one SMTP transaction. `accepted` means that server accepted the listed recipients. It is not a delivery receipt. If the connection stops or the send is cancelled after the message data was written, the result is uncertain and that send is not repeated. **Send again** appears only for a definite failure before the data was submitted. An accepted message whose local receipt cannot be saved stays accepted and is not sent again.
 
 Watch is off until you enable both **Watch while Kiki is open** and **Watch this inbox**. New mail is recorded while the plugin is active. Closing or cancelling stops the connection. Nothing is forwarded or answered automatically.
 

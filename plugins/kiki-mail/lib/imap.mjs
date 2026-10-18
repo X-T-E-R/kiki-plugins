@@ -19,6 +19,7 @@ export async function withImap(account, auth, options, fn) {
   } catch (error) {
     if (options.signal?.aborted) throw coded('cancelled', 'The mail connection was cancelled.');
     if (error?.code === 'tls_required' || error?.code === 'cancelled') throw error;
+    if (error?.tlsFailed) throw coded('tls_required', 'The IMAP server did not offer STARTTLS. Login was not attempted.');
     if (error?.authenticationFailed) throw coded('auth_failed', 'IMAP authentication failed.');
     const closed = /closed|socket|ECONN|timeout|ETIMEOUT|NoConnection/i.test(`${error?.code ?? ''} ${error?.message ?? ''}`);
     if (closed) throw coded('disconnected', 'The IMAP server closed the connection.');
@@ -35,7 +36,7 @@ function defaultClient(account, auth) {
     host: account.imapHost,
     port: account.imapPort,
     secure: account.imapSecure,
-    doSTARTTLS: account.imapSecure || account.allowInsecureAuth ? false : undefined,
+    doSTARTTLS: account.imapSecure || account.allowInsecureAuth ? false : true,
     auth: auth.accessToken ? { user: auth.user, accessToken: auth.accessToken } : { user: auth.user, pass: auth.pass },
     logger: false,
     emitLogs: false,

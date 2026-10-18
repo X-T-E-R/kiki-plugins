@@ -352,8 +352,9 @@ test('bad auth, disconnect, cancel, redact, and uncertain send do not resend or 
     const forced = await tool(uncertain, 'MailSend', {
       action: 'send', accountId: 'ada', to: 'bea@example.test', subject: 'Maybe', text: 'Maybe', requestId: 'uncertain-1', confirmResend: true,
     });
-    assert.equal(forced.body.outcome, 'uncertain');
-    assert.equal(uncertain.fx.state.smtpData, 2);
+    assert.equal(forced.body.code, 'uncertain_not_resent');
+    assert.equal(forced.body.resent, false);
+    assert.equal(uncertain.fx.state.smtpData, 1);
   } finally {
     await uncertain.stop();
   }

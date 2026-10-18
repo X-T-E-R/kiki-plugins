@@ -63,8 +63,12 @@ export async function sendSmtp(account, auth, message, deps = {}) {
       finalDelivery: false,
     };
   } catch (error) {
-    if (deps.signal?.aborted) throw coded('cancelled', 'Send was cancelled.');
     const outcome = classifySendError(error, trace);
+    if (deps.signal?.aborted && outcome !== 'uncertain') {
+      const cancelled = coded('cancelled', 'Send was cancelled before the message data was submitted.');
+      cancelled.outcome = 'cancelled';
+      throw cancelled;
+    }
     const wrapped = coded(outcome === 'uncertain' ? 'uncertain_send' : error.code === 'EAUTH' ? 'auth_failed' : 'send_failed', safeSendMessage(outcome, error));
     wrapped.outcome = outcome;
     wrapped.command = error?.command;

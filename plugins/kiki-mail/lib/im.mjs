@@ -3,7 +3,8 @@ const KEY_RE = /^[A-Za-z0-9_.:-]{1,200}$/;
 const REVISION_RE = /^[a-f0-9]{64}$/;
 const CODE_RE = /^[a-z][a-z0-9_]{0,63}$/;
 const ERROR_KINDS = new Set(['auth', 'forbidden', 'not_found', 'rate_limited', 'transient', 'too_long', 'bad_format', 'dependency_missing', 'configuration', 'protocol', 'unknown']);
-const OPEN_FAILURE = new Set(['im_unsupported', 'notifications_disabled', 'route_unavailable', 'route_disabled', 'route_changed', 'provider_unavailable', 'credential_unavailable', 'bad_format', 'idempotency_conflict', 'cancelled']);
+const DIGEST_MAX_UTF8_BYTES = 16384;
+const OPEN_FAILURE = new Set(['im_unsupported', 'notifications_disabled', 'route_unavailable', 'route_disabled', 'route_changed', 'provider_unavailable', 'credential_unavailable', 'bad_format', 'too_long', 'idempotency_conflict', 'cancelled']);
 const settled = new Map();
 
 export function bridgeFrom(context) {
@@ -42,7 +43,10 @@ export async function forwardMailDigest(bridge, input, signal) {
   }
   if (!bridge) return unsupported();
   if (!CHANNEL_RE.test(request.accountRef || '') || !KEY_RE.test(request.idempotencyKey || '') || !request.text) {
-    return { status: 'failed', retryable: false, diagnosticCode: 'bad_format', errorKind: 'bad_format', sent: false, attempts: 0 };
+    return { status: 'failed', retryable: true, diagnosticCode: 'bad_format', errorKind: 'bad_format', sent: false, attempts: 0 };
+  }
+  if (Buffer.byteLength(request.text) > DIGEST_MAX_UTF8_BYTES) {
+    return { status: 'failed', retryable: true, diagnosticCode: 'too_long', errorKind: 'too_long', sent: false, attempts: 0 };
   }
   if (!CHANNEL_RE.test(request.channelId || '') || !REVISION_RE.test(request.routeRevision || '')) {
     return { status: 'skipped', reason: 'no-route', sent: false, attempts: 0 };
@@ -89,7 +93,7 @@ export async function forwardMailDigest(bridge, input, signal) {
 }
 
 export function digestText(value) {
-  return String(value ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim().slice(0, 2000);
+  return String(value ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim();
 }
 
 export function summaryText(input) {

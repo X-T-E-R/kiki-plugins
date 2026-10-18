@@ -104,7 +104,7 @@ test('mail panel saves, tests, and does not resend an uncertain message', { time
     get('text').value = 'From the panel';
     await get('send').onclick();
     await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(get('sendAgain').hidden, false);
+    assert.equal(get('sendAgain').hidden, true);
     assert.equal(fx.state.smtpData, 1);
     const sendCalls = () => requests.filter((request) => request.action === 'send');
     assert.equal(sendCalls().length, 1);
@@ -113,13 +113,6 @@ test('mail panel saves, tests, and does not resend an uncertain message', { time
     await new Promise((resolve) => setTimeout(resolve, 150));
     assert.equal(fx.state.smtpData, 1);
     assert.equal(sendCalls().length, 1);
-
-    await get('sendAgain').onclick();
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(sendCalls().length, 2);
-    assert.equal(sendCalls()[1].args.requestId, 'panel-request-1');
-    assert.equal(sendCalls()[1].args.confirmResend, true);
-    assert.equal(fx.state.smtpData, 2);
     assert.equal(requests.every((request) => request.method === 'plugin.call'), true);
   } finally {
     await service.deactivate();

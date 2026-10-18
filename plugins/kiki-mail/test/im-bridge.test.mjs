@@ -141,7 +141,9 @@ test('send uses a listed route and does not repeat accepted or unknown results',
   assert.equal(request.accountRef, 'ada');
   assert.equal(request.sessionId, undefined);
   assert.equal(request.text.includes('\u0000'), false);
-  assert.equal(request.text.length <= 2000, true);
+  assert.equal(request.pluginId, undefined);
+  assert.equal(Buffer.byteLength(request.text) <= 16384, true);
+  assert.equal(request.text.length > 2000, true);
   assert.equal(request.idempotencyKey.includes(revision), false);
   assert.equal(request.idempotencyKey.includes(request.text), false);
   assert.match(request.idempotencyKey, /^[A-Za-z0-9_.:-]{1,200}$/);
@@ -211,5 +213,5 @@ test('the same key under two mail accounts is sent separately, and routes expose
   const identity = messageIdentity('ada', 'INBOX', '7', '50');
   const summary = summaryText({ accountId: 'ada', mailbox: 'INBOX', from: 'bea@example.test', subject: 'Ping', identity });
   assert.equal(summary.includes('secret-token'), false);
-  assert.equal(summary.length <= 2000, true);
+  assert.equal(Buffer.byteLength(summary) <= 16384, true);
 });

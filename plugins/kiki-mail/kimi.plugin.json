@@ -1,6 +1,6 @@
 {
   "name": "kiki-mail",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Read and send mail through the IMAP and SMTP accounts you configure. Optional new-mail notices need a host IM bridge.",
   "license": "MIT",
   "icon": "./icon.svg",
@@ -128,7 +128,7 @@
       {
         "schemaVersion": 1,
         "name": "MailSend",
-        "description": "Send a new message or reply to one identified message through the account's SMTP server. accepted means the SMTP server accepted those recipients, not that the message was delivered. If the connection stops after the message data is written, the outcome is uncertain and the same requestId is not sent again unless confirmResend is true. Do not pass passwords.",
+        "description": "Send a new message or reply to one identified message through the account's SMTP server. accepted means the SMTP server accepted those recipients, not that the message was delivered. If the connection stops or the send is cancelled after the message data is written, the outcome is uncertain and that account and requestId is not sent again. confirmResend does not repeat it. A definite failure before the data was submitted can be retried. Do not pass passwords.",
         "parameters": {
           "type": "object",
           "additionalProperties": false,

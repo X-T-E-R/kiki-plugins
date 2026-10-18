@@ -9,9 +9,14 @@ export async function startFixture(spec = {}) {
       messages: box.messages.map((message) => ({ ...message, flags: new Set(message.flags ?? []) })),
     }])),
   }]));
-  const state = { users, smtpMessages: [], smtpData: 0, smtpAuthFailures: 0, imapSockets: 0, idling: 0, tokenRequests: 0, held: [] };
+  const state = { users, smtpMessages: [], smtpData: 0, smtpAuthFailures: 0, imapSockets: 0, imapAccepts: 0, imapAuthCommands: 0, idling: 0, tokenRequests: 0, held: [] };
   const sessions = new Set();
   const imap = net.createServer((socket) => {
+    state.imapAccepts += 1;
+    if (spec.dropOnConnect) {
+      socket.destroy();
+      return;
+    }
     state.imapSockets += 1;
     const session = new ImapSession(socket, state, spec, sessions);
     sessions.add(session);
@@ -57,6 +62,9 @@ export async function startFixture(spec = {}) {
     },
     releaseHold() {
       for (const held of state.held.splice(0)) held();
+    },
+    dropSockets() {
+      for (const session of sessions) session.socket.destroy();
     },
     async close() {
       for (const session of sessions) session.socket.destroy();
@@ -124,6 +132,7 @@ class ImapSession {
     const tag = tokens.shift() ?? '*';
     const name = (tokens.shift() ?? '').toUpperCase();
     const reply = (status, text) => this.send(`${tag} ${status} ${text}\r\n`);
+    if (name === 'AUTHENTICATE' || name === 'LOGIN') this.state.imapAuthCommands += 1;
     if (name === 'CAPABILITY') {
       this.send('* CAPABILITY IMAP4rev1 AUTH=PLAIN AUTH=XOAUTH2 IDLE\r\n');
       reply('OK', 'CAPABILITY completed');
@@ -352,11 +361,18 @@ class SmtpSession {
 
   finishData() {
     if (this.spec.dropAfterData) { this.socket.destroy(); return; }
-    const raw = unstuff(this.data);
-    this.state.smtpMessages.push({ user: this.user, from: this.from, to: [...this.to], raw });
-    this.from = '';
-    this.to = [];
-    this.send('250 2.0.0 Accepted message\r\n');
+    const accept = () => {
+      const raw = unstuff(this.data);
+      this.state.smtpMessages.push({ user: this.user, from: this.from, to: [...this.to], raw });
+      this.from = '';
+      this.to = [];
+      this.send('250 2.0.0 Accepted message\r\n');
+    };
+    if (this.spec.holdAfterData) {
+      this.state.held.push(accept);
+      return;
+    }
+    accept();
   }
 }
 
