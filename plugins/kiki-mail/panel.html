@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mail</title>
+<style>
+:root {
+  --paper: #fbfaf6;
+  --panel: #fffdfa;
+  --ink: #1b1a17;
+  --soft: #5c564c;
+  --line: #e4ddd0;
+  --accent: #c8401a;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.35 Georgia, "Iowan Old Style", Palatino, serif; }
+main { max-width: 760px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 22px; font-weight: 600; margin: 0; }
+h2 { font-size: 15px; margin: 0 0 8px; }
+.status, .note, .im { color: var(--soft); margin: 4px 0 0; }
+section { background: var(--panel); border: 1px solid var(--line); padding: 12px; margin-top: 12px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+label { display: grid; gap: 2px; font-size: 12px; color: var(--soft); }
+.wide { grid-column: 1 / -1; }
+input, select, textarea { width: 100%; font: inherit; color: var(--ink); background: #fff; border: 1px solid var(--line); padding: 6px 8px; }
+textarea { min-height: 72px; resize: vertical; }
+.checks, .row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 8px; }
+.checks label { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--ink); }
+button { font: inherit; background: var(--accent); color: #fff; border: 0; padding: 6px 10px; }
+button.quiet { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font: 12px/1.4 Consolas, ui-monospace, monospace; }
+#accounts:empty { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Mail</h1>
+  <p id="status" class="status">Not tested</p>
+  <p id="im" class="im"></p>
+  <pre id="accounts"></pre>
+
+  <section>
+    <h2>Account</h2>
+    <div class="grid">
+      <label>Id <input id="id" autocomplete="off" spellcheck="false"></label>
+      <label>Label <input id="label" autocomplete="off"></label>
+      <label>User <input id="user" autocomplete="off" spellcheck="false"></label>
+      <label>From <input id="from" autocomplete="off" spellcheck="false"></label>
+      <label>Preset <select id="preset">
+        <option value="custom">Custom</option>
+        <option value="gmail">Gmail</option>
+        <option value="outlook">Outlook</option>
+        <option value="qq">QQ</option>
+        <option value="163">163</option>
+        <option value="icloud">iCloud</option>
+        <option value="fastmail">Fastmail</option>
+        <option value="proton-bridge">Proton Bridge</option>
+      </select></label>
+      <label>Auth <select id="auth">
+        <option value="password">Password or app password</option>
+        <option value="oauth2">OAuth2 token</option>
+      </select></label>
+      <label>IMAP host <input id="imapHost" autocomplete="off" spellcheck="false"></label>
+      <label>IMAP port <input id="imapPort" inputmode="numeric"></label>
+      <label>SMTP host <input id="smtpHost" autocomplete="off" spellcheck="false"></label>
+      <label>SMTP port <input id="smtpPort" inputmode="numeric"></label>
+      <label class="wide">OAuth client id <input id="oauthClientId" autocomplete="off" spellcheck="false"></label>
+      <label class="wide">OAuth token URL <input id="oauthTokenUrl" autocomplete="off" spellcheck="false"></label>
+      <label class="wide">OAuth scope <input id="oauthScope" autocomplete="off" spellcheck="false"></label>
+      <label>Password or app password <input id="password" type="password" autocomplete="new-password"></label>
+      <label>Client secret <input id="clientSecret" type="password" autocomplete="new-password"></label>
+      <label>Refresh token <input id="refreshToken" type="password" autocomplete="new-password"></label>
+      <label>Access token <input id="accessToken" type="password" autocomplete="new-password"></label>
+    </div>
+    <p id="presetNote" class="note"></p>
+    <div class="checks">
+      <label><input id="imapSecure" type="checkbox"> IMAP implicit TLS</label>
+      <label><input id="smtpSecure" type="checkbox"> SMTP implicit TLS</label>
+      <label><input id="allowInsecure" type="checkbox"> Loopback cleartext</label>
+      <label><input id="watch" type="checkbox"> Watch this inbox</label>
+      <label><input id="watchEnabled" type="checkbox"> Watch while Kiki is open</label>
+      <label><input id="imEnabled" type="checkbox"> Ask host IM on new mail</label>
+      <label><input id="imPreview" type="checkbox"> Include a short preview</label>
+    </div>
+    <label>IM session id <input id="imSession" autocomplete="off" spellcheck="false"></label>
+    <div class="row">
+      <button id="save" type="button">Save</button>
+      <button id="load" class="quiet" type="button">Load</button>
+      <button id="test" class="quiet" type="button">Test</button>
+      <button id="remove" class="quiet" type="button">Delete</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Mailbox</h2>
+    <div class="grid">
+      <label>Folder <input id="mailbox" value="INBOX" spellcheck="false"></label>
+      <label>Query <input id="query" spellcheck="false"></label>
+      <label>From <input id="fromQuery" spellcheck="false"></label>
+      <label>Since <input id="since" placeholder="YYYY-MM-DD" spellcheck="false"></label>
+      <label>Page size <input id="limit" value="20" inputmode="numeric"></label>
+      <label>Cursor <input id="cursor" spellcheck="false"></label>
+      <label>UIDVALIDITY <input id="uidValidity" spellcheck="false"></label>
+      <label>UID <input id="uid" spellcheck="false"></label>
+      <label>Attachment part <input id="partId" spellcheck="false"></label>
+    </div>
+    <div class="checks"><label><input id="unseen" type="checkbox"> Unseen only</label></div>
+    <div class="row">
+      <button id="folders" class="quiet" type="button">Folders</button>
+      <button id="search" class="quiet" type="button">Search</button>
+      <button id="read" class="quiet" type="button">Read</button>
+      <button id="attachment" class="quiet" type="button">Save attachment</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Send</h2>
+    <div class="grid">
+      <label>To <input id="to" autocomplete="off" spellcheck="false"></label>
+      <label>Subject <input id="subject"></label>
+      <label class="wide">Message <textarea id="text"></textarea></label>
+    </div>
+    <div class="row">
+      <button id="send" type="button">Send</button>
+      <button id="reply" class="quiet" type="button">Reply</button>
+      <button id="sendAgain" class="quiet" type="button" hidden>Send again</button>
+    </div>
+    <p id="sendNote" class="note"></p>
+  </section>
+  <pre id="result"></pre>
+</main>
+<script>
+(() => {
+  const channel = 'kiki.panel.v1';
+  let seq = 0;
+  const pending = new Map();
+  let presets = [];
+  let lastState = { accounts: [] };
+  let requestId = '';
+
+  const el = (id) => document.getElementById(id);
+  const text = (id) => el(id).value.trim();
+  const checked = (id) => el(id).checked === true;
+  const num = (id) => {
+    const value = text(id);
+    return value === '' ? undefined : Number(value);
+  };
+
+  function call(action, args) {
+    const id = ++seq;
+    parent.postMessage({ channel, kind: 'request', id, method: 'plugin.call', action, args });
+    return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+  }
+
+  function show(value) {
+    el('result').textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  }
+
+  function secretLine(account) {
+    if (account.hasPassword) return 'Password saved';
+    if (account.hasAccessToken || account.hasRefreshToken) return 'Token saved';
+    return 'No secret saved';
+  }
+
+  function render(state) {
+    lastState = state;
+    const accounts = state.accounts || [];
+    el('accounts').textContent = accounts.map((account) => `${account.label} · ${account.user} · ${secretLine(account)}`).join('\n');
+    el('im').textContent = state.imBridge && state.imBridge.available
+      ? 'An IM sender is present in this process. Host delivery is not confirmed.'
+      : 'Host IM bridge is not available.';
+    el('watchEnabled').checked = state.watchEnabled === true;
+  }
+
+  function fill(account) {
+    el('id').value = account.id || '';
+    el('label').value = account.label || '';
+    el('user').value = account.user || '';
+    el('from').value = account.from || '';
+    el('preset').value = account.preset || 'custom';
+    el('auth').value = account.auth || 'password';
+    el('imapHost').value = account.imapHost || '';
+    el('imapPort').value = account.imapPort == null ? '' : String(account.imapPort);
+    el('smtpHost').value = account.smtpHost || '';
+    el('smtpPort').value = account.smtpPort == null ? '' : String(account.smtpPort);
+    el('oauthClientId').value = account.oauthClientId || '';
+    el('oauthTokenUrl').value = account.oauthTokenUrl || '';
+    el('oauthScope').value = account.oauthScope || '';
+    el('imapSecure').checked = account.imapSecure === true;
+    el('smtpSecure').checked = account.smtpSecure === true;
+    el('allowInsecure').checked = account.allowInsecureAuth === true;
+    el('watch').checked = account.watch === true;
+    el('imEnabled').checked = account.imEnabled === true;
+    el('imPreview').checked = account.imPreview === true;
+    el('imSession').value = account.imSessionId || '';
+    el('password').value = '';
+    el('clientSecret').value = '';
+    el('refreshToken').value = '';
+    el('accessToken').value = '';
+    const preset = presets.find((item) => item.id === el('preset').value);
+    el('presetNote').textContent = preset?.note || '';
+  }
+
+  function accountBody() {
+    return {
+      id: text('id'),
+      label: text('label'),
+      user: text('user'),
+      from: text('from'),
+      preset: text('preset') || 'custom',
+      auth: text('auth') || 'password',
+      imapHost: text('imapHost'),
+      imapPort: num('imapPort'),
+      imapSecure: checked('imapSecure'),
+      smtpHost: text('smtpHost'),
+      smtpPort: num('smtpPort'),
+      smtpSecure: checked('smtpSecure'),
+      allowInsecureAuth: checked('allowInsecure'),
+      watch: checked('watch'),
+      imEnabled: checked('imEnabled'),
+      imSessionId: text('imSession'),
+      imPreview: checked('imPreview'),
+      oauthClientId: text('oauthClientId'),
+      oauthTokenUrl: text('oauthTokenUrl'),
+      oauthScope: text('oauthScope'),
+    };
+  }
+
+  function credentialBody() {
+    const credential = {};
+    if (text('password')) credential.password = text('password');
+    if (text('clientSecret')) credential.clientSecret = text('clientSecret');
+    if (text('refreshToken')) credential.refreshToken = text('refreshToken');
+    if (text('accessToken')) credential.accessToken = text('accessToken');
+    return Object.keys(credential).length ? credential : undefined;
+  }
+
+  function clearSecrets() {
+    el('password').value = '';
+    el('clientSecret').value = '';
+    el('refreshToken').value = '';
+    el('accessToken').value = '';
+  }
+
+  function applyPreset() {
+    const preset = presets.find((item) => item.id === text('preset'));
+    el('presetNote').textContent = preset?.note || '';
+    if (!preset) return;
+    if (preset.auth) el('auth').value = preset.auth;
+    for (const key of ['imapHost', 'smtpHost', 'oauthTokenUrl', 'oauthScope']) {
+      if (preset[key]) el(key).value = String(preset[key]);
+    }
+    if (preset.imapPort != null) el('imapPort').value = String(preset.imapPort);
+    if (preset.smtpPort != null) el('smtpPort').value = String(preset.smtpPort);
+    if (typeof preset.imapSecure === 'boolean') el('imapSecure').checked = preset.imapSecure;
+    if (typeof preset.smtpSecure === 'boolean') el('smtpSecure').checked = preset.smtpSecure;
+    if (typeof preset.allowInsecureAuth === 'boolean') el('allowInsecure').checked = preset.allowInsecureAuth;
+  }
+
+  function mailboxArgs() {
+    return {
+      accountId: text('id'),
+      mailbox: text('mailbox') || 'INBOX',
+      query: text('query'),
+      from: text('fromQuery'),
+      since: text('since'),
+      unseen: checked('unseen'),
+      limit: num('limit'),
+      cursor: text('cursor'),
+      uidValidity: text('uidValidity'),
+      uid: text('uid'),
+      partId: text('partId'),
+    };
+  }
+
+  function sendArgs(confirmResend) {
+    if (!requestId) requestId = crypto.randomUUID();
+    return {
+      accountId: text('id'),
+      to: text('to'),
+      subject: text('subject'),
+      text: text('text'),
+      mailbox: text('mailbox') || 'INBOX',
+      uidValidity: text('uidValidity'),
+      uid: text('uid'),
+      requestId,
+      confirmResend,
+    };
+  }
+
+  function showSend(result) {
+    show(result);
+    const uncertain = result.outcome === 'uncertain' || result.code === 'uncertain_send' || result.code === 'uncertain_not_resent';
+    el('sendAgain').hidden = !uncertain;
+    el('sendNote').textContent = result.message || '';
+    el('status').textContent = result.message || el('status').textContent;
+    if (result.ok === true && result.outcome === 'accepted') requestId = '';
+  }
+
+  el('preset').onchange = () => applyPreset();
+  el('save').onclick = async () => {
+    const result = await call('save', { account: accountBody(), credential: credentialBody(), watchEnabled: checked('watchEnabled') });
+    clearSecrets();
+    if (result.ok) {
+      const state = await call('state', {});
+      render(state);
+      el('status').textContent = 'Saved. Not tested.';
+    }
+    show(result);
+  };
+  el('load').onclick = () => {
+    const account = (lastState.accounts || []).find((item) => item.id === text('id'));
+    if (account) fill(account);
+  };
+  el('test').onclick = async () => {
+    const result = await call('test', { accountId: text('id') });
+    el('status').textContent = result.message || 'Not tested';
+    show(result);
+  };
+  el('remove').onclick = async () => {
+    const result = await call('delete', { accountId: text('id') });
+    const state = await call('state', {});
+    render(state);
+    show(result);
+  };
+  el('folders').onclick = async () => show(await call('folders', mailboxArgs()));
+  el('search').onclick = async () => show(await call('search', mailboxArgs()));
+  el('read').onclick = async () => show(await call('read', mailboxArgs()));
+  el('attachment').onclick = async () => show(await call('attachment', mailboxArgs()));
+  el('send').onclick = async () => {
+    el('send').disabled = true;
+    try { showSend(await call('send', sendArgs(false))); }
+    finally { el('send').disabled = false; }
+  };
+  el('reply').onclick = async () => {
+    el('reply').disabled = true;
+    try { showSend(await call('reply', sendArgs(false))); }
+    finally { el('reply').disabled = false; }
+  };
+  el('sendAgain').onclick = async () => {
+    el('sendAgain').disabled = true;
+    try { showSend(await call('send', sendArgs(true))); }
+    finally { el('sendAgain').disabled = false; }
+  };
+  el('sendAgain').hidden = true;
+
+  window.addEventListener('message', (event) => {
+    if (event.source !== parent || !event.data || event.data.channel !== channel) return;
+    if (event.data.kind === 'init') {
+      boot().catch((error) => { el('status').textContent = error.message || 'Panel request failed'; });
+      return;
+    }
+    if (event.data.kind !== 'response') return;
+    const waiter = pending.get(event.data.id);
+    if (!waiter) return;
+    pending.delete(event.data.id);
+    if (event.data.ok) waiter.resolve(event.data.result);
+    else waiter.reject(new Error(event.data.error || 'Panel request failed'));
+  });
+
+  async function boot() {
+    const [state, presetResult] = await Promise.all([call('state', {}), call('presets', {})]);
+    presets = presetResult.presets || [];
+    render(state);
+    applyPreset();
+    el('status').textContent = 'Not tested';
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+kiki-mail source code is under the MIT terms in LICENSE.
+
+The installable runtime also bundles third-party mail libraries. Their SPDX
+identifiers come from each published package.json and are not all MIT:
+
+- nodemailer 10.1.3 — MIT-0
+- imapflow 2.5.4 — MIT
+- postal-mime 4.0.8 — MIT-0
+
+Transitive packages keep the license in their own metadata. Full texts are in
+THIRD_PARTY_NOTICES.md and vendor/licenses/.

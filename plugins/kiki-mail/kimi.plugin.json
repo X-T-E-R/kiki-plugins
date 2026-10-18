@@ -1,0 +1,157 @@
+{
+  "name": "kiki-mail",
+  "version": "0.1.0",
+  "description": "Read and send mail through the IMAP and SMTP accounts you configure. Optional new-mail notices need a host IM bridge.",
+  "license": "MIT",
+  "icon": "./icon.svg",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Mail",
+    "shortDescription": "IMAP and SMTP for the accounts you add",
+    "localization": {
+      "zh-CN": {
+        "displayName": "邮件",
+        "shortDescription": "用你添加的账号收发 IMAP / SMTP 邮件"
+      }
+    }
+  },
+  "x-kiki": {
+    "engines": { "kiki": ">=0.4.1" },
+    "entry": "./entry.mjs",
+    "activation": "app",
+    "permissions": { "fs": "outside", "net": ["*"], "secrets": true, "uiPanel": true },
+    "panels": [{
+      "schemaVersion": 1,
+      "id": "mail",
+      "label": "Mail",
+      "slot": "workspace",
+      "path": "./panel.html"
+    }],
+    "settings": {
+      "schemaVersion": 1,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "string",
+            "title": "Accounts",
+            "description": "JSON array of account hosts, ports and auth mode. Passwords stay in Credentials.",
+            "multiline": true
+          },
+          "credentials": {
+            "type": "string",
+            "title": "Credentials",
+            "description": "JSON object of passwords and tokens, keyed by account id. Stored as a secret.",
+            "secret": true,
+            "multiline": true
+          },
+          "watchEnabled": {
+            "type": "boolean",
+            "title": "Watch inboxes while Kiki is open",
+            "default": false
+          }
+        }
+      }
+    },
+    "tools": [
+      {
+        "schemaVersion": 1,
+        "name": "MailAccount",
+        "description": "List, show, save, delete or test configured IMAP/SMTP accounts, or list provider connection presets. Saving a password or token is refused here; use the Mail panel. Test reports this attempt only and does not mean a provider OAuth consent screen completed. Presets name real prerequisites and are not proof those providers were signed in.",
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "action": { "type": "string", "enum": ["list", "show", "save", "delete", "test", "presets"] },
+            "accountId": { "type": "string" },
+            "watchEnabled": { "type": "boolean" },
+            "account": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string" },
+                "label": { "type": "string" },
+                "user": { "type": "string" },
+                "from": { "type": "string" },
+                "auth": { "type": "string", "enum": ["password", "oauth2"] },
+                "preset": { "type": "string" },
+                "imapHost": { "type": "string" },
+                "imapPort": { "type": "integer" },
+                "imapSecure": { "type": "boolean" },
+                "smtpHost": { "type": "string" },
+                "smtpPort": { "type": "integer" },
+                "smtpSecure": { "type": "boolean" },
+                "allowInsecureAuth": { "type": "boolean" },
+                "watch": { "type": "boolean" },
+                "imEnabled": { "type": "boolean" },
+                "imSessionId": { "type": "string" },
+                "imPreview": { "type": "boolean" },
+                "oauthClientId": { "type": "string" },
+                "oauthTokenUrl": { "type": "string" },
+                "oauthScope": { "type": "string" },
+                "timeoutMs": { "type": "integer" }
+              }
+            }
+          },
+          "required": ["action"]
+        },
+        "accesses": [{ "kind": "all" }],
+        "disclosure": "deferred"
+      },
+      {
+        "schemaVersion": 1,
+        "name": "Mailbox",
+        "description": "List folders, search one page, read one message, or save one attachment for a configured account. Identify a message by that account, folder, UIDVALIDITY and UID. A changed UIDVALIDITY is a different message. Inline text can be a preview; textPath, htmlPath and attachment path point at the complete bytes.",
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "action": { "type": "string", "enum": ["folders", "search", "read", "attachment"] },
+            "accountId": { "type": "string" },
+            "mailbox": { "type": "string" },
+            "query": { "type": "string" },
+            "from": { "type": "string" },
+            "unseen": { "type": "boolean" },
+            "since": { "type": "string" },
+            "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+            "cursor": { "type": "string" },
+            "uidValidity": { "type": "string" },
+            "uid": { "type": "string" },
+            "partId": { "type": "string" }
+          },
+          "required": ["action", "accountId"]
+        },
+        "accesses": [{ "kind": "all" }],
+        "disclosure": "deferred"
+      },
+      {
+        "schemaVersion": 1,
+        "name": "MailSend",
+        "description": "Send a new message or reply to one identified message through the account's SMTP server. accepted means the SMTP server accepted those recipients, not that the message was delivered. If the connection stops after the message data is written, the outcome is uncertain and the same requestId is not sent again unless confirmResend is true. Do not pass passwords.",
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "action": { "type": "string", "enum": ["send", "reply"] },
+            "accountId": { "type": "string" },
+            "to": { "type": "string" },
+            "cc": { "type": "string" },
+            "bcc": { "type": "string" },
+            "subject": { "type": "string" },
+            "text": { "type": "string" },
+            "html": { "type": "string" },
+            "mailbox": { "type": "string" },
+            "uidValidity": { "type": "string" },
+            "uid": { "type": "string" },
+            "requestId": { "type": "string" },
+            "confirmResend": { "type": "boolean" },
+            "attachmentPaths": { "type": "array", "items": { "type": "string" }, "maxItems": 20 }
+          },
+          "required": ["action", "accountId"]
+        },
+        "accesses": [{ "kind": "all" }],
+        "disclosure": "deferred"
+      }
+    ]
+  }
+}

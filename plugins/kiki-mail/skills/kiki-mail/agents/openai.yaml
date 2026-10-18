@@ -1,0 +1,4 @@
+interface:
+  display_name: "Kiki Mail"
+  short_description: "Read and send mail on configured accounts"
+  default_prompt: "Use $kiki-mail to read or send mail for an account the user has configured."
