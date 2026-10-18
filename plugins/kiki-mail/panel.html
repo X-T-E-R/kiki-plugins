@@ -621,7 +621,7 @@ pre {
     </div>
 
     <details id="protocolDetails">
-      <summary data-i18n="protocolSummary">Message identity &amp; cursor (UID / UIDVALIDITY / attachment part)</summary>
+      <summary data-i18n="protocolSummary">More message options</summary>
       <div class="fold-body">
         <div class="grid">
           <label><span data-i18n="cursorLabel">Cursor</span> <input id="cursor" spellcheck="false"></label>
@@ -673,7 +673,7 @@ pre {
   </section>
 
   <details id="diagnosticDetails">
-    <summary data-i18n="diagSummary">Protocol receipt (raw JSON)</summary>
+    <summary data-i18n="diagSummary">Diagnostics</summary>
     <pre id="result"></pre>
   </details>
 </main>
@@ -757,7 +757,7 @@ pre {
       nextPageBtn: 'Next page',
       replyThisBtn: 'Reply to this message',
       htmlSourceSummary: 'HTML source',
-      protocolSummary: 'Message identity & cursor (UID / UIDVALIDITY / attachment part)',
+      protocolSummary: 'More message options',
       partIdLabel: 'Attachment part',
       readBtn: 'Read by UID',
       saveAttBtn: 'Save attachment',
@@ -772,7 +772,7 @@ pre {
       sendBtn: 'Send',
       replyBtn: 'Reply',
       sendAgainBtn: 'Send again',
-      diagSummary: 'Protocol receipt (raw JSON)',
+      diagSummary: 'Diagnostics',
       noAccountsOption: 'No saved account',
       emptyMessages: 'No messages loaded for this folder yet.',
       noSubject: '(No subject)',
@@ -871,7 +871,7 @@ pre {
       nextPageBtn: '下一页',
       replyThisBtn: '回复此邮件',
       htmlSourceSummary: 'HTML 源码',
-      protocolSummary: '邮件标识与分页游标（UID / UIDVALIDITY / 附件分段）',
+      protocolSummary: '更多邮件选项',
       partIdLabel: '附件分段 ID',
       readBtn: '按 UID 读取',
       saveAttBtn: '保存附件',
@@ -886,7 +886,7 @@ pre {
       sendBtn: '发送邮件',
       replyBtn: '回复选中邮件',
       sendAgainBtn: '重试发送',
-      diagSummary: '协议回执（原始 JSON）',
+      diagSummary: '诊断详情',
       noAccountsOption: '尚无已保存账号',
       emptyMessages: '当前文件夹尚未加载或没有匹配的邮件。',
       noSubject: '（无主题）',
@@ -1156,7 +1156,7 @@ pre {
     }
     if (el('accountSummary')) {
       const active = accounts.find((item) => item.id === activeAccount);
-      el('accountSummary').textContent = active ? `${active.label} · ${active.user} · ${secretLine(active)}` : '';
+      el('accountSummary').textContent = active ? secretLine(active) : '';
     }
     el('accounts').textContent = accounts.map((account) => `${account.label} · ${account.user} · ${secretLine(account)}`).join('\n');
   }

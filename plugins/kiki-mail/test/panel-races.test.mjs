@@ -149,3 +149,27 @@ test('presentation updates localize dynamic states without exposing protocol ids
   h.present('zh-CN');
   assert.equal(h.get('status').textContent, 'Original server error');
 });
+
+test('collapsed summaries name tasks and account summary shows credentials without repeating identity', async () => {
+  const html = await readFile(new URL('../panel.html', import.meta.url), 'utf8');
+  assert.match(html, /<summary data-i18n="protocolSummary">More message options<\/summary>/);
+  assert.match(html, /<summary data-i18n="diagSummary">Diagnostics<\/summary>/);
+  assert.match(html, /protocolSummary: 'More message options'/);
+  assert.match(html, /protocolSummary: '更多邮件选项'/);
+  assert.match(html, /diagSummary: 'Diagnostics'/);
+  assert.match(html, /diagSummary: '诊断详情'/);
+  const options = html.match(/<details id="protocolDetails">([\s\S]*?)<\/details>/)?.[1];
+  assert.ok(options);
+  for (const id of ['cursor', 'uidValidity', 'uid', 'partId', 'read', 'attachment']) assert.ok(options.includes(`id="${id}"`));
+  assert.match(html, /<pre id="result"><\/pre>/);
+  const h = harness(script); await h.init();
+  assert.equal(h.get('accountSummary').textContent, 'Password saved');
+  assert.equal(h.get('accountSelect').children[0].textContent, 'a (a@example.test)');
+  h.present('zh-CN');
+  assert.equal(h.get('accountSummary').textContent, '已保存密码');
+  h.switchTo('b');
+  assert.equal(h.get('accountSummary').textContent, '已保存密码');
+  assert.equal(h.get('accountSelect').children[1].textContent, 'b (b@example.test)');
+  h.get('newAccount').onclick();
+  assert.equal(h.get('accountSummary').textContent, '');
+});
