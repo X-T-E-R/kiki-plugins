@@ -5,7 +5,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { mailServiceForTests } from '../entry.mjs';
-import { mergeCredential, normalizeAccount } from '../lib/accounts.mjs';
+import { applyOAuthDefaults, mergeCredential, normalizeAccount } from '../lib/accounts.mjs';
 import { connectionAccount, mappedMailboxes } from '../lib/custom.mjs';
 import { beginAuthorization, createPkce, exchangeAuthorizationCode, resolveAuth, startLoopbackAuthorization } from '../lib/oauth.mjs';
 import { withImap } from '../lib/imap.mjs';
@@ -174,4 +174,32 @@ test('concurrent OAuth consumers share refresh and each retains rotated credenti
     assert.equal(JSON.parse(settings.credentials).a.refreshToken, tokens.refresh_token);
     assert.equal(JSON.parse(settings.credentials).b.refreshToken, tokens.refresh_token);
   } finally { await service.deactivate(); }
+});
+
+test('bundled oauth defaults fill the client for a one-step link, and never override an explicit client', () => {
+  const defaults = {
+    gmail: {
+      clientId: 'bundled.apps.googleusercontent.com',
+      clientSecret: 'bundled-secret',
+      tokenUrl: 'https://oauth2.googleapis.com/token',
+      scope: 'https://mail.google.com/ email',
+    },
+  };
+  const filled = applyOAuthDefaults(normalizeAccount({ id: 'g', user: 'me@example.test', preset: 'gmail', auth: 'oauth2' }), {}, defaults);
+  assert.equal(filled.account.oauthClientId, 'bundled.apps.googleusercontent.com');
+  assert.equal(filled.account.oauthTokenUrl, 'https://oauth2.googleapis.com/token');
+  assert.equal(filled.account.oauthScope, 'https://mail.google.com/');
+  assert.equal(filled.credential.clientSecret, 'bundled-secret');
+
+  const own = applyOAuthDefaults(
+    normalizeAccount({ id: 'g', user: 'me@example.test', preset: 'gmail', auth: 'oauth2', oauthClientId: 'own.apps.googleusercontent.com' }),
+    { g: { clientSecret: 'own-secret' } },
+    defaults,
+  );
+  assert.equal(own.account.oauthClientId, 'own.apps.googleusercontent.com');
+  assert.equal(own.credential, undefined);
+
+  const password = applyOAuthDefaults(normalizeAccount({ id: 'g', user: 'me@example.test', preset: 'gmail', auth: 'password' }), {}, defaults);
+  assert.equal(password.credential, undefined);
+  assert.equal(password.account.oauthClientId, '');
 });

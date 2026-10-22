@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { coded, loadState, mergeCredential, normalizeAccount, publicAccount } from './accounts.mjs';
+import { applyOAuthDefaults, coded, loadState, mergeCredential, normalizeAccount, publicAccount } from './accounts.mjs';
 import { idempotencyKey, messageIdentity, normalizeId } from './identity.mjs';
 import { listMailboxes, readSource, searchPage, withImap } from './imap.mjs';
 import { bridgeFrom, forwardMailDigest, idleBridgeView, inspectIm, summaryText } from './im.mjs';
@@ -233,7 +233,9 @@ class MailService {
   async saveAccount(args, context, allowSecrets) {
     const state = this.stateOf(context);
     const body = args.account ?? args;
-    const account = normalizeAccount(body, { allowSecrets });
+    const normalized = normalizeAccount(body, { allowSecrets });
+    const defaulted = applyOAuthDefaults(normalized, state.credentials, state.oauthDefaults);
+    const account = defaulted.account;
     const accounts = state.accounts.filter((item) => item.id !== account.id);
     accounts.push(account);
     const credentials = { ...state.credentials };
@@ -241,6 +243,7 @@ class MailService {
     if (!allowSecrets && credential) throw coded('credential_in_tool', 'Passwords and tokens stay in the Mail panel.');
     const draft = allowSecrets ? this.draftCredentials.get(args.draftId) : undefined;
     if (args.draftId && (!draft || draft.account !== JSON.stringify(account) || draft.expiresAt < Date.now())) throw coded('draft_expired', 'Account details changed or the test expired. Test again before saving.');
+    if (defaulted.credential) credentials[account.id] = mergeCredential(credentials[account.id], defaulted.credential);
     if (draft) credentials[account.id] = mergeCredential(credentials[account.id], draft.credential);
     if (allowSecrets && credential) credentials[account.id] = mergeCredential(credentials[account.id], credential);
     const watchEnabled = typeof args.watchEnabled === 'boolean' ? args.watchEnabled : state.watchEnabled;

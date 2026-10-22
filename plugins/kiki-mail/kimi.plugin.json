@@ -1,6 +1,6 @@
 {
   "name": "kiki-mail",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Read and send mail through the IMAP and SMTP accounts you configure. Optional new-mail notices need a host IM bridge.",
   "license": "MIT",
   "icon": "./icon.svg",
@@ -42,6 +42,13 @@
             "type": "string",
             "title": "在 Mail 面板里管理账号",
             "description": "凭据只在 Mail 面板填写，保存后不回显。",
+            "secret": true,
+            "hidden": true
+          },
+          "oauthDefaults": {
+            "type": "string",
+            "title": "在 Mail 面板里管理账号",
+            "description": "内置 OAuth 客户端凭据，由产品预置，不在设置页编辑。",
             "secret": true,
             "hidden": true
           },

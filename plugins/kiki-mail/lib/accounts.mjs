@@ -25,13 +25,33 @@ export function loadState(settings = {}) {
   const credentials = parseJson(typeof settings.credentials === 'string' ? settings.credentials : '', {});
   if (!Array.isArray(accounts)) throw coded('settings_invalid', 'Accounts must be a JSON array.');
   if (!credentials || typeof credentials !== 'object' || Array.isArray(credentials)) throw coded('settings_invalid', 'Credentials must be a JSON object.');
+  const oauthDefaults = parseJson(typeof settings.oauthDefaults === 'string' ? settings.oauthDefaults : '', {});
   return {
     watchEnabled: settings.watchEnabled === true,
     defaultAccountId: accounts.some((account) => account.id === settings.defaultAccountId) ? settings.defaultAccountId : accounts[0]?.id || '',
     accountStatus: parseJson(settings.accountStatus, {}),
+    oauthDefaults: oauthDefaults && typeof oauthDefaults === 'object' && !Array.isArray(oauthDefaults) ? oauthDefaults : {},
     accounts: accounts.map((account) => normalizeAccount(account)),
     credentials,
   };
+}
+
+export function applyOAuthDefaults(account, credentials, defaults) {
+  const preset = defaults?.[account.preset];
+  if (account.auth !== 'oauth2' || !preset || typeof preset.clientId !== 'string' || !preset.clientId.trim()) {
+    return { account, credential: undefined };
+  }
+  const resolved = {
+    ...account,
+    oauthClientId: account.oauthClientId || preset.clientId,
+    oauthTokenUrl: account.oauthTokenUrl || preset.tokenUrl || '',
+    oauthScope: account.oauthScope || preset.scope || '',
+  };
+  const stored = credentials?.[account.id] ?? {};
+  const credential = !stored.clientSecret && typeof preset.clientSecret === 'string' && preset.clientSecret
+    ? { clientSecret: preset.clientSecret }
+    : undefined;
+  return { account: resolved, credential };
 }
 
 export function publicAccount(account, credentials) {

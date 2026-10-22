@@ -11,7 +11,7 @@ const repo = path.resolve(root, '../..');
 const manifest = JSON.parse(await readFile(path.join(root, 'kimi.plugin.json'), 'utf8'));
 const sdkLock = JSON.parse(await readFile(path.join(repo, 'sdk.lock.json'), 'utf8'));
 assert.equal(manifest.name, 'kiki-mail');
-assert.equal(manifest.version, '0.2.0');
+assert.equal(manifest.version, '0.2.1');
 assert.equal(satisfies(sdkLock.pluginEngineVersion, manifest['x-kiki'].engines.kiki), true);
 const files = await packageFiles(root);
 for (const required of [
