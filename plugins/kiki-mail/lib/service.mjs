@@ -351,7 +351,9 @@ class MailService {
     if (args.draftId && (!draft || draft.account !== JSON.stringify(account) || draft.expiresAt < Date.now())) throw coded('draft_expired', 'Account details changed or the test expired. Test again before saving.');
     if (draft) {
       this.assertAppStamp(account, draft.stamp, state.oauthDefaults);
-      credentials[account.id] = mergeCredential(credentials[account.id], draft.credential);
+      // The draft is the credential that passed testing, including a token removed
+      // because it belonged to another client. Merging would restore that token.
+      credentials[account.id] = { ...(draft.credential ?? {}) };
     }
     if (allowSecrets && credential) credentials[account.id] = mergeCredential(credentials[account.id], credential);
     if (credentials[account.id]) {
@@ -908,16 +910,27 @@ class MailService {
 }
 
 // A refresh or access token typed in this request belongs to the client resolved now.
-// Tokens already in storage keep their tokenClientId, including a missing one.
-function explicitToken(patch) {
-  return Boolean(patch && ['refreshToken', 'accessToken'].some((key) => typeof patch[key] === 'string' && patch[key] !== ''));
+// A missing or different stored binding drops whichever of refresh, access, and
+// expiry this request did not submit, so the old token is not relabeled.
+function submittedSecret(patch, key) {
+  return typeof patch?.[key] === 'string' && patch[key] !== '';
 }
 
 function withSubmittedClient(account, credential, submitted, defaults) {
-  if (!explicitToken(submitted)) return credential;
+  if (!submittedSecret(submitted, 'refreshToken') && !submittedSecret(submitted, 'accessToken')) return credential;
   const clientId = mailboxAuth(account, {}, defaults).clientId;
   if (!clientId) return credential;
-  return { ...(credential ?? {}), tokenClientId: clientId };
+  const next = { ...(credential ?? {}) };
+  const bound = submittedSecret(submitted, 'tokenClientId') ? '' : (typeof next.tokenClientId === 'string' ? next.tokenClientId : '');
+  if (bound !== clientId) {
+    if (!submittedSecret(submitted, 'refreshToken')) delete next.refreshToken;
+    if (!submittedSecret(submitted, 'accessToken')) {
+      delete next.accessToken;
+      delete next.accessTokenExpiresAt;
+    }
+  }
+  next.tokenClientId = clientId;
+  return next;
 }
 
 function authFlightKey(account, runtime) {

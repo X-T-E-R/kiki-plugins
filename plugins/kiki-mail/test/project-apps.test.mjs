@@ -499,3 +499,166 @@ test('the panel tests and saves a pasted inherited token, and a previous client 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('a partial token paste keeps the other token only when it is already bound to the same client', { timeout: 20000 }, async () => {
+  const CROSS_ACCESS = 'cross-new-access';
+  const REFRESHED = 'refresh-new-access';
+  const SAME_ACCESS = 'same-new-access';
+  const SAME_OLD = 'same-old-access';
+  const KEPT_EXPIRES = 4_000_000_000_000;
+  const fx = await startFixture({
+    users: [
+      { user: 'td-access@example.test', accessToken: CROSS_ACCESS, mailboxes: { INBOX: { uidValidity: 1, messages: [] } } },
+      { user: 'td-refresh@example.test', accessToken: REFRESHED, mailboxes: { INBOX: { uidValidity: 1, messages: [] } } },
+      { user: 'td-same-access@example.test', accessToken: SAME_ACCESS, mailboxes: { INBOX: { uidValidity: 1, messages: [] } } },
+      { user: 'td-same-refresh@example.test', accessToken: SAME_OLD, mailboxes: { INBOX: { uidValidity: 1, messages: [] } } },
+      { user: 'td-unknown@example.test', accessToken: CROSS_ACCESS, mailboxes: { INBOX: { uidValidity: 1, messages: [] } } },
+    ],
+  });
+  const oldToken = (extra = {}) => ({ refreshToken: 'synthetic-old-refresh', accessToken: 'synthetic-old-access', accessTokenExpiresAt: 1, tokenClientId: 'old-client', ...extra });
+  const accounts = [
+    mailbox('save-access', 'save-access@example.test', fx),
+    mailbox('save-refresh', 'save-refresh@example.test', fx),
+    mailbox('save-same-access', 'save-same-access@example.test', fx),
+    mailbox('save-same-refresh', 'save-same-refresh@example.test', fx),
+    mailbox('save-unknown', 'save-unknown@example.test', fx),
+    mailbox('save-explicit', 'save-explicit@example.test', fx, { oauthClientId: 'explicit-client' }),
+    mailbox('td-access', 'td-access@example.test', fx),
+    mailbox('td-refresh', 'td-refresh@example.test', fx),
+    mailbox('td-same-access', 'td-same-access@example.test', fx),
+    mailbox('td-same-refresh', 'td-same-refresh@example.test', fx),
+    mailbox('td-unknown', 'td-unknown@example.test', fx),
+  ];
+  const dir = await mkdtemp(path.join(tmpdir(), 'mail-partial-token-'));
+  const settings = {
+    accounts: JSON.stringify(accounts),
+    credentials: JSON.stringify({
+      'save-access': oldToken(),
+      'save-refresh': oldToken({ accessTokenExpiresAt: KEPT_EXPIRES }),
+      'save-same-access': oldToken({ tokenClientId: 'gmail-client-a', refreshToken: 'same-keep-refresh' }),
+      'save-same-refresh': oldToken({ tokenClientId: 'gmail-client-a', accessToken: 'same-keep-access', accessTokenExpiresAt: KEPT_EXPIRES }),
+      'save-unknown': { refreshToken: 'synthetic-old-refresh', accessToken: 'synthetic-old-access', accessTokenExpiresAt: 1 },
+      'save-explicit': oldToken({ clientSecret: EXPLICIT_SECRET }),
+      'td-access': oldToken(),
+      'td-refresh': oldToken({ accessTokenExpiresAt: KEPT_EXPIRES }),
+      'td-same-access': oldToken({ tokenClientId: 'gmail-client-a', refreshToken: 'same-keep-refresh' }),
+      'td-same-refresh': oldToken({ tokenClientId: 'gmail-client-a', accessToken: SAME_OLD, accessTokenExpiresAt: KEPT_EXPIRES }),
+      'td-unknown': { refreshToken: 'synthetic-old-refresh', accessToken: 'synthetic-old-access', accessTokenExpiresAt: KEPT_EXPIRES },
+    }),
+    watchEnabled: false,
+  };
+  const calls = [];
+  const oauthFetch = async (url, input) => {
+    const target = String(url);
+    if (!target.startsWith('http://127.0.0.1/')) throw new Error(`unexpected oauth url ${target}`);
+    const entry = {
+      grant: input.body.get('grant_type'),
+      client: input.body.get('client_id'),
+      secret: input.body.get('client_secret'),
+      refresh: input.body.get('refresh_token'),
+    };
+    calls.push(entry);
+    if (entry.refresh === 'synthetic-old-refresh' || entry.client === 'old-client') throw new Error(`old token sent to ${entry.client}`);
+    if (entry.grant === 'refresh_token' && entry.client === 'gmail-client-a' && entry.secret === SECRET && entry.refresh === 'td-new-refresh') {
+      return jsonResponse({ access_token: REFRESHED, expires_in: 3600, token_type: 'Bearer' });
+    }
+    throw new Error(`unexpected token request ${entry.client} ${entry.refresh}`);
+  };
+  const service = mailServiceForTests({ oauthFetch });
+  const context = { settings, dataDir: dir, async updateSettings(patch) { Object.assign(settings, patch); } };
+  const byId = (id) => accounts.find((account) => account.id === id);
+  const cred = (id) => JSON.parse(settings.credentials)[id];
+  await service.activate(context);
+  try {
+    await service.panel('appConfig', { provider: 'gmail', clientId: 'gmail-client-a', clientSecret: SECRET }, context);
+    const accessSaved = await service.panel('save', { account: byId('save-access'), credential: { accessToken: 'synthetic-new-access' } }, context);
+    assert.equal(accessSaved.ok, true, accessSaved.message);
+    assert.equal(accessSaved.account.oauthStatus, 'token_only');
+    assert.equal(cred('save-access').tokenClientId, 'gmail-client-a');
+    assert.equal(cred('save-access').accessToken, 'synthetic-new-access');
+    assert.equal(cred('save-access').refreshToken, undefined);
+    assert.equal(cred('save-access').accessTokenExpiresAt, undefined);
+    const refreshSaved = await service.panel('save', { account: byId('save-refresh'), credential: { refreshToken: 'synthetic-new-refresh' } }, context);
+    assert.equal(refreshSaved.ok, true, refreshSaved.message);
+    assert.equal(refreshSaved.account.oauthStatus, 'refresh_ready');
+    assert.equal(cred('save-refresh').tokenClientId, 'gmail-client-a');
+    assert.equal(cred('save-refresh').refreshToken, 'synthetic-new-refresh');
+    assert.equal(cred('save-refresh').accessToken, undefined);
+    assert.equal(cred('save-refresh').accessTokenExpiresAt, undefined);
+    const sameAccess = await service.panel('save', { account: byId('save-same-access'), credential: { accessToken: 'synthetic-new-access' } }, context);
+    assert.equal(sameAccess.ok, true, sameAccess.message);
+    assert.equal(cred('save-same-access').tokenClientId, 'gmail-client-a');
+    assert.equal(cred('save-same-access').accessToken, 'synthetic-new-access');
+    assert.equal(cred('save-same-access').refreshToken, 'same-keep-refresh');
+    const sameRefresh = await service.panel('save', { account: byId('save-same-refresh'), credential: { refreshToken: 'synthetic-new-refresh' } }, context);
+    assert.equal(sameRefresh.ok, true, sameRefresh.message);
+    assert.equal(cred('save-same-refresh').tokenClientId, 'gmail-client-a');
+    assert.equal(cred('save-same-refresh').refreshToken, 'synthetic-new-refresh');
+    assert.equal(cred('save-same-refresh').accessToken, 'same-keep-access');
+    assert.equal(cred('save-same-refresh').accessTokenExpiresAt, KEPT_EXPIRES);
+    const unknown = await service.panel('save', { account: byId('save-unknown'), credential: { accessToken: 'synthetic-new-access' } }, context);
+    assert.equal(unknown.ok, true, unknown.message);
+    assert.equal(cred('save-unknown').tokenClientId, 'gmail-client-a');
+    assert.equal(cred('save-unknown').accessToken, 'synthetic-new-access');
+    assert.equal(cred('save-unknown').refreshToken, undefined);
+    const explicit = await service.panel('save', { account: byId('save-explicit'), credential: { accessToken: 'explicit-new-access' } }, context);
+    assert.equal(explicit.ok, true, explicit.message);
+    assert.equal(explicit.account.oauthClientId, 'explicit-client');
+    assert.equal(explicit.account.oauthInherited, false);
+    assert.equal(cred('save-explicit').tokenClientId, 'explicit-client');
+    assert.equal(cred('save-explicit').accessToken, 'explicit-new-access');
+    assert.equal(cred('save-explicit').refreshToken, undefined);
+    assert.equal(cred('save-explicit').clientSecret, EXPLICIT_SECRET);
+    assert.equal(JSON.stringify(cred('save-explicit')).includes(SECRET), false);
+    assert.equal(calls.length, 0);
+
+    async function testAndSave(id, credential) {
+      const account = byId(id);
+      const tested = await service.panel('testDraft', { account, credential, editingId: account.id }, context);
+      assert.equal(tested.ok, true, tested.message);
+      const saved = await service.panel('save', { account, draftId: tested.draftId }, context);
+      assert.equal(saved.ok, true, saved.message);
+      assert.equal(saved.account.lastTest.ok, true);
+      return saved;
+    }
+    const beforeAccess = calls.length;
+    await testAndSave('td-access', { accessToken: CROSS_ACCESS });
+    assert.equal(calls.length, beforeAccess);
+    assert.equal(cred('td-access').tokenClientId, 'gmail-client-a');
+    assert.equal(cred('td-access').accessToken, CROSS_ACCESS);
+    assert.equal(cred('td-access').refreshToken, undefined);
+    assert.equal(cred('td-access').clientSecret, undefined);
+    await testAndSave('td-refresh', { refreshToken: 'td-new-refresh' });
+    assert.equal(calls.at(-1).client, 'gmail-client-a');
+    assert.equal(calls.at(-1).secret, SECRET);
+    assert.equal(calls.at(-1).refresh, 'td-new-refresh');
+    assert.equal(cred('td-refresh').tokenClientId, 'gmail-client-a');
+    assert.equal(cred('td-refresh').refreshToken, 'td-new-refresh');
+    assert.equal(cred('td-refresh').accessToken, REFRESHED);
+    assert.notEqual(cred('td-refresh').accessToken, 'synthetic-old-access');
+    const beforeSame = calls.length;
+    await testAndSave('td-same-access', { accessToken: SAME_ACCESS });
+    await testAndSave('td-same-refresh', { refreshToken: 'same-new-refresh' });
+    assert.equal(calls.length, beforeSame);
+    assert.equal(cred('td-same-access').tokenClientId, 'gmail-client-a');
+    assert.equal(cred('td-same-access').accessToken, SAME_ACCESS);
+    assert.equal(cred('td-same-access').refreshToken, 'same-keep-refresh');
+    assert.equal(cred('td-same-refresh').tokenClientId, 'gmail-client-a');
+    assert.equal(cred('td-same-refresh').refreshToken, 'same-new-refresh');
+    assert.equal(cred('td-same-refresh').accessToken, SAME_OLD);
+    assert.equal(cred('td-same-refresh').accessTokenExpiresAt, KEPT_EXPIRES);
+    const beforeUnknown = calls.length;
+    await testAndSave('td-unknown', { accessToken: CROSS_ACCESS });
+    assert.equal(calls.length, beforeUnknown);
+    assert.equal(cred('td-unknown').tokenClientId, 'gmail-client-a');
+    assert.equal(cred('td-unknown').accessToken, CROSS_ACCESS);
+    assert.equal(cred('td-unknown').refreshToken, undefined);
+    for (const id of ['td-access', 'td-refresh', 'td-same-access', 'td-same-refresh', 'td-unknown']) {
+      assert.equal(JSON.stringify(cred(id)).includes(SECRET), false, id);
+    }
+  } finally {
+    await service.deactivate();
+    await fx.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
