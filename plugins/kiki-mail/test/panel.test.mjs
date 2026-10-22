@@ -521,3 +521,74 @@ test('mail panel supports humanized multi-account switching, presets, folder/mes
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+
+test('account wizard tests before save, keeps notes and removable declarations, and OAuth uses copied links only', async () => {
+  const html = await readFile(new URL('../panel.html', import.meta.url), 'utf8');
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const fx = await startFixture({ users: [{ user: 'ada@example.test', password: PASS, mailboxes: { INBOX: { uidValidity: 7, messages: [] } } }] });
+  const dir = await mkdtemp(path.join(tmpdir(), 'mail-wizard-'));
+  const settings = { accounts: '[]', credentials: '{}', watchEnabled: false };
+  const service = mailServiceForTests({ oauthFetch: async () => new Response(JSON.stringify({ access_token: 'fixture-oauth', refresh_token: 'fixture-refresh', expires_in: 3600 })) });
+  const context = { settings, dataDir: dir, async updateSettings(patch) { Object.assign(settings, patch); } };
+  await service.activate(context);
+  const { get, document } = createDomHarness();
+  const requests = [];
+  let receive;
+  let copied = '';
+  const parent = { postMessage(request) {
+    requests.push(request);
+    assert.equal(request.method, 'plugin.call');
+    queueMicrotask(async () => receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: true, result: await service.panel(request.action, request.args, context) } }));
+  } };
+  const flush = async () => { for (let n = 0; n < 4; n++) await new Promise(setImmediate); };
+  try {
+    runInNewContext(script, { document, window: { addEventListener(_, fn) { receive = fn; } }, parent, URL, navigator: { language: 'en', clipboard: { async writeText(value) { copied = value; } } }, crypto: { randomUUID: () => 'unused' } });
+    receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'init' } }); await flush();
+    get('newAccount').onclick();
+    assert.equal(get('providerStep').hidden, false);
+    assert.equal(get('identityStep').hidden, true);
+    get('wizardNext').onclick();
+    get('wizardNext').onclick();
+    assert.equal(get('fieldIssue').hidden, false);
+    get('user').value = 'ada@example.test'; get('label').value = 'Lab'; get('note').value = 'Grant reports';
+    get('wizardNext').onclick(); get('wizardNext').onclick();
+    assert.equal(get('testDraft').hidden, false);
+    assert.equal(get('save').hidden, true);
+    get('imapHost').value = '127.0.0.1'; get('imapPort').value = String(fx.imapPort); get('imapSecure').checked = false;
+    get('smtpHost').value = '127.0.0.1'; get('smtpPort').value = String(fx.smtpPort); get('smtpSecure').checked = false;
+    get('allowInsecure').checked = true; get('password').value = PASS;
+    get('hookAction').value = 'timeout'; get('hookValue').value = '5000'; get('addHook').onclick();
+    assert.equal(get('hookList').children.length, 1);
+    get('hookList').children[0].children[1].onclick();
+    assert.equal(get('hookList').children.length, 0);
+    await get('testDraft').onclick();
+    assert.equal(get('password').value, '');
+    assert.equal(get('save').hidden, false);
+    assert.equal(JSON.parse(settings.accounts).length, 0);
+    await get('save').onclick(); await flush();
+    assert.equal(JSON.parse(settings.accounts)[0].note, 'Grant reports');
+    assert.equal(get('accountSheet').hidden, true);
+    assert.equal(get('settingsSummary').textContent.includes('1 accounts'), true);
+    assert.equal(get('accountCards').children.length, 2);
+    get('newAccount').onclick(); get('preset').value = 'gmail'; get('preset').onchange();
+    get('user').value = 'other@example.test'; get('id').value = 'other'; get('auth').value = 'oauth2'; get('oauthClientId').value = 'public-client';
+    get('imapHost').value = '127.0.0.1'; get('imapPort').value = String(fx.imapPort);
+    get('smtpHost').value = '127.0.0.1'; get('smtpPort').value = String(fx.smtpPort);
+    await get('oauthStart').onclick();
+    assert.equal(get('oauthFlow').hidden, false);
+    await get('copyOAuth').onclick();
+    const authorization = new URL(copied);
+    assert.equal(authorization.searchParams.get('code_challenge_method'), 'S256');
+    await get('oauthCheck').onclick();
+    assert.equal(get('oauthFeedback').textContent, 'Waiting for authorization.');
+    const callback = new URL(authorization.searchParams.get('redirect_uri'));
+    callback.searchParams.set('code', 'fixture-code'); callback.searchParams.set('state', authorization.searchParams.get('state'));
+    get('callbackUrl').value = callback.href;
+    await get('oauthComplete').onclick();
+    assert.equal(get('callbackUrl').value, '');
+    assert.equal(get('oauthFeedback').textContent, 'Authorization received. Test and save the account.');
+    assert.equal(JSON.stringify(settings).includes('fixture-oauth'), false);
+    assert.equal(get('result').textContent.includes('fixture-oauth'), false);
+  } finally { await service.deactivate(); await fx.close(); await rm(dir, { recursive: true, force: true }); }
+});

@@ -15,7 +15,10 @@ export const providerPresets = [
     smtpHost: 'smtp.gmail.com',
     smtpPort: 465,
     smtpSecure: true,
-    note: 'Gmail usually requires an app password, or OAuth with your own client id and a refresh token. IMAP must be enabled in the mailbox. This preset has not been signed in against Gmail here.',
+    oauthAuthorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    oauthTokenUrl: 'https://oauth2.googleapis.com/token',
+    oauthScope: 'https://mail.google.com/',
+    note: 'Use an app password or authorize your own desktop OAuth client. Enable mail access in your Google account.',
   },
   {
     id: 'outlook',
@@ -27,9 +30,10 @@ export const providerPresets = [
     smtpHost: 'smtp.office365.com',
     smtpPort: 587,
     smtpSecure: false,
+    oauthAuthorizationUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
     oauthTokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
     oauthScope: 'https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access',
-    note: 'Many tenants reject basic auth. Bring an access token or a refresh token for your app registration. This plugin does not open Microsoft\'s consent screen, and this preset has not been signed in against Outlook here.',
+    note: 'Use your own OAuth app registration with mail permissions and a loopback redirect. Your organization may need to allow SMTP AUTH.',
   },
   {
     id: 'qq',

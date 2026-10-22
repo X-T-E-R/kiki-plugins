@@ -449,6 +449,28 @@ pre {
   color: var(--ink-soft);
 }
 
+:focus-visible { outline: 2px solid var(--selected-ink); outline-offset: 3px; }
+.account-list { margin-top: 20px; }
+.account-group { margin: 22px 0 8px; color: var(--ink-faint); font-weight: 500; }
+.account-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 22px; padding: 18px 0; border-bottom: 1px solid var(--hairline); }
+.account-entry h3 { font-size: 15px; overflow-wrap: anywhere; }
+.account-entry p { margin: 3px 0; overflow-wrap: anywhere; }
+.account-entry .row { margin-top: 0; gap: 6px; align-content: center; }
+.account-entry .note { max-width: 440px; }
+.account-entry .badge { color: var(--ok); font-size: 11px; margin-left: 8px; font-weight: 500; }
+.wizard-progress { margin: 14px 0; font-size: 12px; color: var(--ink-faint); }
+#accountSheet > summary { font-size: 17px; margin: 14px 0; }
+#accountSheet .grid + .grid { margin-top: 12px; }
+#oauthUrl { min-height: 76px; margin-top: 8px; }
+#customHeaders { min-height: 65px; }
+#hookAction { width: auto; max-width: 100%; }
+#hookValue { width: 130px; }
+.hook-entry { display: flex; gap: 12px; align-items: center; padding: 8px 0; }
+.field-invalid { border-color: var(--danger); }
+@media (max-width: 767px) {
+  .account-entry { grid-template-columns: minmax(0, 1fr); }
+  .account-entry .row { justify-content: flex-start; }
+}
 @media (max-width: 560px) {
   main { padding: 14px 12px 36px; }
   .grid, .grid-3 { grid-template-columns: minmax(0, 1fr); }
@@ -480,34 +502,36 @@ pre {
       <span data-i18n="activeAccountLabel">Account</span>
       <select id="accountSelect" aria-label="Select configured account" style="width:auto;min-width:140px"></select>
     </label>
+    <button id="manageAccounts" class="quiet" type="button" data-i18n="manageAccounts">Accounts</button>
     <button id="newAccount" class="quiet" type="button" data-i18n="newAccountBtn">New account</button>
     <button id="test" class="quiet" type="button" data-i18n="testBtn">Test</button>
   </div>
   <pre id="accounts" class="vis-hidden"></pre>
 
   <section id="accountSection">
-    <details id="accountSheet" open>
+    <div id="accountOverview">
+      <div class="sec-head"><h2 data-i18n="accountsTitle">Your accounts</h2></div>
+      <p id="settingsSummary" class="note"></p>
+      <div id="accountCards" class="account-list"></div>
+    </div>
+    <details id="accountSheet" hidden>
       <summary><strong id="accountHeading" data-i18n="accountHeading">Account configuration</strong> <span id="accountSummary" class="note" style="margin:0"></span></summary>
+      <div id="wizardProgress" class="wizard-progress" role="status"></div>
       <div class="fold-body">
-        <div class="grid">
-          <label><span data-i18n="presetLabel">Preset</span> <select id="preset">
-            <option value="custom">Custom</option>
-            <option value="gmail">Gmail</option>
-            <option value="outlook">Outlook / Microsoft 365</option>
-            <option value="qq">QQ Mail</option>
-            <option value="163">NetEase 163</option>
-            <option value="icloud">iCloud</option>
-            <option value="fastmail">Fastmail</option>
-            <option value="proton-bridge">Proton Bridge (local)</option>
+        <div id="providerStep" class="grid">
+          <label class="wide"><span data-i18n="presetLabel">Preset</span> <select id="preset">
+            <option value="custom">Custom</option><option value="gmail">Gmail</option><option value="outlook">Outlook / Microsoft 365</option><option value="qq">QQ Mail</option><option value="163">NetEase 163</option><option value="icloud">iCloud</option><option value="fastmail">Fastmail</option><option value="proton-bridge">Proton Bridge (local)</option>
           </select></label>
-          <label><span data-i18n="authLabel">Auth</span> <select id="auth">
-            <option value="password" data-i18n="authPassword">Password or app password</option>
-            <option value="oauth2" data-i18n="authOauth">OAuth2 token</option>
-          </select></label>
+        </div>
+        <div id="identityStep" class="grid">
           <label><span data-i18n="userLabel">Email or username</span> <input id="user" autocomplete="off" spellcheck="false" placeholder="ada@example.com"></label>
-          <label><span data-i18n="labelField">Display label</span> <input id="label" autocomplete="off" placeholder="Work / Personal"></label>
+          <label><span data-i18n="labelField">Display label</span> <input id="label" maxlength="120" autocomplete="off" placeholder="Work / Personal"></label>
+          <label class="wide"><span data-i18n="noteLabel">Note</span> <input id="note" maxlength="200" autocomplete="off" placeholder="Project, team or purpose"></label>
           <label><span data-i18n="idLabel">Account ID</span> <input id="id" autocomplete="off" spellcheck="false" placeholder="ada"></label>
           <label><span data-i18n="fromLabel">From header (optional)</span> <input id="from" autocomplete="off" spellcheck="false" placeholder="Ada <ada@example.com>"></label>
+        </div>
+        <div id="authStep" class="grid">
+          <label class="wide"><span data-i18n="authLabel">Auth</span> <select id="auth"><option value="password" data-i18n="authPassword">Password or app password</option><option value="oauth2" data-i18n="authOauth">OAuth2</option></select></label>
         </div>
 
         <p id="presetNote" class="note"></p>
@@ -518,12 +542,30 @@ pre {
         </div>
 
         <div id="oauthGroup" class="grid" style="margin-top:8px" hidden>
-          <label><span data-i18n="accessTokenLabel">Access token</span> <input id="accessToken" type="password" autocomplete="new-password" placeholder="Write-only"></label>
-          <label><span data-i18n="refreshTokenLabel">Refresh token</span> <input id="refreshToken" type="password" autocomplete="new-password" placeholder="Write-only"></label>
-          <label><span data-i18n="clientIdLabel">OAuth client ID</span> <input id="oauthClientId" autocomplete="off" spellcheck="false"></label>
-          <label><span data-i18n="clientSecretLabel">Client secret</span> <input id="clientSecret" type="password" autocomplete="new-password" placeholder="Write-only"></label>
-          <label class="wide"><span data-i18n="tokenUrlLabel">OAuth token URL</span> <input id="oauthTokenUrl" autocomplete="off" spellcheck="false"></label>
-          <label class="wide"><span data-i18n="scopeLabel">OAuth scope</span> <input id="oauthScope" autocomplete="off" spellcheck="false"></label>
+          <label class="wide"><span data-i18n="oauthMethod">Authorization</span><select id="oauthMethod"><option value="link" data-i18n="oauthLinkMethod">Authorize in your browser</option><option value="token" data-i18n="oauthTokenMethod">Paste existing tokens</option></select></label>
+          <label id="accessTokenField"><span data-i18n="accessTokenLabel">Access token</span> <input id="accessToken" type="password" autocomplete="new-password" placeholder="Write-only"></label>
+          <label id="refreshTokenField"><span data-i18n="refreshTokenLabel">Refresh token</span> <input id="refreshToken" type="password" autocomplete="new-password" placeholder="Write-only"></label>
+          <label class="wide"><span data-i18n="clientIdLabel">OAuth client ID</span> <input id="oauthClientId" autocomplete="off" spellcheck="false"></label>
+          <details id="oauthAdvanced" class="wide"><summary data-i18n="oauthAdvanced">OAuth application settings</summary><div class="fold-body grid">
+            <label class="wide"><span data-i18n="clientSecretLabel">Client secret</span> <input id="clientSecret" type="password" autocomplete="new-password" placeholder="Write-only"></label>
+            <label class="wide"><span data-i18n="tokenUrlLabel">OAuth token URL</span> <input id="oauthTokenUrl" autocomplete="off" spellcheck="false"></label>
+            <label class="wide"><span data-i18n="scopeLabel">OAuth scope</span> <input id="oauthScope" autocomplete="off" spellcheck="false"></label>
+          </div></details>
+          <div class="wide" id="authorizationGroup">
+            <button id="oauthStart" class="quiet" type="button" data-i18n="generateLink">Generate authorization link</button>
+            <div id="oauthFlow" hidden>
+              <p class="note" data-i18n="oauthLinkHint">Open this link in your own browser, authorize, then return here.</p>
+              <textarea id="oauthUrl" class="mono" readonly rows="3" aria-label="Authorization URL"></textarea>
+              <div class="row"><button id="copyOAuth" class="quiet" type="button" data-i18n="copyLink">Copy link</button><button id="oauthCheck" class="quiet" type="button" data-i18n="checkAuthorization">Check authorization</button></div>
+              <details><summary data-i18n="manualCallback">Paste a callback instead</summary><div class="fold-body grid">
+                <label class="wide"><span data-i18n="callbackUrl">Complete callback URL</span><input id="callbackUrl" type="password" autocomplete="off"></label>
+                <label><span data-i18n="authorizationCode">Or authorization code</span><input id="authorizationCode" type="password" autocomplete="off"></label>
+                <label>State<input id="authorizationState" type="password" autocomplete="off"></label>
+                <div class="wide"><button id="oauthComplete" class="quiet" type="button" data-i18n="exchangeCode">Exchange code</button></div>
+              </div></details>
+            </div>
+            <p id="oauthFeedback" class="note" role="status"></p>
+          </div>
         </div>
 
         <details id="serverDetails">
@@ -561,8 +603,29 @@ pre {
           </div>
         </details>
 
+        <details id="customDetails">
+          <summary data-i18n="customDetails">Client identity, folders &amp; declarations</summary>
+          <div class="fold-body grid">
+            <label>IMAP ID name<input id="imapIdName" placeholder="kiki-mail" maxlength="100"></label>
+            <label>IMAP ID version<input id="imapIdVersion" placeholder="0.2.0" maxlength="100"></label>
+            <label><span data-i18n="sentFolder">Sent folder</span><input id="folderSent" placeholder="Sent"></label>
+            <label><span data-i18n="draftsFolder">Drafts folder</span><input id="folderDrafts" placeholder="Drafts"></label>
+            <label><span data-i18n="trashFolder">Trash folder</span><input id="folderTrash" placeholder="Trash"></label>
+            <label><span data-i18n="archiveFolder">Archive folder</span><input id="folderArchive" placeholder="Archive"></label>
+            <label class="wide"><span data-i18n="headersLabel">Outgoing X- headers (one Name: value per line)</span><textarea id="customHeaders" rows="2" placeholder="X-Team: Research"></textarea></label>
+            <div class="wide"><h3 data-i18n="hooksLabel">Declarative hooks</h3><div id="hookList"></div>
+              <div class="row"><select id="hookAction" aria-label="Hook"><option value="timeout">beforeConnect / setTimeout</option><option value="event">afterSend / recordEvent</option></select><input id="hookValue" placeholder="20000"><button id="addHook" class="quiet" type="button" data-i18n="addHook">Add declaration</button></div>
+            </div>
+          </div>
+        </details>
+        <p id="fieldIssue" class="note" data-tone="danger" role="alert" hidden></p>
+        <p id="draftTestResult" class="note" role="status" hidden></p>
         <div class="row">
+          <button id="wizardBack" class="quiet" type="button" data-i18n="back">Back</button>
+          <button id="wizardNext" type="button" data-i18n="next">Continue</button>
+          <button id="testDraft" type="button" data-i18n="testDraft">Test now</button>
           <button id="save" type="button" data-i18n="saveBtn">Save</button>
+          <button id="cancelEdit" class="quiet" type="button" data-i18n="cancel">Cancel</button>
           <button id="load" class="quiet" type="button" data-i18n="loadBtn">Load</button>
           <button id="remove" class="quiet danger-btn" type="button" data-i18n="deleteBtn">Delete</button>
           <span id="accountFeedback" class="note" style="margin:0"></span>
@@ -935,6 +998,24 @@ pre {
     },
   };
 
+  Object.assign(COPY.en, {
+    manageAccounts: 'Accounts', accountsTitle: 'Your accounts', noteLabel: 'Note (up to 200 characters)', customDetails: 'Client identity, folders & declarations', sentFolder: 'Sent folder', draftsFolder: 'Drafts folder', trashFolder: 'Trash folder', archiveFolder: 'Archive folder', headersLabel: 'Outgoing X- headers (one Name: value per line)', hooksLabel: 'Declarative hooks', addHook: 'Add declaration', back: 'Back', next: 'Continue', testDraft: 'Test now', cancel: 'Cancel', edit: 'Edit', defaultLabel: 'Default', makeDefault: 'Set default', openMailbox: 'Open mailbox', removeHook: 'Remove', generateLink: 'Generate authorization link', copyLink: 'Copy link', oauthLinkHint: 'Open this link in your own browser, authorize, then return here.', checkAuthorization: 'Check authorization', manualCallback: 'Paste a callback instead', callbackUrl: 'Complete callback URL', authorizationCode: 'Or authorization code', exchangeCode: 'Exchange code', copied: 'Link copied.', copyManually: 'Select and copy the link above.', waitingAuthorization: 'Waiting for authorization.', authorized: 'Authorization received. Test and save the account.', testPassed: 'IMAP and SMTP accepted the credentials. Ready to save.', testing: 'Testing IMAP and SMTP…', providerStage: 'Choose your mail provider', identityStage: 'Identify this account', authStage: 'Choose how to sign in', credentialStage: 'Add credentials and test', saveStage: 'Ready to save', noAccounts: 'Add your first account to read and send mail.', accountCount: 'accounts', watching: 'Watching', watchOff: 'Watch off', lastTestLabel: 'Last test', testOk: 'Test passed', testError: 'Test failed', neverTested: 'Not tested', oauth_refresh_ready: 'Automatic refresh ready', oauth_token_only: 'Access token only', oauth_expired: 'Token expired', oauth_authorization_required: 'Authorization needed', requiredField: 'Enter this field.', noteTooLong: 'Use at most 200 characters.', idTaken: 'This account ID is already in use.', invalidPort: 'Use a TCP port from 1 to 65535.', invalidHeader: 'Use one non-secret X-Name: value header per line.', invalidHook: 'Use 200-120000 milliseconds, or an event label up to 80 characters.'
+  });
+  Object.assign(COPY.zh, {
+    manageAccounts: '账号管理', accountsTitle: '我的账号', noteLabel: '备注（最多 200 字）', customDetails: '客户端标识、文件夹与声明', sentFolder: '已发送文件夹', draftsFolder: '草稿文件夹', trashFolder: '废纸篓文件夹', archiveFolder: '归档文件夹', headersLabel: '发信 X- 请求头（每行 Name: value）', hooksLabel: '声明式钩子', addHook: '添加声明', back: '上一步', next: '继续', testDraft: '立即测试', cancel: '取消', edit: '编辑', defaultLabel: '默认', makeDefault: '设为默认', openMailbox: '打开邮箱', removeHook: '移除', generateLink: '生成授权链接', copyLink: '复制链接', oauthLinkHint: '用你自己的浏览器打开并授权，然后回到这里。', checkAuthorization: '检查授权结果', manualCallback: '粘贴回跳信息', callbackUrl: '完整回跳 URL', authorizationCode: '或授权码', exchangeCode: '交换令牌', copied: '链接已复制。', copyManually: '请选中并复制上方链接。', waitingAuthorization: '等待授权。', authorized: '已收到授权，请测试并保存账号。', testPassed: 'IMAP 与 SMTP 已接受凭据，可以保存。', testing: '正在测试 IMAP 与 SMTP…', providerStage: '选择邮件服务商', identityStage: '区分这个账号', authStage: '选择授权方式', credentialStage: '填写凭据并测试', saveStage: '可以保存了', noAccounts: '添加第一个账号，开始收发邮件。', accountCount: '个账号', watching: '监听中', watchOff: '监听已关闭', lastTestLabel: '上次测试', testOk: '测试通过', testError: '测试失败', neverTested: '未测试', oauth_refresh_ready: '可自动刷新令牌', oauth_token_only: '仅有访问令牌', oauth_expired: '令牌已过期', oauth_authorization_required: '需要授权', requiredField: '请填写此字段。', noteTooLong: '最多填写 200 字。', idTaken: '此账号 ID 已被使用，请换一个。', invalidPort: '请输入 1-65535 之间的端口。', invalidHeader: '每行填写一个不含凭据的 X-Name: value 请求头。', invalidHook: '超时填写 200-120000 毫秒；事件标签最多 80 字。'
+  });
+  Object.assign(COPY.en, { oauthMethod: 'Authorization', oauthLinkMethod: 'Authorize in your browser', oauthTokenMethod: 'Paste existing tokens', oauthAdvanced: 'OAuth application settings' });
+  Object.assign(COPY.zh, { oauthMethod: '授权方式', oauthLinkMethod: '在自己的浏览器中授权', oauthTokenMethod: '粘贴已有令牌', oauthAdvanced: 'OAuth 应用设置' });
+  let managing = true;
+  let wizardStage = null;
+  let editingId = '';
+  let declarations = [];
+  let testedDraftId = '';
+  let testedSignature = '';
+  let oauthFlowId = '';
+  let oauthDraftId = '';
+  let accountBusy = false;
+
   let lang = typeof navigator !== 'undefined' && String(navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
   const tr = (key) => (COPY[lang] && COPY[lang][key]) || COPY.en[key] || key;
 
@@ -947,6 +1028,156 @@ pre {
     return value === '' ? undefined : Number(value);
   };
   const canDom = () => typeof document.createElement === 'function';
+
+  function node(tag, content, className = '') {
+    const item = document.createElement(tag);
+    item.textContent = content;
+    item.className = className;
+    return item;
+  }
+  function actionButton(key, fn) {
+    const button = node('button', tr(key), 'quiet');
+    button.type = 'button'; button.onclick = fn;
+    return button;
+  }
+  function setManagement(value) {
+    managing = value;
+    el('accountSection').hidden = !value;
+    el('mailboxSection').hidden = value;
+    el('sendSection').hidden = value;
+    el('manageAccounts').hidden = value;
+    el('test').hidden = value;
+    if (el('accountSelect').parentElement) el('accountSelect').parentElement.hidden = value;
+    el('newAccount').className = value ? '' : 'quiet';
+  }
+  function renderAccountCards() {
+    if (!canDom()) return;
+    const target = el('accountCards');
+    target.replaceChildren();
+    const accounts = lastState.accounts || [];
+    const defaultAccount = accounts.find((account) => account.id === lastState.defaultAccountId || account.isDefault);
+    const summary = lastState.summary;
+    el('settingsSummary').textContent = `${accounts.length} ${tr('accountCount')} · ${tr('defaultLabel')}: ${defaultAccount?.label || tr('imNoneOption')} · ${lastState.watchEnabled ? `${tr('watching')} ${summary?.watchedCount ?? accounts.filter((a) => a.watch).length}` : tr('watchOff')}${summary?.lastTest ? ` · ${tr('lastTestLabel')}: ${tr(summary.lastTest.ok ? 'testOk' : 'testError')}` : ''}`;
+    if (!accounts.length) { target.append(node('p', tr('noAccounts'), 'note')); return; }
+    const groups = new Map();
+    for (const account of accounts) {
+      const provider = account.preset || 'custom';
+      if (!groups.has(provider)) groups.set(provider, []);
+      groups.get(provider).push(account);
+    }
+    for (const [provider, items] of groups) {
+      target.append(node('h3', `${presets.find((p) => p.id === provider)?.label || provider} (${items.length})`, 'account-group'));
+      for (const account of items) {
+        const entry = node('article', '', 'account-entry');
+        const content = node('div', '');
+        const title = node('h3', account.label);
+        if (account.isDefault || account.id === lastState.defaultAccountId) title.append(node('span', tr('defaultLabel'), 'badge'));
+        content.append(title, node('p', account.user), node('p', account.note || '', 'note'));
+        const test = account.lastTest;
+        const status = node('p', test ? `${tr(test.ok ? 'testOk' : 'testError')} · ${new Date(test.at).toLocaleString()}${!test.ok ? ` · ${test.message}` : ''}` : tr('neverTested'), 'note');
+        if (status.dataset) status.dataset.tone = test ? test.ok ? 'ok' : 'danger' : '';
+        content.append(status);
+        if (account.auth === 'oauth2') content.append(node('p', tr(`oauth_${account.oauthStatus || 'authorization_required'}`), 'note'));
+        const actions = node('div', '', 'row');
+        actions.append(actionButton('openMailbox', () => { selectAccountById(account.id); setManagement(false); }), actionButton('testBtn', async () => { selectAccountById(account.id); await el('test').onclick(); }), actionButton('edit', () => { selectAccountById(account.id); editingId = account.id; wizardStage = null; openEditor(); }), actionButton('deleteBtn', async () => { selectAccountById(account.id); await el('remove').onclick(); }));
+        if (!(account.isDefault || account.id === lastState.defaultAccountId)) actions.append(actionButton('makeDefault', async () => { const result = await call('default', { accountId: account.id }); if (result.ok) render(result); else setStatus(result.message, 'danger'); }));
+        entry.append(content, actions); target.append(entry);
+      }
+    }
+  }
+  function renderHooks() {
+    if (!canDom()) return;
+    el('hookList').replaceChildren();
+    declarations.forEach((hook, index) => {
+      const row = node('div', '', 'hook-entry');
+      row.append(node('span', `${hook.event} / ${hook.action}: ${hook.value}`, 'mono'), actionButton('removeHook', () => { declarations.splice(index, 1); renderHooks(); invalidateDraft(); }));
+      el('hookList').append(row);
+    });
+  }
+  function fieldIssue(id, message) {
+    clearIssue();
+    const field = el(id);
+    field?.setAttribute?.('aria-invalid', 'true');
+    const label = field?.closest?.('label');
+    if (label && canDom()) {
+      const issue = node('span', message, 'note field-error');
+      issue.id = 'inlineFieldIssue'; issue.setAttribute('role', 'alert'); issue.dataset.tone = 'danger';
+      label.append(issue); field.setAttribute('aria-describedby', issue.id);
+      const details = field.closest('details'); if (details) details.open = true;
+    } else {
+      field?.setAttribute?.('aria-describedby', 'fieldIssue');
+      el('fieldIssue').hidden = false; el('fieldIssue').textContent = message;
+    }
+    field?.focus?.();
+    return false;
+  }
+  function clearIssue() {
+    el('fieldIssue').hidden = true;
+    el('fieldIssue').textContent = '';
+    for (const item of document.querySelectorAll?.('.field-error') || []) item.remove?.();
+    for (const item of document.querySelectorAll?.('[aria-invalid]') || []) item.removeAttribute?.('aria-invalid');
+  }
+  function validateIdentity() {
+    if (!text('user')) return fieldIssue('user', tr('requiredField'));
+    if (text('note').length > 200) return fieldIssue('note', tr('noteTooLong'));
+    const id = deriveAccountId();
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(id)) return fieldIssue('id', tr('requiredField'));
+    if (!editingId && (lastState.accounts || []).some((account) => account.id === id)) return fieldIssue('id', tr('idTaken'));
+    return true;
+  }
+  function parseHeaders() {
+    const headers = {};
+    for (const line of rawVal('customHeaders').split(/\r?\n/).filter((line) => line.trim())) {
+      const match = line.match(/^\s*(X-[A-Za-z0-9-]+)\s*:\s*(.+?)\s*$/i);
+      if (!match || /auth|token|secret|password|cookie|api-key/i.test(match[1])) { fieldIssue('customHeaders', tr('invalidHeader')); throw new Error(tr('invalidHeader')); }
+      headers[match[1]] = match[2];
+    }
+    return headers;
+  }
+  function validateAccountForm() {
+    clearIssue();
+    if (!validateIdentity()) return false;
+    for (const id of ['imapHost', 'smtpHost']) if (!text(id)) return fieldIssue(id, tr('requiredField'));
+    for (const id of ['imapPort', 'smtpPort']) if (!Number.isInteger(num(id)) || num(id) < 1 || num(id) > 65535) return fieldIssue(id, tr('invalidPort'));
+    try { parseHeaders(); } catch { return false; }
+    return true;
+  }
+  function invalidateDraft() {
+    testedSignature = '';
+    if (wizardStage === 4) { wizardStage = 3; syncWizard(); }
+  }
+  function openEditor() {
+    setManagement(true);
+    el('accountOverview').hidden = true;
+    el('accountSheet').hidden = false;
+    el('accountSheet').open = true;
+    clearIssue(); syncWizard();
+  }
+  function syncWizard() {
+    const wizard = wizardStage !== null;
+    const final = wizardStage === 4;
+    for (const [id, stage] of [['providerStep', 0], ['identityStep', 1], ['authStep', 2]]) el(id).hidden = wizard && wizardStage !== stage;
+    const credentials = !wizard || wizardStage === 3;
+    for (const id of ['passwordGroup', 'oauthGroup', 'secretStatus', 'serverDetails', 'watchDetails', 'customDetails']) el(id).hidden = !credentials;
+    if (credentials) syncAuthVisibility();
+    el('wizardProgress').textContent = wizard ? tr(['providerStage', 'identityStage', 'authStage', 'credentialStage', 'saveStage'][wizardStage]) : '';
+    el('wizardBack').hidden = !wizard || wizardStage === 0;
+    el('wizardNext').hidden = !wizard || wizardStage >= 3;
+    el('testDraft').hidden = !credentials;
+    el('save').hidden = wizard && !final;
+    el('load').hidden = wizard;
+    el('remove').hidden = wizard;
+    el('draftTestResult').hidden = !final;
+  }
+  function closeEditor() {
+    clearSecrets();
+    if (oauthFlowId || testedDraftId || oauthDraftId) void call('discardDraft', { flowId: oauthFlowId, draftId: testedDraftId, oauthDraftId }).catch(() => {});
+    oauthFlowId = ''; oauthDraftId = ''; testedDraftId = ''; testedSignature = '';
+    el('oauthFlow').hidden = true; el('oauthUrl').value = ''; el('oauthFeedback').textContent = '';
+    el('accountSheet').hidden = true; el('accountOverview').hidden = false;
+    wizardStage = null; editingId = '';
+    renderAccountCards();
+  }
 
   function applyLocale() {
     if (document.documentElement) document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
@@ -1046,6 +1277,10 @@ pre {
     const isOauth = text('auth') === 'oauth2';
     if (el('passwordGroup')) el('passwordGroup').hidden = isOauth;
     if (el('oauthGroup')) el('oauthGroup').hidden = !isOauth;
+    const tokenMode = text('oauthMethod') === 'token' || text('preset') === 'custom';
+    el('authorizationGroup').hidden = tokenMode;
+    el('accessTokenField').hidden = !tokenMode;
+    el('refreshTokenField').hidden = !tokenMode;
     const currentAcc = (lastState.accounts || []).find((item) => item.id === text('id'));
     const secNode = el('secretStatus');
     if (secNode) {
@@ -1129,6 +1364,7 @@ pre {
     const account = (lastState.accounts || []).find((item) => item.id === accountId);
     if (!account) return;
     const changed = activeAccount !== account.id;
+    if (changed) closeEditor();
     activeAccount = account.id;
     fill(account);
     if (changed) clearMailboxViewForAccountSwitch();
@@ -1158,7 +1394,8 @@ pre {
       const active = accounts.find((item) => item.id === activeAccount);
       el('accountSummary').textContent = active ? secretLine(active) : '';
     }
-    el('accounts').textContent = accounts.map((account) => `${account.label} · ${account.user} · ${secretLine(account)}`).join('\n');
+    el('accounts').textContent = accounts.map((account) => `${account.label} · ${account.user} · ${account.note || ''} · ${secretLine(account)}`).join('\n');
+    renderAccountCards();
   }
 
   function render(state) {
@@ -1167,8 +1404,9 @@ pre {
     el('im').textContent = imSentence(lastState.imBridge);
     el('watchEnabled').checked = lastState.watchEnabled === true;
     if (accounts.length > 0 && !activeAccount) {
-      activeAccount = accounts[0].id;
-      fill(accounts[0]);
+      const initial = accounts.find((account) => account.id === lastState.defaultAccountId || account.isDefault) || accounts[0];
+      activeAccount = initial.id;
+      fill(initial);
       if (el('accountSheet')) el('accountSheet').open = false;
     } else if (accounts.length === 0 && el('accountSheet')) {
       el('accountSheet').open = true;
@@ -1178,8 +1416,17 @@ pre {
   }
 
   function fill(account) {
+    editingId = account.id || '';
     el('id').value = account.id || '';
+    el('id').readOnly = Boolean(editingId);
     el('label').value = account.label || '';
+    el('note').value = account.note || '';
+    el('imapIdName').value = account.imapId?.name || '';
+    el('imapIdVersion').value = account.imapId?.version || '';
+    for (const [role, suffix] of Object.entries({ sent: 'Sent', drafts: 'Drafts', trash: 'Trash', archive: 'Archive' })) el(`folder${suffix}`).value = account.folders?.[role] || '';
+    el('customHeaders').value = Object.entries(account.headers || {}).map(([key, value]) => `${key}: ${value}`).join('\n');
+    declarations = (account.hooks || []).map((hook) => ({ ...hook }));
+    renderHooks();
     el('user').value = account.user || '';
     el('from').value = account.from || '';
     el('preset').value = account.preset || 'custom';
@@ -1205,6 +1452,8 @@ pre {
     el('accessToken').value = '';
     const preset = presets.find((item) => item.id === el('preset').value);
     el('presetNote').textContent = preset?.note || '';
+    el('oauthMethod').value = account.hasAccessToken || account.hasRefreshToken || account.preset === 'custom' ? 'token' : 'link';
+    el('serverDetails').open = !account.preset || account.preset === 'custom';
     syncAuthVisibility();
     syncServerSummary();
   }
@@ -1214,8 +1463,11 @@ pre {
     if (existing) return existing;
     const base = (text('label') || text('user').split('@')[0] || '').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
     if (base && /^[A-Za-z0-9]/.test(base)) {
-      el('id').value = base.slice(0, 64);
-      return el('id').value;
+      let candidate = base.slice(0, 60);
+      let suffix = 1;
+      while ((lastState.accounts || []).some((account) => account.id === candidate)) candidate = `${base.slice(0, 56)}-${++suffix}`;
+      el('id').value = candidate;
+      return candidate;
     }
     return '';
   }
@@ -1225,6 +1477,11 @@ pre {
     return {
       id,
       label: text('label') || id,
+      note: text('note'),
+      imapId: Object.fromEntries([['name', text('imapIdName')], ['version', text('imapIdVersion')]].filter(([, value]) => value)),
+      folders: Object.fromEntries([['sent', text('folderSent')], ['drafts', text('folderDrafts')], ['trash', text('folderTrash')], ['archive', text('folderArchive')]].filter(([, value]) => value)),
+      headers: parseHeaders(),
+      hooks: declarations.map((hook) => ({ ...hook })),
       user: text('user'),
       from: text('from') || text('user'),
       preset: text('preset') || 'custom',
@@ -1281,7 +1538,10 @@ pre {
     if (preset.smtpPort != null) el('smtpPort').value = String(preset.smtpPort);
     if (typeof preset.imapSecure === 'boolean') el('imapSecure').checked = preset.imapSecure;
     if (typeof preset.smtpSecure === 'boolean') el('smtpSecure').checked = preset.smtpSecure;
-    if (typeof preset.allowInsecureAuth === 'boolean') el('allowInsecure').checked = preset.allowInsecureAuth;
+    el('allowInsecure').checked = preset.allowInsecureAuth === true;
+    el('oauthMethod').value = preset.oauthAuthorizationUrl ? 'link' : 'token';
+    el('serverDetails').open = preset.id === 'custom';
+    invalidateDraft();
     syncAuthVisibility();
     syncServerSummary();
   }
@@ -1360,7 +1620,7 @@ pre {
     const retryable = result.outcome === 'failed' || result.outcome === 'rejected' || result.outcome === 'auth_failed' || result.outcome === 'cancelled';
     el('sendAgain').hidden = !retryable;
     const noteNode = el('sendNote');
-    const summaryText = result.message || result.note || '';
+    const summaryText = [result.message || result.note || '', ...(result.hookWarnings || [])].filter(Boolean).join(' ');
     if (noteNode) {
       noteNode.textContent = summaryText;
       if (noteNode.dataset) {
@@ -1658,6 +1918,80 @@ pre {
     }
   }
 
+  el('manageAccounts').onclick = () => { closeEditor(); setManagement(true); };
+  el('cancelEdit').onclick = () => closeEditor();
+  el('wizardNext').onclick = () => {
+    clearIssue();
+    if (wizardStage === 1 && !validateIdentity()) return;
+    wizardStage = Math.min(3, (wizardStage ?? 0) + 1); syncWizard();
+  };
+  el('wizardBack').onclick = () => { wizardStage = Math.max(0, (wizardStage ?? 1) - 1); syncWizard(); };
+  el('addHook').onclick = () => {
+    const timeout = text('hookAction') !== 'event';
+    const value = timeout ? Number(text('hookValue')) : text('hookValue');
+    if (declarations.length >= 8 || (timeout ? !Number.isInteger(value) || value < 200 || value > 120000 : !value || value.length > 80 || /[\r\n\0]/.test(value))) return fieldIssue('hookValue', tr('invalidHook'));
+    declarations.push({ event: timeout ? 'beforeConnect' : 'afterSend', action: timeout ? 'setTimeout' : 'recordEvent', value });
+    el('hookValue').value = ''; clearIssue(); renderHooks(); invalidateDraft();
+  };
+  el('testDraft').onclick = async () => {
+    if (accountBusy || !validateAccountForm()) return;
+    const account = accountBody();
+    const signature = JSON.stringify(account);
+    const args = { account, credential: credentialBody(), draftId: oauthDraftId || testedDraftId || undefined, editingId };
+    const epoch = viewEpoch;
+    accountBusy = true; el('testDraft').disabled = true;
+    el('draftTestResult').hidden = false; el('draftTestResult').textContent = tr('testing');
+    try {
+      const result = await call('testDraft', args);
+      if (epoch !== viewEpoch || JSON.stringify(accountBody()) !== signature) return;
+      if (!result.ok) { fieldIssue(result.code?.startsWith('oauth') ? 'oauthClientId' : 'password', result.message || tr('testError')); return; }
+      clearSecrets(); testedDraftId = result.draftId; testedSignature = signature;
+      el('draftTestResult').textContent = tr('testPassed');
+      if (el('draftTestResult').dataset) el('draftTestResult').dataset.tone = 'ok';
+      if (wizardStage !== null) wizardStage = 4;
+      syncWizard();
+    } catch (error) { fieldIssue('password', error.message || tr('requestFailed')); }
+    finally { accountBusy = false; el('testDraft').disabled = false; }
+  };
+  el('oauthStart').onclick = async () => {
+    if (accountBusy || !validateAccountForm()) return;
+    if (!text('oauthClientId')) return fieldIssue('oauthClientId', tr('requiredField'));
+    accountBusy = true; el('oauthStart').disabled = true;
+    const epoch = viewEpoch;
+    const signature = JSON.stringify(accountBody());
+    try {
+      const result = await call('oauthStart', { account: accountBody(), credential: credentialBody(), flowId: oauthFlowId, editingId });
+      if (epoch !== viewEpoch || signature !== JSON.stringify(accountBody())) { if (result.flowId) void call('oauthCancel', { flowId: result.flowId }); return; }
+      if (!result.ok) return fieldIssue('oauthClientId', result.message);
+      const url = new URL(result.authorizationUrl);
+      if (!['http:', 'https:'].includes(url.protocol)) throw new Error(tr('requestFailed'));
+      oauthFlowId = result.flowId; oauthDraftId = result.draftId;
+      clearSecrets(); el('oauthUrl').value = result.authorizationUrl; el('oauthFlow').hidden = false;
+      el('oauthFeedback').textContent = tr('waitingAuthorization');
+    } catch (error) { fieldIssue('oauthClientId', error.message); }
+    finally { accountBusy = false; el('oauthStart').disabled = false; }
+  };
+  el('copyOAuth').onclick = async () => {
+    try { await navigator.clipboard.writeText(rawVal('oauthUrl')); el('oauthFeedback').textContent = tr('copied'); }
+    catch { el('oauthUrl').focus?.(); el('oauthUrl').select?.(); el('oauthFeedback').textContent = tr('copyManually'); }
+  };
+  async function checkOAuth(manual) {
+    if (!oauthFlowId || accountBusy) return;
+    const flowId = oauthFlowId;
+    accountBusy = true;
+    const args = { flowId, callbackUrl: text('callbackUrl'), code: text('authorizationCode'), state: text('authorizationState') };
+    el('callbackUrl').value = ''; el('authorizationCode').value = ''; el('authorizationState').value = '';
+    try {
+      const result = await call(manual ? 'oauthComplete' : 'oauthStatus', args);
+      if (flowId !== oauthFlowId) return;
+      el('oauthFeedback').textContent = result.phase === 'authorized' ? tr('authorized') : result.phase === 'waiting' ? tr('waitingAuthorization') : result.message || tr('requestFailed');
+      if (el('oauthFeedback').dataset) el('oauthFeedback').dataset.tone = result.phase === 'authorized' ? 'ok' : result.ok && result.phase === 'waiting' ? '' : 'danger';
+    } catch (error) { if (flowId === oauthFlowId) el('oauthFeedback').textContent = error.message; }
+    finally { accountBusy = false; }
+  }
+  el('oauthCheck').onclick = () => checkOAuth(false);
+  el('oauthComplete').onclick = () => checkOAuth(true);
+
   function refreshLocale() {
     applyLocale();
     renderAccountControls();
@@ -1672,6 +2006,8 @@ pre {
     fillChannelSelect(routeView);
     if (statusKey) el('status').textContent = tr(statusKey);
     if (feedbackKey) el('accountFeedback').textContent = tr(feedbackKey);
+    if (wizardStage !== null) syncWizard();
+    renderHooks();
   }
 
   if (el('langToggle')) {
@@ -1689,16 +2025,20 @@ pre {
   }
   if (el('newAccount')) {
     el('newAccount').onclick = () => {
+      closeEditor();
       activeAccount = '';
       fill({ preset: 'custom', auth: 'password', imapPort: 993, imapSecure: true, smtpPort: 465, smtpSecure: true });
       clearMailboxViewForAccountSwitch();
       renderAccountControls();
-      if (el('accountSheet')) el('accountSheet').open = true;
-      el('user')?.focus?.();
+      wizardStage = 0;
+      openEditor();
+      el('preset')?.focus?.();
     };
   }
   el('preset').onchange = () => applyPreset();
-  el('auth').onchange = () => syncAuthVisibility();
+  el('auth').onchange = () => { invalidateDraft(); syncAuthVisibility(); };
+  el('oauthMethod').onchange = () => syncAuthVisibility();
+  for (const id of ['user', 'label', 'note', 'from', 'imapIdName', 'imapIdVersion', 'folderSent', 'folderDrafts', 'folderTrash', 'folderArchive', 'customHeaders', 'oauthClientId', 'oauthTokenUrl', 'oauthScope', 'password', 'refreshToken', 'accessToken', 'clientSecret']) el(id).oninput = () => invalidateDraft();
   if (el('id')) el('id').oninput = () => syncAuthVisibility();
   for (const srvKey of ['imapHost', 'imapPort', 'smtpHost', 'smtpPort', 'imapSecure', 'smtpSecure', 'allowInsecure']) {
     if (el(srvKey)) el(srvKey).onchange = () => syncServerSummary();
@@ -1727,21 +2067,24 @@ pre {
     if (result && checked('imEnabled')) fillChannelSelect(result);
   };
   el('save').onclick = async () => {
-    const args = { account: accountBody(), credential: credentialBody(), watchEnabled: checked('watchEnabled') };
+    clearIssue();
+    const body = accountBody();
+    const args = { account: body, credential: credentialBody(), watchEnabled: checked('watchEnabled'), draftId: testedSignature === JSON.stringify(body) ? testedDraftId : oauthDraftId || undefined };
     const guard = requestGuard('save', ['accountId']);
     guard.args = args;
     const result = await scopedCall('save', guard);
     if (!result || text('id') !== args.account.id) return;
     if (result.ok) {
+      clearSecrets();
       const state = await scopedCall('state', { ...guard, args: {} });
       if (!state || text('id') !== args.account.id) return;
-      clearSecrets();
       const nextAccount = result.account?.id || args.account.id;
       if (nextAccount !== activeAccount) clearMailboxViewForAccountSwitch();
       activeAccount = nextAccount;
       if (result.account) fill(result.account);
       render(state);
-      setStatusKey('savedNotTested', 'ok');
+      closeEditor();
+      setStatusKey(result.account?.lastTest?.ok ? 'testPassed' : 'savedNotTested', 'ok');
       feedbackKey = 'accountSavedFeedback';
       if (el('accountFeedback')) el('accountFeedback').textContent = tr(feedbackKey);
     } else {
@@ -1767,6 +2110,9 @@ pre {
       else setStatusKey('notTestedStatus');
       feedbackKey = '';
       if (el('accountFeedback')) el('accountFeedback').textContent = result.message || '';
+      const account = (lastState.accounts || []).find((item) => item.id === guard.args.accountId);
+      if (account) account.lastTest = { ok: result.ok, at: Date.now(), message: result.message };
+      renderAccountCards();
       show(result);
     } finally {
       el('test').disabled = false;
@@ -1824,7 +2170,9 @@ pre {
         el('uidValidity').value = nextUidv;
         syncReplyTargetBar();
       }
-      currentMessages = result.messages.map((item) => ({ ...item, accountId: guard.args.accountId, mailbox: guard.args.mailbox }));
+      const resolvedMailbox = result.mailbox || guard.args.mailbox;
+      if (resolvedMailbox !== guard.args.mailbox) el('mailbox').value = resolvedMailbox;
+      currentMessages = result.messages.map((item) => ({ ...item, accountId: guard.args.accountId, mailbox: resolvedMailbox }));
       currentMessages.nextCursor = result.nextCursor || null;
       renderMessages(result.nextCursor);
       mailboxSummaryKind = 'messages';
@@ -1914,6 +2262,7 @@ pre {
     const [state, presetResult, routeView] = await Promise.all([call('state', {}), call('presets', {}), call('routes', {})]);
     presets = presetResult.presets || [];
     render(state);
+    setManagement(true);
     fillChannelSelect(routeView);
     if ((state.accounts || []).length === 0) applyPreset();
     setStatusKey('notTestedStatus');

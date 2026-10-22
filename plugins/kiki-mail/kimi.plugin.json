@@ -1,6 +1,6 @@
 {
   "name": "kiki-mail",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Read and send mail through the IMAP and SMTP accounts you configure. Optional new-mail notices need a host IM bridge.",
   "license": "MIT",
   "icon": "./icon.svg",
@@ -34,20 +34,23 @@
         "properties": {
           "accounts": {
             "type": "string",
-            "title": "Accounts",
-            "description": "JSON array of account hosts, ports and auth mode. Passwords stay in Credentials.",
-            "multiline": true
+            "title": "在 Mail 面板里管理账号",
+            "description": "账号由 Mail 面板管理，请勿在此编辑。",
+            "hidden": true
           },
           "credentials": {
             "type": "string",
-            "title": "Credentials",
-            "description": "JSON object of passwords and tokens, keyed by account id. Stored as a secret.",
+            "title": "在 Mail 面板里管理账号",
+            "description": "凭据只在 Mail 面板填写，保存后不回显。",
             "secret": true,
-            "multiline": true
+            "hidden": true
           },
+          "defaultAccountId": { "type": "string", "hidden": true, "title": "在 Mail 面板里管理默认账号" },
+          "accountStatus": { "type": "string", "hidden": true, "title": "在 Mail 面板查看连接测试" },
           "watchEnabled": {
             "type": "boolean",
             "title": "Watch inboxes while Kiki is open",
+            "description": "在 Mail 面板里管理账号。",
             "default": false
           }
         }
@@ -71,6 +74,11 @@
               "properties": {
                 "id": { "type": "string" },
                 "label": { "type": "string" },
+                "note": { "type": "string", "maxLength": 200 },
+                "imapId": { "type": "object", "additionalProperties": false, "properties": { "name": { "type": "string" }, "version": { "type": "string" } } },
+                "folders": { "type": "object", "additionalProperties": false, "properties": { "sent": { "type": "string" }, "drafts": { "type": "string" }, "trash": { "type": "string" }, "archive": { "type": "string" } } },
+                "headers": { "type": "object", "maxProperties": 20, "additionalProperties": { "type": "string" }, "description": "Non-secret outgoing X- message headers only." },
+                "hooks": { "type": "array", "maxItems": 8, "items": { "type": "object", "additionalProperties": false, "properties": { "event": { "type": "string", "enum": ["beforeConnect", "afterSend"] }, "action": { "type": "string", "enum": ["setTimeout", "recordEvent"] }, "value": { "type": ["string", "integer"] } }, "required": ["event", "action", "value"] } },
                 "user": { "type": "string" },
                 "from": { "type": "string" },
                 "auth": { "type": "string", "enum": ["password", "oauth2"] },

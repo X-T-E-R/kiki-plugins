@@ -1,8 +1,10 @@
 import { coded } from './accounts.mjs';
 import { normalizeId } from './identity.mjs';
 import { ImapFlow } from './runtime.mjs';
+import { connectionAccount } from './custom.mjs';
 
 export async function withImap(account, auth, options, fn) {
+  account = connectionAccount(account);
   const client = (options.createClient ?? defaultClient)(account, auth);
   let settled = false;
   const fail = () => {
@@ -45,7 +47,7 @@ function defaultClient(account, auth) {
     greetingTimeout: account.timeoutMs,
     socketTimeout: Math.max(account.timeoutMs, 30_000),
     tls: account.imapSecure ? { servername: account.imapHost } : undefined,
-    clientInfo: { name: 'kiki-mail', version: '0.1.0', vendor: 'Kiki' },
+    clientInfo: { name: 'kiki-mail', version: '0.2.0', vendor: 'Kiki', ...account.imapId },
   });
 }
 

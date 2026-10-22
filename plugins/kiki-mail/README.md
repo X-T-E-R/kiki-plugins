@@ -10,7 +10,7 @@ This directory already contains the bundled mail runtime in `vendor/`. From a Ki
 /plugins install --trust <path-to-kiki-mail>
 ```
 
-Enable **kiki-mail** and open the **Mail** panel. An offline zip of the same files is `kiki-mail-0.1.4.zip`, produced by `node plugins/kiki-mail/scripts/pack.mjs` from this repository. Installing it does not need another npm install and does not change the public plugin catalog.
+Enable **kiki-mail** and open the **Mail** panel. An offline zip of the same files is `kiki-mail-0.2.0.zip`, produced by `node plugins/kiki-mail/scripts/pack.mjs` from this repository. Installing it does not need another npm install and does not change the public plugin catalog.
 
 Rebuilding that bundle from the lockfile is separate from installing:
 
@@ -19,28 +19,44 @@ npm install --ignore-scripts --prefix plugins/kiki-mail
 node plugins/kiki-mail/scripts/build-vendor.mjs
 ```
 
-## Add an account
+## Manage accounts in Mail
 
-1. Choose a preset or enter the IMAP and SMTP host, port, and TLS mode yourself.
-2. Choose **Password or app password**, or **OAuth2 token**.
-3. Enter the secret in the write-only fields and choose **Save**. The fields are cleared. The account line then says whether a password or token is stored. It does not say the server accepted it.
-4. Choose **Test**. The status line shows this attempt only.
+Choose **New account**, then follow the provider, address, authorization, test, and save steps. Use a display name and a note (up to 200 characters) to distinguish work, personal, or project inboxes. Accounts are grouped by provider, including several Gmail accounts. Each row shows its default status and last connection test, with actions to test, edit, delete, set default, or open the mailbox.
 
-Cleartext passwords are accepted only when both hosts are loopback (`localhost`, `127.0.0.1`, or `::1`) and **Loopback cleartext** is checked. Any other host needs implicit TLS or STARTTLS.
+The test authenticates IMAP and SMTP without sending a message. Successful draft tests keep credentials in memory for up to ten minutes until you save. Secret fields clear after the test or successful save and never show stored values. Cancel discards the draft. Editing non-secret details does not require entering a saved password again.
 
-Presets name common requirements. They are not a completed sign-in.
+The panel summary shows account count, default account, watch status, and the most recent test. Plugin settings retain the global watch switch and direct you to Mail. The internal account and credential settings use `hidden: true`; older hosts that do not implement hidden settings still display them. Do not edit those fields. Their existing storage keys and secret designation are unchanged.
 
-| Preset | What you still bring |
+Cleartext authentication is allowed only when both hosts are loopback (`localhost`, `127.0.0.1`, or `::1`) and **Loopback cleartext** is checked. Other hosts need implicit TLS or STARTTLS.
+
+| Provider | Authorization |
 | --- | --- |
-| Gmail | An app password, or your own OAuth client and a refresh token. IMAP must be enabled. Not signed in against Gmail here. |
-| Outlook / Microsoft 365 | Many tenants reject basic auth. Bring an access token or a refresh token for your app registration. This panel does not open Microsoft's consent screen. Not signed in against Outlook here. |
-| QQ Mail | The authorization code from mailbox settings, not the login password. Not signed in against QQ here. |
-| NetEase 163 | An authorization code. Some accounts also expect an IMAP ID command. Not signed in against 163 here. |
-| iCloud | An app-specific password. Not signed in against iCloud here. |
-| Fastmail | An app password. Not signed in against Fastmail here. |
-| Proton Bridge | Proton's own API is not implemented. Run Proton Bridge locally and use its password. Not signed in against Proton here. |
+| Gmail | An app password, or your own desktop OAuth client with mail access. |
+| Outlook / Microsoft 365 | Your OAuth app registration with IMAP/SMTP permissions and a loopback redirect. The tenant may need to allow SMTP AUTH. |
+| QQ / NetEase 163 | The authorization code generated in mailbox settings, not the login password. IMAP ID name/version are sent automatically and can be customized. |
+| iCloud / Fastmail | An app-specific password. |
+| Proton Bridge | A running local Bridge and its password. Proton's own API is not used. |
 
-OAuth2 uses a stored access token, or a refresh token together with the client id, client secret, and token URL. There is no browser consent step in this plugin.
+### Authorize Gmail or Outlook
+
+Choose **OAuth2**, then **Authorize in your browser**. Enter your client ID and choose **Generate authorization link**. Copy the full link, open it in your own browser, grant access, and return to Mail. The plugin never opens or focuses a browser.
+
+A one-time listener on `127.0.0.1` receives the provider callback for two minutes. Choose **Check authorization** to see the result. If that browser cannot reach the listener, paste its complete callback URL in **Paste a callback instead**, or paste the code together with the returned state. The plugin validates the state and redirect, then exchanges the code with PKCE. A button click or a timeout never counts as authorization. After a timeout or rejected exchange, generate a new link.
+
+Choose **Test now**, then **Save**. Access and refresh tokens use the existing write-only credential storage, separately for each account. Expiring tokens refresh automatically, including refresh-token rotation. Public clients do not require a client secret. Transient refresh failures retry twice; revoked authorization requires signing in again. Existing access/refresh tokens can still be pasted under **Paste existing tokens**. An access token without a refresh token must be replaced when it expires.
+
+If your browser runs on a different machine from Kiki, use the pasted callback path. The listener belongs to the machine running the plugin. No new browser host API is required.
+
+### Custom account declarations
+
+Under **Client identity, folders & declarations**, set IMAP ID `name`/`version`, map `sent`, `drafts`, `trash`, and `archive` to server paths, and add outgoing non-secret `X-` message headers. Folder listings show the mapped roles; searches accept either the role or the exact server path. Mail is not moved or appended automatically.
+
+Hooks are visible, removable data declarations with two allowed actions:
+
+- `beforeConnect / setTimeout`: set the IMAP and SMTP connection timeout to 200-120000 milliseconds.
+- `afterSend / recordEvent`: append a named local event after SMTP acceptance. An event-write failure is reported as a warning and never changes acceptance or resends the message.
+
+Commands, scripts, `eval`, authentication headers, line breaks, and unsupported fields are rejected. Chat account tools accept these non-secret declarations and notes, but never passwords or tokens.
 
 ## Read and send
 

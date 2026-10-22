@@ -1,4 +1,5 @@
 import { presetById } from './providers.mjs';
+import { customFields } from './custom.mjs';
 
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const HOST_RE = /^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/;
@@ -26,6 +27,8 @@ export function loadState(settings = {}) {
   if (!credentials || typeof credentials !== 'object' || Array.isArray(credentials)) throw coded('settings_invalid', 'Credentials must be a JSON object.');
   return {
     watchEnabled: settings.watchEnabled === true,
+    defaultAccountId: accounts.some((account) => account.id === settings.defaultAccountId) ? settings.defaultAccountId : accounts[0]?.id || '',
+    accountStatus: parseJson(settings.accountStatus, {}),
     accounts: accounts.map((account) => normalizeAccount(account)),
     credentials,
   };
@@ -54,6 +57,8 @@ export function normalizeAccount(input, { allowSecrets = false } = {}) {
   const account = {
     id: requiredText(input.id, 'id', 64),
     label: optionalText(input.label, 'label', 120) || requiredText(input.id, 'id', 64),
+    note: optionalText(input.note, 'note', 200),
+    ...customFields(input),
     user: requiredText(input.user, 'user', 320),
     from: optionalText(input.from, 'from', 320) || requiredText(input.user, 'user', 320),
     auth: input.auth === 'oauth2' || input.auth === 'password' ? input.auth : preset.auth,
@@ -70,8 +75,8 @@ export function normalizeAccount(input, { allowSecrets = false } = {}) {
     imRouteRevision: optionalText(input.imRouteRevision, 'imRouteRevision', 64),
     imPreview: input.imPreview === true,
     oauthClientId: optionalText(input.oauthClientId, 'oauthClientId', 256),
-    oauthTokenUrl: optionalText(input.oauthTokenUrl, 'oauthTokenUrl', 500) || (input.auth === 'oauth2' ? preset.oauthTokenUrl || '' : ''),
-    oauthScope: optionalText(input.oauthScope, 'oauthScope', 500),
+    oauthTokenUrl: optionalText(input.oauthTokenUrl, 'oauthTokenUrl', 500) || ((input.auth || preset.auth) === 'oauth2' ? preset.oauthTokenUrl || '' : ''),
+    oauthScope: optionalText(input.oauthScope, 'oauthScope', 500) || ((input.auth || preset.auth) === 'oauth2' ? preset.oauthScope || '' : ''),
     preset: preset.id,
     timeoutMs: timeoutValue(input.timeoutMs),
   };
@@ -99,6 +104,7 @@ export function mergeCredential(current, patch) {
     if (patch?.[key] === null) delete next[key];
     else if (typeof patch?.[key] === 'string' && patch[key] !== '') next[key] = patch[key];
   }
+  if (typeof patch?.accessToken === 'string' && patch.accessToken && patch.accessTokenExpiresAt === undefined) delete next.accessTokenExpiresAt;
   if (patch?.accessTokenExpiresAt === null) delete next.accessTokenExpiresAt;
   else if (Number.isFinite(patch?.accessTokenExpiresAt)) next.accessTokenExpiresAt = patch.accessTokenExpiresAt;
   return next;

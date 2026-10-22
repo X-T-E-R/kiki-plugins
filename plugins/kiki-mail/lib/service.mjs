@@ -5,7 +5,8 @@ import { coded, loadState, mergeCredential, normalizeAccount, publicAccount } fr
 import { idempotencyKey, messageIdentity, normalizeId } from './identity.mjs';
 import { listMailboxes, readSource, searchPage, withImap } from './imap.mjs';
 import { bridgeFrom, forwardMailDigest, idleBridgeView, inspectIm, summaryText } from './im.mjs';
-import { resolveAuth } from './oauth.mjs';
+import { resolveAuth, oauthStatus, startLoopbackAuthorization } from './oauth.mjs';
+import { connectionAccount, folderPath, mappedMailboxes } from './custom.mjs';
 import { contentBytes, parseMessage } from './parse.mjs';
 import { allowedAttachment, safeSegment, storageKey, writeInside } from './paths.mjs';
 import { publicPresets } from './providers.mjs';
@@ -31,6 +32,10 @@ class MailService {
     this.watchers = [];
     this.memorySends = new Map();
     this.inflight = new Map();
+    this.oauthFlows = new Map();
+    this.authFlights = new Map();
+    this.draftCredentials = new Map();
+    this.settingsQueue = Promise.resolve();
   }
 
   async activate(context) {
@@ -48,6 +53,9 @@ class MailService {
 
   async deactivate() {
     this.closed = true;
+    for (const flow of this.oauthFlows.values()) flow.cancel();
+    this.oauthFlows.clear();
+    this.draftCredentials.clear();
     await this.stopWatchers();
   }
 
@@ -67,6 +75,7 @@ class MailService {
       const result = action === 'state' ? await this.publicState(this.stateOf(context), { list: true })
         : action === 'routes' ? await this.routeState(context)
         : action === 'presets' ? { ok: true, presets: publicPresets() }
+        : ['testDraft', 'discardDraft', 'oauthStart', 'oauthStatus', 'oauthComplete', 'oauthCancel', 'default'].includes(action) ? await this.managementAction(action, args ?? {}, context ?? {})
         : await this.dispatch(this.panelTool(action), { ...(args ?? {}), action: this.panelAction(action) }, context ?? {}, true);
       return JSON.parse(redactJson(result, secrets));
     } catch (error) {
@@ -103,13 +112,103 @@ class MailService {
     try { return secretValues(this.stateOf(context).credentials); } catch { return []; }
   }
 
+  accountView(account, state) {
+    return { ...publicAccount(account, state.credentials), isDefault: state.defaultAccountId === account.id, lastTest: state.accountStatus[account.id] || null, oauthStatus: oauthStatus(account, state.credentials[account.id]) };
+  }
+
   async publicState(state, options = {}) {
+    const accounts = state.accounts.map((account) => this.accountView(account, state));
+    const lastTest = Object.values(state.accountStatus).sort((a, b) => b.at - a.at)[0] || null;
     return {
       ok: true,
       watchEnabled: state.watchEnabled,
+      defaultAccountId: state.defaultAccountId,
+      summary: { accountCount: accounts.length, defaultAccountId: state.defaultAccountId, watchEnabled: state.watchEnabled, watchedCount: state.watchEnabled ? accounts.filter((account) => account.watch).length : 0, lastTest },
       imBridge: options.probe === false ? idleBridgeView(this.im) : await inspectIm(this.im ?? bridgeFrom(this.context), this.context?.signal, { list: options.list === true }),
-      accounts: state.accounts.map((account) => publicAccount(account, state.credentials)),
+      accounts,
     };
+  }
+
+  async managementAction(action, args, context) {
+    const state = this.stateOf(context);
+    if (action === 'default') {
+      const account = requireAccount(state, args.accountId);
+      await this.updateSettings(context, { defaultAccountId: account.id });
+      return this.publicState(this.stateOf(context));
+    }
+    const flowId = clean(args.flowId, 80);
+    if (action === 'discardDraft') {
+      this.oauthFlows.get(flowId)?.cancel();
+      this.oauthFlows.delete(flowId);
+      for (const id of [args.draftId, args.oauthDraftId]) this.draftCredentials.delete(id);
+      return { ok: true };
+    }
+    if (['oauthStatus', 'oauthComplete', 'oauthCancel'].includes(action)) {
+      const flow = this.oauthFlows.get(flowId);
+      if (!flow) throw coded('oauth_expired', 'Authorization expired. Start again.');
+      if (action === 'oauthCancel') { flow.cancel(); this.oauthFlows.delete(flowId); return { ok: true, phase: 'cancelled' }; }
+      return { ok: true, ...(action === 'oauthComplete' ? await flow.complete(args) : await flow.inspect()) };
+    }
+    const account = normalizeAccount(args.account, { allowSecrets: true });
+    const existing = state.accounts.find((item) => item.id === account.id);
+    if (existing && args.editingId !== account.id) throw coded('account_exists', 'This account ID is already in use. Choose another ID.');
+    let credential = mergeCredential(state.credentials[account.id], args.credential);
+    const draft = this.draftCredentials.get(args.draftId);
+    if (draft) {
+      const original = JSON.parse(draft.account);
+      if (draft.expiresAt < Date.now() || ['id', 'user', 'auth', 'oauthClientId', 'oauthTokenUrl'].some((key) => original[key] !== account[key])) throw coded('draft_expired', 'The authorization details changed or expired. Enter credentials or authorize again.');
+      credential = mergeCredential(credential, draft.credential);
+    }
+    if (action === 'testDraft') {
+      const result = await this.checkConnection(account, credential, context, async (patch) => { credential = mergeCredential(credential, patch); });
+      const draftId = randomUUID();
+      this.storeDraft(draftId, { accountId: account.id, account: JSON.stringify(account), credential, tested: true, expiresAt: Date.now() + 600000 });
+      this.draftCredentials.delete(args.draftId);
+      this.pruneDrafts();
+      return { ...result, draftId };
+    }
+    if (action === 'oauthStart') {
+      this.oauthFlows.get(flowId)?.cancel();
+      this.oauthFlows.delete(flowId);
+      const draftId = randomUUID();
+      const id = randomUUID();
+      const flow = await startLoopbackAuthorization(account, credential, async (patch) => {
+        this.storeDraft(draftId, { accountId: account.id, account: JSON.stringify(account), credential: mergeCredential(credential, patch), expiresAt: Date.now() + 600000 });
+        this.pruneDrafts();
+      }, { signal: this.context?.signal, fetch: this.deps.oauthFetch });
+      this.oauthFlows.set(id, flow);
+      return { ok: true, flowId: id, draftId, authorizationUrl: flow.authorizationUrl, redirectUri: flow.redirectUri, expiresAt: flow.expiresAt, phase: 'waiting' };
+    }
+    throw coded('unknown_action', 'Unknown account management action.');
+  }
+
+  storeDraft(id, draft) {
+    this.draftCredentials.set(id, draft);
+    const timer = setTimeout(() => this.draftCredentials.delete(id), Math.max(0, draft.expiresAt - Date.now()));
+    timer.unref?.();
+  }
+
+  pruneDrafts() {
+    for (const [id, draft] of this.draftCredentials) if (draft.expiresAt < Date.now()) this.draftCredentials.delete(id);
+    for (const [id, flow] of this.oauthFlows) if (flow.expiresAt < Date.now()) { flow.cancel(); this.oauthFlows.delete(id); }
+  }
+
+  async auth(account, credential, context, persist) {
+    const key = JSON.stringify([account.id, account.user, account.oauthClientId, account.oauthTokenUrl, credential]);
+    let flight = this.authFlights.get(key);
+    if (!flight) {
+      let patch;
+      flight = { users: 0, promise: resolveAuth(account, credential, (value) => { patch = value; }, { signal: context.signal, fetch: this.deps.oauthFetch }).then((auth) => ({ auth, patch })) };
+      this.authFlights.set(key, flight);
+    }
+    flight.users++;
+    try {
+      const result = await flight.promise;
+      if (result.patch) await (persist || ((patch) => this.rememberCredential(context, account.id, patch)))(result.patch);
+      return result.auth;
+    } finally {
+      if (--flight.users === 0 && this.authFlights.get(key) === flight) this.authFlights.delete(key);
+    }
   }
 
   routeState() {
@@ -123,7 +222,7 @@ class MailService {
     if (action === 'show') {
       const state = this.stateOf(context);
       const account = requireAccount(state, args.accountId);
-      return { ok: true, account: publicAccount(account, state.credentials) };
+      return { ok: true, account: this.accountView(account, state) };
     }
     if (action === 'save') return this.saveAccount(args, context, allowSecrets);
     if (action === 'delete') return this.deleteAccount(args, context);
@@ -139,11 +238,22 @@ class MailService {
     accounts.push(account);
     const credentials = { ...state.credentials };
     const credential = body.credential ?? args.credential;
+    if (!allowSecrets && credential) throw coded('credential_in_tool', 'Passwords and tokens stay in the Mail panel.');
+    const draft = allowSecrets ? this.draftCredentials.get(args.draftId) : undefined;
+    if (args.draftId && (!draft || draft.account !== JSON.stringify(account) || draft.expiresAt < Date.now())) throw coded('draft_expired', 'Account details changed or the test expired. Test again before saving.');
+    if (draft) credentials[account.id] = mergeCredential(credentials[account.id], draft.credential);
     if (allowSecrets && credential) credentials[account.id] = mergeCredential(credentials[account.id], credential);
     const watchEnabled = typeof args.watchEnabled === 'boolean' ? args.watchEnabled : state.watchEnabled;
     await this.persist(context, accounts, credentials, watchEnabled);
+    if (draft?.tested && !credential) await this.updateSettings(context, { accountStatus: JSON.stringify({ ...this.stateOf(context).accountStatus, [account.id]: { ok: true, at: Date.now(), message: 'IMAP and SMTP accepted the credentials.' } }) });
+    else {
+      const prior = state.accounts.find((item) => item.id === account.id);
+      const connection = (item) => item && JSON.stringify(['user', 'from', 'auth', 'imapHost', 'imapPort', 'imapSecure', 'smtpHost', 'smtpPort', 'smtpSecure', 'allowInsecureAuth', 'oauthClientId', 'oauthTokenUrl', 'oauthScope', 'timeoutMs', 'imapId'].map((key) => item[key]));
+      if (credential || draft || connection(prior) !== connection(account)) await this.invalidateTest(context, account.id);
+    }
+    if (args.draftId) this.draftCredentials.delete(args.draftId);
     await this.reconcileWatchers();
-    return { ok: true, account: publicAccount(account, credentials) };
+    return { ok: true, account: this.accountView(account, this.stateOf(context)) };
   }
 
   async deleteAccount(args, context) {
@@ -157,12 +267,30 @@ class MailService {
     return { ok: true, deleted: account.id };
   }
 
+  async invalidateTest(context, accountId) {
+    const status = { ...this.stateOf(context).accountStatus };
+    delete status[accountId];
+    await this.updateSettings(context, { accountStatus: JSON.stringify(status) });
+  }
+
   async testAccount(args, context) {
     const state = this.stateOf(context);
     const account = requireAccount(state, args.accountId);
-    const auth = await resolveAuth(account, state.credentials[account.id], (patch) => this.rememberCredential(context, account.id, patch));
+    try {
+      const result = await this.checkConnection(account, state.credentials[account.id], context);
+      await this.updateSettings(context, { accountStatus: JSON.stringify({ ...this.stateOf(context).accountStatus, [account.id]: { ok: true, at: Date.now(), message: result.message } }) });
+      return result;
+    } catch (error) {
+      const message = redactText(error.message, this.secrets(context));
+      await this.updateSettings(context, { accountStatus: JSON.stringify({ ...this.stateOf(context).accountStatus, [account.id]: { ok: false, at: Date.now(), code: error.code, message } }) });
+      throw error;
+    }
+  }
+
+  async checkConnection(account, credential, context, persist) {
+    const auth = await this.auth(account, credential, context, persist);
     const mailboxes = await withImap(account, auth, { signal: context.signal }, (client) => listMailboxes(client));
-    await verifySmtp(account, auth, context.signal);
+    await verifySmtp(connectionAccount(account), auth, context.signal);
     return {
       ok: true,
       accountId: account.id,
@@ -180,13 +308,13 @@ class MailService {
   async boxAction(args, context) {
     const state = this.stateOf(context);
     const account = requireAccount(state, args.accountId);
-    const auth = await resolveAuth(account, state.credentials[account.id], (patch) => this.rememberCredential(context, account.id, patch));
+    const auth = await this.auth(account, state.credentials[account.id], context);
     if (args.action === 'folders') {
       const mailboxes = await withImap(account, auth, { signal: context.signal }, (client) => listMailboxes(client));
-      return { ok: true, accountId: account.id, mailboxes };
+      return { ok: true, accountId: account.id, mailboxes: mappedMailboxes(account, mailboxes) };
     }
     if (args.action === 'search') {
-      const page = await withImap(account, auth, { signal: context.signal }, (client) => searchPage(client, args.mailbox || 'INBOX', {
+      const page = await withImap(account, auth, { signal: context.signal }, (client) => searchPage(client, folderPath(account, args.mailbox || 'INBOX'), {
         text: clean(args.query, 500),
         from: clean(args.from, 320),
         unseen: args.unseen === true,
@@ -288,10 +416,16 @@ class MailService {
     const intent = { phase: 'sending', outcome: 'sending', requestId, accountId: account.id, fingerprint, at: Date.now() };
     await this.writeSend(account.id, requestId, intent, context);
     try {
-      const auth = await resolveAuth(account, state.credentials[account.id], (patch) => this.rememberCredential(context, account.id, patch));
+      const auth = await this.auth(account, state.credentials[account.id], context);
       const sent = await sendSmtp(account, auth, draft, { signal: context.signal, createTransport: this.deps.createTransport });
       const record = { phase: 'done', outcome: 'accepted', requestId, accountId: account.id, fingerprint, messageId: sent.messageId, at: Date.now() };
       this.memorySends.set(sendKey(account.id, requestId), record);
+      sent.hookWarnings = [];
+      for (const hook of account.hooks || []) {
+        if (hook.event !== 'afterSend') continue;
+        try { await this.recordEvent(account.id, { kind: 'afterSend', label: hook.value, requestId, outcome: 'accepted', at: Date.now() }); }
+        catch { sent.hookWarnings.push('The message was accepted, but its afterSend event could not be saved. Do not resend.'); }
+      }
       try {
         await this.writeSend(account.id, requestId, record, context);
       } catch (error) {
@@ -329,6 +463,7 @@ class MailService {
     if (!clean(args.subject, 998) && !clean(args.text, 2_000_000) && !clean(args.html, 2_000_000)) throw coded('send_invalid', 'Write a subject or a body before sending.');
     return {
       from: account.from,
+      headers: account.headers,
       to,
       cc: addressList(args.cc),
       bcc: addressList(args.bcc),
@@ -341,7 +476,7 @@ class MailService {
 
   async replyDraft(account, state, args, context) {
     const identity = this.identityFrom(account.id, args.identity ?? args);
-    const auth = await resolveAuth(account, state.credentials[account.id], (patch) => this.rememberCredential(context, account.id, patch));
+    const auth = await this.auth(account, state.credentials[account.id], context);
     const { raw } = await withImap(account, auth, { signal: context.signal }, (client) => readSource(client, identity.mailbox, identity));
     const parsed = await parseMessage(raw);
     const subject = /^re:/i.test(parsed.subject) ? parsed.subject : `Re: ${parsed.subject}`;
@@ -350,6 +485,7 @@ class MailService {
     if (!to.length) throw coded('send_invalid', 'The message has nobody to reply to.');
     return {
       from: account.from,
+      headers: account.headers,
       to,
       cc: addressList(args.cc),
       bcc: addressList(args.bcc),
@@ -384,23 +520,30 @@ class MailService {
   }
 
   async persist(context, accounts, credentials, watchEnabled) {
-    const settings = {
-      ...(context.settings ?? this.context?.settings ?? {}),
-      accounts: JSON.stringify(accounts),
-      credentials: JSON.stringify(credentials),
-      watchEnabled,
-    };
+    const state = this.stateOf(context);
+    const defaultAccountId = accounts.some((account) => account.id === state.defaultAccountId) ? state.defaultAccountId : accounts[0]?.id || '';
+    const accountStatus = Object.fromEntries(Object.entries(state.accountStatus).filter(([id]) => accounts.some((account) => account.id === id)));
+    await this.updateSettings(context, { accounts: JSON.stringify(accounts), credentials: JSON.stringify(credentials), watchEnabled, defaultAccountId, accountStatus: JSON.stringify(accountStatus) });
+  }
+
+  async updateSettings(context, patch) {
     const update = this.context?.updateSettings;
     if (typeof update !== 'function') throw coded('lifecycle_required', 'Saving mail settings needs the Kiki App plugin lifecycle.');
-    await update({ accounts: settings.accounts, credentials: settings.credentials, watchEnabled });
-    if (context.settings) Object.assign(context.settings, settings);
-    if (this.context?.settings) Object.assign(this.context.settings, settings);
+    const operation = this.settingsQueue.then(async () => {
+      const values = typeof patch === 'function' ? patch(this.stateOf(this.context || context)) : patch;
+      await update(values);
+      if (context.settings) Object.assign(context.settings, values);
+      if (this.context?.settings) Object.assign(this.context.settings, values);
+    });
+    this.settingsQueue = operation.catch(() => {});
+    return operation;
   }
 
   async rememberCredential(context, accountId, patch) {
-    const state = this.stateOf(context);
-    const credentials = { ...state.credentials, [accountId]: mergeCredential(state.credentials[accountId], patch) };
-    await this.persist(context, state.accounts, credentials, state.watchEnabled);
+    await this.updateSettings(context, (state) => {
+      if (!state.accounts.some((account) => account.id === accountId)) throw coded('not_found', 'The account was removed during authorization.');
+      return { credentials: JSON.stringify({ ...state.credentials, [accountId]: mergeCredential(state.credentials[accountId], patch) }) };
+    });
   }
 
   directory(context) {
@@ -544,7 +687,7 @@ class MailService {
         if (signal.aborted || this.closed) return;
         attempt += 1;
         await this.recordEvent(account.id, { kind: 'watch-error', code: error.code || 'disconnected', message: error.message, attempt });
-        if (error.code === 'auth_failed' || error.code === 'tls_required' || error.code === 'cancelled') {
+        if (['auth_failed', 'tls_required', 'cancelled', 'auth_missing', 'oauth_prerequisite', 'oauth_reauthorize', 'oauth_client_invalid', 'oauth_rejected'].includes(error.code)) {
           await this.recordEvent(account.id, { kind: 'watch-stopped', code: error.code, attempt });
           return;
         }
@@ -562,7 +705,7 @@ class MailService {
 
   async watchOnce(account, signal, pace) {
     const state = loadState(this.context.settings);
-    const auth = await resolveAuth(account, state.credentials[account.id], (patch) => this.rememberCredential(this.context, account.id, patch));
+    const auth = await this.auth(account, state.credentials[account.id], { ...this.context, signal });
     await withImap(account, auth, { signal }, async (client) => {
       const opened = await client.mailboxOpen('INBOX');
       if (pace) pace.delay = WATCH_RETRY_BASE_MS;
@@ -740,6 +883,7 @@ function payloadConflict(accountId, requestId) {
 function payloadFingerprint(draft) {
   const body = JSON.stringify({
     from: draft.from ?? '',
+    ...(Object.keys(draft.headers || {}).length ? { headers: draft.headers } : {}),
     to: draft.to ?? [],
     cc: draft.cc ?? [],
     bcc: draft.bcc ?? [],

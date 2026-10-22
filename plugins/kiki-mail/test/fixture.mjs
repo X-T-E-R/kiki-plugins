@@ -136,8 +136,14 @@ class ImapSession {
     const reply = (status, text) => this.send(`${tag} ${status} ${text}\r\n`);
     if (name === 'AUTHENTICATE' || name === 'LOGIN') this.state.imapAuthCommands += 1;
     if (name === 'CAPABILITY') {
-      this.send('* CAPABILITY IMAP4rev1 AUTH=PLAIN AUTH=XOAUTH2 IDLE\r\n');
+      this.send('* CAPABILITY IMAP4rev1 AUTH=PLAIN AUTH=XOAUTH2 IDLE ID\r\n');
       reply('OK', 'CAPABILITY completed');
+      return;
+    }
+    if (name === 'ID') {
+      (this.state.imapIds ??= []).push(line);
+      this.send('* ID NIL\r\n');
+      reply('OK', 'ID completed');
       return;
     }
     if (name === 'LOGOUT') {

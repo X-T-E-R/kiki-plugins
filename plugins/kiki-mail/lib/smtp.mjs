@@ -1,7 +1,9 @@
 import { coded } from './accounts.mjs';
 import { createTransport } from './runtime.mjs';
+import { connectionAccount } from './custom.mjs';
 
 export async function sendSmtp(account, auth, message, deps = {}) {
+  account = connectionAccount(account);
   const trace = { dataCommand: false, messageWritten: false };
   const logger = {
     trace() {},
@@ -49,6 +51,7 @@ export async function sendSmtp(account, auth, message, deps = {}) {
       inReplyTo: message.inReplyTo,
       references: message.references,
       messageId: message.messageId,
+      headers: account.headers,
       attachments: message.attachments,
       disableFileAccess: true,
       disableUrlAccess: true,

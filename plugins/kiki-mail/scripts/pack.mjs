@@ -3,7 +3,6 @@ import { createWriteStream } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
 import { packageBytes, packageFiles } from '../../../scripts/package-files.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -32,9 +31,16 @@ for (const file of files) {
 }
 zip.end();
 await done;
-const listed = spawnSync('tar', ['-tf', zipPath], { encoding: 'utf8' });
-if (listed.status !== 0) throw new Error(listed.stderr || 'Unable to list the mail package');
-const entries = listed.stdout.split(/\r?\n/).filter(Boolean);
+const entries = await new Promise((resolve, reject) => {
+  require('yauzl').open(zipPath, { lazyEntries: true }, (error, archive) => {
+    if (error) return reject(error);
+    const names = [];
+    archive.on('error', reject);
+    archive.on('entry', (entry) => { names.push(entry.fileName); archive.readEntry(); });
+    archive.on('end', () => resolve(names));
+    archive.readEntry();
+  });
+});
 for (const required of ['kiki-mail/kimi.plugin.json', 'kiki-mail/entry.mjs', 'kiki-mail/panel.html', 'kiki-mail/vendor/runtime.mjs', 'kiki-mail/LICENSE', 'kiki-mail/skills/kiki-mail/SKILL.md']) {
   if (!entries.includes(required)) throw new Error(`Package is missing ${required}`);
 }
