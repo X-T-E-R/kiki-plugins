@@ -180,6 +180,7 @@ class MailService {
       this.assertAppStamp(account, draft.stamp, state.oauthDefaults);
       credential = mergeCredential(credential, draft.credential);
     }
+    credential = withSubmittedClient(account, credential, args.credential, state.oauthDefaults);
     const use = mailboxAuth(account, credential, state.oauthDefaults);
     if (account.auth === 'oauth2' && !account.oauthClientId && !use.inherited) throw coded('app_required', 'Set up the Gmail or Outlook project before authorizing this mailbox.');
     if (action === 'testDraft') {
@@ -353,7 +354,10 @@ class MailService {
       credentials[account.id] = mergeCredential(credentials[account.id], draft.credential);
     }
     if (allowSecrets && credential) credentials[account.id] = mergeCredential(credentials[account.id], credential);
-    if (credentials[account.id]) credentials[account.id] = credentialForStorage(account, credentials[account.id]);
+    if (credentials[account.id]) {
+      credentials[account.id] = withSubmittedClient(account, credentials[account.id], credential, state.oauthDefaults);
+      credentials[account.id] = credentialForStorage(account, credentials[account.id]);
+    }
     const watchEnabled = typeof args.watchEnabled === 'boolean' ? args.watchEnabled : state.watchEnabled;
     await this.persist(context, accounts, credentials, watchEnabled);
     if (draft?.tested && !credential) await this.updateSettings(context, { accountStatus: JSON.stringify({ ...this.stateOf(context).accountStatus, [account.id]: { ok: true, at: Date.now(), message: 'IMAP and SMTP accepted the credentials.' } }) });
@@ -901,6 +905,19 @@ class MailService {
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, `${JSON.stringify(event)}\n`, { flag: 'a' });
   }
+}
+
+// A refresh or access token typed in this request belongs to the client resolved now.
+// Tokens already in storage keep their tokenClientId, including a missing one.
+function explicitToken(patch) {
+  return Boolean(patch && ['refreshToken', 'accessToken'].some((key) => typeof patch[key] === 'string' && patch[key] !== ''));
+}
+
+function withSubmittedClient(account, credential, submitted, defaults) {
+  if (!explicitToken(submitted)) return credential;
+  const clientId = mailboxAuth(account, {}, defaults).clientId;
+  if (!clientId) return credential;
+  return { ...(credential ?? {}), tokenClientId: clientId };
 }
 
 function authFlightKey(account, runtime) {

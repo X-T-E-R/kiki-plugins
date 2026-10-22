@@ -317,3 +317,185 @@ test('the panel configures the project once and the next mailbox does not ask fo
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('the panel tests and saves a pasted inherited token, and a previous client stays blocked', { timeout: 20000 }, async () => {
+  const html = await readFile(new URL('../panel.html', import.meta.url), 'utf8');
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const fx = await startFixture({
+    users: [
+      { user: 'pasted@example.test', accessToken: ACCESS, mailboxes: { INBOX: { uidValidity: 1, messages: [] } } },
+      { user: 'own@example.test', accessToken: 'explicit-access', mailboxes: { INBOX: { uidValidity: 1, messages: [] } } },
+    ],
+  });
+  const dir = await mkdtemp(path.join(tmpdir(), 'mail-project-paste-'));
+  const settings = { accounts: '[]', credentials: '{}', watchEnabled: false };
+  const calls = [];
+  const oauthFetch = async (url, input) => {
+    const target = String(url);
+    if (!target.startsWith('http://127.0.0.1/')) throw new Error(`unexpected oauth url ${target}`);
+    const entry = {
+      grant: input.body.get('grant_type'),
+      client: input.body.get('client_id'),
+      secret: input.body.get('client_secret'),
+      refresh: input.body.get('refresh_token'),
+    };
+    calls.push(entry);
+    if (entry.grant !== 'refresh_token') throw new Error(`unexpected grant ${entry.grant}`);
+    if (entry.client === 'gmail-client-a' && entry.secret === SECRET && entry.refresh === 'pasted-refresh') {
+      return jsonResponse({ access_token: ACCESS, expires_in: 3600, token_type: 'Bearer' });
+    }
+    if (entry.client === 'explicit-client' && entry.secret === EXPLICIT_SECRET && entry.refresh === 'explicit-refresh') {
+      return jsonResponse({ access_token: 'explicit-access', expires_in: 3600, token_type: 'Bearer' });
+    }
+    throw new Error(`unexpected token request ${entry.client}`);
+  };
+  const service = mailServiceForTests({ oauthFetch });
+  const context = { settings, dataDir: dir, async updateSettings(patch) { Object.assign(settings, patch); } };
+  await service.activate(context);
+  const elements = new Map();
+  const make = (id) => ({
+    id, value: '', checked: false, hidden: false, disabled: false, textContent: '', className: '', dataset: {}, children: [], open: false,
+    setAttribute() {}, removeAttribute() {}, focus() { this.focused = true; }, append() {}, replaceChildren() {},
+  });
+  const get = (id) => {
+    if (!elements.has(id)) elements.set(id, make(id));
+    return elements.get(id);
+  };
+  const requests = [];
+  let receive;
+  const parent = { postMessage(request) {
+    requests.push(request);
+    queueMicrotask(async () => receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: true, result: await service.panel(request.action, request.args, context) } }));
+  } };
+  const flush = async () => { for (let n = 0; n < 6; n += 1) await new Promise(setImmediate); };
+  try {
+    runInNewContext(script, {
+      document: { getElementById: get, createElement: () => make(''), querySelectorAll: () => [] },
+      window: { addEventListener(_, fn) { receive = fn; } },
+      parent,
+      URL,
+      navigator: { language: 'en', clipboard: { async writeText() {} } },
+      crypto: { randomUUID: () => 'panel-paste' },
+    });
+    receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'init' } });
+    await flush();
+    get('appGmailClientId').value = 'gmail-client-a';
+    get('appGmailSecret').value = SECRET;
+    await get('appGmailSave').onclick();
+    await flush();
+    assert.equal(get('appGmailSecret').value, '');
+    get('preset').value = 'gmail';
+    get('preset').onchange();
+    get('auth').value = 'oauth2';
+    get('auth').onchange();
+    get('oauthMethod').value = 'token';
+    get('oauthMethod').onchange();
+    get('user').value = 'pasted@example.test';
+    get('id').value = 'pasted';
+    get('imapHost').value = '127.0.0.1';
+    get('imapPort').value = String(fx.imapPort);
+    get('imapSecure').checked = false;
+    get('smtpHost').value = '127.0.0.1';
+    get('smtpPort').value = String(fx.smtpPort);
+    get('smtpSecure').checked = false;
+    get('allowInsecure').checked = true;
+    get('oauthTokenUrl').value = 'http://127.0.0.1/token';
+    get('refreshToken').value = 'pasted-refresh';
+    await get('testDraft').onclick();
+    const pasted = requests.filter((request) => request.action === 'testDraft').at(-1);
+    assert.ok(pasted, get('fieldIssue').textContent);
+    assert.equal(Object.keys(pasted.args.credential).join(','), 'refreshToken');
+    assert.equal(pasted.args.credential.refreshToken, 'pasted-refresh');
+    assert.equal(pasted.args.account.oauthClientId, '');
+    assert.equal(pasted.args.account.auth, 'oauth2');
+    assert.match(get('draftTestResult').textContent, /accepted the credentials/, get('fieldIssue').textContent);
+    assert.equal(get('refreshToken').value, '');
+    assert.equal(calls.at(-1).client, 'gmail-client-a');
+    assert.equal(calls.at(-1).secret, SECRET);
+    assert.equal(calls.at(-1).refresh, 'pasted-refresh');
+    await get('save').onclick();
+    const saved = requests.filter((request) => request.action === 'save').at(-1);
+    assert.equal(saved.args.credential, undefined);
+    assert.equal(typeof saved.args.draftId, 'string');
+    assert.equal(JSON.stringify(saved.args.account), JSON.stringify(pasted.args.account));
+    const storedAccount = JSON.parse(settings.accounts).find((item) => item.id === 'pasted');
+    const storedCred = JSON.parse(settings.credentials).pasted;
+    assert.equal(storedAccount.oauthClientId, '');
+    assert.equal(storedCred.tokenClientId, 'gmail-client-a');
+    assert.equal(storedCred.refreshToken, 'pasted-refresh');
+    assert.equal(storedCred.clientSecret, undefined);
+    assert.equal(JSON.stringify(storedCred).includes(SECRET), false);
+    assert.equal(get('result').textContent.includes(SECRET), false);
+    assert.equal(get('result').textContent.includes('pasted-refresh'), false);
+    const savedView = JSON.parse(get('result').textContent);
+    assert.equal(savedView.account.oauthInherited, true);
+    assert.equal(savedView.account.oauthClientId, '');
+    assert.equal(savedView.account.lastTest.ok, true);
+
+    const rebound = JSON.parse(settings.credentials);
+    rebound.pasted.tokenClientId = 'previous-client';
+    settings.credentials = JSON.stringify(rebound);
+    get('refreshToken').value = '';
+    const beforeReject = calls.length;
+    get('load').onclick();
+    assert.equal(get('id').value, 'pasted');
+    assert.equal(get('refreshToken').value, '');
+    await get('testDraft').onclick();
+    const rejected = requests.filter((request) => request.action === 'testDraft').at(-1);
+    assert.equal(rejected.args.credential, undefined);
+    assert.match(get('fieldIssue').textContent, /previous OAuth client/);
+    assert.equal(calls.length, beforeReject);
+    assert.equal(JSON.parse(settings.credentials).pasted.tokenClientId, 'previous-client');
+    assert.equal(JSON.parse(settings.credentials).pasted.refreshToken, 'pasted-refresh');
+
+    const noted = await service.panel('save', { account: { ...storedAccount, note: 'Kept' } }, context);
+    assert.equal(noted.ok, true, noted.message);
+    assert.equal(JSON.parse(settings.credentials).pasted.tokenClientId, 'previous-client');
+    assert.equal(JSON.parse(settings.credentials).pasted.refreshToken, 'pasted-refresh');
+    const unlabeled = JSON.parse(settings.credentials);
+    delete unlabeled.pasted.tokenClientId;
+    settings.credentials = JSON.stringify(unlabeled);
+    const beforeMissing = calls.length;
+    const missing = await service.panel('test', { accountId: 'pasted' }, context);
+    assert.equal(missing.code, 'oauth_reauthorize');
+    assert.equal(calls.length, beforeMissing);
+    assert.equal(JSON.parse(settings.credentials).pasted.tokenClientId, undefined);
+    assert.equal(JSON.parse(settings.credentials).pasted.refreshToken, 'pasted-refresh');
+
+    const direct = await service.panel('save', {
+      account: { ...storedAccount, id: 'direct', label: 'direct', note: '' },
+      credential: { refreshToken: 'pasted-refresh' },
+    }, context);
+    assert.equal(direct.ok, true, direct.message);
+    const directCred = JSON.parse(settings.credentials).direct;
+    assert.equal(directCred.tokenClientId, 'gmail-client-a');
+    assert.equal(directCred.refreshToken, 'pasted-refresh');
+    assert.equal(directCred.clientSecret, undefined);
+    const directTest = await service.panel('test', { accountId: 'direct' }, context);
+    assert.equal(directTest.ok, true, directTest.message);
+    assert.equal(calls.at(-1).client, 'gmail-client-a');
+    assert.equal(calls.at(-1).secret, SECRET);
+
+    const explicitAccount = mailbox('own', 'own@example.test', fx, { oauthClientId: 'explicit-client' });
+    const explicitDraft = await service.panel('testDraft', {
+      account: explicitAccount,
+      credential: { refreshToken: 'explicit-refresh', clientSecret: EXPLICIT_SECRET },
+      editingId: 'own',
+    }, context);
+    assert.equal(explicitDraft.ok, true, explicitDraft.message);
+    assert.equal(calls.at(-1).client, 'explicit-client');
+    assert.equal(calls.at(-1).secret, EXPLICIT_SECRET);
+    const explicitSaved = await service.panel('save', { account: explicitAccount, draftId: explicitDraft.draftId }, context);
+    assert.equal(explicitSaved.ok, true, explicitSaved.message);
+    const ownCred = JSON.parse(settings.credentials).own;
+    assert.equal(ownCred.tokenClientId, 'explicit-client');
+    assert.equal(ownCred.clientSecret, EXPLICIT_SECRET);
+    assert.equal(ownCred.refreshToken, 'explicit-refresh');
+    assert.equal(JSON.parse(settings.accounts).find((item) => item.id === 'own').oauthClientId, 'explicit-client');
+    assert.equal(JSON.stringify(ownCred).includes(SECRET), false);
+  } finally {
+    await service.deactivate();
+    await fx.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
