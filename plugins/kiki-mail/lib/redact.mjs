@@ -1,16 +1,19 @@
 const SECRET_MARK = '[redacted]';
 
+const NON_SECRET_KEYS = new Set(['tokenClientId']);
+
 export function secretValues(credentials) {
   const found = [];
-  const visit = (value) => {
+  const visit = (value, key) => {
+    if (NON_SECRET_KEYS.has(key)) return;
     if (typeof value === 'string') {
       if (value.length >= 4) found.push(value);
       return;
     }
     if (!value || typeof value !== 'object') return;
-    for (const item of Object.values(value)) visit(item);
+    for (const [childKey, item] of Object.entries(value)) visit(item, childKey);
   };
-  visit(credentials);
+  visit(credentials, '');
   return found;
 }
 

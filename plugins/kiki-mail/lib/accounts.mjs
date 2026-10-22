@@ -36,22 +36,74 @@ export function loadState(settings = {}) {
   };
 }
 
+function appClientId(app) {
+  return app && typeof app === 'object' && typeof app.clientId === 'string' ? app.clientId.trim() : '';
+}
+
+export function appRevision(app) {
+  if (!app || typeof app !== 'object') return '';
+  if (typeof app.revision === 'string' && /^[A-Za-z0-9_-]{8,80}$/.test(app.revision)) return app.revision;
+  const clientId = appClientId(app);
+  return clientId ? `legacy-${clientId}` : '';
+}
+
 export function applyOAuthDefaults(account, credentials, defaults) {
-  const preset = defaults?.[account.preset];
-  if (account.auth !== 'oauth2' || !preset || typeof preset.clientId !== 'string' || !preset.clientId.trim()) {
-    return { account, credential: undefined };
+  const app = defaults?.[account.preset];
+  const clientId = appClientId(app);
+  if (account.auth !== 'oauth2' || !clientId || account.oauthClientId) {
+    return { account, credential: undefined, inherited: false, revision: '', clientId: account.oauthClientId || '', appSecret: '' };
   }
+  const preset = presetById(account.preset);
   const resolved = {
     ...account,
-    oauthClientId: account.oauthClientId || preset.clientId,
-    oauthTokenUrl: account.oauthTokenUrl || preset.tokenUrl || '',
-    oauthScope: account.oauthScope || preset.scope || '',
+    oauthClientId: clientId,
+    oauthTokenUrl: account.oauthTokenUrl || (typeof app.tokenUrl === 'string' ? app.tokenUrl : '') || preset.oauthTokenUrl || '',
+    oauthScope: account.oauthScope || (typeof app.scope === 'string' ? app.scope : '') || preset.oauthScope || '',
   };
   const stored = credentials?.[account.id] ?? {};
-  const credential = !stored.clientSecret && typeof preset.clientSecret === 'string' && preset.clientSecret
-    ? { clientSecret: preset.clientSecret }
-    : undefined;
-  return { account: resolved, credential };
+  const appSecret = typeof app.clientSecret === 'string' ? app.clientSecret : '';
+  const credential = !stored.clientSecret && appSecret ? { clientSecret: appSecret } : undefined;
+  return { account: resolved, credential, inherited: true, revision: appRevision(app), clientId, appSecret };
+}
+
+export function mailboxAuth(account, credential, defaults) {
+  const applied = applyOAuthDefaults(account, { [account.id]: credential ?? {} }, defaults);
+  const runtime = { ...(credential ?? {}) };
+  if (applied.inherited) {
+    if (applied.appSecret) runtime.clientSecret = applied.appSecret;
+    else delete runtime.clientSecret;
+  }
+  const bound = typeof credential?.tokenClientId === 'string' ? credential.tokenClientId : '';
+  const hasToken = Boolean(credential?.refreshToken || credential?.accessToken);
+  const blocked = applied.inherited
+    ? hasToken && bound !== applied.clientId
+    : Boolean(bound) && hasToken && bound !== (account.oauthClientId || '');
+  return {
+    account: applied.account,
+    runtime,
+    inherited: applied.inherited,
+    blocked,
+    revision: applied.revision,
+    clientId: applied.inherited ? applied.clientId : (account.oauthClientId || ''),
+    stamp: applied.inherited ? { provider: account.preset, clientId: applied.clientId, revision: applied.revision } : null,
+  };
+}
+
+export function credentialForStorage(account, credential) {
+  if (!credential || account.auth !== 'oauth2' || account.oauthClientId || !['gmail', 'outlook'].includes(account.preset) || !credential.clientSecret) return credential;
+  const copy = { ...credential };
+  delete copy.clientSecret;
+  return copy;
+}
+
+export function appConfigView(defaults = {}) {
+  const view = {};
+  for (const id of ['gmail', 'outlook']) {
+    const app = defaults?.[id];
+    const clientId = appClientId(app);
+    view[id] = { configured: Boolean(clientId), clientId, hasSecret: typeof app?.clientSecret === 'string' && app.clientSecret !== '' };
+  }
+  return view;
 }
 
 export function publicAccount(account, credentials) {
@@ -124,6 +176,9 @@ export function mergeCredential(current, patch) {
     if (patch?.[key] === null) delete next[key];
     else if (typeof patch?.[key] === 'string' && patch[key] !== '') next[key] = patch[key];
   }
+  if (patch?.tokenClientId === null) delete next.tokenClientId;
+  else if (typeof patch?.tokenClientId === 'string' && patch.tokenClientId) next.tokenClientId = patch.tokenClientId;
+  if (patch?.accessToken === null) delete next.accessTokenExpiresAt;
   if (typeof patch?.accessToken === 'string' && patch.accessToken && patch.accessTokenExpiresAt === undefined) delete next.accessTokenExpiresAt;
   if (patch?.accessTokenExpiresAt === null) delete next.accessTokenExpiresAt;
   else if (Number.isFinite(patch?.accessTokenExpiresAt)) next.accessTokenExpiresAt = patch.accessTokenExpiresAt;

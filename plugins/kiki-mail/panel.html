@@ -208,6 +208,23 @@ section {
   padding: 6px 9px;
   border-radius: var(--radius);
 }
+.guide {
+  margin-top: 10px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.guide ol, .fold-body ol {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+.guide .row { margin-top: 8px; }
 
 .grid {
   display: grid;
@@ -509,6 +526,50 @@ pre {
   <pre id="accounts" class="vis-hidden"></pre>
 
   <section id="accountSection">
+    <details id="projectSettings" open>
+      <summary><span data-i18n="projectTitle">Mail project</span> <span id="projectSummary" class="note" style="margin:0"></span></summary>
+      <div class="fold-body">
+        <p class="note" data-i18n="projectIntro">Configure a Gmail or Outlook OAuth app once. Mailboxes of that provider reuse it. A mailbox that already has its own client keeps that client.</p>
+        <p class="note" data-i18n="watchScopeGlobal">This switch applies to every mailbox while Kiki is open.</p>
+        <div class="checks" style="margin-top:4px">
+          <label><input id="watchEnabled" type="checkbox"> <span data-i18n="watchGlobalLabel">Watch while Kiki is open</span></label>
+        </div>
+        <div class="grid" style="margin-top:12px">
+          <p class="wide" style="margin:0;font-weight:600" data-i18n="gmailAppTitle">Gmail app</p>
+          <ol class="wide">
+            <li data-i18n="gmailStep1">In Google Cloud Console, create an OAuth client of type Desktop.</li>
+            <li data-i18n="gmailStep2">Paste its client ID and client secret here. Every Gmail mailbox reuses them.</li>
+            <li data-i18n="gmailStep3">If that client is still in Testing, add each mailbox address as a test user.</li>
+          </ol>
+          <label class="wide"><span data-i18n="clientIdLabel">OAuth client ID</span> <input id="appGmailClientId" autocomplete="off" spellcheck="false"></label>
+          <label class="wide"><span data-i18n="clientSecretLabel">Client secret</span> <input id="appGmailSecret" type="password" autocomplete="new-password"></label>
+          <div class="row wide">
+            <button id="appGmailSave" class="quiet" type="button" data-i18n="appSave">Save</button>
+            <button id="appGmailClearSecret" class="quiet" type="button" data-i18n="appClearSecret">Clear secret</button>
+            <button id="appGmailClear" class="quiet" type="button" data-i18n="appClear">Remove</button>
+            <button id="appGmailConsole" class="quiet" type="button" data-i18n="openCloudConsole">Copy the Cloud Console link</button>
+            <span id="appGmailState" class="note" style="margin:0"></span>
+          </div>
+        </div>
+        <div class="grid" style="margin-top:14px">
+          <p class="wide" style="margin:0;font-weight:600" data-i18n="outlookAppTitle">Outlook app</p>
+          <ol class="wide">
+            <li data-i18n="outlookStep1">In Microsoft Entra, register an application and create a client secret.</li>
+            <li data-i18n="outlookStep2">Add delegated IMAP.AccessAsUser.All, SMTP.Send, and offline_access. The tenant may also need SMTP AUTH allowed.</li>
+            <li data-i18n="outlookStep3">Paste the application ID and secret here. If Entra asks for a redirect, use the loopback URI shown with a mailbox link.</li>
+          </ol>
+          <label class="wide"><span data-i18n="clientIdLabel">OAuth client ID</span> <input id="appOutlookClientId" autocomplete="off" spellcheck="false"></label>
+          <label class="wide"><span data-i18n="clientSecretLabel">Client secret</span> <input id="appOutlookSecret" type="password" autocomplete="new-password"></label>
+          <div class="row wide">
+            <button id="appOutlookSave" class="quiet" type="button" data-i18n="appSave">Save</button>
+            <button id="appOutlookClearSecret" class="quiet" type="button" data-i18n="appClearSecret">Clear secret</button>
+            <button id="appOutlookClear" class="quiet" type="button" data-i18n="appClear">Remove</button>
+            <button id="appOutlookConsole" class="quiet" type="button" data-i18n="openEntra">Copy the Entra portal link</button>
+            <span id="appOutlookState" class="note" style="margin:0"></span>
+          </div>
+        </div>
+      </div>
+    </details>
     <div id="accountOverview">
       <div class="sec-head"><h2 data-i18n="accountsTitle">Your accounts</h2></div>
       <p id="settingsSummary" class="note"></p>
@@ -537,20 +598,40 @@ pre {
         <p id="presetNote" class="note"></p>
         <p id="secretStatus" class="note" hidden></p>
 
+        <p id="credentialSummary" class="note" style="margin:6px 0 0;color:var(--ink-soft)" hidden></p>
+
+        <div id="setupGuide" class="guide" hidden>
+          <ol id="setupSteps">
+            <li id="setupStep1" hidden></li>
+            <li id="setupStep2" hidden></li>
+            <li id="setupStep3" hidden></li>
+          </ol>
+          <div class="row">
+            <button id="setupPrimary" class="quiet" type="button" hidden></button>
+            <button id="setupSecondary" class="quiet" type="button" hidden></button>
+          </div>
+        </div>
+
         <div id="passwordGroup" class="grid" style="margin-top:8px">
           <label class="wide"><span data-i18n="passwordLabel">Password or app password</span> <input id="password" type="password" autocomplete="new-password" placeholder="Write-only; leave blank to keep stored secret"></label>
         </div>
 
         <div id="oauthGroup" class="grid" style="margin-top:8px" hidden>
-          <label class="wide"><span data-i18n="oauthMethod">Authorization</span><select id="oauthMethod"><option value="link" data-i18n="oauthLinkMethod">Authorize in your browser</option><option value="token" data-i18n="oauthTokenMethod">Paste existing tokens</option></select></label>
-          <label id="accessTokenField"><span data-i18n="accessTokenLabel">Access token</span> <input id="accessToken" type="password" autocomplete="new-password" placeholder="Write-only"></label>
-          <label id="refreshTokenField"><span data-i18n="refreshTokenLabel">Refresh token</span> <input id="refreshToken" type="password" autocomplete="new-password" placeholder="Write-only"></label>
-          <label class="wide"><span data-i18n="clientIdLabel">OAuth client ID</span> <input id="oauthClientId" autocomplete="off" spellcheck="false"></label>
-          <details id="oauthAdvanced" class="wide"><summary data-i18n="oauthAdvanced">OAuth application settings</summary><div class="fold-body grid">
+          <p id="oauthIntro" class="note wide" style="margin:0"></p>
+          <p id="oauthInheritNote" class="note wide" hidden></p>
+          <div id="oauthOwnClient" class="grid wide" hidden>
+            <p id="ownClientNote" class="note wide" style="margin:0"></p>
+            <label class="wide"><span data-i18n="clientIdLabel">OAuth client ID</span> <input id="oauthClientId" autocomplete="off" spellcheck="false"></label>
             <label class="wide"><span data-i18n="clientSecretLabel">Client secret</span> <input id="clientSecret" type="password" autocomplete="new-password" placeholder="Write-only"></label>
+            <div class="wide"><button id="useProjectApp" class="quiet" type="button" data-i18n="useProjectApp">Use the project app instead</button></div>
+          </div>
+          <details id="oauthAdvanced" class="wide"><summary data-i18n="oauthAdvanced">OAuth application settings</summary><div class="fold-body grid">
             <label class="wide"><span data-i18n="tokenUrlLabel">OAuth token URL</span> <input id="oauthTokenUrl" autocomplete="off" spellcheck="false"></label>
             <label class="wide"><span data-i18n="scopeLabel">OAuth scope</span> <input id="oauthScope" autocomplete="off" spellcheck="false"></label>
           </div></details>
+          <label class="wide"><span data-i18n="oauthMethod">Authorization</span><select id="oauthMethod"><option value="link" data-i18n="oauthLinkMethod">Authorize in your browser</option><option value="token" data-i18n="oauthTokenMethod">Paste existing tokens</option></select></label>
+          <label id="accessTokenField"><span data-i18n="accessTokenLabel">Access token</span> <input id="accessToken" type="password" autocomplete="new-password" placeholder="Write-only"></label>
+          <label id="refreshTokenField"><span data-i18n="refreshTokenLabel">Refresh token</span> <input id="refreshToken" type="password" autocomplete="new-password" placeholder="Write-only"></label>
           <div class="wide" id="authorizationGroup">
             <button id="oauthStart" class="quiet" type="button" data-i18n="generateLink">Generate authorization link</button>
             <div id="oauthFlow" hidden>
@@ -576,6 +657,7 @@ pre {
               <label><span data-i18n="imapPortLabel">IMAP port</span> <input id="imapPort" inputmode="numeric"></label>
               <label><span data-i18n="smtpHostLabel">SMTP host</span> <input id="smtpHost" autocomplete="off" spellcheck="false"></label>
               <label><span data-i18n="smtpPortLabel">SMTP port</span> <input id="smtpPort" inputmode="numeric"></label>
+              <label class="wide"><span data-i18n="timeoutLabel">Connection timeout for this mailbox (ms)</span> <input id="timeoutMs" inputmode="numeric" placeholder="20000"></label>
             </div>
             <div class="checks">
               <label><input id="imapSecure" type="checkbox"> <span data-i18n="imapTlsLabel">IMAP implicit TLS</span></label>
@@ -588,9 +670,9 @@ pre {
         <details id="watchDetails">
           <summary><span data-i18n="watchSummaryTitle">Inbox watch &amp; IM notifications</span></summary>
           <div class="fold-body">
+            <p class="note" data-i18n="watchScopeAccount">Watch, forwarding, preview, and the channel apply only to this mailbox.</p>
             <p id="im" class="im" style="margin-top:0"></p>
             <div class="checks" style="margin-top:6px">
-              <label><input id="watchEnabled" type="checkbox"> <span data-i18n="watchGlobalLabel">Watch while Kiki is open</span></label>
               <label><input id="watch" type="checkbox"> <span data-i18n="watchAccountLabel">Watch this inbox</span></label>
               <label><input id="imEnabled" type="checkbox"> <span data-i18n="imEnableLabel">Forward new mail to a notification channel</span></label>
               <label><input id="imPreview" type="checkbox"> <span data-i18n="imPreviewLabel">Include a short preview</span></label>
@@ -625,6 +707,7 @@ pre {
           <button id="wizardNext" type="button" data-i18n="next">Continue</button>
           <button id="testDraft" type="button" data-i18n="testDraft">Test now</button>
           <button id="save" type="button" data-i18n="saveBtn">Save</button>
+          <button id="clearCredentials" class="quiet" type="button" hidden data-i18n="clearCredentials">Clear saved credentials</button>
           <button id="cancelEdit" class="quiet" type="button" data-i18n="cancel">Cancel</button>
           <button id="load" class="quiet" type="button" data-i18n="loadBtn">Load</button>
           <button id="remove" class="quiet danger-btn" type="button" data-i18n="deleteBtn">Delete</button>
@@ -1004,8 +1087,161 @@ pre {
   Object.assign(COPY.zh, {
     manageAccounts: '账号管理', accountsTitle: '我的账号', noteLabel: '备注（最多 200 字）', customDetails: '客户端标识、文件夹与声明', sentFolder: '已发送文件夹', draftsFolder: '草稿文件夹', trashFolder: '废纸篓文件夹', archiveFolder: '归档文件夹', headersLabel: '发信 X- 请求头（每行 Name: value）', hooksLabel: '声明式钩子', addHook: '添加声明', back: '上一步', next: '继续', testDraft: '立即测试', cancel: '取消', edit: '编辑', defaultLabel: '默认', makeDefault: '设为默认', openMailbox: '打开邮箱', removeHook: '移除', generateLink: '生成授权链接', copyLink: '复制链接', oauthLinkHint: '用你自己的浏览器打开并授权，然后回到这里。', checkAuthorization: '检查授权结果', manualCallback: '粘贴回跳信息', callbackUrl: '完整回跳 URL', authorizationCode: '或授权码', exchangeCode: '交换令牌', copied: '链接已复制。', copyManually: '请选中并复制上方链接。', waitingAuthorization: '等待授权。', authorized: '已收到授权，请测试并保存账号。', testPassed: 'IMAP 与 SMTP 已接受凭据，可以保存。', testing: '正在测试 IMAP 与 SMTP…', providerStage: '选择邮件服务商', identityStage: '区分这个账号', authStage: '选择授权方式', credentialStage: '填写凭据并测试', saveStage: '可以保存了', noAccounts: '添加第一个账号，开始收发邮件。', accountCount: '个账号', watching: '监听中', watchOff: '监听已关闭', lastTestLabel: '上次测试', testOk: '测试通过', testError: '测试失败', neverTested: '未测试', oauth_refresh_ready: '可自动刷新令牌', oauth_token_only: '仅有访问令牌', oauth_expired: '令牌已过期', oauth_authorization_required: '需要授权', requiredField: '请填写此字段。', noteTooLong: '最多填写 200 字。', idTaken: '此账号 ID 已被使用，请换一个。', invalidPort: '请输入 1-65535 之间的端口。', invalidHeader: '每行填写一个不含凭据的 X-Name: value 请求头。', invalidHook: '超时填写 200-120000 毫秒；事件标签最多 80 字。'
   });
-  Object.assign(COPY.en, { oauthMethod: 'Authorization', oauthLinkMethod: 'Authorize in your browser', oauthTokenMethod: 'Paste existing tokens', oauthAdvanced: 'OAuth application settings' });
-  Object.assign(COPY.zh, { oauthMethod: '授权方式', oauthLinkMethod: '在自己的浏览器中授权', oauthTokenMethod: '粘贴已有令牌', oauthAdvanced: 'OAuth 应用设置' });
+  Object.assign(COPY.en, { oauthMethod: 'Authorization', oauthLinkMethod: 'Authorize in your browser', oauthTokenMethod: 'Paste existing tokens', oauthAdvanced: 'Advanced: token URL and scope' });
+  Object.assign(COPY.zh, { oauthMethod: '授权方式', oauthLinkMethod: '在自己的浏览器中授权', oauthTokenMethod: '粘贴已有令牌', oauthAdvanced: '进阶：令牌地址与授权范围' });
+  Object.assign(COPY.en, { passwordNewPlaceholder: '16-character app password', clientSecretPlaceholder: 'Client secret from the OAuth client' });
+  Object.assign(COPY.zh, { passwordNewPlaceholder: '16 位应用专用密码', clientSecretPlaceholder: 'OAuth 客户端密钥' });
+  Object.assign(COPY.en, {
+    authPassword: 'App password (recommended)',
+    authOauth: 'OAuth (own cloud project)',
+    setupGmail1: 'Turn on 2-Step Verification in your Google Account; app passwords only exist after it is on.',
+    setupGmail2: 'Open App passwords and create one named Kiki Mail.',
+    setupGmail3: 'Paste the 16-character password above, then Test now.',
+    openAppPasswords: 'Copy the App passwords link',
+    openGoogleSecurity: 'Copy the security settings link',
+    setupQQ1: 'In QQ Mail settings, open Account → POP3/IMAP/SMTP service and generate an authorization code.',
+    setupQQ2: 'Paste that code as the password above, then Test now.',
+    setup1631: 'In 163 Mail settings, open POP3/SMTP/IMAP, turn the service on and get an authorization code.',
+    setup1632: 'Paste that code as the password above, then Test now.',
+    setupICloud1: 'In your Apple Account, create an app-specific password for Mail.',
+    setupICloud2: 'Use it as the password above, then Test now.',
+    setupFastmail1: 'In Fastmail, open Settings → Security and create an app password for Mail.',
+    setupFastmail2: 'Use it as the password above, then Test now.',
+    openProviderPage: 'Copy the settings link',
+    oauthIntro: 'OAuth uses a client from your own cloud project. Google only lets that project\'s test users authorize, so one shared client cannot serve everyone; it is set up once per person.',
+    oauthSetupTitle: 'Create the client (about 3 minutes)',
+    oauthStep1: 'Open Google Cloud Console and create a project.',
+    oauthStep2: 'Fill in the OAuth consent screen: External, status Testing, and add your own address as a test user.',
+    oauthStep3: 'Create credentials → OAuth client ID → Desktop app, then copy its client ID and client secret.',
+    oauthStep4: 'Paste both above, generate the link, approve it in your browser, then Test now.',
+    openCloudConsole: 'Copy the Cloud Console link',
+    msOauthIntro: 'Outlook needs an app registration in Microsoft Entra. Your organization may also block SMTP AUTH.',
+    msOauthSetupTitle: 'Register the app (about 5 minutes)',
+    msStep1: 'In Microsoft Entra, register an app and add a loopback redirect URI.',
+    msStep2: 'Grant the delegated IMAP.AccessAsUser.All and SMTP.Send permissions, and create a client secret.',
+    msStep3: 'Paste the client ID and secret above, generate the link, approve it, then Test now.',
+    openEntra: 'Copy the Entra portal link',
+  });
+  Object.assign(COPY.zh, {
+    authPassword: '应用专用密码（推荐）',
+    authOauth: 'OAuth（自己的云项目）',
+    setupGmail1: '先在 Google 账号里开启两步验证，未开启时不会出现应用专用密码。',
+    setupGmail2: '打开「应用专用密码」，新建一个名为 Kiki Mail 的密码。',
+    setupGmail3: '把生成的 16 位密码粘贴到上面的密码框，点「立即测试」。',
+    openAppPasswords: '复制应用专用密码页链接',
+    openGoogleSecurity: '复制安全性设置链接',
+    setupQQ1: '在 QQ 邮箱设置中打开「账号 → POP3/IMAP/SMTP 服务」，生成授权码。',
+    setupQQ2: '把授权码粘贴到上面的密码框，点「立即测试」。',
+    setup1631: '在 163 邮箱设置中打开「POP3/SMTP/IMAP」，开启服务并获取授权码。',
+    setup1632: '把授权码粘贴到上面的密码框，点「立即测试」。',
+    setupICloud1: '在 Apple 账户里为邮件新建一个 App 专用密码。',
+    setupICloud2: '把它粘贴到上面的密码框，点「立即测试」。',
+    setupFastmail1: '在 Fastmail 的「设置 → 安全」里为邮件新建一个 App 密码。',
+    setupFastmail2: '把它粘贴到上面的密码框，点「立即测试」。',
+    openProviderPage: '复制设置页链接',
+    oauthIntro: 'OAuth 需要属于你自己的云项目客户端。Google 只允许该项目的测试用户授权，所以一个共用客户端无法服务所有人；每人配置一次。',
+    oauthSetupTitle: '建客户端（约 3 分钟）',
+    oauthStep1: '打开 Google Cloud 控制台，新建一个项目。',
+    oauthStep2: '填写 OAuth 同意屏：用户类型 External、发布状态 Testing，并把自己的地址加为测试用户。',
+    oauthStep3: '创建凭据 → OAuth 客户端 ID → 桌面应用，复制客户端 ID 和密钥。',
+    oauthStep4: '把两项粘贴到上面，生成链接，在浏览器里授权，再点「立即测试」。',
+    openCloudConsole: '复制 Cloud 控制台链接',
+    msOauthIntro: 'Outlook 必须在 Microsoft Entra 注册应用；你的组织也可能禁用 SMTP AUTH。',
+    msOauthSetupTitle: '注册应用（约 5 分钟）',
+    msStep1: '在 Microsoft Entra 注册应用，并添加一个 loopback 回跳地址。',
+    msStep2: '授予委托权限 IMAP.AccessAsUser.All 与 SMTP.Send，并创建客户端密钥。',
+    msStep3: '把客户端 ID 与密钥粘贴到上面，生成链接，授权后点「立即测试」。',
+    openEntra: '复制 Entra 门户链接',
+  });
+  Object.assign(COPY.en, {
+    projectTitle: 'Mail project',
+    projectIntro: 'Configure a Gmail or Outlook OAuth app once. Mailboxes of that provider reuse it. A mailbox that already has its own client keeps that client.',
+    gmailAppTitle: 'Gmail app',
+    outlookAppTitle: 'Outlook app',
+    appSave: 'Save',
+    appClear: 'Remove',
+    appClearSecret: 'Clear secret',
+    gmailStep1: 'In Google Cloud Console, create an OAuth client of type Desktop.',
+    gmailStep2: 'Paste its client ID and client secret here. Every Gmail mailbox reuses them.',
+    gmailStep3: 'If that client is still in Testing, add each mailbox address as a test user.',
+    outlookStep1: 'In Microsoft Entra, register an application and create a client secret.',
+    outlookStep2: 'Add delegated IMAP.AccessAsUser.All, SMTP.Send, and offline_access. The tenant may also need SMTP AUTH allowed.',
+    outlookStep3: 'Paste the application ID and secret here. If Entra asks for a redirect, use the loopback URI shown with a mailbox link.',
+    projectMissing: 'Not configured',
+    projectReady: 'Client ID saved',
+    projectReadySecret: 'Client ID and secret saved',
+    projectGmailOn: 'Gmail ready',
+    projectGmailOff: 'Gmail not set',
+    projectOutlookOn: 'Outlook ready',
+    projectOutlookOff: 'Outlook not set',
+    watchScopeGlobal: 'This switch applies to every mailbox while Kiki is open.',
+    watchScopeAccount: 'Watch, forwarding, preview, and the channel apply only to this mailbox.',
+    timeoutLabel: 'Connection timeout for this mailbox (ms)',
+    inheritGmail: 'This mailbox uses the Gmail project. It does not keep its own client ID.',
+    inheritOutlook: 'This mailbox uses the Outlook project. It does not keep its own client ID.',
+    needGmailProject: 'Set up the Gmail project above, then generate the link.',
+    needOutlookProject: 'Set up the Outlook project above, then generate the link.',
+    inheritShort: 'Uses the project app',
+    ownClientShort: 'Own OAuth client',
+    ownClientNote: 'This mailbox keeps its own OAuth client. The project app does not replace it.',
+    useProjectApp: 'Use the project app instead',
+    clearCredentials: 'Clear saved credentials',
+    credentialsCleared: 'Saved credentials cleared.',
+    projectRequired: 'Enter the client ID in the Mail project first.',
+    oauthIntro: 'Generate a link and open it yourself. Mail tests IMAP and SMTP after the provider returns, then saves.',
+    msOauthIntro: 'Outlook uses the project app above. Generate a link and open it yourself.',
+    authOauth: 'OAuth',
+    oauth_reauthorize: 'Needs authorization again',
+    oauth_app_required: 'Project OAuth app is not set up',
+  });
+  Object.assign(COPY.zh, {
+    projectTitle: '邮件项目',
+    projectIntro: 'Gmail 或 Outlook 的 OAuth 应用只需配置一次，同类型邮箱都会复用。已经单独保存过客户端的邮箱仍用自己的客户端。',
+    gmailAppTitle: 'Gmail 应用',
+    outlookAppTitle: 'Outlook 应用',
+    appSave: '保存',
+    appClear: '移除',
+    appClearSecret: '清除密钥',
+    gmailStep1: '在 Google Cloud 控制台创建一个桌面应用类型的 OAuth 客户端。',
+    gmailStep2: '把客户端 ID 和密钥粘贴到这里。所有 Gmail 邮箱都会复用。',
+    gmailStep3: '如果该客户端仍处于 Testing，把每个邮箱地址加为测试用户。',
+    outlookStep1: '在 Microsoft Entra 注册一个应用，并创建客户端密钥。',
+    outlookStep2: '添加委托权限 IMAP.AccessAsUser.All、SMTP.Send 和 offline_access。组织可能还需要允许 SMTP AUTH。',
+    outlookStep3: '把应用程序 ID 和密钥粘贴到这里。如果 Entra 要求回跳地址，使用邮箱授权链接旁显示的 loopback URI。',
+    projectMissing: '未配置',
+    projectReady: '已保存客户端 ID',
+    projectReadySecret: '已保存客户端 ID 和密钥',
+    projectGmailOn: 'Gmail 已就绪',
+    projectGmailOff: 'Gmail 未设置',
+    projectOutlookOn: 'Outlook 已就绪',
+    projectOutlookOff: 'Outlook 未设置',
+    watchScopeGlobal: '这个开关作用于 Kiki 打开期间的所有邮箱。',
+    watchScopeAccount: '监听、转发、预览和渠道只作用于这个邮箱。',
+    timeoutLabel: '这个邮箱的连接超时（毫秒）',
+    inheritGmail: '这个邮箱使用 Gmail 项目，不单独保存客户端 ID。',
+    inheritOutlook: '这个邮箱使用 Outlook 项目，不单独保存客户端 ID。',
+    needGmailProject: '先在上方配置 Gmail 项目，再生成授权链接。',
+    needOutlookProject: '先在上方配置 Outlook 项目，再生成授权链接。',
+    inheritShort: '使用项目应用',
+    ownClientShort: '独立 OAuth 客户端',
+    ownClientNote: '这个邮箱保留自己的 OAuth 客户端，项目应用不会替换它。',
+    useProjectApp: '改为使用项目应用',
+    clearCredentials: '清除已保存凭据',
+    credentialsCleared: '已清除保存的凭据。',
+    projectRequired: '请先在邮件项目里填写客户端 ID。',
+    oauthIntro: '生成链接后用你自己的浏览器打开。服务商返回后，Mail 会测试 IMAP 和 SMTP，通过才保存。',
+    msOauthIntro: 'Outlook 使用上方的项目应用。生成链接后用你自己的浏览器打开。',
+    authOauth: 'OAuth',
+    oauth_reauthorize: '需要重新授权',
+    oauth_app_required: '尚未配置项目 OAuth 应用',
+  });
+  const SETUP_STEPS = {
+    gmail: { steps: ['setupGmail1', 'setupGmail2', 'setupGmail3'], primary: 'openAppPasswords', secondary: 'openGoogleSecurity' },
+    qq: { steps: ['setupQQ1', 'setupQQ2'], primary: 'openProviderPage' },
+    '163': { steps: ['setup1631', 'setup1632'], primary: 'openProviderPage' },
+    icloud: { steps: ['setupICloud1', 'setupICloud2'], primary: 'openProviderPage' },
+    fastmail: { steps: ['setupFastmail1', 'setupFastmail2'], primary: 'openProviderPage' },
+  };
   let managing = true;
   let wizardStage = null;
   let editingId = '';
@@ -1077,7 +1313,14 @@ pre {
         const status = node('p', test ? `${tr(test.ok ? 'testOk' : 'testError')} · ${new Date(test.at).toLocaleString()}${!test.ok ? ` · ${test.message}` : ''}` : tr('neverTested'), 'note');
         if (status.dataset) status.dataset.tone = test ? test.ok ? 'ok' : 'danger' : '';
         content.append(status);
-        if (account.auth === 'oauth2') content.append(node('p', tr(`oauth_${account.oauthStatus || 'authorization_required'}`), 'note'));
+        content.append(node('p', secretLine(account), 'note'));
+        if (account.auth === 'oauth2') {
+          const bits = [tr(`oauth_${account.oauthStatus || 'authorization_required'}`)];
+          if (account.oauthInherited) bits.push(tr('inheritShort'));
+          else if (account.oauthClientId) bits.push(tr('ownClientShort'));
+          content.append(node('p', bits.join(' · '), 'note'));
+        }
+        if (account.from && account.from !== account.user) content.append(node('p', account.from, 'note'));
         const actions = node('div', '', 'row');
         actions.append(actionButton('openMailbox', () => { selectAccountById(account.id); setManagement(false); }), actionButton('testBtn', async () => { selectAccountById(account.id); await el('test').onclick(); }), actionButton('edit', () => { selectAccountById(account.id); editingId = account.id; wizardStage = null; openEditor(); }), actionButton('deleteBtn', async () => { selectAccountById(account.id); await el('remove').onclick(); }));
         if (!(account.isDefault || account.id === lastState.defaultAccountId)) actions.append(actionButton('makeDefault', async () => { const result = await call('default', { accountId: account.id }); if (result.ok) render(result); else setStatus(result.message, 'danger'); }));
@@ -1158,7 +1401,7 @@ pre {
     const final = wizardStage === 4;
     for (const [id, stage] of [['providerStep', 0], ['identityStep', 1], ['authStep', 2]]) el(id).hidden = wizard && wizardStage !== stage;
     const credentials = !wizard || wizardStage === 3;
-    for (const id of ['passwordGroup', 'oauthGroup', 'secretStatus', 'serverDetails', 'watchDetails', 'customDetails']) el(id).hidden = !credentials;
+    for (const id of ['passwordGroup', 'setupGuide', 'oauthGroup', 'secretStatus', 'serverDetails', 'watchDetails', 'customDetails']) el(id).hidden = !credentials;
     if (credentials) syncAuthVisibility();
     el('wizardProgress').textContent = wizard ? tr(['providerStage', 'identityStage', 'authStage', 'credentialStage', 'saveStage'][wizardStage]) : '';
     el('wizardBack').hidden = !wizard || wizardStage === 0;
@@ -1197,6 +1440,7 @@ pre {
       if (option.value === 'proton-bridge') option.textContent = tr('localBridgePreset');
     }
     el('accountSelect')?.setAttribute?.('aria-label', tr('activeAccountLabel'));
+    syncAuthVisibility();
   }
 
   function applyPresentation(pres) {
@@ -1275,6 +1519,14 @@ pre {
 
   function syncAuthVisibility() {
     const isOauth = text('auth') === 'oauth2';
+    const identity = [text('user'), text('label')].filter(Boolean).join(' · ');
+    if (el('credentialSummary')) {
+      el('credentialSummary').hidden = !identity;
+      el('credentialSummary').textContent = identity;
+    }
+    if (el('presetNote')) el('presetNote').hidden = isOauth;
+    if (el('password')) el('password').placeholder = editingId ? tr('secretPlaceholder') : tr('passwordNewPlaceholder');
+    if (el('clientSecret')) el('clientSecret').placeholder = editingId ? tr('secretPlaceholder') : tr('clientSecretPlaceholder');
     if (el('passwordGroup')) el('passwordGroup').hidden = isOauth;
     if (el('oauthGroup')) el('oauthGroup').hidden = !isOauth;
     const tokenMode = text('oauthMethod') === 'token' || text('preset') === 'custom';
@@ -1287,6 +1539,84 @@ pre {
       secNode.hidden = !currentAcc?.credentialStored;
       secNode.textContent = currentAcc?.credentialStored ? `${secretLine(currentAcc)}${tr('secretLeaveBlankHint')}` : '';
     }
+    if (el('clearCredentials')) el('clearCredentials').hidden = !currentAcc?.credentialStored;
+    const projectPreset = text('preset') === 'gmail' || text('preset') === 'outlook';
+    const ownClient = text('oauthClientId');
+    if (el('oauthOwnClient')) {
+      el('oauthOwnClient').hidden = !(isOauth && (ownClient || !projectPreset));
+      if (el('ownClientNote')) el('ownClientNote').textContent = ownClient ? tr('ownClientNote') : '';
+      if (el('useProjectApp')) el('useProjectApp').hidden = !(projectPreset && ownClient);
+    }
+    if (el('oauthInheritNote')) {
+      const inherit = isOauth && projectPreset && !ownClient;
+      el('oauthInheritNote').hidden = !inherit;
+      if (inherit) {
+        const app = lastState.apps?.[text('preset')];
+        const ready = Boolean(app?.configured);
+        el('oauthInheritNote').textContent = tr(text('preset') === 'outlook' ? (ready ? 'inheritOutlook' : 'needOutlookProject') : (ready ? 'inheritGmail' : 'needGmailProject'));
+      }
+    }
+    renderSetupGuide();
+    renderOauthGuide();
+  }
+
+  function providerPreset() {
+    return presets.find((item) => item.id === text('preset'));
+  }
+
+  function renderSetupGuide() {
+    const guide = el('setupGuide');
+    if (!guide) return;
+    const preset = providerPreset();
+    const spec = SETUP_STEPS[preset?.id];
+    const show = Boolean(preset?.setup) && Boolean(spec) && text('auth') !== 'oauth2';
+    guide.hidden = !show;
+    if (!show) return;
+    for (let index = 1; index <= 3; index++) {
+      const node = el(`setupStep${index}`);
+      const key = spec.steps[index - 1];
+      node.hidden = !key;
+      node.textContent = key ? tr(key) : '';
+    }
+    for (const [id, labelKey, url] of [['setupPrimary', spec.primary, preset.setup.primary], ['setupSecondary', spec.secondary, preset.setup.secondary]]) {
+      const button = el(id);
+      button.hidden = !(labelKey && url);
+      if (!button.hidden) button.textContent = tr(labelKey);
+    }
+  }
+
+  function renderOauthGuide() {
+    const preset = providerPreset();
+    if (el('oauthIntro')) el('oauthIntro').textContent = text('auth') === 'oauth2' ? tr(preset?.id === 'outlook' ? 'msOauthIntro' : 'oauthIntro') : '';
+  }
+
+  function renderProject(state) {
+    const apps = state?.apps || {};
+    const focused = document.activeElement;
+    for (const [id, prefix] of [['gmail', 'appGmail'], ['outlook', 'appOutlook']]) {
+      const app = apps[id] || {};
+      const input = el(`${prefix}ClientId`);
+      const secret = el(`${prefix}Secret`);
+      if (input && focused !== input) input.value = app.clientId || '';
+      if (secret && focused !== secret) secret.value = '';
+      const status = el(`${prefix}State`);
+      if (status) status.textContent = !app.configured ? tr('projectMissing') : app.hasSecret ? tr('projectReadySecret') : tr('projectReady');
+    }
+    const summary = el('projectSummary');
+    if (summary) summary.textContent = `${apps.gmail?.configured ? tr('projectGmailOn') : tr('projectGmailOff')} · ${apps.outlook?.configured ? tr('projectOutlookOn') : tr('projectOutlookOff')}`;
+  }
+
+  function projectPrefix(provider) {
+    return provider === 'outlook' ? 'appOutlook' : 'appGmail';
+  }
+
+  async function copySetupLink(url, button, labelKey) {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      button.textContent = tr('copied');
+      globalThis.setTimeout?.(() => { button.textContent = tr(labelKey); }, 1600);
+    } catch { setStatus(url, 'warn'); }
   }
 
   function syncServerSummary() {
@@ -1413,6 +1743,7 @@ pre {
     }
     renderAccountControls();
     syncAuthVisibility();
+    renderProject(lastState);
   }
 
   function fill(account) {
@@ -1446,6 +1777,7 @@ pre {
     el('imPreview').checked = account.imPreview === true;
     el('imChannel').value = account.imChannelId || '';
     el('imRouteRevision').value = account.imRouteRevision || '';
+    el('timeoutMs').value = account.timeoutMs == null ? '' : String(account.timeoutMs);
     el('password').value = '';
     el('clientSecret').value = '';
     el('refreshToken').value = '';
@@ -1498,6 +1830,7 @@ pre {
       imChannelId: text('imChannel'),
       imRouteRevision: text('imRouteRevision'),
       imPreview: checked('imPreview'),
+      ...(text('timeoutMs') ? { timeoutMs: num('timeoutMs') } : {}),
       oauthClientId: text('oauthClientId'),
       oauthTokenUrl: text('oauthTokenUrl'),
       oauthScope: text('oauthScope'),
@@ -1944,7 +2277,16 @@ pre {
     try {
       const result = await call('testDraft', args);
       if (epoch !== viewEpoch || JSON.stringify(accountBody()) !== signature) return;
-      if (!result.ok) { fieldIssue(result.code?.startsWith('oauth') ? 'oauthClientId' : 'password', result.message || tr('testError')); return; }
+      if (!result.ok) {
+        const preset = text('preset');
+        const projectField = preset === 'outlook' ? 'appOutlookClientId' : 'appGmailClientId';
+        const field = result.code === 'app_required' || result.code === 'app_changed' ? projectField
+          : result.code?.startsWith('oauth') ? (text('oauthClientId') ? 'oauthClientId' : projectField)
+          : 'password';
+        if ((result.code === 'app_required' || result.code === 'app_changed') && el('projectSettings')) el('projectSettings').open = true;
+        fieldIssue(field, result.message || tr('testError'));
+        return;
+      }
       clearSecrets(); testedDraftId = result.draftId; testedSignature = signature;
       el('draftTestResult').textContent = tr('testPassed');
       if (el('draftTestResult').dataset) el('draftTestResult').dataset.tone = 'ok';
@@ -1955,7 +2297,16 @@ pre {
   };
   el('oauthStart').onclick = async () => {
     if (accountBusy || !validateAccountForm()) return;
-    if (!text('oauthClientId')) return fieldIssue('oauthClientId', tr('requiredField'));
+    if (!text('oauthClientId')) {
+      const preset = text('preset');
+      const app = lastState.apps?.[preset];
+      if ((preset === 'gmail' || preset === 'outlook') && app?.configured) {
+        /* inherited from the project */
+      } else if (preset === 'gmail' || preset === 'outlook') {
+        if (el('projectSettings')) el('projectSettings').open = true;
+        return fieldIssue(preset === 'outlook' ? 'appOutlookClientId' : 'appGmailClientId', tr('projectRequired'));
+      } else return fieldIssue('oauthClientId', tr('requiredField'));
+    }
     accountBusy = true; el('oauthStart').disabled = true;
     const epoch = viewEpoch;
     const signature = JSON.stringify(accountBody());
@@ -1984,8 +2335,44 @@ pre {
     try {
       const result = await call(manual ? 'oauthComplete' : 'oauthStatus', args);
       if (flowId !== oauthFlowId) return;
-      el('oauthFeedback').textContent = result.phase === 'authorized' ? tr('authorized') : result.phase === 'waiting' ? tr('waitingAuthorization') : result.message || tr('requestFailed');
-      if (el('oauthFeedback').dataset) el('oauthFeedback').dataset.tone = result.phase === 'authorized' ? 'ok' : result.ok && result.phase === 'waiting' ? '' : 'danger';
+      if (result.phase !== 'authorized') {
+        el('oauthFeedback').textContent = result.phase === 'waiting' ? tr('waitingAuthorization') : result.message || tr('requestFailed');
+        if (el('oauthFeedback').dataset) el('oauthFeedback').dataset.tone = result.ok && result.phase === 'waiting' ? '' : 'danger';
+        if (!result.ok) show(result);
+        return;
+      }
+      const signature = JSON.stringify(accountBody());
+      el('oauthFeedback').textContent = tr('testing');
+      const tested = await call('testDraft', { account: accountBody(), credential: credentialBody(), draftId: oauthDraftId, editingId });
+      if (flowId !== oauthFlowId || signature !== JSON.stringify(accountBody())) return;
+      if (!tested.ok) {
+        el('oauthFeedback').textContent = tested.message || tr('testError');
+        if (el('oauthFeedback').dataset) el('oauthFeedback').dataset.tone = 'danger';
+        show(tested);
+        return;
+      }
+      clearSecrets();
+      testedDraftId = tested.draftId;
+      testedSignature = signature;
+      const saved = await call('save', { account: accountBody(), credential: credentialBody(), watchEnabled: checked('watchEnabled'), draftId: tested.draftId, editingId });
+      if (flowId !== oauthFlowId || signature !== JSON.stringify(accountBody())) return;
+      show(saved);
+      if (!saved.ok) {
+        if (wizardStage !== null) { wizardStage = 4; syncWizard(); }
+        el('oauthFeedback').textContent = saved.message || tr('saveFailed');
+        if (el('oauthFeedback').dataset) el('oauthFeedback').dataset.tone = 'danger';
+        return;
+      }
+      clearSecrets();
+      oauthFlowId = ''; oauthDraftId = ''; testedDraftId = ''; testedSignature = '';
+      const state = await call('state', {});
+      const nextAccount = saved.account?.id || accountBody().id;
+      if (nextAccount !== activeAccount) clearMailboxViewForAccountSwitch();
+      activeAccount = nextAccount;
+      if (saved.account) fill(saved.account);
+      render(state || lastState);
+      closeEditor();
+      setStatusKey(saved.account?.lastTest?.ok ? 'testPassed' : 'savedNotTested', 'ok');
     } catch (error) { if (flowId === oauthFlowId) el('oauthFeedback').textContent = error.message; }
     finally { accountBusy = false; }
   }
@@ -2008,6 +2395,7 @@ pre {
     if (feedbackKey) el('accountFeedback').textContent = tr(feedbackKey);
     if (wizardStage !== null) syncWizard();
     renderHooks();
+    renderProject(lastState);
   }
 
   if (el('langToggle')) {
@@ -2038,7 +2426,66 @@ pre {
   el('preset').onchange = () => applyPreset();
   el('auth').onchange = () => { invalidateDraft(); syncAuthVisibility(); };
   el('oauthMethod').onchange = () => syncAuthVisibility();
-  for (const id of ['user', 'label', 'note', 'from', 'imapIdName', 'imapIdVersion', 'folderSent', 'folderDrafts', 'folderTrash', 'folderArchive', 'customHeaders', 'oauthClientId', 'oauthTokenUrl', 'oauthScope', 'password', 'refreshToken', 'accessToken', 'clientSecret']) el(id).oninput = () => invalidateDraft();
+  for (const id of ['setupPrimary', 'setupSecondary']) {
+    el(id).onclick = () => {
+      const preset = providerPreset();
+      const spec = SETUP_STEPS[text('preset')] || {};
+      const url = id === 'setupPrimary' ? preset?.setup?.primary : preset?.setup?.secondary;
+      const labelKey = (id === 'setupPrimary' ? spec.primary : spec.secondary) || 'openProviderPage';
+      void copySetupLink(url, el(id), labelKey);
+    };
+  }
+  if (el('openOauthConsole')) el('openOauthConsole').onclick = () => {
+    const preset = providerPreset();
+    void copySetupLink(preset?.setup?.console, el('openOauthConsole'), preset?.id === 'outlook' ? 'openEntra' : 'openCloudConsole');
+  };
+  async function saveProject(provider, extra = {}) {
+    const prefix = projectPrefix(provider);
+    const result = await call('appConfig', { provider, clientId: text(`${prefix}ClientId`), clientSecret: text(`${prefix}Secret`), ...extra });
+    if (!result.ok) {
+      if (el('projectSettings')) el('projectSettings').open = true;
+      fieldIssue(`${prefix}ClientId`, result.message || tr('projectRequired'));
+      return;
+    }
+    clearIssue();
+    if (el(`${prefix}Secret`)) el(`${prefix}Secret`).value = '';
+    const state = await call('state', {});
+    if (state?.ok) render(state);
+  }
+  for (const [provider, prefix] of [['gmail', 'appGmail'], ['outlook', 'appOutlook']]) {
+    el(`${prefix}Save`).onclick = () => saveProject(provider);
+    el(`${prefix}ClearSecret`).onclick = () => saveProject(provider, { clearSecret: true });
+    el(`${prefix}Clear`).onclick = () => saveProject(provider, { clear: true });
+    el(`${prefix}Console`).onclick = () => {
+      const preset = presets.find((item) => item.id === provider);
+      void copySetupLink(preset?.setup?.console, el(`${prefix}Console`), provider === 'outlook' ? 'openEntra' : 'openCloudConsole');
+    };
+  }
+  if (el('useProjectApp')) el('useProjectApp').onclick = () => {
+    el('oauthClientId').value = '';
+    el('clientSecret').value = '';
+    invalidateDraft();
+    syncAuthVisibility();
+  };
+  if (el('clearCredentials')) el('clearCredentials').onclick = async () => {
+    if (accountBusy || !validateAccountForm()) return;
+    accountBusy = true;
+    try {
+      const result = await call('save', {
+        account: accountBody(),
+        credential: { password: null, clientSecret: null, refreshToken: null, accessToken: null, tokenClientId: null },
+        watchEnabled: checked('watchEnabled'),
+        editingId,
+      });
+      if (!result.ok) { setStatus(result.message || tr('saveFailed'), 'danger'); show(result); return; }
+      clearSecrets();
+      const state = await call('state', {});
+      if (result.account) fill(result.account);
+      if (state?.ok) render(state);
+      setStatusKey('credentialsCleared', 'ok');
+    } finally { accountBusy = false; }
+  };
+  for (const id of ['user', 'label', 'note', 'from', 'imapIdName', 'imapIdVersion', 'folderSent', 'folderDrafts', 'folderTrash', 'folderArchive', 'customHeaders', 'oauthClientId', 'oauthTokenUrl', 'oauthScope', 'password', 'refreshToken', 'accessToken', 'clientSecret', 'timeoutMs']) el(id).oninput = () => invalidateDraft();
   if (el('id')) el('id').oninput = () => syncAuthVisibility();
   for (const srvKey of ['imapHost', 'imapPort', 'smtpHost', 'smtpPort', 'imapSecure', 'smtpSecure', 'allowInsecure']) {
     if (el(srvKey)) el(srvKey).onchange = () => syncServerSummary();

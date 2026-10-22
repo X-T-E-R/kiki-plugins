@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { applyOAuthDefaults, coded, loadState, mergeCredential, normalizeAccount, publicAccount } from './accounts.mjs';
+import { appConfigView, coded, credentialForStorage, loadState, mailboxAuth, mergeCredential, normalizeAccount, publicAccount } from './accounts.mjs';
 import { idempotencyKey, messageIdentity, normalizeId } from './identity.mjs';
 import { listMailboxes, readSource, searchPage, withImap } from './imap.mjs';
 import { bridgeFrom, forwardMailDigest, idleBridgeView, inspectIm, summaryText } from './im.mjs';
@@ -75,7 +75,7 @@ class MailService {
       const result = action === 'state' ? await this.publicState(this.stateOf(context), { list: true })
         : action === 'routes' ? await this.routeState(context)
         : action === 'presets' ? { ok: true, presets: publicPresets() }
-        : ['testDraft', 'discardDraft', 'oauthStart', 'oauthStatus', 'oauthComplete', 'oauthCancel', 'default'].includes(action) ? await this.managementAction(action, args ?? {}, context ?? {})
+        : ['testDraft', 'discardDraft', 'oauthStart', 'oauthStatus', 'oauthComplete', 'oauthCancel', 'default', 'appConfig'].includes(action) ? await this.managementAction(action, args ?? {}, context ?? {})
         : await this.dispatch(this.panelTool(action), { ...(args ?? {}), action: this.panelAction(action) }, context ?? {}, true);
       return JSON.parse(redactJson(result, secrets));
     } catch (error) {
@@ -109,11 +109,29 @@ class MailService {
   }
 
   secrets(context) {
-    try { return secretValues(this.stateOf(context).credentials); } catch { return []; }
+    try {
+      const state = this.stateOf(context);
+      const found = secretValues(state.credentials);
+      for (const app of Object.values(state.oauthDefaults || {})) {
+        if (app && typeof app.clientSecret === 'string' && app.clientSecret.length >= 4) found.push(app.clientSecret);
+      }
+      return found;
+    } catch { return []; }
   }
 
   accountView(account, state) {
-    return { ...publicAccount(account, state.credentials), isDefault: state.defaultAccountId === account.id, lastTest: state.accountStatus[account.id] || null, oauthStatus: oauthStatus(account, state.credentials[account.id]) };
+    const cred = state.credentials[account.id];
+    const use = mailboxAuth(account, cred, state.oauthDefaults);
+    let status = oauthStatus(account, cred);
+    if (account.auth === 'oauth2' && !account.oauthClientId && !use.inherited) status = 'app_required';
+    else if (use.blocked) status = 'reauthorize';
+    return {
+      ...publicAccount(account, state.credentials),
+      isDefault: state.defaultAccountId === account.id,
+      lastTest: state.accountStatus[account.id] || null,
+      oauthStatus: status,
+      oauthInherited: use.inherited,
+    };
   }
 
   async publicState(state, options = {}) {
@@ -126,11 +144,13 @@ class MailService {
       summary: { accountCount: accounts.length, defaultAccountId: state.defaultAccountId, watchEnabled: state.watchEnabled, watchedCount: state.watchEnabled ? accounts.filter((account) => account.watch).length : 0, lastTest },
       imBridge: options.probe === false ? idleBridgeView(this.im) : await inspectIm(this.im ?? bridgeFrom(this.context), this.context?.signal, { list: options.list === true }),
       accounts,
+      apps: appConfigView(state.oauthDefaults),
     };
   }
 
   async managementAction(action, args, context) {
     const state = this.stateOf(context);
+    if (action === 'appConfig') return this.saveAppConfig(args, context);
     if (action === 'default') {
       const account = requireAccount(state, args.accountId);
       await this.updateSettings(context, { defaultAccountId: account.id });
@@ -157,12 +177,18 @@ class MailService {
     if (draft) {
       const original = JSON.parse(draft.account);
       if (draft.expiresAt < Date.now() || ['id', 'user', 'auth', 'oauthClientId', 'oauthTokenUrl'].some((key) => original[key] !== account[key])) throw coded('draft_expired', 'The authorization details changed or expired. Enter credentials or authorize again.');
+      this.assertAppStamp(account, draft.stamp, state.oauthDefaults);
       credential = mergeCredential(credential, draft.credential);
     }
+    const use = mailboxAuth(account, credential, state.oauthDefaults);
+    if (account.auth === 'oauth2' && !account.oauthClientId && !use.inherited) throw coded('app_required', 'Set up the Gmail or Outlook project before authorizing this mailbox.');
     if (action === 'testDraft') {
-      const result = await this.checkConnection(account, credential, context, async (patch) => { credential = mergeCredential(credential, patch); });
+      if (use.blocked) throw coded('oauth_reauthorize', 'This mailbox was authorized for a previous OAuth client. Authorize it again.');
+      const result = await this.checkConnection(account, credential, context, async (patch) => {
+        credential = mergeCredential(credential, { ...patch, ...(use.clientId ? { tokenClientId: use.clientId } : {}) });
+      });
       const draftId = randomUUID();
-      this.storeDraft(draftId, { accountId: account.id, account: JSON.stringify(account), credential, tested: true, expiresAt: Date.now() + 600000 });
+      this.storeDraft(draftId, { accountId: account.id, account: JSON.stringify(account), credential: credentialForStorage(account, credential), stamp: use.stamp, tested: true, expiresAt: Date.now() + 600000 });
       this.draftCredentials.delete(args.draftId);
       this.pruneDrafts();
       return { ...result, draftId };
@@ -172,14 +198,86 @@ class MailService {
       this.oauthFlows.delete(flowId);
       const draftId = randomUUID();
       const id = randomUUID();
-      const flow = await startLoopbackAuthorization(account, credential, async (patch) => {
-        this.storeDraft(draftId, { accountId: account.id, account: JSON.stringify(account), credential: mergeCredential(credential, patch), expiresAt: Date.now() + 600000 });
+      const stamp = use.stamp;
+      const runtime = { ...use.runtime };
+      if (use.blocked) {
+        delete runtime.refreshToken;
+        delete runtime.accessToken;
+        delete runtime.accessTokenExpiresAt;
+      }
+      const flow = await startLoopbackAuthorization(use.account, runtime, async (patch) => {
+        this.assertAppStamp(account, stamp, this.stateOf(context).oauthDefaults);
+        const base = { ...(credential ?? {}) };
+        if (use.blocked) {
+          delete base.refreshToken;
+          delete base.accessToken;
+          delete base.accessTokenExpiresAt;
+          delete base.tokenClientId;
+        }
+        const next = credentialForStorage(account, mergeCredential(base, { ...patch, tokenClientId: use.clientId }));
+        this.storeDraft(draftId, { accountId: account.id, account: JSON.stringify(account), credential: next, stamp, expiresAt: Date.now() + 600000 });
         this.pruneDrafts();
       }, { signal: this.context?.signal, fetch: this.deps.oauthFetch });
-      this.oauthFlows.set(id, flow);
+      const guarded = {
+        authorizationUrl: flow.authorizationUrl,
+        redirectUri: flow.redirectUri,
+        expiresAt: flow.expiresAt,
+        cancel: () => flow.cancel(),
+        inspect: () => flow.inspect(),
+        complete: async (input) => {
+          try { this.assertAppStamp(account, stamp, this.stateOf(context).oauthDefaults); }
+          catch (error) { flow.cancel(); this.oauthFlows.delete(id); throw error; }
+          return flow.complete(input);
+        },
+      };
+      this.oauthFlows.set(id, guarded);
       return { ok: true, flowId: id, draftId, authorizationUrl: flow.authorizationUrl, redirectUri: flow.redirectUri, expiresAt: flow.expiresAt, phase: 'waiting' };
     }
     throw coded('unknown_action', 'Unknown account management action.');
+  }
+
+  assertAppStamp(account, stamp, defaults) {
+    if (!stamp) return;
+    const current = mailboxAuth(account, {}, defaults).stamp;
+    if (!current || current.provider !== stamp.provider || current.clientId !== stamp.clientId || current.revision !== stamp.revision) {
+      throw coded('app_changed', 'The Mail project changed after this authorization. Generate a new link and test the mailbox again.');
+    }
+  }
+
+  async saveAppConfig(args, context) {
+    const state = this.stateOf(context);
+    const provider = clean(args.provider, 32);
+    if (!['gmail', 'outlook'].includes(provider)) throw coded('app_invalid', 'Choose Gmail or Outlook.');
+    const defaults = { ...state.oauthDefaults };
+    const previous = defaults[provider] && typeof defaults[provider] === 'object' ? defaults[provider] : null;
+    let clientChanged = false;
+    if (args.clear === true) {
+      clientChanged = Boolean(previous);
+      delete defaults[provider];
+    } else {
+      const clientId = clean(args.clientId, 256);
+      if (!clientId) throw coded('app_invalid', 'Enter the OAuth client ID from your cloud project.');
+      let clientSecret = typeof previous?.clientSecret === 'string' ? previous.clientSecret : '';
+      if (args.clearSecret === true) clientSecret = '';
+      const typed = clean(args.clientSecret, 512);
+      if (typed) clientSecret = typed;
+      const same = Boolean(previous && previous.clientId === clientId && (previous.clientSecret || '') === clientSecret && typeof previous.revision === 'string' && previous.revision);
+      const next = { clientId };
+      if (clientSecret) next.clientSecret = clientSecret;
+      next.revision = same ? previous.revision : randomUUID();
+      clientChanged = !previous || previous.clientId !== clientId;
+      defaults[provider] = next;
+    }
+    const patch = { oauthDefaults: JSON.stringify(defaults) };
+    if (clientChanged) {
+      const status = { ...state.accountStatus };
+      for (const account of state.accounts) {
+        if (account.auth === 'oauth2' && !account.oauthClientId && account.preset === provider) delete status[account.id];
+      }
+      patch.accountStatus = JSON.stringify(status);
+    }
+    await this.updateSettings(context, patch);
+    return { ok: true, apps: appConfigView(this.stateOf(context).oauthDefaults) };
   }
 
   storeDraft(id, draft) {
@@ -194,17 +292,25 @@ class MailService {
   }
 
   async auth(account, credential, context, persist) {
-    const key = JSON.stringify([account.id, account.user, account.oauthClientId, account.oauthTokenUrl, credential]);
+    const state = this.stateOf(context);
+    const use = mailboxAuth(account, credential, state.oauthDefaults);
+    if (account.auth === 'oauth2' && !account.oauthClientId && !use.inherited) throw coded('app_required', 'Set up the Gmail or Outlook project before using this mailbox.');
+    if (use.blocked) throw coded('oauth_reauthorize', 'This mailbox was authorized for a previous OAuth client. Authorize it again.');
+    const key = authFlightKey(use.account, use.runtime);
     let flight = this.authFlights.get(key);
     if (!flight) {
       let patch;
-      flight = { users: 0, promise: resolveAuth(account, credential, (value) => { patch = value; }, { signal: context.signal, fetch: this.deps.oauthFetch }).then((auth) => ({ auth, patch })) };
+      flight = { users: 0, promise: resolveAuth(use.account, use.runtime, (value) => { patch = value; }, { signal: context.signal, fetch: this.deps.oauthFetch }).then((auth) => ({ auth, patch })) };
       this.authFlights.set(key, flight);
     }
     flight.users++;
     try {
       const result = await flight.promise;
-      if (result.patch) await (persist || ((patch) => this.rememberCredential(context, account.id, patch)))(result.patch);
+      if (result.patch) {
+        const patch = { ...result.patch };
+        if (use.clientId && (patch.accessToken || patch.refreshToken)) patch.tokenClientId = use.clientId;
+        await (persist || ((value) => this.rememberCredential(context, account.id, value)))(patch);
+      }
       return result.auth;
     } finally {
       if (--flight.users === 0 && this.authFlights.get(key) === flight) this.authFlights.delete(key);
@@ -234,8 +340,7 @@ class MailService {
     const state = this.stateOf(context);
     const body = args.account ?? args;
     const normalized = normalizeAccount(body, { allowSecrets });
-    const defaulted = applyOAuthDefaults(normalized, state.credentials, state.oauthDefaults);
-    const account = defaulted.account;
+    const account = normalized;
     const accounts = state.accounts.filter((item) => item.id !== account.id);
     accounts.push(account);
     const credentials = { ...state.credentials };
@@ -243,9 +348,12 @@ class MailService {
     if (!allowSecrets && credential) throw coded('credential_in_tool', 'Passwords and tokens stay in the Mail panel.');
     const draft = allowSecrets ? this.draftCredentials.get(args.draftId) : undefined;
     if (args.draftId && (!draft || draft.account !== JSON.stringify(account) || draft.expiresAt < Date.now())) throw coded('draft_expired', 'Account details changed or the test expired. Test again before saving.');
-    if (defaulted.credential) credentials[account.id] = mergeCredential(credentials[account.id], defaulted.credential);
-    if (draft) credentials[account.id] = mergeCredential(credentials[account.id], draft.credential);
+    if (draft) {
+      this.assertAppStamp(account, draft.stamp, state.oauthDefaults);
+      credentials[account.id] = mergeCredential(credentials[account.id], draft.credential);
+    }
     if (allowSecrets && credential) credentials[account.id] = mergeCredential(credentials[account.id], credential);
+    if (credentials[account.id]) credentials[account.id] = credentialForStorage(account, credentials[account.id]);
     const watchEnabled = typeof args.watchEnabled === 'boolean' ? args.watchEnabled : state.watchEnabled;
     await this.persist(context, accounts, credentials, watchEnabled);
     if (draft?.tested && !credential) await this.updateSettings(context, { accountStatus: JSON.stringify({ ...this.stateOf(context).accountStatus, [account.id]: { ok: true, at: Date.now(), message: 'IMAP and SMTP accepted the credentials.' } }) });
@@ -690,7 +798,7 @@ class MailService {
         if (signal.aborted || this.closed) return;
         attempt += 1;
         await this.recordEvent(account.id, { kind: 'watch-error', code: error.code || 'disconnected', message: error.message, attempt });
-        if (['auth_failed', 'tls_required', 'cancelled', 'auth_missing', 'oauth_prerequisite', 'oauth_reauthorize', 'oauth_client_invalid', 'oauth_rejected'].includes(error.code)) {
+        if (['auth_failed', 'tls_required', 'cancelled', 'auth_missing', 'oauth_prerequisite', 'oauth_reauthorize', 'oauth_client_invalid', 'oauth_rejected', 'app_required', 'app_changed'].includes(error.code)) {
           await this.recordEvent(account.id, { kind: 'watch-stopped', code: error.code, attempt });
           return;
         }
@@ -793,6 +901,19 @@ class MailService {
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, `${JSON.stringify(event)}\n`, { flag: 'a' });
   }
+}
+
+function authFlightKey(account, runtime) {
+  const hash = createHash('sha256')
+    .update(String(runtime?.password || ''))
+    .update('\0')
+    .update(String(runtime?.refreshToken || ''))
+    .update('\0')
+    .update(String(runtime?.accessToken || ''))
+    .update('\0')
+    .update(String(runtime?.clientSecret || ''))
+    .digest('hex');
+  return [account.id, account.user, account.oauthClientId, account.oauthTokenUrl, hash].join('\0');
 }
 
 function requireAccount(state, accountId) {

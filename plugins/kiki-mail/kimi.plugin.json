@@ -1,6 +1,6 @@
 {
   "name": "kiki-mail",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "description": "Read and send mail through the IMAP and SMTP accounts you configure. Optional new-mail notices need a host IM bridge.",
   "license": "MIT",
   "icon": "./icon.svg",
@@ -48,7 +48,7 @@
           "oauthDefaults": {
             "type": "string",
             "title": "在 Mail 面板里管理账号",
-            "description": "内置 OAuth 客户端凭据，由产品预置，不在设置页编辑。",
+            "description": "Gmail 与 Outlook 的项目 OAuth 应用在 Mail 面板配置一次。不要在这里编辑 JSON。",
             "secret": true,
             "hidden": true
           },
@@ -57,7 +57,7 @@
           "watchEnabled": {
             "type": "boolean",
             "title": "Watch inboxes while Kiki is open",
-            "description": "在 Mail 面板里管理账号。",
+            "description": "全局开关，作用于所有已开启监听的邮箱。账号订阅、转发和超时在 Mail 面板里按作用域设置。",
             "default": false
           }
         }

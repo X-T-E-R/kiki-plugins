@@ -18,7 +18,13 @@ export const providerPresets = [
     oauthAuthorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
     oauthTokenUrl: 'https://oauth2.googleapis.com/token',
     oauthScope: 'https://mail.google.com/',
-    note: 'Use an app password or authorize your own desktop OAuth client. Enable mail access in your Google account.',
+    setup: {
+      kind: 'appPassword',
+      primary: 'https://myaccount.google.com/apppasswords',
+      secondary: 'https://myaccount.google.com/security',
+      console: 'https://console.cloud.google.com/apis/credentials',
+    },
+    note: 'Gmail reads and sends over IMAP and SMTP with an app password. OAuth is optional and needs a Google Cloud project of your own.',
   },
   {
     id: 'outlook',
@@ -33,7 +39,11 @@ export const providerPresets = [
     oauthAuthorizationUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
     oauthTokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
     oauthScope: 'https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access',
-    note: 'Use your own OAuth app registration with mail permissions and a loopback redirect. Your organization may need to allow SMTP AUTH.',
+    setup: {
+      kind: 'oauth',
+      console: 'https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade',
+    },
+    note: 'Outlook needs OAuth: register an app in Microsoft Entra with IMAP and SMTP permissions and a loopback redirect. Your organization may also need to allow SMTP AUTH.',
   },
   {
     id: 'qq',
@@ -45,7 +55,8 @@ export const providerPresets = [
     smtpHost: 'smtp.qq.com',
     smtpPort: 465,
     smtpSecure: true,
-    note: 'QQ uses an authorization code generated in mailbox settings, not the account login password. Not signed in against QQ here.',
+    setup: { kind: 'appPassword', primary: 'https://mail.qq.com/' },
+    note: 'QQ uses an authorization code from mailbox settings (Settings → Account → POP3/IMAP/SMTP service), not the login password. Not signed in against QQ here.',
   },
   {
     id: '163',
@@ -57,7 +68,8 @@ export const providerPresets = [
     smtpHost: 'smtp.163.com',
     smtpPort: 465,
     smtpSecure: true,
-    note: '163 uses an authorization code. Some accounts also expect an IMAP ID command from the client. Not signed in against 163 here.',
+    setup: { kind: 'appPassword', primary: 'https://mail.163.com/' },
+    note: '163 uses an authorization code from mailbox settings (Settings → POP3/SMTP/IMAP). Some accounts also expect an IMAP ID command from the client. Not signed in against 163 here.',
   },
   {
     id: 'icloud',
@@ -69,7 +81,8 @@ export const providerPresets = [
     smtpHost: 'smtp.mail.me.com',
     smtpPort: 587,
     smtpSecure: false,
-    note: 'iCloud IMAP needs an app-specific password. Not signed in against iCloud here.',
+    setup: { kind: 'appPassword', primary: 'https://account.apple.com/account/manage' },
+    note: 'iCloud IMAP needs an app-specific password from your Apple Account. Not signed in against iCloud here.',
   },
   {
     id: 'fastmail',
@@ -81,6 +94,7 @@ export const providerPresets = [
     smtpHost: 'smtp.fastmail.com',
     smtpPort: 465,
     smtpSecure: true,
+    setup: { kind: 'appPassword', primary: 'https://app.fastmail.com/settings/security' },
     note: 'Fastmail app passwords work for IMAP and SMTP. Not signed in against Fastmail here.',
   },
   {

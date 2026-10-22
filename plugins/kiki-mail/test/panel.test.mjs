@@ -573,13 +573,15 @@ test('account wizard tests before save, keeps notes and removable declarations, 
     assert.equal(get('accountCards').children.length, 2);
     get('newAccount').onclick(); get('preset').value = 'gmail'; get('preset').onchange();
     get('user').value = 'other@example.test'; get('id').value = 'other'; get('auth').value = 'oauth2'; get('oauthClientId').value = 'public-client';
-    get('imapHost').value = '127.0.0.1'; get('imapPort').value = String(fx.imapPort);
-    get('smtpHost').value = '127.0.0.1'; get('smtpPort').value = String(fx.smtpPort);
+    get('imapHost').value = '127.0.0.1'; get('imapPort').value = String(fx.imapPort); get('imapSecure').checked = false;
+    get('smtpHost').value = '127.0.0.1'; get('smtpPort').value = String(fx.smtpPort); get('smtpSecure').checked = false;
+    get('allowInsecure').checked = true;
     await get('oauthStart').onclick();
     assert.equal(get('oauthFlow').hidden, false);
     await get('copyOAuth').onclick();
     const authorization = new URL(copied);
     assert.equal(authorization.searchParams.get('code_challenge_method'), 'S256');
+    assert.equal(authorization.searchParams.get('client_id'), 'public-client');
     await get('oauthCheck').onclick();
     assert.equal(get('oauthFeedback').textContent, 'Waiting for authorization.');
     const callback = new URL(authorization.searchParams.get('redirect_uri'));
@@ -587,8 +589,13 @@ test('account wizard tests before save, keeps notes and removable declarations, 
     get('callbackUrl').value = callback.href;
     await get('oauthComplete').onclick();
     assert.equal(get('callbackUrl').value, '');
-    assert.equal(get('oauthFeedback').textContent, 'Authorization received. Test and save the account.');
+    assert.equal(requests.some((request) => request.action === 'testDraft' && request.args.account.id === 'other'), true);
+    assert.equal(requests.some((request) => request.action === 'save' && request.args.account?.id === 'other'), false);
+    assert.equal(get('oauthFeedback').textContent, 'IMAP authentication failed.');
+    assert.equal(JSON.parse(settings.accounts).some((account) => account.id === 'other'), false);
     assert.equal(JSON.stringify(settings).includes('fixture-oauth'), false);
     assert.equal(get('result').textContent.includes('fixture-oauth'), false);
+    assert.equal(script.includes('openExternal'), false);
+    assert.equal(script.includes('window.open'), false);
   } finally { await service.deactivate(); await fx.close(); await rm(dir, { recursive: true, force: true }); }
 });

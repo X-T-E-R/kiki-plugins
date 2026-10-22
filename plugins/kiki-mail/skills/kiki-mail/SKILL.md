@@ -5,7 +5,7 @@ description: Read, search, and send mail through accounts configured in Kiki Mai
 
 # Kiki Mail
 
-Use the configured accounts. Passwords and tokens stay in the Mail panel. Do not ask the user to paste them into the chat, and do not put them in tool arguments.
+Use the configured accounts. Passwords and tokens stay in the Mail panel. Do not ask the user to paste them into the chat, and do not put them in tool arguments. Gmail and Outlook OAuth clients are entered once in the Mail project, then reused by mailboxes that do not already have their own client. Do not ask for a client ID or client secret in chat.
 
 The tools are `plugin__kiki_mail__MailAccount`, `plugin__kiki_mail__Mailbox`, and `plugin__kiki_mail__MailSend`.
 

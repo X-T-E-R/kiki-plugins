@@ -11,7 +11,7 @@ const repo = path.resolve(root, '../..');
 const manifest = JSON.parse(await readFile(path.join(root, 'kimi.plugin.json'), 'utf8'));
 const sdkLock = JSON.parse(await readFile(path.join(repo, 'sdk.lock.json'), 'utf8'));
 assert.equal(manifest.name, 'kiki-mail');
-assert.equal(manifest.version, '0.2.1');
+assert.equal(manifest.version, '0.2.3');
 assert.equal(satisfies(sdkLock.pluginEngineVersion, manifest['x-kiki'].engines.kiki), true);
 const files = await packageFiles(root);
 for (const required of [
@@ -41,7 +41,7 @@ await plugin.register({
   },
 });
 assert.equal(JSON.stringify(registered), JSON.stringify(manifest['x-kiki'].tools));
-const tests = spawnSync(process.execPath, ['--test', 'test/accounts.test.mjs', 'test/im-bridge.test.mjs', 'test/im-digest.test.mjs', 'test/repairs.test.mjs', 'test/durability.test.mjs', 'test/protocol.test.mjs', 'test/panel.test.mjs', 'test/panel-races.test.mjs'], {
+const tests = spawnSync(process.execPath, ['--test', 'test/accounts.test.mjs', 'test/im-bridge.test.mjs', 'test/im-digest.test.mjs', 'test/repairs.test.mjs', 'test/durability.test.mjs', 'test/protocol.test.mjs', 'test/panel.test.mjs', 'test/panel-races.test.mjs', 'test/project-apps.test.mjs'], {
   cwd: root,
   stdio: 'inherit',
 });
