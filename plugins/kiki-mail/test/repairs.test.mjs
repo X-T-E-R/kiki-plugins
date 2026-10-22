@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { mailServiceForTests } from '../entry.mjs';
+import { storageKey } from '../lib/paths.mjs';
 import { readEvents } from '../lib/service.mjs';
 import { startFixture } from './fixture.mjs';
 
@@ -178,7 +179,7 @@ test('an accepted send whose receipt write fails is not marked failed or resent'
     assert.equal(first.body.receiptStored, false);
     assert.equal(first.body.resent, false);
     assert.equal(active.fx.state.smtpData, 1);
-    const stored = JSON.parse(await readFile(path.join(active.dir, 'sends', 'ada', 'accept-1.json'), 'utf8'));
+    const stored = JSON.parse(await readFile(path.join(active.dir, 'sends', 'ada', `${storageKey('accept-1', 'send')}.json`), 'utf8'));
     assert.equal(stored.phase, 'sending');
     assert.notEqual(stored.outcome, 'failed');
     const blocked = await tool(active, 'MailSend', {
