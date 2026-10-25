@@ -4,7 +4,9 @@ Generate playable speech in Kiki, optionally send it to connected chats, and sen
 
 ## Set up speech
 
-Use a Host with the public plugin Media and messages APIs. Install and enable `kiki-media` and `kiki-voice`. Configure a speech source in Media settings, then call `plugin__kiki_voice__voice`:
+Use a Host with plugin dependencies and the public Media and messages APIs. Install and enable `kiki-media` **0.2.1 or a compatible 0.2.x version**, then install and enable `kiki-voice`. Voice declares `kiki-media: ^0.2.1`; the Host checks that Media is installed, enabled and compatible before starting or executing Voice. If a dependency check fails, install, enable or update Media, then retry Voice; the Host does not change those choices automatically.
+
+Configure a speech source in Media settings, then call `plugin__kiki_voice__voice`:
 
 ```json
 { "action": "providers" }

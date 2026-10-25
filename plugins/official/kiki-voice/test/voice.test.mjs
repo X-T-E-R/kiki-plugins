@@ -40,6 +40,8 @@ const input = { request_id: 'greeting-1', text: '你好', voice: 'example-voice'
 test('manifest and registered tool definitions have one source', async () => {
   const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
   assert.deepEqual(manifest['x-kiki'].tools, tools);
+  assert.deepEqual(manifest['x-kiki'].dependencies, { 'kiki-media': '^0.2.1' });
+  assert.equal(Object.hasOwn(manifest['x-kiki'].settings.schema, 'additionalProperties'), false);
   const registered = [];
   register({ registerTool: (definition, handler) => registered.push({ definition, handler }) });
   assert.deepEqual(registered.map((item) => item.definition), tools);

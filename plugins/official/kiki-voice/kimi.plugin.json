@@ -1,6 +1,6 @@
 {
   "name": "kiki-voice",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Speak through Kiki Media and reuse its playable audio artifacts, voice catalog and recoverable jobs.",
   "license": "MIT",
   "interface": {
@@ -12,6 +12,9 @@
       "kiki": ">=0.4.1"
     },
     "entry": "./entry.mjs",
+    "dependencies": {
+      "kiki-media": "^0.2.1"
+    },
     "settings": {
       "schemaVersion": 1,
       "schema": {
@@ -63,8 +66,7 @@
             },
             "default": ""
           }
-        },
-        "additionalProperties": false
+        }
       }
     },
     "tools": [
