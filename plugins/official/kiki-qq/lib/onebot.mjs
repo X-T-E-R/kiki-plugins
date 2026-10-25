@@ -4,6 +4,7 @@ import { createHttpClient, HttpProtocolError } from './http.mjs';
 import { parseIdentity } from './identity.mjs';
 import { normalizeOneBotEvent } from './normalize.mjs';
 import { connectOneBot } from './onebot-transport.mjs';
+import { createOneBotHistory } from './onebot-history.mjs';
 import { delivered, failed, receiptFromError, unknown, unsupported } from './receipts.mjs';
 
 function numeric(value, name, { signed = false } = {}) {
@@ -27,12 +28,12 @@ export function createOneBotClient(config = {}, deps = {}) {
     defaultHeaders: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, allowOrigins: deps.allowOrigins });
   const connect = deps.connect ?? connectOneBot;
   const pending = new Map();
-  let link, controller, loop, eventEmit, verified = false, earlyFrames = [];
+  let link, controller, loop, eventEmit, verified = false, identified = false, earlyFrames = [];
   let accountId = config.selfId ? numeric(config.selfId, 'OneBot selfId') : undefined;
   function parseResponse(value) {
     if (value?.status === 'ok' && value.retcode !== undefined && Number(value.retcode) === 0) return value.data;
     const uncertain = value?.status === 'async' || Number(value?.retcode) === 1 || value?.retcode === undefined;
-    throw new HttpProtocolError(String(value?.message ?? value?.wording ?? 'OneBot action failed'), { code: uncertain ? 'OUTCOME_UNKNOWN' : 'ONEBOT_ACTION_FAILED' });
+    throw new HttpProtocolError(String(value?.message ?? value?.wording ?? 'OneBot action failed'), { code: uncertain ? 'OUTCOME_UNKNOWN' : 'ONEBOT_ACTION_FAILED', bizCode: Number(value?.retcode) });
   }
   async function call(action, params = {}, { signal } = {}) {
     if (controller) signal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
@@ -122,7 +123,7 @@ export function createOneBotClient(config = {}, deps = {}) {
           const self = await call('get_login_info', {}, { signal: lifetime });
           const actual = numeric(self?.user_id, 'OneBot login user_id');
           if (accountId && accountId !== actual) throw Object.assign(new Error('OneBot account changed; check self ID and endpoint'), { code: 'ACCOUNT_CHANGED' });
-          accountId = actual; verified = true;
+          accountId = actual; verified = true; identified = true;
           for (const frame of earlyFrames.splice(0)) receive(frame);
           if (initial) { initial = false; lifetime.removeEventListener('abort', cancelled); firstResolve({ accountId }); }
           await closed;
@@ -166,18 +167,24 @@ export function createOneBotClient(config = {}, deps = {}) {
       return result(await call(target.scope === 'group' ? 'send_group_msg' : 'send_private_msg', { [target.scope === 'group' ? 'group_id' : 'user_id']: target.targetId, message: [segment] }, { signal }));
     } catch (error) { return receiptFromError(error); }
   }
-  async function readList(action, params, signal) {
+  async function readAction(action, params, signal) {
     if (!config.useWebSocket) {
-      const self = await call('get_login_info', {}, { signal });
-      const actual = numeric(self?.user_id, 'OneBot login user_id');
-      if (accountId && accountId !== actual) throw new Error('OneBot HTTP account differs from the expected self ID');
-      accountId = actual;
+      try {
+        const self = await call('get_login_info', {}, { signal });
+        const actual = numeric(self?.user_id, 'OneBot login user_id');
+        if (accountId && accountId !== actual) throw Object.assign(new Error('OneBot HTTP account differs from the expected self ID'), { code: 'ACCOUNT_CHANGED' });
+        accountId = actual; identified = true;
+      } catch (error) { throw Object.assign(error, { readPhase: 'identity' }); }
     }
-    const items = await call(action, params, { signal });
+    return call(action, params, { signal });
+  }
+  async function readList(action, params, signal) {
+    const items = await readAction(action, params, signal);
     if (!Array.isArray(items)) throw new HttpProtocolError('OneBot list response is not an array', { code: 'INVALID_RESPONSE' });
     return { items, nextCursor: null };
   }
   async function listGroups({ signal } = {}) { return readList('get_group_list', {}, signal); }
   async function listGroupMembers({ groupId, signal } = {}) { return readList('get_group_member_list', { group_id: numeric(groupId, 'groupId') }, signal); }
-  return { start, stop, call, sendText, sendMedia, listGroups, listGroupMembers, get accountId() { return accountId; } };
+  const history = createOneBotHistory({ read: readAction, getAccountId: () => identified ? accountId : undefined, transport: config.useWebSocket ? 'websocket' : 'http' });
+  return { start, stop, call, sendText, sendMedia, listGroups, listGroupMembers, ...history, get accountId() { return accountId; } };
 }

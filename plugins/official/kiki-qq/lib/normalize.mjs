@@ -4,6 +4,14 @@ import { quotePreview } from './official-references.mjs';
 import { dispatchEvent } from '../vendor/qqbot-gateway/event-dispatcher.js';
 
 const OFFICIAL_MESSAGE_TYPES = new Set(['C2C_MESSAGE_CREATE', 'GROUP_AT_MESSAGE_CREATE', 'GROUP_MESSAGE_CREATE']);
+function unixTimestamp(value) {
+  const seconds = typeof value === 'number' || typeof value === 'string' && /^\d+$/u.test(value) ? Number(value) : NaN;
+  const milliseconds = seconds * 1000;
+  return Number.isSafeInteger(seconds) && seconds >= 0 && Number.isSafeInteger(milliseconds) ? milliseconds : undefined;
+}
+function messageId(value) {
+  return typeof value === 'string' && /^-?\d+$/u.test(value) || typeof value === 'number' && Number.isSafeInteger(value);
+}
 function partEvents(base, text, media, { maxInboundBytes = 8 * 1024 * 1024, keepEmpty = false } = {}) {
   const output = [];
   if (text || (!media.length && keepEmpty)) output.push({ ...base, kind: 'text', text: text || undefined });
@@ -31,7 +39,9 @@ export function normalizeOfficialEvent(raw, { eventType, cursor, maxInboundBytes
   const refMsgIdx = metadata?.refMsgIdx;
   const resolved = refMsgIdx ? references?.resolve(identity, refMsgIdx) : undefined;
   references?.record(identity, metadata?.msgIdx, String(raw.id));
-  const base = { eventId: `official:${raw.id}`, sourceMessageId: String(raw.id), cursor, identity,
+  const at = typeof raw.timestamp === 'string' ? Date.parse(raw.timestamp) : NaN;
+  const base = { eventId: `official:${raw.id}`, sourceMessageId: String(raw.id), cursor, identity, operation: 'create',
+    timestamp: Number.isSafeInteger(at) && at >= 0 ? at : undefined,
     mentioned: type === 'GROUP_AT_MESSAGE_CREATE' || mentions.some((item) => item.is_you === true), mentionIds,
     replyToMessageId: typeof raw.message_reference?.message_id === 'string' && raw.message_reference.message_id ? raw.message_reference.message_id : resolved,
     preview: quotePreview(raw, refMsgIdx, resolved) };
@@ -48,14 +58,25 @@ function interaction(raw, cursor) {
     replyToMessageId: data.message_id ? String(data.message_id) : undefined }];
 }
 export function normalizeOneBotEvent(raw, { cursor, selfId, maxInboundBytes } = {}) {
-  if (!raw || raw.post_type !== 'message' || !['private', 'group'].includes(raw.message_type) || raw.message_id === undefined) return [];
+  if (!raw || !messageId(raw.message_id)) return [];
+  if (raw.post_type === 'notice' && ['group_recall', 'friend_recall'].includes(raw.notice_type)) {
+    const groupId = raw.notice_type === 'group_recall' ? raw.group_id : undefined;
+    if (raw.user_id === undefined || raw.notice_type === 'group_recall' && groupId === undefined) return [];
+    return [{ eventId: `onebot:retract:${raw.notice_type}:${raw.message_id}:${raw.time ?? ''}`, sourceMessageId: String(raw.message_id), cursor,
+      identity: onebotIdentity({ userId: raw.user_id, groupId }), kind: 'text', operation: 'retract',
+      isSelf: selfId === undefined ? undefined : String(raw.user_id) === String(selfId), timestamp: unixTimestamp(raw.time) }];
+  }
+  if (!['message', 'message_sent'].includes(raw.post_type) || !['private', 'group'].includes(raw.message_type)) return [];
   const userId = raw.user_id ?? raw.sender?.user_id;
   const groupId = raw.message_type === 'group' ? raw.group_id : undefined;
   if (userId === undefined || (raw.message_type === 'group' && groupId === undefined)) return [];
   const parsed = normalizeOneBotSegments(raw.message ?? raw.raw_message ?? '');
   const mentioned = parsed.mentions.some((item) => item.kind === 'all' || (selfId !== undefined && String(item.id) === String(selfId)));
   const identity = onebotIdentity({ userId, groupId, topicId: raw.topic_id ?? raw.thread_id, senderName: raw.sender?.card || raw.sender?.nickname, chatTitle: raw.group_name });
+  const isSelf = selfId === undefined ? undefined : String(userId) === String(selfId);
+  if (raw.message_type === 'private' && isSelf) return [];
   const base = { eventId: `onebot:${raw.message_id}`, sourceMessageId: String(raw.message_id), cursor, identity,
+    operation: 'create', isSelf, timestamp: unixTimestamp(raw.time),
     mentioned, mentionIds: parsed.mentions.map((item) => String(item.id)), replyToMessageId: parsed.replyTo };
   return partEvents(base, parsed.text, parsed.media, { maxInboundBytes, keepEmpty: mentioned || Boolean(parsed.replyTo) });
 }

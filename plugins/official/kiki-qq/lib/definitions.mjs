@@ -2,7 +2,7 @@ const common = { schemaVersion: 1, inbound: true, outbound: true, textLimit: 500
 const officialAudio = { mimeTypes: ['audio/wav', 'audio/wave', 'audio/x-wav', 'audio/mpeg', 'audio/mp3', 'audio/silk', 'audio/amr'], maxBytes: 20 * 1024 * 1024, rendering: 'qq-media-upload' };
 const onebotAudio = { mimeTypes: ['audio/wav', 'audio/mpeg', 'audio/ogg', 'audio/silk', 'audio/amr'], maxBytes: 20 * 1024 * 1024, rendering: 'onebot-segment' };
 export const officialAdapterDefinition = {
-  ...common, id: 'qq-official', listenerRealm: 'qq-official', label: 'QQ Bot API (official)', supportsButtons: true, supportsMentions: false,
+  ...common, id: 'qq-official', listenerRealm: 'qq-official', label: 'QQ Bot API (official)', supportsButtons: true, supportsMentions: false, supportsHistory: false,
   mediaCapabilities: [
     { kind: 'image', mimeTypes: ['image/png', 'image/jpeg', 'image/gif'], maxBytes: 20 * 1024 * 1024, rendering: 'qq-media-upload' },
     { kind: 'voice', ...officialAudio },
@@ -12,7 +12,7 @@ export const officialAdapterDefinition = {
   ],
 };
 export const onebotAdapterDefinition = {
-  ...common, id: 'qq-onebot', listenerRealm: 'qq-onebot', label: 'OneBot 11', supportsButtons: false, supportsMentions: true,
+  ...common, id: 'qq-onebot', listenerRealm: 'qq-onebot', label: 'OneBot 11', supportsButtons: false, supportsMentions: true, supportsHistory: true,
   mediaCapabilities: [
     { kind: 'image', mimeTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], maxBytes: 20 * 1024 * 1024, rendering: 'onebot-segment' },
     { kind: 'voice', ...onebotAudio },

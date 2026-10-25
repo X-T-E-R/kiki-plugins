@@ -8,7 +8,7 @@ Independently versioned plugins for [Kiki](https://github.com/X-T-E-R/kiki), inc
 
 Use a Kiki Host with checksum-pinned catalog installation support. If your build still opens an older catalog, set `KIKI_PLUGIN_MARKETPLACE_URL=https://x-t-e-r.github.io/kiki-plugins/marketplace.json` when starting Kiki. Open the plugin market, choose a package, and review the installation preview. Enable it after checking its contributions and requested permissions. Each first-party entry points to a versioned Release ZIP and its SHA-256 digest; old packages stay available.
 
-This checkout validates against **plugin engine 0.4.1** and the vendored **SDK 0.1.1** built from Kiki commit `9e93979e6b908d683e2c6801a34ef7e988d016cd`. The SDK artifact is a commit-pinned local integration candidate. QQ and Voice need a Host containing its IM adapter and execution-message contracts. Each package's `x-kiki.engines.kiki` range determines engine compatibility; engine, SDK and Kiki product versions are separate.
+This checkout validates against **plugin engine 0.4.1** and the vendored **SDK 0.1.1** built from Kiki commit `d3ddc00191c8685bbca77b26e355f24c6e65ae82`. The SDK artifact is commit-pinned; its unchanged version string does not make older 0.1.1 artifacts interchangeable. QQ and Voice need a Host containing the IM adapter and execution-message contracts; QQ 0.2.0 also needs the adapter-history contract. Each package's `x-kiki.engines.kiki` range determines engine compatibility; engine, SDK and Kiki product versions are separate.
 
 | Package | What you need to use it |
 | --- | --- |
@@ -32,7 +32,7 @@ npm run build
 npm run dev
 ```
 
-`check` validates catalog-listed local packages, exact manifest/entry registrations, manifest synchronization and each package's routed fixtures. QQ includes both platform test files and its public Host runner RPC fixture. To select one package, use `npm run check -- kiki-qq` with the same `KIKI_HOST_RUNNER`; unknown IDs fail. `npm run check -- catalog` validates only catalog metadata for CI's metadata-only route.
+`check` validates catalog-listed local packages, exact manifest/entry registrations, manifest synchronization and each package's routed fixtures. QQ includes platform and history tests plus public Host runner RPC fixtures for messaging and history. To select one package, use `npm run check -- kiki-qq` with the same `KIKI_HOST_RUNNER`; unknown IDs fail. `npm run check -- catalog` validates only catalog metadata for CI's metadata-only route.
 
 The runner must match the checksum in `sdk.lock.json`. Without `KIKI_HOST_RUNNER`, `check` downloads it from the fixed Kiki commit; that commit must be available on GitHub first. Checks use temporary fixtures without Kiki-home access or paid API credentials.
 
@@ -55,7 +55,7 @@ Office's real document-engine tests require `OFFICECLI_TEST_BINARY` pointing to 
 - `plugins/official/media-runtime/`: shared source distributed into ten self-contained providers; not a catalog package.
 - `plugins/marketplace.json`: descriptions and author-hosted external entries.
 - `scripts/`: packaging, validation, development server, and release tooling.
-- `vendor/kiki-plugin-sdk-0.1.1-host-9e93979e6b.tgz`: compiled SDK artifact selected by `sdk.lock.json`; older artifacts remain intact. CI recompiles the fixed Kiki ref and compares its public exports and compiled files.
+- `vendor/kiki-plugin-sdk-0.1.1-host-d3ddc0019.tgz`: compiled SDK artifact selected by `sdk.lock.json`; older artifacts remain intact. CI recompiles the fixed Kiki ref and compares its public exports and compiled files.
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) to change packages or propose third-party entries, and [RELEASING.md](RELEASING.md) to publish or recover a deployment.
 

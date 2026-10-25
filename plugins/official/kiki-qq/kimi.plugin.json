@@ -1,6 +1,6 @@
 {
   "name": "kiki-qq",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "QQ Bot and OneBot 11 transport adapters with private/group messaging, media receipts and read-only OneBot group tools.",
   "license": "MIT",
   "interface": {
@@ -187,6 +187,7 @@
         "label": "QQ Bot API (official)",
         "supportsButtons": true,
         "supportsMentions": false,
+        "supportsHistory": false,
         "mediaCapabilities": [
           {
             "kind": "image",
@@ -254,6 +255,7 @@
         "label": "OneBot 11",
         "supportsButtons": false,
         "supportsMentions": true,
+        "supportsHistory": true,
         "mediaCapabilities": [
           {
             "kind": "image",

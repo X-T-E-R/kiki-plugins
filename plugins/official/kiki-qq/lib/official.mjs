@@ -126,7 +126,10 @@ export function createOfficialClient(config = {}, deps = {}) {
   async function answerCallback(id, { signal, code = 0, data } = {}) {
     await request(`/interactions/${encodeURIComponent(required(id, 'callbackQueryId'))}`, { method: 'PUT', body: { code, data }, signal });
   }
+  const unsupportedHistory = async () => ({ status: 'unsupported', reason: 'endpoint_unsupported', messages: [], end: 'unknown', accountId: appId,
+    detail: 'Official QQ group/C2C APIs do not expose message lookup or group history' });
   return { appId, accessToken, request, sendText, sendMedia, observe: replies.observe, listGroups: unsupportedListing, listGroupMembers: unsupportedListing,
+    getMessage: unsupportedHistory, getGroupHistory: unsupportedHistory,
     normalize: (raw, options) => normalizeOfficialEvent(raw, { ...options, references }),
     gatewayUrl, answerCallback, clearToken() { cachedToken = undefined; }, clear() { cachedToken = undefined; replies.clear(); references.clear(); } };
 }

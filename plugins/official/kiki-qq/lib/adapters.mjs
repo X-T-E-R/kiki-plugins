@@ -2,6 +2,7 @@ import { fetchMediaBytes } from './attachments.mjs';
 import { officialAdapterDefinition, onebotAdapterDefinition } from './definitions.mjs';
 import { createOfficialClient, OfficialGateway, DEFAULT_INTENTS } from './official.mjs';
 import { createOneBotClient } from './onebot.mjs';
+import { readOneBotHistory } from './host-history.mjs';
 import { failed, partial, receiptFromError, unknown, unsupported } from './receipts.mjs';
 
 function setting(settings, key, fallback) {
@@ -164,6 +165,15 @@ function adapter(platform, definition, buildClient, deps) {
         const result = await work;
         return { ...result, accountId: `qq-onebot:${client.accountId}`, transport: state ? 'websocket' : 'http' };
       } finally { state?.sends.delete(work); }
+    },
+    async readHistory(request, context) {
+      if (platform !== 'onebot') return { status: 'unsupported', detail: 'Official QQ group/C2C APIs do not expose history' };
+      const state = run;
+      if (!state?.started || state.signal.aborted) throw new Error('OneBot history requires the verified running channel');
+      const signal = context?.signal ? AbortSignal.any([state.signal, context.signal]) : state.signal;
+      const work = readOneBotHistory(state.client, request, signal);
+      state.sends.add(work);
+      try { return await work; } finally { state.sends.delete(work); }
     },
     async editText() { return unsupported('edit'); },
     async answerCallback(id, context) {

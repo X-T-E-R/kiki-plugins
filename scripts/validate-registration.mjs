@@ -21,6 +21,7 @@ function checkAdapter(field, definition, adapter) {
   if (field === 'imAdapters') {
     if (definition.outbound) methods.push('sendText');
     if (definition.supportsEdit) methods.push('editText');
+    if (definition.supportsHistory) methods.push('readHistory');
     if (definition.mediaCapabilities.length) methods.push('sendMedia');
   }
   for (const method of methods) {

@@ -10,7 +10,7 @@
 - **OneBot 11**：填写已有实现的 `onebot__wsUrl`，必须是同时提供事件和 API 动作的**正向通用 WebSocket**。`onebot__accessToken` 用于 HTTP 和 WS 的 Bearer 认证。启动和每次重连都调用 `get_login_info` 核实账号；可填写 `onebot__selfId` 锁定预期数字账号，返回不匹配时关闭连接。新连接核实完成前，业务动作返回未发送，不会排队迁移到另一账号。
 - **群读取工具**：渠道运行时直接复用已核实的 WS 连接，无需另配 HTTP 地址。未启动渠道时，工具使用 `onebot__baseUrl`（默认 `http://127.0.0.1:5700`）独立读取：每次先核实 HTTP 登录账号，再读列表；可用 `onebot__selfId` 预先锁定账号。
 
-在 Host 的 IM 配置中选择对应渠道并启动。OneBot 反向 WS、HTTP 事件轮询和 QQ 客户端安装/登录由外部实现负责，本插件不会创建本地 listener。迁移已有内置 OneBot 账号时，当前集成候选需先停止旧入口；Host 的跨内置/插件入口监听占用互斥仍待发布物集成验证。
+在 Host 的 IM 配置中选择对应渠道并启动。OneBot 反向 WS、HTTP 事件轮询和 QQ 客户端安装/登录由外部实现负责，本插件不会创建本地 listener。同一真实 OneBot 账号由 Host 保持单一监听入口；从内置 OneBot 迁移时，先停止旧入口再启动此渠道。
 
 ### 当前接入状态
 
@@ -59,12 +59,38 @@ manifest 的 `x-kiki.imAdapters` 与 entry 的两个完整 definition 逐字段�
 
 结果包含完整 `items`、`nextCursor: null`、实际核实的 `accountId` 和使用的 `transport`。运行中的渠道使用 `websocket`；停止后使用 `http`，同一配置仍以渠道已核实的真实账号为准，HTTP 账号不符时在读取列表前终止。独立使用工具且省略 selfId 时，配置不变期间首次核实的 HTTP 账号固定到当前插件进程。工具只允许这两个固定动作，不接受平台选择、任意 endpoint 或 shell。官方 OpenID 不能传给数字 `groupId`。
 
+### 通过 Host 读取群历史
+
+0.2.0 的 OneBot definition 声明 `supportsHistory: true`，实现公开 `adapter.readHistory({ chatId, topicId, cursor?, limit }, context)`。Host 只向已启用、已连接的入站渠道发起读取；插件复用该渠道已核实的 WS 客户端，不另开 HTTP 连接或 listener。`limit` 为 1～50。官方 QQ 群/C2C 声明 `supportsHistory: false`，直接调用时也返回 `unsupported`。
+
+返回页按时间升序，保留真实源 ID、sender/chat/topic、正文、@、引用和最多 4 个媒体描述；`timestamp` 为 epoch 毫秒，`isSelf` 按已核实账号判断。正常页与空页均保留 `coverage: 'unknown', end: 'unknown'`；来源无法核实的记录或超过公开合同上限的内容被省略/截取时，标为 `coverage: 'partial'`。平台明确没有接口时返回 `unsupported`，读取失败或响应无法核实时抛错，不伪造成功空页。
+
+`nextCursor` 是绑定真实账号、chat 和 topic 的不透明游标，封装平台返回的锚点及对应源消息 ID。Host 原样回传它；后续页在一次平台调用中多取一个槽（最多 51 条），按真实源 ID/锚点移除含端点记录，只返回最多 `limit` 条更早消息。排除端点的后端同样保留连续分页；插件不对 ID 做算术，不循环补读。平台只重复端点而没有更早记录时，返回空页、unknown 结束状态且不再生成游标。实时 OneBot 撤回事件使用目标消息的 `sourceMessageId`，`eventId` 仅供去重，操作者不替代原发言者。当前仍只注册上面两个列表工具，历史由 Host 的公开 adapter 接口消费。
+
+### 原消息与历史的平台接口
+
+需要独立消费平台结果时，可调用已有 `createOneBotClient` 返回的客户端：
+
+```js
+const original = await client.getMessage({ sourceMessageId: '-8', chatId: 'onebot:group:100', signal });
+const page = await client.getGroupHistory({ groupId: '100', count: 20, signal });
+```
+
+`getMessage` 使用标准 `get_msg`；`chatId` 必填，`topicId` 可选，用于核对实际返回的来源，不能补造返回中缺失的群地址。标准响应不保证有 `group_id`，NapCat/LuckyLillia 通常提供；缺失群地址、来源不符、或无法确定对方的机器人自发私聊消息返回 `unknown`，不贴上请求方的身份。
+
+`getGroupHistory` 一次调用可选扩展 `get_group_msg_history`，`count` 为 1～100，默认 20。可显式提供 `messageSeq` 平台锚点；返回记录的 `messageSeq` 与 `sourceMessageId` 独立保留。NapCat 把该锚点作为短消息 ID 解析，LuckyLillia 使用真实消息序号，因此不对它做减法、不自动翻页，也不生成通用 nextCursor。锚点可能包含在返回页中，记录按真实 sourceMessageId 去重、Unix 秒时间升序排列，同秒保留平台顺序。结果始终带 `end: 'unknown'`：空页、短页和“消息不存在”都不证明平台历史已读完。NapCat 的原消息查找还依赖其有界 ID 映射，旧消息可能不可得。
+
+结果状态为 `ok`、`empty`（成功空页）、`partial`（保留有效同来源记录，并给出 omittedCount/issues）、`unsupported`（明确没有接口）、`unavailable`（账号核实、权限或平台拒绝）、`unknown`（响应遗失或内容无法验证）。附带 `messages` 和 transport，账号核实成功后附带裸 `accountId`；错误保留 detail、实际 HTTP 状态或平台 retcode。HTTP 每次先核实账号，WS 复用当前已核实连接，取消与 stop 沿同一请求链处理，不重试读取或另开 listener。官方 QQ 群/C2C 客户端的两个同名方法明确返回 `unsupported`，不读被动回复缓存充当历史。
+
+每条记录保留原始 sourceMessageId、真实 sender/chat/topic、Unix 秒 `time`、原消息 segments、正文、@、引用 ID 和附件元数据。群页请求关闭 NapCat 的取 URL 与合并转发展开；读取历史不下载附件字节、不读平台本地路径。需要媒体时，再按 sourceMessageId 读取原消息刷新元数据，显式选择附件交给既有 `fetchMediaBytes`，仍受公开地址、大小和取消限制。
+
 ## 本地验证
 
 从插件仓库根运行平台测试：
 
 ```sh
 node --test --test-timeout=15000 plugins/official/kiki-qq/test/qq.test.mjs plugins/official/kiki-qq/test/qq-regressions.test.mjs
+node --test --test-timeout=15000 plugins/official/kiki-qq/test/qq-history.test.mjs
 node plugins/official/kiki-qq/scripts/sync-manifest.mjs --check
 ```
 
@@ -74,9 +100,10 @@ HTTP fixture 拒绝任何未列出的完整 URL/方法。官方 Gateway 和 OneB
 
 ```sh
 node plugins/official/kiki-qq/scripts/check-host-contract.mjs <sdk-im-module> <hostRunner.mjs>
+node plugins/official/kiki-qq/scripts/check-history-contract.mjs <sdk-im-module> <hostRunner.mjs>
 ```
 
-该脚本只连接自己创建的回环 HTTP/WS fixture，精确断言持久账号与裸 listenerAccountId，以及 shutdown exit 0。使用 Host 支持的 Node 版本；正式安装与跨入口互斥需在发布物上验证。
+两个脚本只连接自己创建的回环 HTTP/WS fixture，并要求 shutdown exit 0。前者精确断言持久账号与裸 listenerAccountId；后者用公开 SDK schema 校验 history definition、请求和返回页，并断言事件元数据，覆盖不透明游标、上限投影、unknown/unsupported 和 stop 后拒绝读取。history 脚本需要包含 `pluginImHistoryRequestSchema` / `pluginImHistoryPageSchema` 的 SDK 与对应 runner。使用 Host 支持的 Node 版本；RPC fixture 不代替发布物的安装和跨入口互斥验证。
 
 ## 复用来源
 

@@ -48,6 +48,15 @@ test('requires IM lifecycle and advertised outbound/media/edit handlers without 
   await validateRegistration(manifest([inboundOnly]), registerIm(inboundOnly, { async start() {}, async stop() {} }));
 });
 
+test('requires readHistory only when the IM adapter advertises history support', async () => {
+  const withHistory = { ...im, supportsHistory: true };
+  const historyAdapter = { ...adapter, async readHistory() { return { status: 'unsupported' }; } };
+  await validateRegistration(manifest([withHistory]), registerIm(withHistory, historyAdapter));
+  await assert.rejects(validateRegistration(manifest([withHistory]), registerIm(withHistory)), /needs readHistory\(\)/);
+  await assert.rejects(validateRegistration(manifest([withHistory]), registerIm({ ...withHistory, supportsHistory: false }, historyAdapter)), /Registered imAdapters changed/);
+  await validateRegistration(manifest([{ ...im, supportsHistory: false }]), registerIm({ ...im, supportsHistory: false }));
+});
+
 test('checks tools and media providers field-for-field and requires their declared registrations', async () => {
   const tool = { schemaVersion: 1, name: 'example', description: 'Example', parameters: { type: 'object', additionalProperties: false } };
   const media = { schemaVersion: 1, id: 'example-media', label: 'Example Media', kinds: ['tts'], resumeVersion: 1 };

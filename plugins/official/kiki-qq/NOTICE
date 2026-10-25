@@ -57,3 +57,9 @@ SDKs and agent/session hosts from that package are not included.
 OneBot 11 protocol reference:
 botuniverse/onebot-11 revision d4456ee706f9ada9c2dfde56a2bcfc69752600e4.
 NapCat and LuckyLillia are compatibility references, not bundled software.
+lib/onebot-history.mjs uses their public get_msg/get_group_msg_history wire
+contracts: NapCat revision 3420f0b76d7dc0ac92cde1663f21ea27f61e13bb,
+LuckyLillia revision dc2b2b90092ef0f571b5546878288b83fff1e436.
+Their NTQQ-backed handlers, internal ID maps and retrieval loops are not
+redistributed. The plugin requests one page on its existing connection and
+normalizes the returned OneBot message records with its existing parser.
