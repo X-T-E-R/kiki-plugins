@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Kiki Bilibili">
+  <rect width="128" height="128" rx="28" fill="#18b6d9"/>
+  <rect x="18" y="31" width="92" height="68" rx="18" fill="#fff"/>
+  <path d="M38 22 50 35M90 22 78 35" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="47" cy="61" r="6" fill="#18b6d9"/>
+  <circle cx="81" cy="61" r="6" fill="#18b6d9"/>
+  <path d="M42 80c12 9 32 9 44 0" fill="none" stroke="#18b6d9" stroke-width="6" stroke-linecap="round"/>
+</svg>

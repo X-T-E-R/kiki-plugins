@@ -1,0 +1,12 @@
+Kiki Bilibili
+
+Runtime reuse
+- kukemc/bili-cli (bili-agent) 1.0.0, source add0a05d8b9e114d380042f7b1472efc238d661d: the separately installed CLI owns account login, search, metadata, timestamped subtitles/ASR, real/preview frames, comments and real mention mapping, video interactions, private-message reads/acknowledgement and multi-P VideoUploader submission. The plugin passes fixed argument vectors and explicit BILI_CLI_HOME. No upstream Python source is redistributed in this package.
+
+Other evaluated sources
+- CZX2244/dsh-bilibili c53af9dee30cf04ee759ac6857d5803196fb2a95, lib/keyframes.js: separates semantic timestamp choice from picture-driven fallback. The native workflow keeps timestamp choice with the calling agent; the CLI already supplies production frame planning and extraction, so a second implementation is not retained.
+- public-clis/bilibili-cli dbe28551930df43b633baa52e9639832aeada967, bili_cli/commands/video.py: structured subtitle/warning projection overlaps the chosen CLI and adds another credential stack. Not included.
+- 7oMB2006/Bilibili-Video-Research d2e0a982a3d63d417fdf8b84fc198b437183fd61, src/video-analysis.ts: external Gemini/Stepfun video upload and analysis. Kiki's own model consumes returned frames; adding a second paid model configuration is deferred.
+- biliup/biliup 7c923122fe822475a7599423d969d709f1c1e678, crates/biliup-cli/src/entry.rs and uploader units: mature native upload is an alternative, not a second runtime. The chosen bili-agent VideoUploader already covers multi-P and publishing with its existing profile; adding biliup would require another executable and credential lifecycle.
+
+Upstream projects and Bilibili service names belong to their respective owners. The plugin's own source is MIT licensed; installed dependencies retain their own license files.

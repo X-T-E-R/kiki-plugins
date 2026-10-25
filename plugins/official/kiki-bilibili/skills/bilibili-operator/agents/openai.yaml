@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bilibili Operator"
+  short_description: "Watch, interact and publish on Bilibili"
+  default_prompt: "Use $bilibili-operator to discover videos, inspect timestamped evidence, interact with comments, read messages or publish through the native Bilibili tools."
