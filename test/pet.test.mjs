@@ -89,10 +89,20 @@ test('service state polling never retransmits atlas, cached asset reads and priv
 test('owned runtime supervisor detects exit/hang without unbounded restart and supports explicit recovery',async()=>{
  const temp=await mkdtemp(path.join(tmpdir(),'kiki-pet-runtime-'));const fixture=path.join(temp,'runtime.mjs');
  await writeFile(fixture,"console.log(JSON.stringify({type:'ready',protocol:1}));let n=0;const t=setInterval(()=>{if(n++<2)console.log(JSON.stringify({type:'heartbeat'}));},100);process.stdin.on('data',b=>{if(b.toString().includes('shutdown'))process.exit(0);});");
- const runtime=new PetRuntime({root,dataDir:temp,executable:process.execPath,args:[fixture],heartbeatMs:300});try{
-  const state={activePet:{id:'momo',provenance:{sha256:'x'},spriteUrl:'data:image/webp;base64,eA=='}};await runtime.start(state);
-  await new Promise(r=>setTimeout(r,1200));assert.equal(runtime.snapshot().status,'failed');assert.equal(runtime.child,null);const generation=runtime.generation;await new Promise(r=>setTimeout(r,300));assert.equal(runtime.generation,generation);
-  await runtime.start(state);await new Promise(r=>setTimeout(r,170));assert.equal(runtime.snapshot().status,'running');await runtime.stop();assert.equal(runtime.snapshot().status,'stopped');
+ const waiters=new Set();
+ const runtime=new PetRuntime({root,dataDir:temp,executable:process.execPath,args:[fixture],heartbeatMs:300,onChange:()=>{for(const check of waiters)check();}});
+ function waitForStatus(expected){
+  return new Promise((resolve,reject)=>{
+   const finish=(error)=>{clearTimeout(timer);waiters.delete(check);if(error)reject(error);else resolve();};
+   const check=()=>{const state=runtime.snapshot();if(state.status===expected)finish();else if(state.status==='failed')finish(new Error(`Pet failed before ${expected}: ${state.error}`));};
+   const timer=setTimeout(()=>finish(new Error(`Timed out waiting for Pet ${expected}; observed ${runtime.snapshot().status}`)),5000);
+   waiters.add(check);check();
+  });
+ }
+ try{
+  const state={activePet:{id:'momo',provenance:{sha256:'x'},spriteUrl:'data:image/webp;base64,eA=='}};await runtime.start(state);await waitForStatus('running');
+  await waitForStatus('failed');assert.equal(runtime.snapshot().status,'failed');assert.equal(runtime.child,null);const generation=runtime.generation;await new Promise(r=>setTimeout(r,300));assert.equal(runtime.generation,generation);
+  await runtime.start(state);await waitForStatus('running');assert.equal(runtime.snapshot().status,'running');await runtime.stop();assert.equal(runtime.snapshot().status,'stopped');
  }finally{await runtime.stop();await rm(temp,{recursive:true,force:true});}
 });
 test('manifest tool declarations equal registered definitions',async()=>{const m=JSON.parse(await readFile(path.join(root,'kimi.plugin.json'),'utf8'));assert.deepEqual(m['x-kiki'].tools,tools);});
