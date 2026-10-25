@@ -1,0 +1,59 @@
+Kiki QQ third-party notices
+
+@tencent-connect/qqbot-nodejs 1.0.5
+Source: https://www.npmjs.com/package/@tencent-connect/qqbot-nodejs
+License: MIT, Copyright (c) 2026 Tencent
+
+Included units:
+- vendor/qqbot-gateway: gateway-connection, codec, constants, errors,
+  event-dispatcher and reconnect. Only the ws import is redirected to the
+  vendored ws package.
+- vendor/qqbot-media: the buffer-input chunked upload protocol, its upload-only
+  retry engine, route templates, required types and formatting utilities.
+  Adaptations connect the existing client/token to AbortSignal cancellation,
+  validate prepare responses, limit response buffering and wait for concurrent
+  part cleanup. Local-path input and upload caches are not included.
+- lib/official-references.mjs: bounded ref-index association adapted from the
+  SDK's middleware/quote-ref; keys additionally include chat/topic identity.
+
+MIT License
+
+Copyright (c) 2026 Tencent
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+ws 8.21.0
+Included in vendor/ws. Its copyright and MIT license are preserved in
+vendor/ws/LICENSE.
+
+Tencent Connect dsh-qqbot
+Source revision: c8b9158b37817b0dbc1e514e62e16204ad47a6ce
+The per-client passive reply-context cache and source limits are adapted in
+lib/reply-context.mjs. The MIT notice is preserved in the plugin LICENSE.
+
+@nb-im/core 0.3.0
+lib/onebot-transport.mjs adapts session/onebot-ws connect/linkFrom;
+lib/media-download.mjs adapts the public-address policy in http-transport.
+The adapters retain forward-universal WebSocket transport, early-frame
+buffering, owned cleanup, DNS pinning and bounded media reads. Other platform
+SDKs and agent/session hosts from that package are not included.
+
+OneBot 11 protocol reference:
+botuniverse/onebot-11 revision d4456ee706f9ada9c2dfde56a2bcfc69752600e4.
+NapCat and LuckyLillia are compatibility references, not bundled software.

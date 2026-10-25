@@ -1,0 +1,305 @@
+{
+  "name": "kiki-qq",
+  "version": "0.1.0",
+  "description": "QQ Bot and OneBot 11 transport adapters with private/group messaging, media receipts and read-only OneBot group tools.",
+  "license": "MIT",
+  "interface": {
+    "displayName": "QQ",
+    "shortDescription": "Official QQ Bot API and OneBot 11 channels"
+  },
+  "x-kiki": {
+    "engines": {
+      "kiki": "^0.4.0"
+    },
+    "entry": "./entry.mjs",
+    "permissions": {
+      "net": [
+        "*"
+      ],
+      "secrets": true
+    },
+    "settings": {
+      "schemaVersion": 1,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "official__appId": {
+            "type": "string",
+            "title": "QQ Bot AppID",
+            "description": "Application ID for the official QQ Bot account.",
+            "localizations": {
+              "zh": {
+                "title": "QQ Bot AppID",
+                "description": "官方 QQ Bot 账号的应用 ID。"
+              }
+            }
+          },
+          "official__appSecret": {
+            "type": "string",
+            "title": "QQ Bot AppSecret",
+            "description": "Application secret; stored write-only.",
+            "secret": true,
+            "localizations": {
+              "zh": {
+                "title": "QQ Bot AppSecret",
+                "description": "官方应用密钥；仅写入，不回显。"
+              }
+            }
+          },
+          "official__apiBaseUrl": {
+            "type": "string",
+            "default": "https://api.sgroup.qq.com",
+            "title": "Official API base URL",
+            "description": "Keep the official default for production. Credentials are sent to this origin.",
+            "localizations": {
+              "zh": {
+                "title": "官方 API 基础地址",
+                "description": "正式使用请保持官方默认值。访问令牌会发送到此地址。"
+              }
+            }
+          },
+          "official__tokenBaseUrl": {
+            "type": "string",
+            "default": "https://bots.qq.com",
+            "title": "Official token base URL",
+            "description": "Keep the official default for production. AppSecret is sent to this origin.",
+            "localizations": {
+              "zh": {
+                "title": "官方令牌基础地址",
+                "description": "正式使用请保持官方默认值。AppSecret 会发送到此地址。"
+              }
+            }
+          },
+          "official__intents": {
+            "type": "number",
+            "default": 100663296,
+            "title": "Gateway intents",
+            "description": "Default: group/C2C messages and interactions. Request only intents granted to this application.",
+            "localizations": {
+              "zh": {
+                "title": "网关 intents",
+                "description": "默认订阅群/C2C 消息和交互；只请求应用已获准的 intents。"
+              }
+            }
+          },
+          "onebot__baseUrl": {
+            "type": "string",
+            "default": "http://127.0.0.1:5700",
+            "title": "OneBot HTTP base URL",
+            "description": "HTTP API for standalone read-only group tools when the channel is stopped. A running channel uses its verified WebSocket instead.",
+            "localizations": {
+              "zh": {
+                "title": "OneBot HTTP 基础地址",
+                "description": "渠道停止时供独立群读取工具使用。运行中的渠道直接复用已核实的 WebSocket；停止后仍核对同一配置的账号。"
+              }
+            }
+          },
+          "onebot__wsUrl": {
+            "type": "string",
+            "title": "OneBot forward universal WebSocket URL",
+            "description": "Required to start the adapter. Connect to a forward universal ws/wss endpoint supporting events and API actions; reverse WS is not supported.",
+            "localizations": {
+              "zh": {
+                "title": "OneBot 正向通用 WebSocket 地址",
+                "description": "启动适配器时必填。连接同时支持事件和 API 的正向通用 ws/wss 接口；不支持反向 WS。"
+              }
+            }
+          },
+          "onebot__accessToken": {
+            "type": "string",
+            "title": "OneBot access token",
+            "secret": true,
+            "description": "Optional bearer token for HTTP and WebSocket; stored write-only.",
+            "localizations": {
+              "zh": {
+                "title": "OneBot access token",
+                "description": "HTTP 和 WebSocket 共用的可选令牌；仅写入，不回显。"
+              }
+            }
+          },
+          "onebot__selfId": {
+            "type": "string",
+            "title": "Expected OneBot account ID",
+            "description": "Optional numeric account guard for startup, reconnect and standalone HTTP reads. A mismatch stops the operation.",
+            "localizations": {
+              "zh": {
+                "title": "预期 OneBot 账号 ID",
+                "description": "可选的数字账号校验。启动、重连和独立 HTTP 读取均核对 get_login_info，不匹配便停止操作。"
+              }
+            }
+          }
+        }
+      }
+    },
+    "tools": [
+      {
+        "schemaVersion": 1,
+        "name": "qq_list_groups",
+        "description": "Read the configured OneBot 11 account’s full group list. Reuses the verified running channel; otherwise verifies the configured HTTP account. Returns accountId and transport with the list. The official QQ Bot group/C2C API has no group-list endpoint.",
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "accesses": [
+          {
+            "kind": "all"
+          }
+        ],
+        "disclosure": "deferred"
+      },
+      {
+        "schemaVersion": 1,
+        "name": "qq_list_group_members",
+        "description": "Read the configured OneBot 11 account’s full member list for one numeric group_id. Reuses the verified running channel; otherwise verifies the HTTP account. Returns accountId and transport. Official QQ OpenIDs are not accepted.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "groupId": {
+              "type": "string",
+              "pattern": "^[0-9]+$"
+            }
+          },
+          "required": [
+            "groupId"
+          ],
+          "additionalProperties": false
+        },
+        "accesses": [
+          {
+            "kind": "all"
+          }
+        ],
+        "disclosure": "deferred"
+      }
+    ],
+    "imAdapters": [
+      {
+        "schemaVersion": 1,
+        "inbound": true,
+        "outbound": true,
+        "textLimit": 5000,
+        "maxInboundBytes": 8388608,
+        "supportsEdit": false,
+        "supportsReply": true,
+        "id": "qq-official",
+        "listenerRealm": "qq-official",
+        "label": "QQ Bot API (official)",
+        "supportsButtons": true,
+        "supportsMentions": false,
+        "mediaCapabilities": [
+          {
+            "kind": "image",
+            "mimeTypes": [
+              "image/png",
+              "image/jpeg",
+              "image/gif"
+            ],
+            "maxBytes": 20971520,
+            "rendering": "qq-media-upload"
+          },
+          {
+            "kind": "voice",
+            "mimeTypes": [
+              "audio/wav",
+              "audio/wave",
+              "audio/x-wav",
+              "audio/mpeg",
+              "audio/mp3",
+              "audio/silk",
+              "audio/amr"
+            ],
+            "maxBytes": 20971520,
+            "rendering": "qq-media-upload"
+          },
+          {
+            "kind": "audio",
+            "mimeTypes": [
+              "audio/wav",
+              "audio/wave",
+              "audio/x-wav",
+              "audio/mpeg",
+              "audio/mp3",
+              "audio/silk",
+              "audio/amr"
+            ],
+            "maxBytes": 20971520,
+            "rendering": "qq-media-upload"
+          },
+          {
+            "kind": "video",
+            "mimeTypes": [
+              "video/mp4"
+            ],
+            "maxBytes": 31457280,
+            "rendering": "qq-media-upload"
+          },
+          {
+            "kind": "file",
+            "maxBytes": 104857600,
+            "rendering": "qq-media-upload"
+          }
+        ]
+      },
+      {
+        "schemaVersion": 1,
+        "inbound": true,
+        "outbound": true,
+        "textLimit": 5000,
+        "maxInboundBytes": 8388608,
+        "supportsEdit": false,
+        "supportsReply": true,
+        "id": "qq-onebot",
+        "listenerRealm": "qq-onebot",
+        "label": "OneBot 11",
+        "supportsButtons": false,
+        "supportsMentions": true,
+        "mediaCapabilities": [
+          {
+            "kind": "image",
+            "mimeTypes": [
+              "image/png",
+              "image/jpeg",
+              "image/webp",
+              "image/gif"
+            ],
+            "maxBytes": 20971520,
+            "rendering": "onebot-segment"
+          },
+          {
+            "kind": "voice",
+            "mimeTypes": [
+              "audio/wav",
+              "audio/mpeg",
+              "audio/ogg",
+              "audio/silk",
+              "audio/amr"
+            ],
+            "maxBytes": 20971520,
+            "rendering": "onebot-segment"
+          },
+          {
+            "kind": "audio",
+            "mimeTypes": [
+              "audio/wav",
+              "audio/mpeg",
+              "audio/ogg",
+              "audio/silk",
+              "audio/amr"
+            ],
+            "maxBytes": 20971520,
+            "rendering": "onebot-segment"
+          },
+          {
+            "kind": "video",
+            "mimeTypes": [
+              "video/mp4"
+            ],
+            "maxBytes": 31457280,
+            "rendering": "onebot-segment"
+          }
+        ]
+      }
+    ]
+  }
+}

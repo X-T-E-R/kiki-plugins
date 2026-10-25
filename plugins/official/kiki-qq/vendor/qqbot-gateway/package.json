@@ -1,0 +1,7 @@
+{
+  "name": "kiki-vendored-qqbot-gateway",
+  "private": true,
+  "type": "module",
+  "upstream": "@tencent-connect/qqbot-nodejs@1.0.5",
+  "license": "MIT"
+}

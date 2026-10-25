@@ -1,0 +1,68 @@
+import { attachmentListFromOfficial, normalizeOneBotSegments } from './attachments.mjs';
+import { officialIdentity, onebotIdentity } from './identity.mjs';
+import { quotePreview } from './official-references.mjs';
+import { dispatchEvent } from '../vendor/qqbot-gateway/event-dispatcher.js';
+
+const OFFICIAL_MESSAGE_TYPES = new Set(['C2C_MESSAGE_CREATE', 'GROUP_AT_MESSAGE_CREATE', 'GROUP_MESSAGE_CREATE']);
+function partEvents(base, text, media, { maxInboundBytes = 8 * 1024 * 1024, keepEmpty = false } = {}) {
+  const output = [];
+  if (text || (!media.length && keepEmpty)) output.push({ ...base, kind: 'text', text: text || undefined });
+  media.forEach((descriptor, index) => output.push({
+    ...base, eventId: `${base.eventId}:media:${index}`, kind: descriptor.kind,
+    tooLarge: descriptor.size > maxInboundBytes || undefined,
+    preview: [base.preview, descriptor.asrText ? `[QQ ASR reference] ${descriptor.asrText}` : undefined].filter(Boolean).join('\n') || undefined,
+    attachment: descriptor,
+  }));
+  return output;
+}
+export function normalizeOfficialEvent(raw, { eventType, cursor, maxInboundBytes, message, references } = {}) {
+  if (!raw || typeof raw !== 'object' || !raw.id) return [];
+  const type = eventType ?? raw.t ?? raw.event_type;
+  if (type === 'INTERACTION_CREATE') return interaction(raw, cursor);
+  if (!OFFICIAL_MESSAGE_TYPES.has(type)) return [];
+  const group = type !== 'C2C_MESSAGE_CREATE';
+  const userOpenid = raw.author?.user_openid ?? raw.author?.member_openid;
+  if (!userOpenid || (group && !raw.group_openid)) return [];
+  const metadata = { ...dispatchEvent(type, raw, '').msg, ...message };
+  const mentions = Array.isArray(raw.mentions) ? raw.mentions : [];
+  const mentionIds = mentions.map((item) => item.user_openid ?? item.member_openid ?? item.id).filter(Boolean).map(String);
+  const identity = officialIdentity({ userOpenid, groupOpenid: group ? raw.group_openid : undefined,
+    topicId: raw.topic_id ?? raw.message_thread_id ?? raw.thread_id, senderName: raw.author?.username ?? raw.author?.nickname, chatTitle: raw.group_name });
+  const refMsgIdx = metadata?.refMsgIdx;
+  const resolved = refMsgIdx ? references?.resolve(identity, refMsgIdx) : undefined;
+  references?.record(identity, metadata?.msgIdx, String(raw.id));
+  const base = { eventId: `official:${raw.id}`, sourceMessageId: String(raw.id), cursor, identity,
+    mentioned: type === 'GROUP_AT_MESSAGE_CREATE' || mentions.some((item) => item.is_you === true), mentionIds,
+    replyToMessageId: typeof raw.message_reference?.message_id === 'string' && raw.message_reference.message_id ? raw.message_reference.message_id : resolved,
+    preview: quotePreview(raw, refMsgIdx, resolved) };
+  const text = base.mentioned ? String(raw.content ?? '').replace(/^\s*<@!?[^>]+>\s*/u, '').trim() : String(raw.content ?? '').trim();
+  return partEvents(base, text, attachmentListFromOfficial(raw, { refMsgIdx }), { maxInboundBytes, keepEmpty: base.mentioned || Boolean(refMsgIdx) });
+}
+function interaction(raw, cursor) {
+  const userOpenid = raw.user_openid ?? raw.group_member_openid ?? raw.member_openid;
+  if (!userOpenid) return [];
+  const data = raw.data?.resolved ?? raw.data ?? {};
+  if (data.button_data === undefined && data.button_id === undefined) return [];
+  return [{ eventId: `official:${raw.id}`, cursor, identity: officialIdentity({ userOpenid, groupOpenid: raw.group_openid }),
+    kind: 'callback', callbackData: String(data.button_data ?? data.button_id), callbackQueryId: String(raw.id),
+    replyToMessageId: data.message_id ? String(data.message_id) : undefined }];
+}
+export function normalizeOneBotEvent(raw, { cursor, selfId, maxInboundBytes } = {}) {
+  if (!raw || raw.post_type !== 'message' || !['private', 'group'].includes(raw.message_type) || raw.message_id === undefined) return [];
+  const userId = raw.user_id ?? raw.sender?.user_id;
+  const groupId = raw.message_type === 'group' ? raw.group_id : undefined;
+  if (userId === undefined || (raw.message_type === 'group' && groupId === undefined)) return [];
+  const parsed = normalizeOneBotSegments(raw.message ?? raw.raw_message ?? '');
+  const mentioned = parsed.mentions.some((item) => item.kind === 'all' || (selfId !== undefined && String(item.id) === String(selfId)));
+  const identity = onebotIdentity({ userId, groupId, topicId: raw.topic_id ?? raw.thread_id, senderName: raw.sender?.card || raw.sender?.nickname, chatTitle: raw.group_name });
+  const base = { eventId: `onebot:${raw.message_id}`, sourceMessageId: String(raw.message_id), cursor, identity,
+    mentioned, mentionIds: parsed.mentions.map((item) => String(item.id)), replyToMessageId: parsed.replyTo };
+  return partEvents(base, parsed.text, parsed.media, { maxInboundBytes, keepEmpty: mentioned || Boolean(parsed.replyTo) });
+}
+export function normalizeGatewayPayload(payload, options = {}) {
+  if (!payload || typeof payload !== 'object') return [];
+  const data = payload.d ?? payload.data ?? payload;
+  if (options.platform === 'official') return normalizeOfficialEvent(data, { ...options, eventType: payload.t ?? payload.event_type, cursor: payload.s ?? options.cursor });
+  if (options.platform === 'onebot') return normalizeOneBotEvent(data, options);
+  return [];
+}
