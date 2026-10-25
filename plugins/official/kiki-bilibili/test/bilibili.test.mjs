@@ -49,6 +49,13 @@ const cases = [
 test('manifest equals native registrations; runtime has no plan/mock-only tools', async () => {
   const manifest = JSON.parse(await readFile(path.join(root, 'kimi.plugin.json'), 'utf8'));
   assert.deepEqual(manifest['x-kiki'].tools, definitions);
+  const settingsSchema = manifest['x-kiki'].settings.schema;
+  assert.equal(settingsSchema.properties.timeoutMs.type, 'number');
+  assert.equal(settingsSchema.properties.timeoutMs.minimum, undefined);
+  assert.equal(settingsSchema.additionalProperties, undefined);
+  assert.equal(definitions[0].parameters.properties.page.type, 'integer');
+  assert.equal(definitions[0].parameters.properties.page.minimum, 1);
+  assert.equal(definitions[0].parameters.additionalProperties, false);
   const actual = [];
   register({ registerTool: (d) => actual.push(d) });
   assert.deepEqual(actual, definitions);
@@ -131,6 +138,25 @@ test('CLI process pins an explicit profile, never uses shell and disables donor 
   const bytes = Buffer.from(JSON.stringify({ ok: true, data: { title: '中文标题' } }));
   const splitFixture = fakeSpawn({ chunks: [...bytes].map((value) => Buffer.from([value])) });
   assert.deepEqual(await createCli({ settings: { cliHome: path.resolve('.tmp/profile') }, ...splitFixture })(['video', 'info']), { title: '中文标题' });
+});
+
+test('CLI rejects invalid configured or overridden timeouts before spawning and accepts timer-safe boundaries', async () => {
+  const cliHome = path.resolve('.tmp/profile');
+  const invalid = [NaN, Infinity, -Infinity, -1, 0, 999, 1000.5, 2147483648, '1000', '', null, false];
+  for (const timeoutMs of invalid) {
+    const fixture = fakeSpawn();
+    assert.throws(() => createCli({ settings: { cliHome, timeoutMs }, ...fixture }), (error) => error.code === 'CONFIGURATION' && error.submission === 'not_sent');
+    const cli = createCli({ settings: { cliHome }, ...fixture });
+    await assert.rejects(cli(['upload', 'video'], { write: true, timeoutMs }), (error) => error.code === 'CONFIGURATION' && error.submission === 'not_sent');
+    assert.equal(fixture.calls.length, 0);
+  }
+  for (const timeoutMs of [undefined, 1000, 600000, 2147483647]) {
+    const fixture = fakeSpawn();
+    const cli = createCli({ settings: { cliHome, timeoutMs }, ...fixture });
+    assert.deepEqual(await cli(['auth', 'status']), { rpid: 1 });
+    assert.deepEqual(await cli(['--version'], { timeoutMs: 10000 }), { rpid: 1 });
+    assert.equal(fixture.calls.length, 2);
+  }
 });
 
 test('lost response, CLI failure, missing dependency and abort preserve outbound uncertainty without retry', async () => {

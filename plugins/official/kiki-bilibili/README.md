@@ -25,7 +25,7 @@ python -m venv .venv-bilibili
 | `biliCliPath` | 隔离环境中 `bili.exe` 的绝对路径；也可使用 PATH 中的 `bili` |
 | `cliHome` | 你为此账号选择的绝对目录，保存扫码登录与 ASR 配置；必填 |
 | `ffmpegDir` | 可留空；FFmpeg 不在 PATH 时填写其目录 |
-| `timeoutMs` | 单次等待上限，默认 600000 毫秒；上传耗时较长时可调大 |
+| `timeoutMs` | 单次等待上限，默认 600000 毫秒；接受 1000–2147483647 的整数，上传耗时较长时可调大。无效值会在启动 CLI 前返回 `CONFIGURATION` |
 
 调用 `bilibili_account {"action":"login"}`，扫描返回的二维码，再调用 `{"action":"status"}` 完成登录。该配置目录由 CLI 自己管理；插件不导入浏览器或其他插件的凭据。`logout` 删除这个配置目录中的本地登录。
 

@@ -1,6 +1,6 @@
 {
   "name": "kiki-bilibili",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Discover, watch, comment, read messages and publish Bilibili videos through bili-agent.",
   "license": "MIT",
   "icon": "./icon.svg",
@@ -49,13 +49,12 @@
             "default": ""
           },
           "timeoutMs": {
-            "type": "integer",
-            "minimum": 1000,
+            "type": "number",
             "default": 600000,
-            "title": "CLI wait timeout (ms)"
+            "title": "CLI wait timeout (ms)",
+            "description": "Whole milliseconds from 1000 to 2147483647. Invalid values are rejected before starting bili."
           }
-        },
-        "additionalProperties": false
+        }
       }
     },
     "tools": [

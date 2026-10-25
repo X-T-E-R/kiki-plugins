@@ -6,11 +6,20 @@ import { BilibiliError } from './errors.mjs';
 export const CLI_VERSION = '1.0.0';
 const beforeSend = new Set(['invalid_argument', 'not_logged_in', 'auth_expired', 'not_found', 'permission_denied', 'captcha_required', 'risk_control', 'rate_limited']);
 
+function validateTimeout(value) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1000 || value > 2147483647) {
+    throw new BilibiliError('CONFIGURATION', 'timeoutMs must be a whole number from 1000 to 2147483647 milliseconds.');
+  }
+  return value;
+}
+
 export function createCli({ settings = {}, workspaceRoot, signal, spawnImpl = spawn } = {}) {
   const home = String(settings.cliHome || '').trim();
   if (!home || !path.isAbsolute(home)) throw new BilibiliError('CONFIGURATION', 'Set cliHome to an explicit absolute bili-agent profile directory. No default home is read.');
   const executable = String(settings.biliCliPath || 'bili');
-  return async function call(args, { write = false, timeoutMs = Number(settings.timeoutMs || 600000) } = {}) {
+  const defaultTimeoutMs = validateTimeout(settings.timeoutMs === undefined ? 600000 : settings.timeoutMs);
+  return async function call(args, { write = false, timeoutMs = defaultTimeoutMs } = {}) {
+    validateTimeout(timeoutMs);
     if (signal?.aborted) throw new BilibiliError('LOCAL_ABORTED', 'Cancelled before starting bili.');
     return new Promise((resolve, reject) => {
       const decoder = new StringDecoder('utf8');
