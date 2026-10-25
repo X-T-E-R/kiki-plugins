@@ -17,7 +17,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.18.0
+          node-version: 24.22.1
       - id: changes
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -37,7 +37,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.18.0
+          node-version: 24.22.1
           cache: npm
       - run: npm ci --ignore-scripts
       - name: Validate package and mocked protocol
@@ -52,13 +52,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.18.0
+          node-version: 24.22.1
           cache: npm
       - run: npm ci --ignore-scripts
       - uses: actions/checkout@v4
         with:
           repository: X-T-E-R/kiki
-          ref: cf1635292a063d473f52caacb812f948ea0d9319
+          ref: 9e93979e6b908d683e2c6801a34ef7e988d016cd
           path: .tmp/sdk-upstream
           sparse-checkout: |
             packages/plugin-sdk

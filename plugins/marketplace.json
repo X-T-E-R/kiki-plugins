@@ -7,12 +7,25 @@
       "displayName": "Kiki Output Layer",
       "version": "0.1.1",
       "description": "Stream translations and plain-language rewrites without changing the conversation.",
-      "keywords": ["translation", "rewrite", "reading"],
+      "keywords": [
+        "translation",
+        "rewrite",
+        "reading"
+      ],
       "author": "Kiki",
       "license": "MIT",
       "source": "./official/kiki-output-layer",
       "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-output-layer",
-      "localizations": { "zh": { "description": "流式翻译与说人话，保留原始对话。", "keywords": ["翻译", "说人话", "阅读"] } }
+      "localizations": {
+        "zh": {
+          "description": "流式翻译与说人话，保留原始对话。",
+          "keywords": [
+            "翻译",
+            "说人话",
+            "阅读"
+          ]
+        }
+      }
     },
     {
       "id": "kiki-cloudflare",
@@ -336,6 +349,95 @@
             "站点",
             "部署",
             "代码托管"
+          ]
+        }
+      }
+    },
+    {
+      "id": "kiki-bilibili",
+      "tier": "official",
+      "displayName": "Kiki Bilibili",
+      "version": "0.1.1",
+      "description": "Search and understand Bilibili videos, manage comments and notifications, and publish through bili-agent.",
+      "keywords": [
+        "bilibili",
+        "video",
+        "comments",
+        "publishing"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-bilibili",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-bilibili",
+      "relevance": {
+        "commands": [
+          "bili"
+        ]
+      },
+      "localizations": {
+        "zh": {
+          "description": "搜索与理解 B 站视频、回复评论、处理通知和私信，并用成熟 CLI 投稿。",
+          "keywords": [
+            "B站",
+            "视频",
+            "评论",
+            "投稿"
+          ]
+        }
+      }
+    },
+    {
+      "id": "kiki-voice",
+      "tier": "official",
+      "displayName": "Voice",
+      "version": "0.1.2",
+      "description": "Generate playable speech through Kiki Media and send original audio to connected chats.",
+      "keywords": [
+        "voice",
+        "speech",
+        "tts",
+        "media"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-voice",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-voice",
+      "localizations": {
+        "zh": {
+          "description": "通过 Kiki Media 生成可播放语音，并把原始音频发送到已连接的聊天。",
+          "keywords": [
+            "语音",
+            "朗读",
+            "音色",
+            "消息"
+          ]
+        }
+      }
+    },
+    {
+      "id": "kiki-qq",
+      "tier": "official",
+      "displayName": "QQ",
+      "version": "0.1.0",
+      "description": "Connect official QQ Bot and OneBot 11 accounts for private/group messages, media and read-only group tools.",
+      "keywords": [
+        "qq",
+        "onebot",
+        "chat",
+        "media"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-qq",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-qq",
+      "localizations": {
+        "zh": {
+          "description": "接入官方 QQ Bot 与 OneBot 11 账号，收发私聊、群聊和媒体消息，并读取群列表与成员。",
+          "keywords": [
+            "QQ",
+            "OneBot",
+            "群聊",
+            "媒体消息"
           ]
         }
       }

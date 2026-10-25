@@ -25,6 +25,8 @@ Do not mirror proprietary code or replace an upstream notice with this repositor
 
 ## Update the SDK
 
-The SDK's only source is `X-T-E-R/kiki/packages/plugin-sdk`. Select an exact public Kiki ref, build and pack only that package with the locked compiler, include its original license, and update the artifact, `sdk.lock.json`, and npm lock together. Update the CI sparse-checkout ref and checksum-pinned Host runner when the contract changes. `scripts/verify-sdk.mjs` compares the installed SDK's exports and compiled files with the fixed upstream build.
+The SDK's only source is `X-T-E-R/kiki/packages/plugin-sdk`. Select an exact Kiki commit, build and pack only that package with the locked compiler, and include its original license. Add a commit-suffixed artifact when consuming another candidate with the same SDK version; preserve existing vendor artifacts. Update `package.json`, `package-lock.json`, `sdk.lock.json`, the CI sparse-checkout ref and the runner checksum together. `scripts/verify-sdk.mjs` compares the installed SDK's exports and compiled files with the fixed upstream build.
+
+For a commit-pinned local candidate, set `KIKI_HOST_RUNNER` to the matching checkout's `packages/agent-core-v2/src/app/plugin/hostRunner.mjs`. The check validates its locked checksum. Make the commit available on GitHub before running CI or using the default runner download; keep local absolute paths out of locks and package assets.
 
 Keep SDK package versions, plugin engine ranges, and Kiki product versions separate. New Host capabilities must be available before a plugin requiring them is published.

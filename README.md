@@ -1,6 +1,6 @@
 # Kiki Plugins
 
-Independently versioned plugins for [Kiki](https://github.com/X-T-E-R/kiki): Office, Writing, Extract, Notion, Media, and ten media provider packages. Kiki's Host, SDK, permission preview, and installer remain in the Kiki repository.
+Independently versioned plugins for [Kiki](https://github.com/X-T-E-R/kiki), including Office, Writing, Extract, Notion, Media, Bilibili, Voice and QQ. Kiki's Host, SDK, permission preview, and installer remain in the Kiki repository.
 
 **[Browse the catalog](https://x-t-e-r.github.io/kiki-plugins/)** · **[Catalog JSON](https://x-t-e-r.github.io/kiki-plugins/marketplace.json)** · **[Versioned packages](https://github.com/X-T-E-R/kiki-plugins/releases)**
 
@@ -8,7 +8,7 @@ Independently versioned plugins for [Kiki](https://github.com/X-T-E-R/kiki): Off
 
 Use a Kiki Host with checksum-pinned catalog installation support. If your build still opens an older catalog, set `KIKI_PLUGIN_MARKETPLACE_URL=https://x-t-e-r.github.io/kiki-plugins/marketplace.json` when starting Kiki. Open the plugin market, choose a package, and review the installation preview. Enable it after checking its contributions and requested permissions. Each first-party entry points to a versioned Release ZIP and its SHA-256 digest; old packages stay available.
 
-The catalog targets **plugin engine 0.4.0**, not the Kiki product version or the SDK package version. SDK 0.1.0 is the current build-time contract. A package's `x-kiki.engines.kiki` range determines Host compatibility.
+This checkout validates against **plugin engine 0.4.1** and the vendored **SDK 0.1.1** built from Kiki commit `9e93979e6b908d683e2c6801a34ef7e988d016cd`. The SDK artifact is a commit-pinned local integration candidate. QQ and Voice need a Host containing its IM adapter and execution-message contracts. Each package's `x-kiki.engines.kiki` range determines engine compatibility; engine, SDK and Kiki product versions are separate.
 
 | Package | What you need to use it |
 | --- | --- |
@@ -22,17 +22,19 @@ The two Moonshot entries are **author-hosted references**, not mirrored source i
 
 ## Build and test locally
 
-Use Node **24.15.0 or newer** (CI uses 24.18.0). Dependencies and the SDK tarball are locked; npm publication is not required.
+Use Node **24.22.1**, also used by CI. Dependencies and the SDK tarball are locked. For the local integration candidate, keep a matching Kiki checkout beside this repository and select its runner:
 
 ```sh
 npm ci --ignore-scripts
-npm run check
+KIKI_HOST_RUNNER=../kiki/packages/agent-core-v2/src/app/plugin/hostRunner.mjs npm run check
 npm test
 npm run build
 npm run dev
 ```
 
-`check` validates all 15 packages, manifest synchronization, media distribution, Extract behavior, and mocked provider protocols. It downloads only the checksum-pinned Host RPC runner from the public Kiki ref in `sdk.lock.json`; it does not read your Kiki home or use paid API credentials. To test one package, use `npm run check -- kiki-extract`.
+`check` validates catalog-listed local packages, exact manifest/entry registrations, manifest synchronization and each package's routed fixtures. QQ includes both platform test files and its public Host runner RPC fixture. To select one package, use `npm run check -- kiki-qq` with the same `KIKI_HOST_RUNNER`; unknown IDs fail. `npm run check -- catalog` validates only catalog metadata for CI's metadata-only route.
+
+The runner must match the checksum in `sdk.lock.json`. Without `KIKI_HOST_RUNNER`, `check` downloads it from the fixed Kiki commit; that commit must be available on GitHub first. Checks use temporary fixtures without Kiki-home access or paid API credentials.
 
 With a Kiki checkout and its dependencies installed beside this repository, run the real Host installation test against the public catalog:
 
@@ -41,7 +43,7 @@ KIKI_HOST_REPO=../kiki KIKI_CATALOG_URL=https://x-t-e-r.github.io/kiki-plugins/m
   ../kiki/node_modules/.bin/tsx --tsconfig ../kiki/tsconfig.json test/host.integration.mts --all
 ```
 
-This verifies ZIP checksums, preview/install, enablement, and loaded contributions for all 15 first-party packages. It creates its own Kiki home and temporary files under `.tmp/host-proof`, uses no OAuth or paid generation, and leaves external engines uninstalled. Omit `--all` for the four-package Writing/Extract/Media/OpenAI smoke test; omit `KIKI_CATALOG_URL` to use local prebuilt ZIPs.
+The harness checks ZIP checksums, preview/install, enablement, and loaded contributions for the selected public catalog entries. It creates its own Kiki home and temporary files under `.tmp/host-proof`, uses no OAuth or paid generation, and leaves external engines uninstalled.
 
 Office's real document-engine tests require `OFFICECLI_TEST_BINARY` pointing to the pinned executable. Without it, those three tests are explicitly skipped; manifest, consent, path, and package-safety tests still run. Optional Python extraction tests use `NB_EXTRACT_TEST_PYTHON`. Neither dependency is silently installed.
 
@@ -53,7 +55,7 @@ Office's real document-engine tests require `OFFICECLI_TEST_BINARY` pointing to 
 - `plugins/official/media-runtime/`: shared source distributed into ten self-contained providers; not a catalog package.
 - `plugins/marketplace.json`: descriptions and author-hosted external entries.
 - `scripts/`: packaging, validation, development server, and release tooling.
-- `vendor/kiki-plugin-sdk-0.1.0.tgz`: compiled SDK artifact from the fixed Kiki source ref, not a second SDK implementation. CI recompiles that ref and compares the public output.
+- `vendor/kiki-plugin-sdk-0.1.1-host-9e93979e6b.tgz`: compiled SDK artifact selected by `sdk.lock.json`; older artifacts remain intact. CI recompiles the fixed Kiki ref and compares its public exports and compiled files.
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) to change packages or propose third-party entries, and [RELEASING.md](RELEASING.md) to publish or recover a deployment.
 
