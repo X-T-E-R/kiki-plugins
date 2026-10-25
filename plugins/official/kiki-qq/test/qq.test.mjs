@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { once, EventEmitter } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
+import { messageLimits } from './message-limits.mjs';
 import { register } from '../entry.mjs';
 import { toolDefinitions, officialAdapterDefinition, onebotAdapterDefinition } from '../lib/definitions.mjs';
 import { createOfficialClient, OfficialGateway } from '../lib/official.mjs';
@@ -58,7 +59,7 @@ async function startOfficial(t, fixture, deps = {}) {
   const adapter = createOfficialAdapter({ fetchImpl: fixture.fetchImpl, gatewayFactory: gateway.gatewayFactory, ...deps });
   const events = [];
   let started = false;
-  const start = adapter.start({ signal: new AbortController().signal, instanceId: 'fixture-instance', settings: OFFICIAL_SETTINGS, emit: async (event) => {
+  const start = adapter.start({ messageLimits, signal: new AbortController().signal, instanceId: 'fixture-instance', settings: OFFICIAL_SETTINGS, emit: async (event) => {
     assert.equal(started, true, 'emit must follow start resolution'); events.push(event);
   } });
   await gateway.ready;
@@ -101,8 +102,9 @@ test('official identity/source/mention/quote remain distinct across multiple med
     attachments: [{ filename: 'voice.silk', content_type: 'audio/silk', url: 'https://media.fixture.test/a', asr_refer_text: '参考文本' },
       { filename: 'a.mp4', content_type: 'video/mp4', url: '//media.fixture.test/b' }] };
   const events = normalizeOfficialEvent(raw, { eventType: 'GROUP_AT_MESSAGE_CREATE' });
-  assert.deepEqual(events.map((event) => event.kind), ['text', 'audio', 'video']);
-  assert.equal(events[0].text, '你好');
+  assert.deepEqual(events.map((event) => event.kind), ['message']);
+  assert.deepEqual(events[0].parts.map((part) => part.kind), ['text', 'audio', 'video']);
+  assert.equal(events[0].parts[0].text, '你好');
   assert.equal(events[0].sourceMessageId, 'source-1');
   assert.equal(events[0].replyToMessageId, 'quoted-1');
   assert.equal(events[0].identity.chatId, 'official:group:g1');
@@ -110,20 +112,21 @@ test('official identity/source/mention/quote remain distinct across multiple med
   assert.equal(events[0].identity.topicId, 'official:topic:t1');
   assert.deepEqual(events[0].mentionIds, ['bot']);
   assert.equal(events[0].mentioned, true);
-  assert.equal(events[1].preview, '[QQ ASR reference] 参考文本');
-  assert.equal(events[2].attachment.url, 'https://media.fixture.test/b');
+  assert.equal(events[0].parts[1].text, '[QQ ASR reference] 参考文本');
+  assert.equal(events[0].parts[2].attachment.url, 'https://media.fixture.test/b');
   const other = normalizeOfficialEvent({ ...raw, id: 'source-2', author: { member_openid: 'u2' } }, { eventType: 'GROUP_MESSAGE_CREATE' })[0];
   assert.equal(other.identity.chatId, events[0].identity.chatId);
   assert.notEqual(other.identity.senderId, events[0].identity.senderId);
-  assert.equal(new Set(events.map((event) => event.eventId)).size, 3);
+  assert.equal(new Set(events.map((event) => event.eventId)).size, 1);
   assert.deepEqual(normalizeOfficialEvent({ ...raw, guild_id: 'guild' }, { eventType: 'AT_MESSAGE_CREATE' }), []);
 });
 
 test('OneBot CQ/array events keep all media, quote, mentions and private/group identity', () => {
   const event = incomingOnebot(-42, 200, { topic_id: 'thread1', message: '[CQ:reply,id=-41][CQ:at,qq=999]a&#91;b&#93;[CQ:image,file=a.png,url=https://media.fixture.test/a][CQ:record,file=v.silk,url=https://media.fixture.test/b][CQ:video,file=v.mp4,url=https://media.fixture.test/c]' });
   const events = normalizeOneBotEvent(event, { selfId: '999' });
-  assert.deepEqual(events.map((item) => item.kind), ['text', 'image', 'audio', 'video']);
-  assert.equal(events[0].text, 'a[b]');
+  assert.deepEqual(events.map((item) => item.kind), ['message']);
+  assert.deepEqual(events[0].parts.map((part) => part.kind), ['text', 'image', 'audio', 'video']);
+  assert.equal(events[0].parts[0].text, 'a[b]');
   assert.equal(events[0].sourceMessageId, '-42');
   assert.equal(events[0].replyToMessageId, '-41');
   assert.equal(events[0].mentioned, true);
@@ -243,18 +246,18 @@ test('real mature official Gateway identifies, serializes parts, hydrates and re
   t.after(() => adapter.stop());
   const events = [], done = deferred();
   let started = false, active = 0;
-  await adapter.start({ signal: new AbortController().signal, settings: OFFICIAL_SETTINGS, instanceId: 'gateway', emit: async (event) => {
+  await adapter.start({ messageLimits, signal: new AbortController().signal, settings: OFFICIAL_SETTINGS, instanceId: 'gateway', emit: async (event) => {
     assert.equal(started, true); assert.equal(++active, 1);
     await tick(); events.push(event); active--;
-    if (events.length === 4) done.resolve();
+    if (events.length === 2) done.resolve();
   } });
   started = true;
   const identify = await identified.promise;
   assert.equal(identify.d.token, 'QQBot fixture-token');
   await done.promise;
-  assert.deepEqual(events.map((event) => event.eventId), ['official:source-1', 'official:source-1:media:0', 'official:source-1:media:1', 'official:source-2']);
-  assert.deepEqual([...events[1].media.bytes], [1, 2, 3]);
-  assert.equal(events.every((event) => !('attachment' in event)), true);
+  assert.deepEqual(events.map((event) => event.eventId), ['official:source-1', 'official:source-2']);
+  assert.deepEqual([...events[0].parts[1].media.bytes], [1, 2, 3]);
+  assert.equal(events.every((event) => event.parts.every((part) => !('attachment' in part))), true);
   assert.deepEqual(await adapter.sendText(text(privateOfficial)), { status: 'delivered', messageIds: ['reply-id'] });
   assert.equal(fixture.calls.at(-1).body.msg_id, 'source-2');
   await adapter.stop(); await closed.promise;
@@ -297,7 +300,7 @@ test('official startup cancellation releases owned gateway with no late emit', a
   const gateway = gatewayFixture(), events = [];
   const adapter = createOfficialAdapter({ gatewayFactory: gateway.gatewayFactory, fetchImpl: fixtureFetch(t, []).fetchImpl });
   const controller = new AbortController();
-  const starting = adapter.start({ settings: OFFICIAL_SETTINGS, instanceId: 'cancel', signal: controller.signal, emit: async (event) => events.push(event) });
+  const starting = adapter.start({ messageLimits, settings: OFFICIAL_SETTINGS, instanceId: 'cancel', signal: controller.signal, emit: async (event) => events.push(event) });
   await gateway.ready; controller.abort();
   await assert.rejects(starting);
   gateway.options.onReady({});
@@ -357,7 +360,7 @@ test('real OneBot forward universal WS verifies login before ordered events and 
   t.after(() => adapter.stop());
   const events = [];
   let started = false;
-  assert.deepEqual(await adapter.start({ instanceId: 'onebot', settings: { onebot__wsUrl: wire.url, onebot__accessToken: 'fixture-token' }, signal: new AbortController().signal,
+  assert.deepEqual(await adapter.start({ messageLimits, instanceId: 'onebot', settings: { onebot__wsUrl: wire.url, onebot__accessToken: 'fixture-token' }, signal: new AbortController().signal,
     emit: async (event) => { assert.equal(started, true); events.push(event); if (events.length === 2) done.resolve(); } }), { accountId: 'qq-onebot:999', listenerAccountId: '999' });
   started = true;
   await done.promise;
@@ -408,16 +411,18 @@ test('OneBot status/retcode never synthesizes success from async or missing rece
   }
 });
 
-test('media hydration reports missing/oversize media, preserves ASR reference and cancels on stop', async (t) => {
-  const fixture = fixtureFetch(t, []);
-  const { adapter, gateway, events } = await startOfficial(t, fixture);
-  gateway.options.onMessage({ rawEventType: 'C2C_MESSAGE_CREATE', raw: { id: 'large', author: { user_openid: 'u1' }, attachments: [{ filename: 'large.mp4', content_type: 'video/mp4', url: 'https://media.fixture.test/large', size: 9 * 1024 * 1024 }] } });
-  gateway.options.onMessage({ rawEventType: 'C2C_MESSAGE_CREATE', raw: { id: 'asr', author: { user_openid: 'u1' }, attachments: [{ filename: 'voice.silk', content_type: 'audio/silk', asr_refer_text: '参考' }] } });
-  await delay(10);
-  assert.equal(events[0].tooLarge, true);
-  assert.equal(events[0].media, undefined);
-  assert.match(events[1].preview, /QQ ASR reference/);
-  assert.equal(events[1].media, undefined);
+test('media hydration rejects an oversized source and preserves missing audio with its ASR reference', async (t) => {
+  const fixture = fixtureFetch(t, []), errors = [];
+  const { adapter, gateway, events } = await startOfficial(t, fixture, { onError: (error) => errors.push(error) });
+  await gateway.options.onMessage({ rawEventType: 'C2C_MESSAGE_CREATE', raw: { id: 'large', author: { user_openid: 'u1' }, attachments: [{ filename: 'large.mp4', content_type: 'video/mp4', url: 'https://media.fixture.test/large', size: 9 * 1024 * 1024 }] } });
+  assert.deepEqual(events, []);
+  assert.equal(errors.length, 1); assert.equal(errors[0].code, 'MEDIA_TOO_LARGE');
+  await gateway.options.onMessage({ rawEventType: 'C2C_MESSAGE_CREATE', raw: { id: 'asr', author: { user_openid: 'u1' }, attachments: [{ filename: 'voice.silk', content_type: 'audio/silk', asr_refer_text: '参考' }] } });
+  assert.equal(events.length, 1); assert.equal(events[0].kind, 'message');
+  assert.equal(events[0].parts[0].kind, 'audio');
+  assert.match(events[0].parts[0].text, /no downloadable URL/);
+  assert.match(events[0].parts[0].text, /QQ ASR reference.*参考/);
+  assert.equal(events[0].parts[0].media, undefined);
   await adapter.stop();
   assert.equal(fixture.calls.length, 0);
 });
@@ -453,7 +458,7 @@ test('stop releases an unacknowledged Host emit, drops queued events and allows 
     const gateway = gatewayFixture(); gateways.push(gateway); return gateway.gatewayFactory(options);
   } });
   t.after(() => adapter.stop());
-  const context = { signal: new AbortController().signal, settings: OFFICIAL_SETTINGS, instanceId: 'restart', emit: async () => { received.resolve(); return emit.promise; } };
+  const context = { messageLimits, signal: new AbortController().signal, settings: OFFICIAL_SETTINGS, instanceId: 'restart', emit: async () => { received.resolve(); return emit.promise; } };
   const starting = adapter.start(context);
   gateways[0].options.onReady({}); await starting;
   await assert.rejects(adapter.start(context), /already running/);
@@ -464,7 +469,7 @@ test('stop releases an unacknowledged Host emit, drops queued events and allows 
   await adapter.stop();
   assert.equal(gateways[0].stopped, true);
   const events = [];
-  const restarting = adapter.start({ ...context, emit: async (event) => events.push(event) });
+  const restarting = adapter.start({ messageLimits, ...context, emit: async (event) => events.push(event) });
   gateways[1].options.onReady({}); await restarting;
   gateways[0].options.onMessage({ rawEventType: 'C2C_MESSAGE_CREATE', raw: { ...raw, id: 'retired' } });
   gateways[1].options.onMessage({ rawEventType: 'C2C_MESSAGE_CREATE', raw: { ...raw, id: 'replacement' } });

@@ -13,7 +13,7 @@
     "dev": "node scripts/dev-plugin-marketplace-server.mjs"
   },
   "devDependencies": {
-    "@kiki/plugin-sdk": "file:vendor/kiki-plugin-sdk-0.1.1-host-d3ddc0019.tgz",
+    "@kiki/plugin-sdk": "file:vendor/kiki-plugin-sdk-0.1.1-host-a3c694c402.tgz",
     "@types/node": "22.15.3",
     "semver": "7.7.4",
     "typescript": "6.0.2",

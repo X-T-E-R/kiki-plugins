@@ -41,7 +41,7 @@ async function checkPackages(){
   if(!selected||selected==='kiki-bilibili')run('--test',['plugins/official/kiki-bilibili/test/bilibili.test.mjs']);
   if(!selected||selected==='kiki-voice')run('--test',['plugins/official/kiki-voice/test/voice.test.mjs']);
   if(!selected||selected==='kiki-qq'){
-    run('--test',['--test-timeout=15000','plugins/official/kiki-qq/test/qq.test.mjs','plugins/official/kiki-qq/test/qq-regressions.test.mjs','plugins/official/kiki-qq/test/qq-history.test.mjs']);
+    run('--test',['--test-timeout=15000','plugins/official/kiki-qq/test/qq.test.mjs','plugins/official/kiki-qq/test/qq-regressions.test.mjs','plugins/official/kiki-qq/test/qq-history.test.mjs','plugins/official/kiki-qq/test/qq-atomic-inbound.test.mjs']);
     run('plugins/official/kiki-qq/scripts/check-host-contract.mjs',[resolve('node_modules/@kiki/plugin-sdk/dist/im.js'),runner]);
     run('plugins/official/kiki-qq/scripts/check-history-contract.mjs',[resolve('node_modules/@kiki/plugin-sdk/dist/im.js'),runner]);
   }

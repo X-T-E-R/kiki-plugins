@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
+import { messageLimits } from './message-limits.mjs';
 import { register } from '../entry.mjs';
 import { createOfficialAdapter, createOneBotAdapter } from '../lib/adapters.mjs';
 import { receiptFromError } from '../lib/receipts.mjs';
@@ -52,7 +53,7 @@ async function officialAdapter(t, fixture, deps = {}) {
     gateway = options;
     return { start() { options.onReady({}); return new Promise((resolve) => options.abortSignal.addEventListener('abort', resolve, { once: true })); } };
   } });
-  await adapter.start({ signal: signal(), settings: SETTINGS, emit: async (event) => events.push(event) });
+  await adapter.start({ messageLimits, signal: signal(), settings: SETTINGS, emit: async (event) => events.push(event) });
   t.after(() => adapter.stop());
   return { adapter, gateway, events };
 }
@@ -72,7 +73,7 @@ for (const actual of [998, 999]) test(`QQR-001: reconnect login window blocks bu
   });
   const adapter = createOneBotAdapter({ onError: (error) => { assert.equal(error.code, 'ACCOUNT_CHANGED'); changed.resolve(); } });
   t.after(() => adapter.stop());
-  assert.deepEqual(await adapter.start({ settings: { onebot__wsUrl: wire.url, onebot__selfId: '999' }, signal: signal(), emit: async () => resumed.resolve() }), { accountId: 'qq-onebot:999', listenerAccountId: '999' });
+  assert.deepEqual(await adapter.start({ messageLimits, settings: { onebot__wsUrl: wire.url, onebot__selfId: '999' }, signal: signal(), emit: async () => resumed.resolve() }), { accountId: 'qq-onebot:999', listenerAccountId: '999' });
   first.close(); await login2.promise;
   const blocked = await adapter.sendText(text(onebot));
   assert.equal(blocked.status, 'failed'); assert.match(blocked.detail, /not verified; action was not sent/);
@@ -116,13 +117,14 @@ test('QQR-002: real Gateway keeps scene/103 references and separates quoted/curr
   ]);
   const adapter = createOfficialAdapter(fixture), events = [], done = deferred();
   t.after(() => adapter.stop());
-  await adapter.start({ signal: signal(), settings: SETTINGS, emit: async (event) => { events.push(event); if (events.length === 5) done.resolve(); } });
+  await adapter.start({ messageLimits, signal: signal(), settings: SETTINGS, emit: async (event) => { events.push(event); if (events.length === 3) done.resolve(); } });
   await done.promise;
-  assert.deepEqual(events.map((event) => event.kind), ['text', 'text', 'text', 'image', 'image']);
+  assert.deepEqual(events.map((event) => event.kind), ['message', 'message', 'message']);
   assert.equal(events[1].replyToMessageId, 'original-id');
   assert.equal(events[2].replyToMessageId, 'original-id');
-  assert.match(events[2].preview, /original-index/); assert.match(events[2].preview, /Quoted attachment: "old.png"/);
-  assert.deepEqual(events.slice(3).map((event) => event.media.name), ['current-first.png', 'current-second.png']);
+  const reference = events[2].parts.filter((part) => part.kind === 'text').map((part) => part.text).join('\n');
+  assert.match(reference, /original-index/); assert.match(reference, /Quoted attachment: "old.png"/);
+  assert.deepEqual(events[2].parts.filter((part) => part.media).map((part) => part.media.name), ['current-first.png', 'current-second.png']);
   assert.equal(events.slice(2).every((event) => event.sourceMessageId === 'new-source' && event.identity.senderId === 'official:user:new-sender'), true);
   assert.equal((await adapter.sendText({ ...text(group), replyToMessageId: events[2].replyToMessageId })).status, 'delivered');
   assert.equal(fixture.calls.at(-1).body.msg_id, 'new-source');
@@ -138,7 +140,7 @@ test('QQR-002/006: ref-index association is separate, scoped and cleared; unreso
   const normalize = (raw = event, owner = client) => owner.normalize(raw, { eventType: 'C2C_MESSAGE_CREATE' })[0];
   assert.equal(normalize().replyToMessageId, 'real-outbound-id');
   for (const item of [normalize({ ...event, author: { user_openid: 'u2' } }), normalize(event, createOfficialClient(CONFIG, fixture))]) {
-    assert.equal(item.replyToMessageId, undefined); assert.match(item.preview, /ref_index="outbound-index".*message ID unavailable/);
+    assert.equal(item.replyToMessageId, undefined); assert.match(item.parts.map((part) => part.text ?? '').join('\n'), /ref_index="outbound-index".*message ID unavailable/);
     assert.equal(item.sourceMessageId, 'next-source');
   }
   client.clear(); assert.equal(normalize().replyToMessageId, undefined);
@@ -237,11 +239,15 @@ test('QQR-004/005: native voice/AMR retains audio bytes/ASR; missing URLs retain
     { filename: 'first.amr', content_type: 'voice', file: 'C:\\platform\\first.amr' },
     { filename: 'second.png', content_type: 'image/png' }, { filename: 'third.mp4', content_type: 'video/mp4' },
   ] });
-  assert.deepEqual(events.map((event) => event.kind), ['audio', 'image', 'text', 'audio', 'image', 'video']);
-  assert.equal(events[0].media.mediaType, 'audio/amr'); assert.deepEqual([...events[0].media.bytes], [9, 8, 7]);
-  assert.match(events[0].preview, /QQ ASR reference.*平台参考文本/);
-  for (const index of [1, 3, 4, 5]) { assert.equal(events[index].media, undefined); assert.match(events[index].preview, /no downloadable URL; local platform paths are not read/); }
-  assert.deepEqual(events.slice(3).map((event) => event.eventId), ['official:body-multiple:media:0', 'official:body-multiple:media:1', 'official:body-multiple:media:2']);
+  assert.deepEqual(events.map((event) => event.kind), ['message', 'message', 'message']);
+  const voice = events[0].parts[0];
+  assert.equal(voice.kind, 'audio'); assert.equal(voice.media.mediaType, 'audio/amr'); assert.deepEqual([...voice.media.bytes], [9, 8, 7]);
+  assert.match(voice.text, /QQ ASR reference.*平台参考文本/);
+  const missing = [events[1].parts[0], ...events[2].parts.slice(1)];
+  for (const part of missing) { assert.equal(part.media, undefined); assert.equal(part.tooLarge, undefined); assert.match(part.text, /no downloadable URL; local platform paths are not read/); }
+  assert.deepEqual(events[2].parts.map((part) => part.kind), ['text', 'audio', 'image', 'video']);
+  for (const [index, name] of ['first.amr', 'second.png', 'third.mp4'].entries()) assert.ok(events[2].parts[index + 1].text.includes(name));
+  assert.deepEqual(events.map((event) => event.eventId), ['official:native-voice', 'official:pure-missing', 'official:body-multiple']);
   assert.equal(fixture.calls.length, 1, 'no attempt to read local paths or missing URLs');
 });
 
@@ -283,7 +289,7 @@ test('QQR-007: public entry tools share WS identity and retain its account guard
   register({ registerImAdapter(definition, adapter) { adapters.set(definition.id, adapter); }, registerTool(definition, execute) { tools.set(definition.name, execute); } });
   const adapter = adapters.get('qq-onebot'); t.after(() => adapter.stop());
   const settings = { onebot__wsUrl: wire.url, onebot__baseUrl: `http://127.0.0.1:${http.address().port}` };
-  await adapter.start({ settings, signal: signal(), emit: async () => {} });
+  await adapter.start({ messageLimits, settings, signal: signal(), emit: async () => {} });
   const context = { settings, signal: signal(), progress() {} };
   for (const [name, args, items] of [['qq_list_groups', {}, [{ group_id: 100 }]], ['qq_list_group_members', { groupId: '100' }, [{ user_id: 200 }]]]) {
     const result = await tools.get(name)(args, context);
@@ -349,11 +355,11 @@ test('QQR-008: actual adapter startup validates intents before any gateway or ne
   } });
   t.after(() => adapter.stop());
   for (const value of [-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, '1']) {
-    await assert.rejects(adapter.start({ settings: { ...SETTINGS, official__intents: value }, signal: signal(), emit: async () => {} }), { code: 'CONFIGURATION', message: 'official__intents must be a non-negative integer' });
+    await assert.rejects(adapter.start({ messageLimits, settings: { ...SETTINGS, official__intents: value }, signal: signal(), emit: async () => {} }), { code: 'CONFIGURATION', message: 'official__intents must be a non-negative integer' });
   }
   assert.deepEqual(values, []); assert.equal(fixture.calls.length, 0);
   for (const value of [undefined, 0, 1, 100663296]) {
-    await adapter.start({ settings: { ...SETTINGS, official__intents: value }, signal: signal(), emit: async () => {} });
+    await adapter.start({ messageLimits, settings: { ...SETTINGS, official__intents: value }, signal: signal(), emit: async () => {} });
     await adapter.stop();
   }
   assert.deepEqual(values, [100663296, 0, 1, 100663296]);

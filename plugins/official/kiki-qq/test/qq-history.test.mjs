@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
 import test from 'node:test';
+import { messageLimits } from './message-limits.mjs';
 import { createOneBotClient } from '../lib/onebot.mjs';
 import { createOfficialClient } from '../lib/official.mjs';
 import { createOneBotAdapter, createOfficialAdapter } from '../lib/adapters.mjs';
@@ -247,7 +248,7 @@ function historyWindow(rows, { message_seq: anchor, count }, inclusive) {
 async function startedHistoryAdapter(t, fixture) {
   const adapter = createOneBotAdapter({ fetchImpl() { throw new Error('Adapter history must use its WS'); } });
   const context = { signal: new AbortController().signal, settings: { onebot__wsUrl: fixture.url } };
-  await adapter.start({ ...context, emit() { throw new Error('History must not emit a new live message'); } });
+  await adapter.start({ messageLimits, ...context, emit() { throw new Error('History must not emit a new live message'); } });
   t.after(() => adapter.stop());
   return { adapter, context };
 }
@@ -311,7 +312,7 @@ test('Host history adapter cancellation/stop do not open HTTP or return a fabric
   const adapter = createOneBotAdapter({ fetchImpl() { throw new Error('No HTTP fallback'); } });
   const context = { settings: { onebot__wsUrl: fixture.url }, signal: new AbortController().signal };
   await assert.rejects(adapter.readHistory(historyRequest, context), /running channel/);
-  await adapter.start({ ...context, emit() {} });
+  await adapter.start({ messageLimits, ...context, emit() {} });
   t.after(() => adapter.stop());
   const cancelled = new AbortController();
   const work = adapter.readHistory(historyRequest, { ...context, signal: cancelled.signal });

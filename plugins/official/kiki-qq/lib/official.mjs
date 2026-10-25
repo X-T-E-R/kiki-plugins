@@ -157,7 +157,6 @@ export class OfficialGateway {
         const onReady = () => { if (lifetime.aborted) return; ready = true; lifetime.removeEventListener('abort', aborted); resolve({ accountId: this.client.appId }); };
         const events = (raw, eventType, message) => {
           if (lifetime.aborted) return;
-          // Enqueue every part synchronously: the SDK invokes callbacks concurrently.
           return Promise.all(this.client.normalize(raw, { eventType, message, maxInboundBytes: this.maxInboundBytes }).map(emit));
         };
         const connection = this.gatewayFactory({

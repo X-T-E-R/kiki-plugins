@@ -4,14 +4,15 @@ import { once } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from '../vendor/ws/wrapper.mjs';
 import { officialAdapterDefinition, onebotAdapterDefinition } from '../lib/definitions.mjs';
 import { createOfficialAdapter } from '../lib/adapters.mjs';
+import { createImReceiver, loadImContract } from './im-rpc-fixture.mjs';
 
-const [sdkPath, runnerPath] = process.argv.slice(2);
-if (!sdkPath || !runnerPath) throw new Error('Usage: node check-history-contract.mjs <public SDK im module> <Host runner>');
-const sdk = await import(pathToFileURL(resolve(sdkPath)).href);
+const [sdkPath, runnerPath, parserPath] = process.argv.slice(2);
+if (!sdkPath || !runnerPath) throw new Error('Usage: node check-history-contract.mjs <public SDK im module> <Host runner> [Host imAdapter module]');
+const { sdk, parsePluginImEvent } = await loadImContract(sdkPath, parserPath);
 const parseRequest = (value) => sdk.pluginImHistoryRequestSchema.parse(value);
 const parsePage = (value) => sdk.pluginImHistoryPageSchema.parse(value);
 const requestShape = { chatId: 'onebot:group:100', topicId: 'onebot:group:100', limit: 2 };
@@ -56,8 +57,17 @@ const send = (value) => runner.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', .
 function rpc(method, params) {
   const id = nextId++, call = Promise.withResolvers(); pending.set(id, call); send({ id, method, params }); return call.promise;
 }
-const im = (action, input) => rpc('im-adapter-request', { adapterId: 'qq-onebot', instanceId: 'history-fixture', action, input,
-  settings: { onebot__wsUrl: `ws://127.0.0.1:${wire.address().port}`, onebot__selfId: '999' } });
+const receiver = createImReceiver({ sdk, parsePluginImEvent, definitions: [officialAdapterDefinition, onebotAdapterDefinition], send,
+  async listener(_adapterId, event) { events.push(event); } });
+function im(action, input) {
+  if (action === 'start') receiver.start('qq-onebot');
+  if (action === 'stop') receiver.stop('qq-onebot');
+  return rpc('im-adapter-request', { adapterId: 'qq-onebot', instanceId: 'history-fixture', action, input,
+    messageLimits: action === 'start' ? sdk.PLUGIN_IM_COMPLETE_LIMITS : undefined,
+    settings: { onebot__wsUrl: `ws://127.0.0.1:${wire.address().port}`, onebot__selfId: '999' } });
+}
+function wake() { for (const call of [...waiters]) if (call.predicate()) { waiters.splice(waiters.indexOf(call), 1); call.resolve(); } }
+function fail(error) { for (const item of pending.values()) item.reject(error); for (const item of waiters) item.reject(error); }
 function waitFor(predicate) {
   if (predicate()) return Promise.resolve();
   const call = Promise.withResolvers(); waiters.push({ predicate, ...call }); return call.promise;
@@ -72,18 +82,22 @@ try {
     const message = JSON.parse(line);
     if (message.method === 'register-im-adapter') registrations.push(message.params.definition);
     if (message.method === 'ready') ready = true;
-    if (message.method === 'im-adapter-event') { events.push(message.params.event); send({ method: 'im-adapter-event-result', params: { callId: message.params.callId } }); }
+    if (message.method === 'im-adapter-message-chunk' || message.method === 'im-adapter-event') { void receiver.accept(message).then(wake, fail); return; }
     if (message.id !== undefined) {
       const call = pending.get(message.id); pending.delete(message.id);
       if (message.error) call?.reject(new Error(message.error.message)); else call?.resolve(message.result);
     }
-    for (const call of [...waiters]) if (call.predicate()) { waiters.splice(waiters.indexOf(call), 1); call.resolve(); }
+    wake();
   });
   await rpc('handshake', { version: 1 }); await waitFor(() => ready);
   assert.deepEqual(registrations, [officialAdapterDefinition, onebotAdapterDefinition]);
   assert.deepEqual(await im('start'), { accountId: 'qq-onebot:999', listenerAccountId: '999' });
-  await waitFor(() => events.length === 2);
-  assert.equal(events[0].operation, 'create'); assert.equal(events[0].timestamp, 1700000000000);
+  await waitFor(() => receiver.deliveries.length === 2);
+  assert.equal(events.length, 2); assert.equal(events[0].kind, 'message');
+  assert.deepEqual(events[0].parts.map(({ kind, text }) => ({ kind, text })), [{ kind: 'text', text: 'history\nbody' }]);
+  assert.equal(events[0].sourceMessageId, '12'); assert.equal(events[0].operation, 'create'); assert.equal(events[0].timestamp, 1700000000000);
+  assert.equal(receiver.frames.length, 1); assert.equal(receiver.acknowledgements.length, 2);
+  assert.equal(receiver.acknowledgements.every(({ result }) => result === true), true);
   assert.equal(events[1].operation, 'retract'); assert.equal(events[1].sourceMessageId, '12'); assert.equal(events[1].identity.senderId, 'onebot:user:200');
   const first = parsePage(await im('readHistory', parseRequest(requestShape)));
   assert.equal(first.status, 'ok'); assert.equal(first.coverage, 'unknown'); assert.equal(first.end, 'unknown'); assert.equal(first.order, 'chronological');
@@ -149,8 +163,10 @@ try {
   mode = 'unknown'; await assert.rejects(im('readHistory', parseRequest(requestShape)), /history unknown/);
   await im('stop'); await assert.rejects(im('readHistory', requestShape), /not connected/);
   const exit = once(runner, 'exit'); await rpc('shutdown', {}); await exit; assert.equal(runner.exitCode, 0, stderr);
-  assert.deepEqual(unexpected, []);
-  console.log(JSON.stringify({ node: process.version, registrations: registrations.map(({ id, supportsHistory }) => ({ id, supportsHistory })),
+  assert.deepEqual(unexpected, []); assert.equal(receiver.pendingAssemblies, 0);
+  console.log(JSON.stringify({ node: process.version, validation: parserPath ? 'production-parser-and-public-wire-assertions' : 'public-wire-contract-assertions',
+    parser: parserPath ? resolve(parserPath) : undefined, frames: receiver.frames, listenerCalls: receiver.deliveries.length, acknowledgements: receiver.acknowledgements,
+    pendingAssemblies: receiver.pendingAssemblies, registrations: registrations.map(({ id, supportsHistory }) => ({ id, supportsHistory })),
     first, bounded: { ...bounded, messages: bounded.messages.map((item) => ({ sourceMessageId: item.sourceMessageId, textLength: item.text.length, mentionCount: item.mentionIds.length, mediaCount: item.media.length })) },
     older, pagination, stalled, empty, events, historyActionCount: actions.filter((item) => item.action === 'get_group_msg_history').length, shutdownExit: runner.exitCode }, null, 2));
 } finally {

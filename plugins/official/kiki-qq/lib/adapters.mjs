@@ -34,20 +34,54 @@ export function chunkText(text, limit = 5000) {
   if (current) chunks.push(current);
   return chunks;
 }
-async function hydrate(event, options) {
-  const { attachment, ...publicEvent } = event;
-  if (!attachment) return publicEvent;
-  if (event.tooLarge) return { ...publicEvent, preview: 'QQ attachment exceeds the inbound size limit.' };
-  try {
-    const media = await fetchMediaBytes(attachment, options);
-    return { ...publicEvent, media: { name: media.name, mediaType: media.mediaType, bytes: media.bytes } };
-  } catch (error) {
-    const detail = error.code === 'MEDIA_TOO_LARGE' ? 'QQ attachment exceeds the inbound size limit.'
-      : error.code === 'MEDIA_URL_MISSING' ? 'QQ attachment has no downloadable URL; local platform paths are not read.'
-        : 'QQ attachment could not be downloaded.';
-    return { ...publicEvent, tooLarge: error.code === 'MEDIA_TOO_LARGE' || undefined,
-      preview: [detail, event.preview].filter(Boolean).join('\n') };
+function readMessageLimits(context) {
+  const limits = context.messageLimits;
+  if (!limits || !['parts', 'mediaBytes', 'textChars', 'serializedChars'].every((key) => Number.isSafeInteger(limits[key]) && limits[key] > 0)) {
+    throw Object.assign(new Error('Host must supply IM messageLimits; update to a Host with complete-message support'), { code: 'HOST_CONTRACT' });
   }
+  return limits;
+}
+function assertMessageBudget(event, limits, serialized = false) {
+  const reject = (name) => { throw Object.assign(new Error(`QQ message exceeds the Host ${name} budget`), { code: 'MESSAGE_TOO_LARGE' }); };
+  if (!event.parts.length || event.parts.length > limits.parts) reject('parts');
+  let mediaBytes = 0, textChars = 0;
+  for (const part of event.parts) {
+    if (part.tooLarge) throw Object.assign(new Error('QQ attachment exceeds the inbound size limit'), { code: 'MEDIA_TOO_LARGE' });
+    mediaBytes += part.media?.bytes.byteLength ?? 0;
+    textChars += part.text?.length ?? 0;
+  }
+  if (mediaBytes > limits.mediaBytes) reject('decoded media bytes');
+  if (textChars > limits.textChars) reject('text characters');
+  if (serialized) {
+    let base64Chars = 0;
+    const json = JSON.stringify(event, (key, value) => {
+      if (key !== 'media' || !(value?.bytes instanceof Uint8Array)) return value;
+      base64Chars += 4 * Math.ceil(value.bytes.byteLength / 3);
+      return { name: value.name, mediaType: value.mediaType, base64: '' };
+    });
+    if (json.length + base64Chars > limits.serializedChars) reject('serialized characters');
+  }
+}
+async function hydrate(event, options, limits) {
+  if (event.kind !== 'message') return event;
+  assertMessageBudget(event, limits);
+  const parts = [];
+  for (const part of event.parts) {
+    options.signal?.throwIfAborted();
+    const { attachment, ...publicPart } = part;
+    if (!attachment) parts.push(publicPart);
+    else if (!attachment.url) {
+      parts.push({ ...publicPart, text: [`QQ ${part.kind} attachment "${attachment.name}" has no downloadable URL; local platform paths are not read.`, part.text].filter(Boolean).join('\n') });
+    } else {
+      const media = await fetchMediaBytes(attachment, options);
+      options.signal?.throwIfAborted();
+      parts.push({ ...publicPart, media: { name: media.name, mediaType: media.mediaType, bytes: media.bytes } });
+    }
+    assertMessageBudget({ ...event, parts }, limits);
+  }
+  const complete = { ...event, parts };
+  assertMessageBudget(complete, limits, true);
+  return complete;
 }
 function emitUntilStopped(emit, event, signal) {
   if (signal.aborted) return Promise.resolve();
@@ -81,6 +115,7 @@ function adapter(platform, definition, buildClient, deps) {
       run = state;
       try {
         const config = settingsFor(platform, context.settings);
+        const messageLimits = readMessageLimits(context);
         const client = buildClient(config);
         state.client = client;
         const transport = platform === 'official' ? new OfficialGateway({ client, gatewayFactory: deps.gatewayFactory, intents: config.intents, maxInboundBytes: definition.maxInboundBytes }) : client;
@@ -88,7 +123,7 @@ function adapter(platform, definition, buildClient, deps) {
         const result = await transport.start({ signal, onError: deps.onError, emit(event) {
           state.queue = state.queue.then(async () => {
             if (signal.aborted) return;
-            const hydrated = await hydrate(event, { fetchImpl: deps.fetchImpl, signal, maxBytes: definition.maxInboundBytes });
+            const hydrated = await hydrate(event, { fetchImpl: deps.fetchImpl, signal, maxBytes: definition.maxInboundBytes }, messageLimits);
             if (signal.aborted) return;
             client.observe?.(hydrated);
             await emitUntilStopped(context.emit, hydrated, signal);

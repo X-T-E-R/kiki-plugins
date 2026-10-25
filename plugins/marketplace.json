@@ -418,7 +418,7 @@
       "id": "kiki-qq",
       "tier": "official",
       "displayName": "QQ",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "description": "Connect official QQ Bot and OneBot 11 accounts for messaging and media, with OneBot group history and read-only group tools.",
       "keywords": [
         "qq",

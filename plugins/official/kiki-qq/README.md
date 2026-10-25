@@ -14,9 +14,9 @@
 
 ### 当前接入状态
 
-`entry.mjs` 使用公开 `registerImAdapter(definition, adapter)` 注册 `qq-official` 和 `qq-onebot`。两种 definition 分别声明同名 `listenerRealm`；start 保留带平台前缀的持久 `accountId`，另返回裸真实账号 `listenerAccountId`，供 Host 区分监听来源与绑定账号。支持版 Node 的稳定源码 RPC fixture 已覆盖两平台注册、收发、停止和 shutdown exit 0。
+`entry.mjs` 使用公开 `registerImAdapter(definition, adapter)` 注册 `qq-official` 和 `qq-onebot`。两种 definition 分别声明同名 `listenerRealm`；start 保留带平台前缀的持久 `accountId`，另返回裸真实账号 `listenerAccountId`，供 Host 区分监听来源与绑定账号。
 
-manifest 的 `x-kiki.imAdapters` 与 entry 的两个完整 definition 逐字段同步。安装时需使用支持该公开 IM adapter 合同的 Host；SDK 仅用于插件仓库的开发和校验。
+0.3.0 需要支持完整消息 `kind: 'message'` 并在 start context 提供 `messageLimits` 的 Host；缺少该字段时，启动在平台连接前报错，请升级 Host。manifest 的 `x-kiki.imAdapters` 与 entry 的两个完整 definition 逐字段同步。SDK 仅用于插件仓库的开发和校验，托管插件直接使用 Host 注入的预算。
 
 ## 能力与回执
 
@@ -36,7 +36,11 @@ manifest 的 `x-kiki.imAdapters` 与 entry 的两个完整 definition 逐字段�
 
 媒体大小由 `lib/definitions.mjs` 声明：图片与语音/音频最多 20 MiB，视频 30 MiB，官方普通文件 100 MiB。官方小于 5 MiB 的数据使用单次上传，达到 5 MiB 时使用 SDK 分块协议：prepare、COS PUT、part finish、complete，然后才发送媒体消息。上传失败或取消不会发送消息；分块上传的重试只处理上传阶段，不重试消息发送。平台若拒绝格式、权限或配额，按实际响应返回失败。音频和语音走平台同一语音通道，不提供音乐播放器卡片或本地转码。
 
-入站保留当前消息的每个媒体附件，单附件上限 8 MiB。只下载无凭据的公开 HTTP(S) 地址，DNS 解析后检查并固定地址，不跟随重定向；内网地址、平台本地文件路径和缺失 URL 不会读取，Host 收到带预览原因的事件。官方原生 `content_type="voice"` 和 `.amr` 归为音频，保留下载字节；`asr_refer_text` 标为参考文本，不调用 ASR。TTS 由独立 Voice/kiki-media 生成，再经 Host 的媒体发送路径交给此插件。
+两个适配器把一条真实源消息的正文、引用预览和当前附件组装为一个 `kind: 'message'` / `parts` 事件，全部下载完成后只 emit 一次。`eventId`、真实 `sourceMessageId`、sender、@ 和引用 ID 只放在外层，附件保留原有顺序。下载失败或取消时整条不 emit；原事件重试保留相同 root/source ID，停止后晚到的下载不会发出事件。
+
+单附件上限 8 MiB；整条消息按 Host 注入的 `messageLimits` 检查：1～256 个 part、解码媒体合计 32 MiB、part 文本合计 1,048,576 个 UTF-16 code unit、序列化事件 64 Mi UTF-16 code unit。任一附件或整条预算超限都拒绝整条，不裁附件、不先发正文。Host runner 负责跨进程分帧。
+
+只下载无凭据的公开 HTTP(S) 地址，DNS 解析后检查并固定地址，不跟随重定向。缺少 URL 或仅有平台本地路径的附件不读取文件，仍在完整事件的原位置保留媒体种类、文件名和明确不可用原因，不伪造字节；公开地址策略拒绝或 HTTP 下载失败则整条不 emit。官方原生 `content_type="voice"` 和 `.amr` 归为音频，保留下载字节；官方与 OneBot 的 ASR 文本明确标为平台参考，引用内容也只作为引用预览，不调用 ASR。TTS 由独立 Voice/kiki-media 生成，再经 Host 的媒体发送路径交给此插件。
 
 - `delivered`：平台返回有效的协议消息 ID。
 - `failed`：明确拒绝、上传失败或发送前取消；修复参数、权限或连接后再决定发送。HTTP 429 返回 `errorKind="rate_limited"`；`Retry-After` 对应的等待在 0～60000 毫秒内时，返回整数 `retryAfterMs` 供 Host 调度。更长或非法的等待保留在 detail 中，不提供自动重试字段。
@@ -61,7 +65,7 @@ manifest 的 `x-kiki.imAdapters` 与 entry 的两个完整 definition 逐字段�
 
 ### 通过 Host 读取群历史
 
-0.2.0 的 OneBot definition 声明 `supportsHistory: true`，实现公开 `adapter.readHistory({ chatId, topicId, cursor?, limit }, context)`。Host 只向已启用、已连接的入站渠道发起读取；插件复用该渠道已核实的 WS 客户端，不另开 HTTP 连接或 listener。`limit` 为 1～50。官方 QQ 群/C2C 声明 `supportsHistory: false`，直接调用时也返回 `unsupported`。
+OneBot definition 声明 `supportsHistory: true`，实现公开 `adapter.readHistory({ chatId, topicId, cursor?, limit }, context)`。Host 只向已启用、已连接的入站渠道发起读取；插件复用该渠道已核实的 WS 客户端，不另开 HTTP 连接或 listener。`limit` 为 1～50。官方 QQ 群/C2C 声明 `supportsHistory: false`，直接调用时也返回 `unsupported`。
 
 返回页按时间升序，保留真实源 ID、sender/chat/topic、正文、@、引用和最多 4 个媒体描述；`timestamp` 为 epoch 毫秒，`isSelf` 按已核实账号判断。正常页与空页均保留 `coverage: 'unknown', end: 'unknown'`；来源无法核实的记录或超过公开合同上限的内容被省略/截取时，标为 `coverage: 'partial'`。平台明确没有接口时返回 `unsupported`，读取失败或响应无法核实时抛错，不伪造成功空页。
 
@@ -91,6 +95,7 @@ const page = await client.getGroupHistory({ groupId: '100', count: 20, signal })
 ```sh
 node --test --test-timeout=15000 plugins/official/kiki-qq/test/qq.test.mjs plugins/official/kiki-qq/test/qq-regressions.test.mjs
 node --test --test-timeout=15000 plugins/official/kiki-qq/test/qq-history.test.mjs
+node --test --test-timeout=15000 plugins/official/kiki-qq/test/qq-atomic-inbound.test.mjs
 node plugins/official/kiki-qq/scripts/sync-manifest.mjs --check
 ```
 
@@ -103,7 +108,11 @@ node plugins/official/kiki-qq/scripts/check-host-contract.mjs <sdk-im-module> <h
 node plugins/official/kiki-qq/scripts/check-history-contract.mjs <sdk-im-module> <hostRunner.mjs>
 ```
 
-两个脚本只连接自己创建的回环 HTTP/WS fixture，并要求 shutdown exit 0。前者精确断言持久账号与裸 listenerAccountId；后者用公开 SDK schema 校验 history definition、请求和返回页，并断言事件元数据，覆盖不透明游标、上限投影、unknown/unsupported 和 stop 后拒绝读取。history 脚本需要包含 `pluginImHistoryRequestSchema` / `pluginImHistoryPageSchema` 的 SDK 与对应 runner。使用 Host 支持的 Node 版本；RPC fixture 不代替发布物的安装和跨入口互斥验证。
+两个脚本从 SDK 的 `PLUGIN_IM_COMPLETE_LIMITS` 注入 start RPC，并按正式 `im-adapter-message-chunk` 字段重组完整事件后，只调用一次 fixture listener、回一个成功 ack。它们只连接自己创建的回环 HTTP/WS 服务，并要求 shutdown exit 0。
+
+`check-host-contract.mjs` 经原 entry 注册实际两种 adapter，每个平台都接收正文、@、引用和两张各 8 MiB 的媒体；逐字节核对下载结果，精确断言每条消息的 6 个自动分帧、外层身份与元数据、唯一 listener/ack、出站回执和停止关闭。fixture 为实际 adapter 注入受限的回环 HTTP fetch；生产公开地址策略由平台测试覆盖。`check-history-contract.mjs` 使用实际 entry，保留 history definition、请求与返回页的 SDK schema 校验，以及原不透明游标、分页、unknown/unsupported、撤回和 stop 后拒绝读取检查。
+
+默认双参数运行依赖公开 SDK 的 schemas、类型合同及 fixture 的逐字段、字节和帧断言。需要同时核验生产事件 parser 时，可给两个脚本追加可选第三参数 `<host-imAdapter-module>`，传入与 runner 同版本、导出 `parsePluginImEvent` 的只读 Host 模块；fixture 只将该模块使用的 protocol 常量接到给定 SDK，不携带 Host schema 或更改 Host 源码。日志的 `validation` 字段区分这两种运行。使用 Host 支持的 Node 版本；安装和跨入口互斥通过对应集成 fixture 验证。
 
 ## 复用来源
 

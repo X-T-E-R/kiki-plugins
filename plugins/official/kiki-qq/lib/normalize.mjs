@@ -12,16 +12,15 @@ function unixTimestamp(value) {
 function messageId(value) {
   return typeof value === 'string' && /^-?\d+$/u.test(value) || typeof value === 'number' && Number.isSafeInteger(value);
 }
-function partEvents(base, text, media, { maxInboundBytes = 8 * 1024 * 1024, keepEmpty = false } = {}) {
-  const output = [];
-  if (text || (!media.length && keepEmpty)) output.push({ ...base, kind: 'text', text: text || undefined });
-  media.forEach((descriptor, index) => output.push({
-    ...base, eventId: `${base.eventId}:media:${index}`, kind: descriptor.kind,
-    tooLarge: descriptor.size > maxInboundBytes || undefined,
-    preview: [base.preview, descriptor.asrText ? `[QQ ASR reference] ${descriptor.asrText}` : undefined].filter(Boolean).join('\n') || undefined,
-    attachment: descriptor,
-  }));
-  return output;
+function messageEvent(base, text, media, { maxInboundBytes = 8 * 1024 * 1024, keepEmpty = false } = {}) {
+  const { preview, ...metadata } = base;
+  const parts = [];
+  if (text || (!media.length && keepEmpty)) parts.push({ kind: 'text', text: text || '' });
+  if (preview) parts.push({ kind: 'text', text: preview });
+  for (const descriptor of media) parts.push({ kind: descriptor.kind,
+    text: descriptor.asrText ? `[QQ ASR reference] ${descriptor.asrText}` : undefined,
+    tooLarge: descriptor.size > maxInboundBytes || undefined, attachment: descriptor });
+  return parts.length ? [{ ...metadata, kind: 'message', parts }] : [];
 }
 export function normalizeOfficialEvent(raw, { eventType, cursor, maxInboundBytes, message, references } = {}) {
   if (!raw || typeof raw !== 'object' || !raw.id) return [];
@@ -46,7 +45,7 @@ export function normalizeOfficialEvent(raw, { eventType, cursor, maxInboundBytes
     replyToMessageId: typeof raw.message_reference?.message_id === 'string' && raw.message_reference.message_id ? raw.message_reference.message_id : resolved,
     preview: quotePreview(raw, refMsgIdx, resolved) };
   const text = base.mentioned ? String(raw.content ?? '').replace(/^\s*<@!?[^>]+>\s*/u, '').trim() : String(raw.content ?? '').trim();
-  return partEvents(base, text, attachmentListFromOfficial(raw, { refMsgIdx }), { maxInboundBytes, keepEmpty: base.mentioned || Boolean(refMsgIdx) });
+  return messageEvent(base, text, attachmentListFromOfficial(raw, { refMsgIdx }), { maxInboundBytes, keepEmpty: base.mentioned || Boolean(refMsgIdx) });
 }
 function interaction(raw, cursor) {
   const userOpenid = raw.user_openid ?? raw.group_member_openid ?? raw.member_openid;
@@ -70,7 +69,7 @@ export function normalizeOneBotEvent(raw, { cursor, selfId, maxInboundBytes } = 
   const userId = raw.user_id ?? raw.sender?.user_id;
   const groupId = raw.message_type === 'group' ? raw.group_id : undefined;
   if (userId === undefined || (raw.message_type === 'group' && groupId === undefined)) return [];
-  const parsed = normalizeOneBotSegments(raw.message ?? raw.raw_message ?? '');
+  const parsed = normalizeOneBotSegments(raw.message ?? raw.raw_message ?? '', { includeAsrText: false });
   const mentioned = parsed.mentions.some((item) => item.kind === 'all' || (selfId !== undefined && String(item.id) === String(selfId)));
   const identity = onebotIdentity({ userId, groupId, topicId: raw.topic_id ?? raw.thread_id, senderName: raw.sender?.card || raw.sender?.nickname, chatTitle: raw.group_name });
   const isSelf = selfId === undefined ? undefined : String(userId) === String(selfId);
@@ -78,7 +77,7 @@ export function normalizeOneBotEvent(raw, { cursor, selfId, maxInboundBytes } = 
   const base = { eventId: `onebot:${raw.message_id}`, sourceMessageId: String(raw.message_id), cursor, identity,
     operation: 'create', isSelf, timestamp: unixTimestamp(raw.time),
     mentioned, mentionIds: parsed.mentions.map((item) => String(item.id)), replyToMessageId: parsed.replyTo };
-  return partEvents(base, parsed.text, parsed.media, { maxInboundBytes, keepEmpty: mentioned || Boolean(parsed.replyTo) });
+  return messageEvent(base, parsed.text, parsed.media, { maxInboundBytes, keepEmpty: mentioned || Boolean(parsed.replyTo) });
 }
 export function normalizeGatewayPayload(payload, options = {}) {
   if (!payload || typeof payload !== 'object') return [];

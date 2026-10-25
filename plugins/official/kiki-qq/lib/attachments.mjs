@@ -21,7 +21,8 @@ export function mediaKindFromMime(mime, filename = '') {
 export function normalizeMediaDescriptor(value, { defaultName = 'attachment', defaultMime = 'application/octet-stream' } = {}) {
   if (!value || typeof value !== 'object') return undefined;
   const rawUrl = typeof value.url === 'string' ? value.url : typeof value.file === 'string' && /^https?:\/\//.test(value.file) ? value.file : undefined;
-  const url = rawUrl?.startsWith('//') ? `https:${rawUrl}` : rawUrl;
+  const localPath = /^(?:file:|[a-z]:[\\/]|\\|\/(?!\/))/iu.test(rawUrl ?? '');
+  const url = localPath ? undefined : rawUrl?.startsWith('//') ? `https:${rawUrl}` : rawUrl;
   const name = String(value.filename ?? value.name ?? value.fileName ?? defaultName).replace(/[\\/\u0000-\u001f]/gu, '_').slice(0, 255) || defaultName;
   const extensionMime = MIME_BY_EXTENSION[name.split('.').pop().toLowerCase()];
   const declared = String(value.content_type ?? value.contentType ?? value.mediaType ?? value.mime ?? extensionMime ?? defaultMime).split(';', 1)[0].toLowerCase();
@@ -65,7 +66,7 @@ function decodeCq(value) {
   return String(value).replace(/&#91;/g, '[').replace(/&#93;/g, ']').replace(/&#44;/g, ',').replace(/&#38;/g, '&');
 }
 
-export function normalizeOneBotSegments(message) {
+export function normalizeOneBotSegments(message, { includeAsrText = true } = {}) {
   const source = Array.isArray(message) ? message : parseCqMessage(message);
   const text = [];
   const mentions = [];
@@ -92,12 +93,10 @@ export function normalizeOneBotSegments(message) {
     }
     if (['image', 'record', 'voice', 'video', 'file'].includes(type)) {
       const name = String(data.file ?? data.name ?? `${type}-attachment`);
-      const descriptor = normalizeMediaDescriptor({ ...data, filename: name, kind: type === 'record' || type === 'voice' ? 'audio' : type });
+      const transcript = type === 'record' || type === 'voice' ? data.asr_text ?? data.asr_refer_text : undefined;
+      const descriptor = normalizeMediaDescriptor({ ...data, filename: name, kind: type === 'record' || type === 'voice' ? 'audio' : type, asr_refer_text: transcript });
       if (descriptor) media.push({ ...descriptor, url: descriptor.url ?? (/^https?:\/\//.test(name) ? name : undefined), file: name });
-      if (type === 'record' || type === 'voice') {
-        const transcript = data.asr_text ?? data.asr_refer_text;
-        if (transcript) text.push(`[Voice] ${String(transcript)}`);
-      }
+      if (includeAsrText && transcript) text.push(`[QQ ASR reference] ${String(transcript)}`);
       continue;
     }
     if (type === 'face') {
