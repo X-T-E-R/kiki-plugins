@@ -1,7 +1,7 @@
 export const speak = {
   schemaVersion: 1,
   name: 'speak',
-  description: 'Turn text into a playable speech artifact through Kiki Media. Reuse request_id for the same request; pending jobs continue through voice get/resume, never a new generation. Discover providers and voices first. The returned original file_id can be sent with SendMessage as audio/asVoice.',
+  description: 'Turn text into a playable speech artifact through Kiki Media. Reuse request_id for the same request; pending jobs continue through voice get/resume, never a new generation. Discover providers and voices first. Send the returned original file_id with SendMessage attachment kind voice for a voice message, or audio for ordinary audio.',
   parameters: {
     type: 'object',
     properties: {

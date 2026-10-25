@@ -28,7 +28,7 @@ Use `resume` only when the job reports `can_resume: true`. It continues the acce
 
 ## Send the original audio
 
-Use the completed original audio's `file_id` with `SendMessage`, selecting the intended bound output channels and the `voice` delivery intent. Channel receipts report whether audio was delivered as a voice message, a file, or rejected. A generated file is not itself evidence that a chat received it.
+Use the completed original audio's `file_id` with `SendMessage`, selecting the intended bound output channels and `attachments[].kind: "voice"`. Channel receipts report delivery, unsupported media, failure or an unknown outcome. A voice request is not silently downgraded to a file. A generated file is not itself evidence that a chat received it.
 
 Voice's direct generate-and-send action and enforced manifest dependency are being connected to the Host's public plugin channel contract. The current source supports generation, playback results and explicit follow-up through `SendMessage`; it does not register a second IM listener.
 
