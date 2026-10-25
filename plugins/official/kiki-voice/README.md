@@ -1,36 +1,87 @@
 # Kiki Voice
 
-Generate playable speech in Kiki and reuse the original audio in connected chats. Voice uses **Kiki Media** for every TTS request; provider connections, credentials, generation tasks and files stay in Media.
+Generate playable speech in Kiki, optionally send it to connected chats, and send the original audio again without another generation. Voice uses **Kiki Media** for every TTS request; sources, credentials, generation tasks and files stay in Media.
 
 ## Set up speech
 
-Install and enable `kiki-media` and `kiki-voice` for the session. Configure a speech source in Media settings, then use `plugin__kiki_voice__voice` to discover it:
+Use a Host with the public plugin Media and messages APIs. Install and enable `kiki-media` and `kiki-voice`. Configure a speech source in Media settings, then call `plugin__kiki_voice__voice`:
 
 ```json
 { "action": "providers" }
 ```
 
-Use the returned provider id with `action: "voices"` to list actual voice ids. Voice settings can remember a source, voice, model and language; individual tool arguments override them. An empty model uses the source's configured model. With several enabled speech sources, choose one explicitly rather than having Voice guess.
+Use a returned provider id with `action: "voices"` to list actual voice ids:
+
+```json
+{ "action": "voices", "provider": "kiki-media/minimax-speech", "language": "zh" }
+```
+
+Voice settings remember a source, voice, model and language. Tool arguments override those defaults. An empty model uses the source's configured model. If several speech sources are enabled, select one with `provider` or the Voice setting; Voice does not guess.
 
 ## Generate and play
 
-Call `plugin__kiki_voice__speak` with `request_id`, `text`, and a discovered `voice` id. Set `provider` unless a Voice default or a single enabled source resolves it.
+Call `plugin__kiki_voice__speak` with a stable `request_id`, the full `text`, and a discovered `voice` id. Set `provider` unless a Voice default or a single enabled source resolves it:
 
-The result is Kiki's existing `media_generation` job. Completed original audio artifacts carry a canonical `file_id`; Kiki displays them with its media player and download controls. A pending job carries its `task_id` and `job_id`, not a finished file.
+```json
+{
+  "request_id": "greeting-1",
+  "text": "Hello. Your report is ready.",
+  "provider": "kiki-media/minimax-speech",
+  "voice": "<discovered voice id>"
+}
+```
 
-To inspect a job:
+The result contains Kiki's existing `media_generation` job. Its completed original audio has a canonical `file_id` and uses Kiki's existing playback and download controls. Omitting `delivery` generates audio without sending a chat message.
+
+## Generate and send
+
+Add `delivery` to the same `speak` call. Its `request_id` identifies the message send, separately from the speech generation:
+
+```json
+{
+  "request_id": "greeting-1",
+  "text": "Hello. Your report is ready.",
+  "provider": "kiki-media/minimax-speech",
+  "voice": "<discovered voice id>",
+  "delivery": {
+    "request_id": "greeting-send-1",
+    "channel": "<bound output channel id>",
+    "kind": "voice"
+  }
+}
+```
+
+`channel` selects one output; `channels` selects several. Omitting both uses the Host's enabled outputs bound to the current thread. `to` and `reply_to` use the same routing as Host messages. The optional `delivery.text` is one complete caption, including any line breaks. Voice sends one message with the original audio `file_id`, not one message per line. Use `kind: "audio"` for an ordinary audio attachment instead of a voice message.
+
+A succeeded generation with one complete original audio file is sent immediately. If the job has several originals, select one with `delivery.file_id`. A running or pending generation returns `delivery.status: "awaiting_generation"` with its delivery id; inspect the job, then send it after completion. Failed, unknown, stopped or partial generation results keep their Media state and are not sent automatically.
+
+The returned `delivery` is the Host's receipt, including each channel's delivery, unsupported media, failure, partial or unknown outcome. A pending receipt remains pending; cancelled and not-sent batch items remain unsent. If the send's response is lost, Voice keeps the generated job and returns an unknown delivery with the message `request_id`. Inspect the destination before deciding whether to send again; Voice never automatically retries an unknown outcome or downgrades a voice message to a file.
+
+## Inspect, resume or send existing audio
+
+Call `plugin__kiki_voice__voice` to inspect a job:
 
 ```json
 { "action": "get", "job_id": "<returned job_id>" }
 ```
 
-Use `resume` only when the job reports `can_resume: true`. It continues the accepted provider handle or download. Keep the same `request_id` for the same speech request; an unknown submission is inspected rather than submitted again. `cancel` preserves the provider's cancellation status, including a provider that only stops the local wait.
+`get` is read-only. If the job reports `can_resume: true`, `resume` continues the accepted provider handle or download without another generation. `cancel` preserves the provider's cancellation and billing status, including unsupported remote cancellation. These actions do not send messages.
 
-## Send the original audio
+To send a succeeded job's original audio without generating again:
 
-Use the completed original audio's `file_id` with `SendMessage`, selecting the intended bound output channels and `attachments[].kind: "voice"`. Channel receipts report delivery, unsupported media, failure or an unknown outcome. A voice request is not silently downgraded to a file. A generated file is not itself evidence that a chat received it.
+```json
+{
+  "action": "send",
+  "job_id": "<returned job_id>",
+  "delivery": {
+    "request_id": "greeting-send-1",
+    "channel": "<bound output channel id>",
+    "kind": "voice"
+  }
+}
+```
 
-Voice's direct generate-and-send action and enforced manifest dependency are being connected to the Host's public plugin channel contract. The current source supports generation, playback results and explicit follow-up through `SendMessage`; it does not register a second IM listener.
+Use the same generation `request_id` only for the same speech request, and the same delivery `request_id` only for the same file, caption and destination. Host Media and messages own deduplication. To deliberately send the existing audio again, use `voice send` with a new delivery id. Voice accepts only a complete original audio `file_id` belonging to that Media job; it does not open a home path or create another IM connection.
 
 ## Development
 
@@ -39,4 +90,4 @@ node plugins/official/kiki-voice/scripts/sync-manifest.mjs --check
 node --test plugins/official/kiki-voice/test/voice.test.mjs
 ```
 
-Set `KIKI_HOST_RUNNER` to the Host's `hostRunner.mjs` to include the real JSON-RPC runner test. Tests use fixture media responses and make no provider purchases or chat sends.
+Tests use explicit Media and message fixtures, including Host-owned deduplication, and make no provider purchases or chat sends. Set `KIKI_HOST_RUNNER` to the supported Host runner entry to include JSON-RPC integration tests. Without it, the three runner tests are skipped.

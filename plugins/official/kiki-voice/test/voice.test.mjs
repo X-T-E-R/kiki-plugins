@@ -103,6 +103,8 @@ test('pending and unknown outcomes never generate replacements', async () => {
     assert.deepEqual(JSON.parse(got.output).job, original);
     const resumed = await execute(manageVoice, { action: 'resume', job_id: original.job_id }, context);
     assert.equal(JSON.parse(resumed.output).error.code, 'not_resumable');
+    assert.deepEqual(JSON.parse(resumed.output).job, original);
+    assert.equal(resumed.isError, true);
     assert.equal(calls.filter((item) => item.generate).length, 1);
     assert.equal(calls.filter((item) => item.media?.action === 'resume').length, 0);
   }
@@ -137,7 +139,8 @@ test('provider error is returned once without local retry', async () => {
   assert.equal(calls.filter((item) => item.generate).length, 1);
 });
 
-test('real Host runner executes Voice through its Media RPC and preserves the artifact result', { skip: !process.env.KIKI_HOST_RUNNER, timeout: 10000 }, async (t) => {
+const runnerOptions = { skip: !process.env.KIKI_HOST_RUNNER, timeout: 10000 };
+async function runHostTool(t, name, args, respond) {
   const root = path.dirname(import.meta.dirname);
   const child = spawn(process.execPath, [path.resolve(process.env.KIKI_HOST_RUNNER), path.join(root, 'entry.mjs')], { stdio: ['pipe', 'pipe', 'pipe'] });
   const incoming = createInterface({ input: child.stdout });
@@ -145,23 +148,26 @@ test('real Host runner executes Voice through its Media RPC and preserves the ar
   let stderr = '';
   child.stderr.on('data', (chunk) => { stderr += chunk; });
   const send = (value) => child.stdin.write(`${JSON.stringify(value)}\n`);
-  t.after(() => { child.kill(); incoming.close(); });
+  t.after(async () => {
+    incoming.close();
+    if (child.exitCode === null && child.signalCode === null) {
+      await new Promise((resolve) => { child.once('exit', resolve); child.kill(); });
+    }
+  });
   const result = await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`Host runner timed out: ${stderr}`)), 8000);
     const fail = (error) => { clearTimeout(timeout); reject(error); };
     child.once('error', fail);
-    child.once('exit', (code) => { if (code !== null && code !== 0) fail(new Error(`Host runner exited ${code}: ${stderr}`)); });
+    child.once('exit', (code) => fail(new Error(`Host runner exited ${code}: ${stderr}`)));
     incoming.on('line', (line) => {
       try {
         const message = JSON.parse(line);
         messages.push(message);
         if (message.method === 'register-error') return fail(new Error(message.params.message));
-        if (message.method === 'ready') send({ id: 1, method: 'execute', params: { name: 'speak', args: input, settings: {} } });
+        if (message.method === 'ready') send({ id: 1, method: 'execute', params: { name, args, settings: {} } });
         if (message.method === 'media-call') {
           const { callId, action, input: request } = message.params;
-          if (action === 'media' && request.action === 'capabilities') send({ method: 'media-result', params: { callId, result: { providers: definitions } } });
-          else if (action === 'generate') send({ method: 'media-result', params: { callId, result: job() } });
-          else fail(new Error(`Unexpected RPC ${action}: ${JSON.stringify(request)}`));
+          send({ method: 'media-result', params: { callId, ...respond(action, request) } });
         }
         if (message.id === 1) { clearTimeout(timeout); resolve(message); }
       } catch (error) { fail(error); }
@@ -170,6 +176,262 @@ test('real Host runner executes Voice through its Media RPC and preserves the ar
   });
   assert.equal(result.error, undefined);
   assert.deepEqual(messages.filter((message) => message.method === 'register').map((message) => message.params.tool), tools);
-  assert.equal(messages.filter((message) => message.method === 'media-call' && message.params.action === 'generate').length, 1);
-  assert.deepEqual(JSON.parse(result.result.output), { type: 'media_generation', job: job() });
+  return { result: result.result, calls: messages.filter((message) => message.method === 'media-call').map((message) => message.params) };
+}
+
+test('Host runner executes Voice through Media RPC and preserves the artifact result', runnerOptions, async (t) => {
+  const { result, calls } = await runHostTool(t, 'speak', input, (action, request) => {
+    if (action === 'media' && request.action === 'capabilities') return { result: { providers: definitions } };
+    if (action === 'generate') return { result: job() };
+    assert.fail(`Unexpected RPC ${action}: ${JSON.stringify(request)}`);
+  });
+  assert.equal(calls.filter((call) => call.action === 'generate').length, 1);
+  assert.deepEqual(JSON.parse(result.output), { type: 'media_generation', job: job() });
+});
+
+test('Host runner carries original file_id, full caption, targets and exact channel receipts', runnerOptions, async (t) => {
+  const receipt = { message_id: 'm1', delivered_to: ['example-session'], channels: [
+    { channel_id: 'example-chat', status: 'delivered', message_ids: ['platform-1'] },
+    { channel_id: 'other-chat', status: 'unsupported', unsupported: ['voice'] },
+  ], delivery: 'delivered' };
+  const { result, calls } = await runHostTool(t, 'speak', { ...input, delivery: { request_id: 'd', channels: ['example-chat', 'other-chat'], text: 'A\nB', reply_to: 'platform-previous' } }, (action, request) => {
+    if (action === 'media' && request.action === 'capabilities') return { result: { providers: definitions } };
+    if (action === 'generate') return { result: job() };
+    if (action === 'message-send') return { result: receipt };
+    assert.fail(`Unexpected RPC ${action}: ${JSON.stringify(request)}`);
+  });
+  assert.deepEqual(JSON.parse(result.output), { type: 'media_generation', job: job(), delivery: receipt });
+  assert.equal(result.isError, true);
+  assert.equal(calls.filter((call) => call.action === 'generate').length, 1);
+  assert.deepEqual(calls.filter((call) => call.action === 'message-send').map((call) => call.input), [{
+    request_id: 'd', channels: ['example-chat', 'other-chat'], text: 'A\nB', reply_to: 'platform-previous',
+    attachments: [{ file_id: 'file-audio', kind: 'voice', title: 'speech.mp3', mime_type: 'audio/mpeg' }],
+  }]);
+});
+
+test('Host runner sends existing audio once and keeps the job after a lost message response', runnerOptions, async (t) => {
+  const { result, calls } = await runHostTool(t, 'voice', { action: 'send', job_id: 'media-123', delivery: { request_id: 'd' } }, (action, request) => {
+    if (action === 'media' && request.action === 'get') return { result: job() };
+    if (action === 'message-send') return { error: 'Message response lost' };
+    assert.fail(`Unexpected RPC ${action}: ${JSON.stringify(request)}`);
+  });
+  assert.deepEqual(JSON.parse(result.output).job, job());
+  assert.equal(JSON.parse(result.output).delivery.status, 'unknown');
+  assert.equal(JSON.parse(result.output).delivery.request_id, 'd');
+  assert.equal(calls.filter((call) => call.action === 'generate').length, 0);
+  assert.equal(calls.filter((call) => call.action === 'message-send').length, 1);
+});
+
+
+test('generate-and-send preserves original file_id and the full real delivery receipt', async () => {
+  const { context, calls } = fixture();
+  const receipt = { message_id: 'message-1', delivered_to: ['session-2'], channels: [{ channel_id: 'qq-group', status: 'delivered', message_ids: ['platform-1'] }], delivery: 'delivered' };
+  context.messages = { send: async (input) => { calls.push({ send: input }); return receipt; } };
+  const result = await speakText({ ...input, delivery: { request_id: 'greeting-delivery-1', text: 'A\nB', channel: 'qq-group' } }, context);
+  assert.deepEqual(JSON.parse(result.output), { type: 'media_generation', job: job(), delivery: receipt });
+  assert.equal(result.isError, false);
+  assert.equal(calls.filter((item) => item.generate).length, 1);
+  assert.deepEqual(calls.find((item) => item.send).send, {
+    request_id: 'greeting-delivery-1', text: 'A\nB', to: undefined, channel: 'qq-group', channels: undefined, reply_to: undefined,
+    attachments: [{ file_id: 'file-audio', kind: 'voice', title: 'speech.mp3', mime_type: 'audio/mpeg' }],
+  });
+});
+
+test('pending/unknown/failed generation and incomplete files never reach message send', async () => {
+  for (const state of ['pending', 'unknown', 'failed', 'partial', 'stopped']) {
+    const original = job({ state }); const { context, calls } = fixture({ generated: original });
+    context.messages = { send: async () => { throw new Error('Unexpected send'); } };
+    const result = await speakText({ ...input, delivery: { request_id: 'delivery-1' } }, context);
+    const data = JSON.parse(result.output);
+    assert.deepEqual(data.job, original);
+    assert.equal(data.delivery.status, state === 'pending' ? 'awaiting_generation' : 'not_sent');
+    assert.equal(calls.filter((item) => item.generate).length, 1);
+  }
+  for (const artifacts of [[{ ...artifact, complete: false }], [{ ...artifact, role: 'preview' }], [{ ...artifact, file_id: undefined }], [artifact, { ...artifact, file_id: 'second' }]]) {
+    const { context } = fixture({ current: job({ artifacts }) });
+    context.messages = { send: async () => { throw new Error('Unexpected send'); } };
+    const result = await manageVoice({ action: 'send', job_id: 'media-123', delivery: { request_id: 'delivery-1' } }, context);
+    assert.equal(JSON.parse(result.output).delivery.status, 'not_sent');
+  }
+});
+
+test('send an existing completed job without regeneration; failed and unknown sends retain the job and request_id', async () => {
+  for (const status of ['unknown', 'failed', 'partial', 'unsupported', 'delivered']) {
+    const { context, calls } = fixture();
+    const receipt = { message_id: 'm1', delivered_to: [], channels: [{ channel_id: 'qq', status }] };
+    context.messages = { send: async (input) => { calls.push({ send: input }); return receipt; } };
+    const result = await manageVoice({ action: 'send', job_id: 'media-123', delivery: { request_id: 'stable-send-1', kind: 'audio' } }, context);
+    assert.deepEqual(JSON.parse(result.output).delivery, receipt);
+    assert.deepEqual(JSON.parse(result.output).job, job());
+    assert.equal(result.isError, status !== 'delivered');
+    assert.equal(calls.filter((item) => item.generate).length, 0);
+    assert.equal(calls.filter((item) => item.send).length, 1);
+  }
+  const { context, calls } = fixture();
+  context.messages = { send: async (input) => { calls.push({ send: input }); throw new Error('response lost'); } };
+  const result = await manageVoice({ action: 'send', job_id: 'media-123', delivery: { request_id: 'stable-send-1' } }, context);
+  assert.equal(JSON.parse(result.output).delivery.status, 'unknown');
+  assert.equal(JSON.parse(result.output).delivery.request_id, 'stable-send-1');
+  assert.deepEqual(JSON.parse(result.output).job, job());
+  assert.equal(calls.filter((item) => item.send).length, 1);
+});
+
+test('missing public message API or delivery id fails before generation; cancellation retains a generated job', async () => {
+  const { context, calls, controller } = fixture();
+  let result = await execute(speakText, { ...input, delivery: { request_id: 'delivery-1' } }, context);
+  assert.equal(JSON.parse(result.output).error.code, 'messages_dependency');
+  assert.equal(calls.filter((item) => item.generate).length, 0);
+  context.messages = { send: async () => { throw new Error('Unexpected send'); } };
+  result = await execute(speakText, { ...input, delivery: {} }, context);
+  assert.equal(JSON.parse(result.output).error.code, 'invalid_input');
+  context.media.generate = async () => { controller.abort(); return job(); };
+  result = await speakText({ ...input, delivery: { request_id: 'delivery-1' } }, context);
+  assert.equal(JSON.parse(result.output).delivery.status, 'not_sent');
+  assert.deepEqual(JSON.parse(result.output).job, job());
+});
+
+
+test('invalid delivery is rejected before a speech purchase or message call', async () => {
+  for (const delivery of [null, false, [], {}, { request_id: ' ' }, { request_id: 'x'.repeat(257) },
+    { request_id: 'd', to: 1 }, { request_id: 'd', channel: '' }, { request_id: 'd', channels: [] },
+    { request_id: 'd', channels: [''] }, { request_id: 'd', reply_to: '' }, { request_id: 'd', file_id: '' },
+    { request_id: 'd', text: 'x'.repeat(20001) }, { request_id: 'd', kind: 'file' }, { request_id: 'd', path: '/unapproved/audio.mp3' }]) {
+    const { context, calls } = fixture();
+    context.messages = { send: async () => { throw new Error('Unexpected send'); } };
+    const result = await execute(speakText, { ...input, delivery }, context);
+    assert.equal(JSON.parse(result.output).error?.code, 'invalid_input', JSON.stringify(delivery));
+    assert.equal(calls.filter((item) => item.generate).length, 0);
+  }
+});
+
+test('management actions never silently discard a requested delivery', async () => {
+  for (const action of ['providers', 'voices', 'get', 'resume', 'cancel']) {
+    const { context, calls } = fixture({ current: job({ can_resume: true }) });
+    const result = await execute(manageVoice, { action, job_id: 'media-123', delivery: { request_id: 'd' } }, context);
+    assert.equal(JSON.parse(result.output).error?.code, 'invalid_input', action);
+    assert.equal(calls.length, 0);
+  }
+});
+
+test('batch receipts preserve per-message cancelled/not_sent/partial/unknown outcomes', async () => {
+  for (const delivery of ['cancelled', 'not_sent', 'undeliverable', 'pending', 'delivered']) {
+    const receipt = { messages: [{ index: 0, message_id: 'm1', delivered_to: [], delivery }] };
+    const { context } = fixture();
+    context.messages = { send: async () => receipt };
+    const result = await manageVoice({ action: 'send', job_id: 'media-123', delivery: { request_id: 'd' } }, context);
+    assert.deepEqual(JSON.parse(result.output).delivery, receipt);
+    assert.equal(result.isError, !['pending', 'delivered'].includes(delivery), delivery);
+  }
+  const receipt = { messages: [
+    { index: 0, message_id: 'm1', delivered_to: ['example-session'], delivery: 'delivered' },
+    { index: 1, message_id: 'm2', delivered_to: [], channels: [{ channel_id: 'example-chat', status: 'partial', detail: 'Audio unsupported' }] },
+    { index: 2, message_id: 'm3', delivered_to: [], channels: [{ channel_id: 'another-chat', status: 'unknown' }] },
+  ] };
+  const { context } = fixture();
+  context.messages = { send: async () => receipt };
+  const result = await manageVoice({ action: 'send', job_id: 'media-123', delivery: { request_id: 'd' } }, context);
+  assert.deepEqual(JSON.parse(result.output).delivery, receipt);
+  assert.equal(result.isError, true);
+});
+
+test('running/pending generation returns the unsent delivery identity and recovery step', async () => {
+  for (const state of ['running', 'pending']) {
+    const { context, calls } = fixture({ generated: job({ state, task_id: 'task-speech', can_resume: true }) });
+    context.messages = { send: async () => { throw new Error('Unexpected send'); } };
+    const result = await speakText({ ...input, delivery: { request_id: 'd' } }, context);
+    const data = JSON.parse(result.output);
+    assert.equal(data.job.state, state);
+    assert.equal(data.job.task_id, 'task-speech');
+    assert.equal(data.delivery.status, 'awaiting_generation');
+    assert.equal(data.delivery.request_id, 'd');
+    assert.match(data.delivery.detail, /voice send/u);
+    assert.equal(calls.filter((item) => item.generate).length, 1);
+  }
+});
+
+test('send selects only an original audio file from its Media job and never substitutes a path', async () => {
+  const second = { ...artifact, id: 'a2', file_id: 'file-second', name: 'second.ogg', mime: 'audio/ogg' };
+  const { context, calls } = fixture({ current: job({ artifacts: [artifact, second] }) });
+  context.messages = { send: async (input) => { calls.push({ send: input }); return { message_id: 'm1', delivered_to: ['example-session'], delivery: 'delivered' }; } };
+  const result = await manageVoice({ action: 'send', job_id: 'media-123', delivery: { request_id: 'd', file_id: 'file-second', kind: 'audio', to: 'example-session' } }, context);
+  assert.equal(result.isError, false);
+  assert.deepEqual(calls.find((item) => item.send).send.attachments, [{ file_id: 'file-second', kind: 'audio', title: 'second.ogg', mime_type: 'audio/ogg' }]);
+  assert.equal(calls.find((item) => item.send).send.to, 'example-session');
+  assert.equal(calls.filter((item) => item.generate).length, 0);
+  const missing = await manageVoice({ action: 'send', job_id: 'media-123', delivery: { request_id: 'other', file_id: 'file-foreign' } }, context);
+  assert.equal(JSON.parse(missing.output).delivery.status, 'not_sent');
+  assert.equal(calls.filter((item) => item.send).length, 1);
+});
+
+test('generation errors keep the request identity for inspection rather than inventing a retry id', async () => {
+  const { context, calls } = fixture({ error: new Error('Media RPC response lost') });
+  const result = await execute(speakText, input, context);
+  assert.equal(JSON.parse(result.output).request_id, input.request_id);
+  assert.equal(calls.filter((item) => item.generate).length, 1);
+});
+
+
+test('same ids reach fixture Host deduplication unchanged and changed payloads are rejected', async () => {
+  const { context } = fixture();
+  const generations = new Map();
+  const deliveries = new Map();
+  let purchases = 0;
+  let externalSends = 0;
+  context.media.generate = async (request) => {
+    const previous = generations.get(request.request_id);
+    if (previous && previous.payload !== JSON.stringify(request)) throw new Error('request_id already belongs to a different media request');
+    if (previous) return previous.job;
+    purchases++;
+    generations.set(request.request_id, { payload: JSON.stringify(request), job: job() });
+    return job();
+  };
+  context.messages = { send: async (request) => {
+    const previous = deliveries.get(request.request_id);
+    if (previous && previous.payload !== JSON.stringify(request)) throw new Error('request_id already belongs to a different message');
+    if (previous) return { ...previous.receipt, deduplicated: true };
+    externalSends++;
+    const receipt = { message_id: 'message-1', delivered_to: [], channels: [{ channel_id: 'example-chat', status: 'unknown' }] };
+    deliveries.set(request.request_id, { payload: JSON.stringify(request), receipt });
+    return receipt;
+  } };
+  const request = { ...input, delivery: { request_id: 'stable-delivery', channel: 'example-chat', text: 'A\nB' } };
+  const first = await execute(speakText, request, context);
+  assert.equal(JSON.parse(first.output).delivery.channels[0].status, 'unknown');
+  assert.equal(purchases, 1);
+  assert.equal(externalSends, 1);
+  const repeated = await execute(speakText, request, context);
+  assert.equal(JSON.parse(repeated.output).delivery.deduplicated, true);
+  const fromJob = await execute(manageVoice, { action: 'send', job_id: 'media-123', delivery: request.delivery }, context);
+  assert.equal(JSON.parse(fromJob.output).delivery.deduplicated, true);
+  const changedSpeech = await execute(speakText, { ...request, text: 'Different speech' }, context);
+  assert.match(JSON.parse(changedSpeech.output).error.message, /different media request/u);
+  const changedMessage = await execute(manageVoice, { action: 'send', job_id: 'media-123', delivery: { ...request.delivery, text: 'Different caption' } }, context);
+  assert.equal(JSON.parse(changedMessage.output).delivery.status, 'unknown');
+  assert.match(JSON.parse(changedMessage.output).delivery.detail, /different message/u);
+  assert.equal(purchases, 1);
+  assert.equal(externalSends, 1);
+});
+
+test('local cancellation during a send keeps the completed job and reports uncertain delivery once', async () => {
+  const { context, calls, controller } = fixture();
+  context.messages = { send: async (request) => {
+    calls.push({ send: request });
+    controller.abort();
+    throw new DOMException('Local wait stopped', 'AbortError');
+  } };
+  const result = await execute(speakText, { ...input, delivery: { request_id: 'd' } }, context);
+  assert.deepEqual(JSON.parse(result.output).job, job());
+  assert.equal(JSON.parse(result.output).delivery.status, 'unknown');
+  assert.equal(JSON.parse(result.output).delivery.request_id, 'd');
+  assert.equal(calls.filter((item) => item.generate).length, 1);
+  assert.equal(calls.filter((item) => item.send).length, 1);
+});
+
+
+test('voice discovery uses the same configured model/language as speech, with explicit overrides', async () => {
+  const { context, calls } = fixture({ settings: { defaultProvider: 'example-speech', defaultModel: 'speech-model', defaultLanguage: 'zh' } });
+  await manageVoice({ action: 'voices' }, context);
+  assert.deepEqual(calls.at(-1).media, { action: 'voices', provider, model: 'speech-model', language: 'zh', cursor: undefined });
+  await manageVoice({ action: 'voices', model: 'other-model', language: 'en', cursor: 'page-2' }, context);
+  assert.deepEqual(calls.at(-1).media, { action: 'voices', provider, model: 'other-model', language: 'en', cursor: 'page-2' });
 });
