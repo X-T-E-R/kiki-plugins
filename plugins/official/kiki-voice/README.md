@@ -33,7 +33,7 @@ Call `plugin__kiki_voice__speak` with a stable `request_id`, the full `text`, an
 }
 ```
 
-The result contains Kiki's existing `media_generation` job. Its completed original audio has a canonical `file_id` and uses Kiki's existing playback and download controls. Omitting `delivery` generates audio without sending a chat message.
+The result contains a `media_generation` job. Once complete, play or download its audio in Kiki. Omitting `delivery` generates audio without sending a chat message.
 
 ## Generate and send
 
@@ -83,7 +83,7 @@ To send a succeeded job's original audio without generating again:
 }
 ```
 
-Use the same generation `request_id` only for the same speech request, and the same delivery `request_id` only for the same file, caption and destination. Host Media and messages own deduplication. To deliberately send the existing audio again, use `voice send` with a new delivery id. Voice accepts only a complete original audio `file_id` belonging to that Media job; it does not open a home path or create another IM connection.
+Use the same generation `request_id` only for the same speech request, and the same delivery `request_id` only for the same file, caption and destination. To deliberately send the existing audio again, use `voice send` with a new delivery id. Voice sends only a complete original audio file belonging to that Media job.
 
 ## Development
 

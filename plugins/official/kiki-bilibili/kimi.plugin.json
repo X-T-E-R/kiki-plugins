@@ -355,7 +355,7 @@
       {
         "schemaVersion": 1,
         "name": "bilibili_publish",
-        "description": "Submit one or multiple workspace-local videos with the mature bili-agent VideoUploader, or inspect a submitted archive. submit performs upload and publication in one call; defaults to the AI-content declaration. Unknown outcomes require platform inspection before another submit. Files and symlink targets must be inside the workspace.",
+        "description": "Submit one or multiple workspace-local videos, or inspect a submitted archive. submit performs upload and publication in one call; defaults to the AI-content declaration. Unknown outcomes require platform inspection before another submit. Files and symlink targets must be inside the workspace.",
         "parameters": {
           "type": "object",
           "properties": {

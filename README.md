@@ -1,6 +1,6 @@
 # Kiki Plugins
 
-Independently versioned plugins for [Kiki](https://github.com/X-T-E-R/kiki), including Office, Writing, Extract, Notion, Media, Bilibili, Voice and QQ. Kiki's Host, SDK, permission preview, and installer remain in the Kiki repository.
+Independently versioned plugins for [Kiki](https://github.com/X-T-E-R/kiki).
 
 **[Browse the catalog](https://x-t-e-r.github.io/kiki-plugins/)** · **[Catalog JSON](https://x-t-e-r.github.io/kiki-plugins/marketplace.json)** · **[Versioned packages](https://github.com/X-T-E-R/kiki-plugins/releases)**
 
@@ -8,7 +8,7 @@ Independently versioned plugins for [Kiki](https://github.com/X-T-E-R/kiki), inc
 
 Use a Kiki Host with checksum-pinned catalog installation support. If your build still opens an older catalog, set `KIKI_PLUGIN_MARKETPLACE_URL=https://x-t-e-r.github.io/kiki-plugins/marketplace.json` when starting Kiki. Open the plugin market, choose a package, and review the installation preview. Enable it after checking its contributions and requested permissions. Each first-party entry points to a versioned Release ZIP and its SHA-256 digest; old packages stay available.
 
-This checkout validates against **plugin engine 0.4.1** and the vendored **SDK 0.1.1** built from Kiki commit `a3c694c40255a05e51f727da5611d0beeedd1acc`. The SDK artifact is commit-pinned; its unchanged version string does not make older 0.1.1 artifacts interchangeable. QQ and Voice need a Host containing the IM adapter and execution-message contracts. QQ 0.3.0 also requires adapter history, complete-message input and the public `messageLimits` start context. Each package's `x-kiki.engines.kiki` range determines engine compatibility; engine, SDK and Kiki product versions are separate.
+Voice needs a Kiki Host with plugin dependencies and the Media and messages APIs. Each package declares its engine compatibility in `x-kiki.engines.kiki`.
 
 | Package | What you need to use it |
 | --- | --- |
@@ -16,7 +16,7 @@ This checkout validates against **plugin engine 0.4.1** and the vendored **SDK 0
 | Extract | Text and HTML work locally. PDF and Office conversion need Python and MarkItDown; MinerU upload is explicit and opt-in. See [Extract setup](plugins/official/kiki-extract/README.md). |
 | Office | OfficeCLI **1.0.152**, installed with consent; Windows x64, macOS arm64, and Linux x64 are supported by its pinned binary resolver. |
 | Notion | Notion's HTTP MCP service and its OAuth authorization. See [Notion](plugins/official/kiki-notion/README.md). |
-| Phone | One-step preparation and semantic Mobilewright scripts, plus the complete Mobile MCP toolset. Needs Node.js 22.12+ with npm; Android uses official platform-tools and USB or wireless debugging. iOS needs upstream device-agent preparation. See [Phone setup](plugins/official/kiki-phone/README.md). |
+| Phone | Prepare the runtime, then operate a connected phone with semantic Mobilewright scripts or Mobile MCP. Needs Node.js 22.12+ with npm; Android uses official platform-tools and USB or wireless debugging. iOS needs a signed upstream device agent. See [Phone setup](plugins/official/kiki-phone/README.md). |
 | Media | Install the Media entry plus a provider; configure an entitled API connection or key. Cloud generation may incur charges. ComfyUI needs your running endpoint and installed workflow/models; no GPU engine or models are included. |
 
 The two Moonshot entries are **author-hosted references**, not mirrored source in this repository. Their original license and external daemon/service requirements apply. The three community entries keep pinned author commits; their Claude-plugin import compatibility is marked unverified, so inspect Kiki's unsupported-contribution diagnostics before enabling them.
@@ -33,7 +33,7 @@ npm run build
 npm run dev
 ```
 
-`check` validates catalog-listed local packages, exact manifest/entry registrations, manifest synchronization and each package's routed fixtures. QQ includes atomic-message, platform and history tests plus public Host runner RPC fixtures for messaging and history. To select one package, use `npm run check -- kiki-qq` with the same `KIKI_HOST_RUNNER`; unknown IDs fail. `npm run check -- catalog` validates only catalog metadata for CI's metadata-only route.
+`check` validates catalog-listed local packages, exact manifest/entry registrations, manifest synchronization and each package's routed fixtures. To select one package, use `npm run check -- kiki-phone` with the same `KIKI_HOST_RUNNER`; unknown IDs fail. `npm run check -- catalog` validates only catalog metadata for CI's metadata-only route.
 
 The runner must match the checksum in `sdk.lock.json`. Without `KIKI_HOST_RUNNER`, `check` downloads it from the fixed Kiki commit; that commit must be available on GitHub first. Checks use temporary fixtures without Kiki-home access or paid API credentials.
 

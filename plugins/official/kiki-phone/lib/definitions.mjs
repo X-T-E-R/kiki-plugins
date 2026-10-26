@@ -7,13 +7,13 @@ const tool = (name, description, properties, required) => ({
 
 export const definitions = [
   tool('phone_prepare',
-    'One-step phone runtime preparation. Reuse one ADB for native tools, Mobile MCP and Mobilewright; install fixed upstream packages privately, inspect real device authorization/offline state. download=true explicitly accepts Google platform-tools terms and permits a missing Windows ADB download. Does not mean an MCP connection or UI session has started.',
+    'Prepare the phone runtime and report the actual device state. Reuse the selected ADB across phone tools and install upstream packages privately. If Windows ADB is missing, download=true accepts the linked Google terms and permits its download. Preparation does not connect a phone automatically.',
     {
       download: { type: 'boolean', default: false, description: 'Consent to download official Google platform-tools if ADB is missing, under the terms at https://developer.android.com/tools/releases/platform-tools.' },
       platform: { type: 'string', enum: ['android', 'ios'], default: 'android', description: 'iOS prepares upstream packages without requiring Android ADB.' },
     }, []),
   tool('phone_run',
-    'Preferred phone interface: run async JavaScript with existing Mobilewright device, screen and expect, plus snapshot() and screenshot() that returns an image to Kiki. Use semantic screen.getByText/getByLabel/getByRole locators and their tap/fill/check methods. No script lists online devices. The chosen device persists across calls. Run phone_prepare first. Scripts execute as trusted local code, not a sandbox; never replay an unclear modifying operation automatically.',
+    'Preferred phone interface: run async JavaScript with existing Mobilewright device, screen and expect, plus snapshot() and screenshot() that returns an image to Kiki. Use semantic screen.getByText/getByLabel/getByRole locators and their tap/fill/check methods. No script lists online devices. The chosen device persists across calls. If the runtime is missing, use phone_prepare. Scripts execute as trusted local code; observe an unclear modifying outcome before repeating it.',
     {
       script: text('Async JavaScript body. Example: console.log(await snapshot()); await screenshot(); Native device/screen/expect are Mobilewright 0.0.67 APIs; console output is returned.'),
       device: text('Online upstream device id. Required when multiple devices are online and none has been selected. Reuses the selected device on later calls.'),

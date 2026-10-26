@@ -2,13 +2,13 @@
 
 让 Kiki 像操作浏览器一样操作手机：先看当前页面，再按文字、标签或控件语义定位，点击、输入并检查结果。默认入口 `phone_run` 直接使用 [Mobilewright](https://github.com/mobile-next/mobilewright) 的 `device`、`screen` 和 `expect`；连接准备、完整 [Mobile MCP](https://github.com/mobile-next/mobile-mcp) 工具及 Android root 命令也在同一个插件中。
 
-## 一键准备
+## 准备运行环境
 
-需要 Node.js **22.12.0+**（含 npm），并让 `node` 在 Kiki 进程的 PATH 上可用：打包版 Kiki 的 `process.execPath` 是 `kiki.exe`，插件会从 PATH 找真实 Node 来运行独立脚本和私有 MCP。缺少时按错误提示安装 Node 并加入 Kiki 的启动环境，再重试。开发本插件仓库需要 Node.js 24.15.0+。
+需要 Node.js **22.12.0+**（含 npm），并让 `node` 在 Kiki 进程的 PATH 上可用。缺少时安装 Node 并加入 Kiki 的启动环境，再重试。开发本插件仓库需要 Node.js 24.15.0+。
 
-**Windows**：解压插件 ZIP，双击 **`lib/start.cmd`**。脚本会检查 Node/npm、复用现有 ADB、安装固定上游运行包，并列出手机的实际连接状态。缺少 ADB 时会显示 Google 下载地址与许可条款，得到同意后才把官方 platform-tools 下载到插件私有数据目录。已有 ADB 时不重新下载，也不重启／停止现有 ADB server。
+**Windows**：解压插件 ZIP，双击 **`lib/start.cmd`**。脚本检查 Node/npm、复用现有 ADB、安装上游运行包，并列出手机连接状态。缺少 ADB 时会显示 Google 下载地址与许可条款；同意后才下载官方 platform-tools。已有 ADB 时不重新下载，也不重启／停止现有 ADB server。
 
-**在 Kiki 对话里**：安装启用后，让 Kiki「准备手机连接」，调用 `phone_prepare` 即可。缺少 ADB 时，确认 [Google SDK Platform-Tools 条款](https://developer.android.com/tools/releases/platform-tools) 后用 `download=true` 继续。若已有官方 ADB，不要在工具参数中填可执行文件路径；由你在 Kiki Phone 插件设置中填写 `adbPath`，或在自己的终端运行 `lib/start.cmd --adb <adb.exe路径>`。准备时会验证 `adb version`，再将这个选择保存供高层脚本、原生连接工具和 MCP 共用。
+**在 Kiki 对话里**：安装启用后，在运行包尚未准备时调用 `phone_prepare`。缺少 ADB 时，确认 [Google SDK Platform-Tools 条款](https://developer.android.com/tools/releases/platform-tools) 后用 `download=true` 继续。若已有官方 ADB，由你在 Kiki Phone 插件设置中填写 `adbPath`，或在自己的终端运行 `lib/start.cmd --adb <adb.exe路径>`；模型工具参数不接受可执行文件路径。准备时验证 `adb version`，并将选择保存供脚本、连接工具和 MCP 共用。
 
 数据默认存放在 Windows `%LOCALAPPDATA%/kiki-phone`、macOS `~/Library/Application Support/kiki-phone` 或 Linux `$XDG_DATA_HOME/kiki-phone`（未设置时为 `~/.local/share/kiki-phone`），不修改全局 PATH、注册表或 Kiki home。它包含 ADB 选择、私有 npm 运行包／缓存和所选设备。需要指定开发或隔离目录时，设置 `KIKI_PHONE_DATA_DIR`；所有入口应使用相同值。源码更新或重装插件不会删除这份数据。
 
@@ -72,7 +72,7 @@ Android 11+ 无线调试先配对，再连接；两者端口不同：
 
 已配对时直接连接。`disconnect` 需填写具体连接地址。不会调用 `kill-server`、`adb root` 或 `tcpip 5555`。
 
-完整上游 `mobile_*` MCP 工具仍直接可用，包括设备发现、截图、UI 树、动作、文本、应用和录屏。`phone_run` 与这些工具操作同一台手机时按顺序执行；人工接管时暂停 Kiki 输入。mobilecli 按需维护自己的 daemon 与设备端 UiAutomation 服务，避免同一设备同时运行 Appium／uiautomator2。共享 daemon 由上游管理，准备脚本不停止它。云设备分配／登录须由用户另行提出并授权相关费用。
+完整上游 `mobile_*` MCP 工具仍直接可用，包括设备发现、截图、UI 树、动作、文本、应用和录屏。`phone_run` 与这些工具操作同一台手机时按顺序执行；人工接管时暂停 Kiki 输入。避免同一设备同时运行 Appium／uiautomator2。云设备分配／登录须由用户另行提出并授权相关费用。
 
 root 任务使用 `android_shell`，传 `android_connection devices` 返回的 ADB transport serial（可能不同于上游设备 id）：
 
@@ -94,9 +94,9 @@ npx --yes mobilecli@1.0.21 agent install --device <device-id> --provisioning-pro
 
 本地 Simulator 需要 macOS、Xcode 及对应运行时。Windows 真机还依赖 Apple 设备服务及上游支持的开发服务／隧道与签名流程；按实际错误准备环境，不把设备发现等同于 UI 就绪。
 
-## 命令行与固定依赖
+## 命令行
 
-Windows 一键入口也可在终端运行：
+Windows 准备入口也可在终端运行：
 
 ```bat
 lib\start.cmd
@@ -104,10 +104,6 @@ lib\start.cmd --download
 lib\start.cmd --adb "D:\Android SDK\platform-tools\adb.exe"
 ```
 
-`node lib/prepare-cli.mjs --json` 输出完整准备报告；`--no-warmup` 只查 Node/npm/ADB，不安装上游包。`--server` 在准备后启动 stdio MCP，此模式准备消息只写 stderr、stdout 留给 MCP；常规 Kiki 使用 manifest 中的 `node ./lib/launch-mobile-mcp.mjs`，无需另开一个终端 server。
-
-私有运行包固定为 `@mobilenext/mobile-mcp@1.0.13`、`mobilecli@1.0.21` 和 `mobilewright@0.0.67`，npm 安装脚本与 Mobile MCP 遥测关闭，锁文件保存在私有 runtime 中。已准备时 launcher 直接运行固定包的入口；未准备时保留固定 npx 启动路线。插件只聚合现成实现，定位／等待／输入／driver 由上游提供。
+`node lib/prepare-cli.mjs --json` 输出完整准备报告；`--no-warmup` 只查 Node/npm/ADB，不安装上游包。
 
 插件为 MIT；Mobile MCP／Mobilewright 为 Apache-2.0，mobilecli 为 FSL-1.1-ALv2，Google platform-tools 遵循其 SDK 条款，见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
-
-2026-10-26 本机验证覆盖 ZIP 经生产 PluginManager 安装启用、四个原生工具注册、私有运行包与共享 ADB 复用、`phone_run` 设备发现／UI 树／PNG 附件，以及 MCP `initialize`／33 个上游工具／设备发现。Xiaomi 12S Ultra（Android 14）真机已验证语义点击、滑动、中文输入、按新快照确认输入值、清空及返回 HOME；该机未发现可用 `su`，iOS 尚无真机验证。

@@ -1,6 +1,6 @@
 # Kiki Bilibili
 
-用原生工具搜索 B 站视频和 UP 主、读字幕或转写、查看真实视频帧、回复评论、处理通知和私信，并上传投稿。插件适配 `bili-agent==1.0.0` 的生产命令，上传复用它的 `VideoUploader`，不另写上传协议。
+用原生工具搜索 B 站视频和 UP 主、读字幕或转写、查看真实视频帧、回复评论、处理通知和私信，并上传投稿。运行前需安装 `bili-agent==1.0.0`。
 
 ## 安装与账号
 
@@ -88,15 +88,3 @@ ASR 默认本地引擎。先用同一个 `BILI_CLI_HOME` 配置 CLI 的 `bili as
 提交后用 `{"action":"status","bvid":"返回的BV号"}` 查看审核与平台实际保存的设置。若工具返回 `error.submission: "unknown"`，先去平台或查稿件确认结果，再决定是否重新操作。网络中断、本地取消或超时都可能留下已提交的操作；插件不自动重发。`accepted` 表示平台命令完成，作品仍可能处于审核中。
 
 用 `bilibili_diagnose {}` 检查 CLI 版本和 ASR 依赖。缺命令时修正 `biliCliPath`；未登录或登录失效时用账号工具重新扫码。
-
-## 来源与测试
-
-实际运行依赖为 [kukemc/bili-cli](https://github.com/kukemc/bili-cli) 1.0.0，源码观察 `add0a05d8b9e114d380042f7b1472efc238d661d`。字幕、转写、抽帧、评论 mention、私信确认和多 P 上传均保留在该成熟 CLI 内。其它 donor 的取舍见 `NOTICE`。
-
-```sh
-node --test plugins/official/kiki-bilibili/test/bilibili.test.mjs
-node plugins/official/kiki-bilibili/scripts/sync-manifest.mjs --check
-npm run check -- kiki-bilibili
-```
-
-设置 `BILI_CONTRACT_PYTHON` 为安装了 `bili-agent==1.0.0` 的隔离 Python，可额外验证真实 CLI 参数解析。fixture 拒绝意外网络访问；账号登录、评论、私信标读和投稿的真实平台行为需在用户授权的账号上验收。

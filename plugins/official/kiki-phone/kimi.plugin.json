@@ -13,7 +13,7 @@
   "skills": [
     "./skills"
   ],
-  "systemPrompt": "Use the phone-control skill for phone tasks. Start with phone_prepare, then prefer phone_run with Mobilewright device/screen semantic locators, snapshot() and screenshot(). Preserve observed text, type, id, label and value; refresh after actions before deciding success or repeating input. android_connection and android_shell are advanced connection/root tools; complete upstream mobile_* tools remain available. Remote/cloud allocation requires an explicit user request and any applicable cost authorization.",
+  "systemPrompt": "Use the phone-control skill for phone tasks. Prefer phone_run with Mobilewright device/screen semantic locators, snapshot() and screenshot(); prepare the runtime only when needed. Preserve observed text, type, id, label and value; refresh after actions before deciding success or repeating input. android_connection and android_shell are advanced connection/root tools; complete upstream mobile_* tools remain available. Remote/cloud allocation requires an explicit user request and any applicable cost authorization.",
   "mcpServers": {
     "mobile": {
       "command": "node",
@@ -54,7 +54,7 @@
       {
         "schemaVersion": 1,
         "name": "phone_prepare",
-        "description": "One-step phone runtime preparation. Reuse one ADB for native tools, Mobile MCP and Mobilewright; install fixed upstream packages privately, inspect real device authorization/offline state. download=true explicitly accepts Google platform-tools terms and permits a missing Windows ADB download. Does not mean an MCP connection or UI session has started.",
+        "description": "Prepare the phone runtime and report the actual device state. Reuse the selected ADB across phone tools and install upstream packages privately. If Windows ADB is missing, download=true accepts the linked Google terms and permits its download. Preparation does not connect a phone automatically.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -86,7 +86,7 @@
       {
         "schemaVersion": 1,
         "name": "phone_run",
-        "description": "Preferred phone interface: run async JavaScript with existing Mobilewright device, screen and expect, plus snapshot() and screenshot() that returns an image to Kiki. Use semantic screen.getByText/getByLabel/getByRole locators and their tap/fill/check methods. No script lists online devices. The chosen device persists across calls. Run phone_prepare first. Scripts execute as trusted local code, not a sandbox; never replay an unclear modifying operation automatically.",
+        "description": "Preferred phone interface: run async JavaScript with existing Mobilewright device, screen and expect, plus snapshot() and screenshot() that returns an image to Kiki. Use semantic screen.getByText/getByLabel/getByRole locators and their tap/fill/check methods. No script lists online devices. The chosen device persists across calls. If the runtime is missing, use phone_prepare. Scripts execute as trusted local code; observe an unclear modifying outcome before repeating it.",
         "parameters": {
           "type": "object",
           "properties": {

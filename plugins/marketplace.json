@@ -376,7 +376,7 @@
       },
       "localizations": {
         "zh": {
-          "description": "搜索与理解 B 站视频、回复评论、处理通知和私信，并用成熟 CLI 投稿。",
+          "description": "搜索与理解 B 站视频、回复评论、处理通知和私信，并通过 bili-agent 投稿。",
           "keywords": [
             "B站",
             "视频",
@@ -419,7 +419,7 @@
       "tier": "official",
       "displayName": "Kiki Phone",
       "version": "0.1.0",
-      "description": "Prepare a phone connection in one step, then use semantic Mobilewright scripts and the complete Mobile MCP toolset for Android and iOS; rooted Android adds optional su commands.",
+      "description": "Prepare the runtime, then use Mobilewright semantic scripts or Mobile MCP to operate a connected Android or iOS phone. Rooted Android also supports su commands.",
       "keywords": ["phone", "android", "ios", "mobile", "mcp", "root"],
       "author": "Kiki",
       "license": "MIT",
@@ -427,7 +427,7 @@
       "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-phone",
       "localizations": {
         "zh": {
-          "description": "一键准备连接，用 Mobilewright 语义脚本和完整 Mobile MCP 操作安卓与 iOS；root 安卓可按需调用 su。",
+          "description": "准备运行环境后，用 Mobilewright 语义脚本或 Mobile MCP 操作已连接的安卓与 iOS 手机；root 安卓还可按需调用 su。",
           "keywords": ["手机", "安卓", "苹果", "操作手机", "root"]
         }
       }

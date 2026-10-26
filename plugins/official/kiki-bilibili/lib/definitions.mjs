@@ -29,7 +29,7 @@ export const definitions = [
     action: { type: 'string', enum: ['notifications', 'inbox', 'replies', 'mentions', 'likes', 'system', 'list', 'read', 'mark_read'] }, threadId: string, cursor: string,
     limit: { type: 'integer', minimum: 1, maximum: 50, description: 'inbox: at most 20 per category; other actions: at most 50.' },
   }),
-  tool('bilibili_publish', 'Submit one or multiple workspace-local videos with the mature bili-agent VideoUploader, or inspect a submitted archive. submit performs upload and publication in one call; defaults to the AI-content declaration. Unknown outcomes require platform inspection before another submit. Files and symlink targets must be inside the workspace.', {
+  tool('bilibili_publish', 'Submit one or multiple workspace-local videos, or inspect a submitted archive. submit performs upload and publication in one call; defaults to the AI-content declaration. Unknown outcomes require platform inspection before another submit. Files and symlink targets must be inside the workspace.', {
     action: { type: 'string', enum: ['submit', 'status'] },
     files: { type: 'array', minItems: 1, maxItems: 20, items: string }, title: { type: 'string', minLength: 1, maxLength: 80 },
     tags: { type: 'array', minItems: 1, maxItems: 10, items: { type: 'string', minLength: 1, maxLength: 40 } },
