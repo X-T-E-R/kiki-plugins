@@ -36,7 +36,7 @@
 
 媒体大小由 `lib/definitions.mjs` 声明：图片与语音/音频最多 20 MiB，视频 30 MiB，官方普通文件 100 MiB。官方小于 5 MiB 的数据使用单次上传，达到 5 MiB 时使用 SDK 分块协议：prepare、COS PUT、part finish、complete，然后才发送媒体消息。上传失败或取消不会发送消息；分块上传的重试只处理上传阶段，不重试消息发送。平台若拒绝格式、权限或配额，按实际响应返回失败。音频和语音走平台同一语音通道，不提供音乐播放器卡片或本地转码。
 
-两个适配器把一条真实源消息的正文、引用预览和当前附件组装为一个 `kind: 'message'` / `parts` 事件，全部下载完成后只 emit 一次。`eventId`、真实 `sourceMessageId`、sender、@ 和引用 ID 只放在外层，附件保留原有顺序。下载失败或取消时整条不 emit；原事件重试保留相同 root/source ID，停止后晚到的下载不会发出事件。
+两个适配器把一条真实源消息的正文、引用预览和当前附件组装为一个 `kind: 'message'` / `parts` 事件，全部下载完成后只 emit 一次。`eventId`、真实 `sourceMessageId`、sender、@ 和引用 ID 只放在外层，附件保留原有顺序。下载失败时零 emit，Host 拒绝完整事件后也不补发半条。官方 QQ 在当前连接生命周期内从最近已确认的序号重连请求重放，OneBot 只有平台再次推送时才能重试。重试保持原 event/source ID；Host 已接收而确认丢失时可能收到重复事件，应按源 ID 核对处理结果。停止后晚到的下载不会发出事件。
 
 单附件上限 8 MiB；整条消息按 Host 注入的 `messageLimits` 检查：1～256 个 part、解码媒体合计 32 MiB、part 文本合计 1,048,576 个 UTF-16 code unit、序列化事件 64 Mi UTF-16 code unit。任一附件或整条预算超限都拒绝整条，不裁附件、不先发正文。Host runner 负责跨进程分帧。
 
@@ -116,7 +116,7 @@ node plugins/official/kiki-qq/scripts/check-history-contract.mjs <sdk-im-module>
 
 ## 复用来源
 
-- `vendor/qqbot-gateway/`：`@tencent-connect/qqbot-nodejs 1.0.5` 的 GatewayConnection、codec、constants、errors、event-dispatcher、reconnect 六个协议模块。保留官方心跳、IDENTIFY/RESUME、重连和取消生命周期；仅将 WS import 指向 vendored `ws 8.21.0`。
+- `vendor/qqbot-gateway/`：`@tencent-connect/qqbot-nodejs 1.0.5` 的 GatewayConnection、codec、constants、errors、event-dispatcher、reconnect 六个协议模块。保留官方心跳、IDENTIFY/RESUME、重连和取消生命周期；WS import 指向 vendored `ws 8.21.0`，消息派发改为确认后提交 RESUME 序号。
 - `vendor/qqbot-media/`：同一 SDK 的完整 buffer 分块上传协议与直属 retry、routes、types、format 单元，接入现有客户端令牌、HTTP 和取消链；不读取本地路径，不另建凭据缓存。`lib/official-references.mjs` 适配其 `quote-ref` 的有界引用索引关联。
 - `lib/onebot-transport.mjs` 与公共媒体地址策略：适配 `@nb-im/core 0.3.0` 的 `connect/linkFrom` 和公共地址检查，补齐早到帧、监听清理、固定 DNS 与有界负载。
 - `lib/reply-context.mjs`：适配 `tencent-connect/dsh-qqbot@c8b9158b37817b0dbc1e514e62e16204ad47a6ce` 的消息上下文缓存/限额；缓存按客户端实例隔离，不导入 DSH Agent/session。

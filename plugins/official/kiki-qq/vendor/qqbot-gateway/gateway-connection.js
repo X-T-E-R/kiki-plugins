@@ -5,19 +5,19 @@
  * dispatch.
  *
  * Does NOT own: token caching (delegated via callbacks), session persistence
- * (delegated via callbacks), business policies, message queueing.
+ * (delegated via callbacks), business policies.
  *
  * All state injected through the constructor — no module-level globals.
  *
  * Lifecycle invariants:
- * - State transitions (reconnect scheduling / settling) happen before any
- *   user callback is notified, and every callback is isolated, so a throwing
- *   handler can never stall the loop.
+ * - Ordered dispatch waits for admission before committing the resume sequence.
+ *   An admission rejection reports the error and reconnects from the last
+ *   committed sequence; unrelated lifecycle callbacks remain isolated.
  * - Terminal failures are reported once, by rejecting `start()`.
  */
 import WebSocket from "../ws/wrapper.mjs";
 import { decodeGatewayMessageData } from "./codec.js";
-import { FULL_INTENTS, GatewayCloseCode, GatewayOp, HANDSHAKE_TIMEOUT_MS, INVALID_SESSION_DELAY, RATE_LIMIT_DELAY, } from "./constants.js";
+import { FULL_INTENTS, GatewayCloseCode, GatewayEvent, GatewayOp, HANDSHAKE_TIMEOUT_MS, INVALID_SESSION_DELAY, RATE_LIMIT_DELAY, } from "./constants.js";
 import { GatewayError, GatewayErrorCode } from "./errors.js";
 import { dispatchEvent } from "./event-dispatcher.js";
 import { ReconnectState } from "./reconnect.js";
@@ -30,6 +30,9 @@ export class GatewayConnection {
     heartbeatInterval = null;
     sessionId = null;
     lastSeq = null;
+    payloadQueue = Promise.resolve();
+    failedSeq = null;
+    dispatchFailures = 0;
     isConnecting = false;
     reconnectTimer = null;
     shouldRefreshToken = false;
@@ -103,6 +106,8 @@ export class GatewayConnection {
     resetSession() {
         this.sessionId = null;
         this.lastSeq = null;
+        this.failedSeq = null;
+        this.dispatchFailures = 0;
         const { session } = this.opts;
         if (session)
             this.notify("session.clear", () => session.clear());
@@ -225,13 +230,29 @@ export class GatewayConnection {
         ws.on("message", (data) => {
             if (ws !== this.currentWs)
                 return;
+            let payload;
             try {
-                const payload = JSON.parse(decodeGatewayMessageData(data));
-                this.handlePayload(ws, payload, accessToken);
+                payload = JSON.parse(decodeGatewayMessageData(data));
             }
             catch (err) {
                 log?.error(`[${account.accountId}] Message parse error: ${toError(err).message}`);
+                return;
             }
+            this.payloadQueue = this.payloadQueue.then(() => {
+                if (ws !== this.currentWs || this.isAborted)
+                    return;
+                return this.handlePayload(ws, payload, accessToken);
+            }).catch((error) => {
+                if (ws !== this.currentWs || this.isAborted)
+                    return;
+                log?.error(`[${account.accountId}] Gateway event was not admitted: ${toError(error).message}`);
+                if (this.opts.onError)
+                    this.notify("onError", () => this.opts.onError(toError(error)));
+                this.dispatchFailures = this.failedSeq === payload.s ? this.dispatchFailures + 1 : 1;
+                this.failedSeq = payload.s;
+                const delays = this.reconnect.policy.delays;
+                this.handleGatewayReconnect("Gateway event was not admitted", delays[Math.min(this.dispatchFailures - 1, delays.length - 1)]);
+            });
         });
         ws.on("close", (code, reason) => {
             if (ws !== this.currentWs)
@@ -251,18 +272,24 @@ export class GatewayConnection {
         });
     }
     // ============ Protocol handlers ============
-    handlePayload(ws, payload, accessToken) {
+    async handlePayload(ws, payload, accessToken) {
         const { op, d, s } = payload;
-        if (s) {
-            this.lastSeq = s;
-            this.saveCurrentSession();
-        }
         switch (op) {
             case GatewayOp.HELLO:
                 this.handleHello(ws, d, accessToken);
                 break;
             case GatewayOp.DISPATCH:
-                this.handleDispatch(payload);
+                await this.handleDispatch(payload);
+                if (ws === this.currentWs && !this.isAborted) {
+                    if (payload.t !== GatewayEvent.READY && payload.t !== GatewayEvent.RESUMED) {
+                        this.failedSeq = null;
+                        this.dispatchFailures = 0;
+                    }
+                    if (s !== null && s !== undefined) {
+                        this.lastSeq = s;
+                        this.saveCurrentSession();
+                    }
+                }
                 break;
             case GatewayOp.HEARTBEAT_ACK:
                 break;
@@ -287,14 +314,12 @@ export class GatewayConnection {
         if (result.action === "ready") {
             this.sessionId = result.sessionId;
             this.reconnect.onConnected();
-            this.saveCurrentSession();
             const { onReady } = this.opts;
             if (onReady)
                 this.notify("onReady", () => onReady(result.data));
         }
         else if (result.action === "resumed") {
             this.reconnect.onConnected();
-            this.saveCurrentSession();
             const onResumed = this.opts.onResumed ?? this.opts.onReady;
             if (onResumed)
                 this.notify("onResumed", () => onResumed(result.data));
@@ -302,20 +327,18 @@ export class GatewayConnection {
         else if (result.action === "interaction") {
             // Interaction 有 handler → 调用；否则 fallback 到 rawEvent
             const { onInteraction, onRawEvent } = this.opts;
-            if (onInteraction) {
-                this.notify("onInteraction", () => onInteraction(result.event));
-            }
-            else if (onRawEvent) {
-                this.notify("onRawEvent", () => onRawEvent(t ?? "", d));
-            }
+            if (onInteraction)
+                return onInteraction(result.event);
+            if (onRawEvent)
+                return onRawEvent(t ?? "", d);
         }
         else if (result.action === "message") {
-            this.notify("onMessage", () => this.opts.onMessage(result.msg));
+            return this.opts.onMessage(result.msg);
         }
         else if (result.action === "raw") {
             const { onRawEvent } = this.opts;
             if (onRawEvent)
-                this.notify("onRawEvent", () => onRawEvent(result.type, result.data));
+                return onRawEvent(result.type, result.data);
         }
     }
     handleHello(ws, d, accessToken) {

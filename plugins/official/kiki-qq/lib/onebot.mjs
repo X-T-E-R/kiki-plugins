@@ -28,8 +28,11 @@ export function createOneBotClient(config = {}, deps = {}) {
     defaultHeaders: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, allowOrigins: deps.allowOrigins });
   const connect = deps.connect ?? connectOneBot;
   const pending = new Map();
-  let link, controller, loop, eventEmit, verified = false, identified = false, earlyFrames = [];
+  let link, controller, loop, eventEmit, eventError = deps.onError ?? console.error, verified = false, identified = false, earlyFrames = [];
   let accountId = config.selfId ? numeric(config.selfId, 'OneBot selfId') : undefined;
+  function report(error) {
+    try { eventError(error); } catch (reportError) { console.error('OneBot error reporter failed:', reportError); }
+  }
   function parseResponse(value) {
     if (value?.status === 'ok' && value.retcode !== undefined && Number(value.retcode) === 0) return value.data;
     const uncertain = value?.status === 'async' || Number(value?.retcode) === 1 || value?.retcode === undefined;
@@ -69,16 +72,16 @@ export function createOneBotClient(config = {}, deps = {}) {
     }
     if (controller?.signal.aborted) return;
     if (!verified) {
-      if (earlyFrames.length >= 128) { link?.close(); disconnected(); deps.onError?.(new Error('OneBot startup event buffer exceeded')); }
+      if (earlyFrames.length >= 128) { link?.close(); disconnected(); report(new Error('OneBot startup event buffer exceeded')); }
       else earlyFrames.push(frame);
       return;
     }
     if (String(frame?.self_id) !== accountId) return;
     try {
       for (const event of normalizeOneBotEvent(frame, { selfId: accountId, maxInboundBytes: config.maxInboundBytes })) {
-        Promise.resolve(eventEmit?.(event)).catch((error) => deps.onError?.(error));
+        Promise.resolve(eventEmit?.(event)).catch(report);
       }
-    } catch (error) { deps.onError?.(error); }
+    } catch (error) { report(error); }
   }
   function disconnected() {
     link = undefined; verified = false; earlyFrames = [];
@@ -94,16 +97,17 @@ export function createOneBotClient(config = {}, deps = {}) {
     const closed = new Promise((resolve) => {
       connection.onClose(() => { if (link === connection) disconnected(); resolve(); });
     });
-    connection.onError?.((error) => deps.onError?.(error));
+    connection.onError?.(report);
     connection.onFrame((frame) => { if (link === connection) receive(frame); });
     return { closed };
   }
-  async function start({ signal, emit } = {}) {
+  async function start({ signal, emit, onError } = {}) {
     signal?.throwIfAborted();
     if (controller) throw new Error('OneBot is already running');
     if (!config.useWebSocket) throw Object.assign(new Error('The bidirectional OneBot adapter requires a forward universal WebSocket URL. HTTP is used by read-only group tools.'), { code: 'CONFIGURATION' });
     controller = new AbortController();
     eventEmit = emit;
+    eventError = onError ?? deps.onError ?? console.error;
     const current = controller;
     const abort = () => current.abort();
     signal?.addEventListener('abort', abort, { once: true });
@@ -130,7 +134,7 @@ export function createOneBotClient(config = {}, deps = {}) {
         } catch (error) {
           link?.close(); disconnected();
           if (initial) { firstReject(error); break; }
-          if (!lifetime.aborted) deps.onError?.(error);
+          if (!lifetime.aborted) report(error);
           if (error.code === 'ACCOUNT_CHANGED') current.abort();
         }
         if (!lifetime.aborted) await delay(config.reconnectDelayMs ?? 1000, undefined, { signal: lifetime }).catch(() => {});

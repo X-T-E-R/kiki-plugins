@@ -138,7 +138,7 @@ export class OfficialGateway {
   constructor({ client, gatewayFactory = (options) => new GatewayConnection(options), intents = DEFAULT_INTENTS, maxInboundBytes = 8 * 1024 * 1024 } = {}) {
     Object.assign(this, { client, gatewayFactory, intents, maxInboundBytes });
   }
-  async start({ signal, emit, onError = () => {} }) {
+  async start({ signal, emit, onError = console.error }) {
     if (this.controller) throw new Error('Official gateway is already running');
     signal?.throwIfAborted();
     this.controller = new AbortController();

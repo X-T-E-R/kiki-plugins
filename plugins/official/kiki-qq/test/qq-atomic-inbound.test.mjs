@@ -4,6 +4,7 @@ import test from 'node:test';
 import { messageLimits } from './message-limits.mjs';
 import { createOfficialAdapter, createOneBotAdapter } from '../lib/adapters.mjs';
 import { normalizeOfficialEvent, normalizeOneBotEvent } from '../lib/normalize.mjs';
+import { GatewayConnection } from '../vendor/qqbot-gateway/gateway-connection.js';
 import { WebSocketServer } from '../vendor/ws/wrapper.mjs';
 
 const deferred = () => Promise.withResolvers();
@@ -21,15 +22,16 @@ function source(platform) {
 async function channel(t, platform, limits = messageLimits) {
   const wire = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await once(wire, 'listening');
-  let socket, readMedia = async (url) => image(url === firstUrl ? [1, 2, 3] : [4, 5, 6]);
-  const actions = [], mediaCalls = [], unexpected = [], events = [], errors = [], emissions = [], failures = [];
+  let socket, readMedia = async (url) => image(url === firstUrl ? [1, 2, 3] : [4, 5, 6]), admit = async () => {};
+  const actions = [], mediaCalls = [], unexpected = [], events = [], errors = [], emissions = [], failures = [], resumes = [], snapshots = [], retryDelays = [];
   wire.on('connection', (connected) => {
     socket = connected;
-    if (platform === 'official') socket.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 60000 } }));
-    socket.on('message', (bytes) => {
+    if (platform === 'official') connected.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 60000 } }));
+    connected.on('message', (bytes) => {
       const frame = JSON.parse(String(bytes)); actions.push(frame);
-      if (platform === 'onebot' && frame.action === 'get_login_info') socket.send(JSON.stringify({ status: 'ok', retcode: 0, data: { user_id: 999 }, echo: frame.echo }));
-      else if (platform === 'official' && frame.op === 2) socket.send(JSON.stringify({ op: 0, t: 'READY', s: 1, d: { session_id: 'atomic-fixture', user: { id: 'bot' } } }));
+      if (platform === 'onebot' && frame.action === 'get_login_info') connected.send(JSON.stringify({ status: 'ok', retcode: 0, data: { user_id: 999 }, echo: frame.echo }));
+      else if (platform === 'official' && frame.op === 2) connected.send(JSON.stringify({ op: 0, t: 'READY', s: 1, d: { session_id: 'atomic-fixture', user: { id: 'bot' } } }));
+      else if (platform === 'official' && frame.op === 6) { connected.send(JSON.stringify({ op: 0, t: 'RESUMED', s: frame.d.seq, d: {} })); resumes.shift()?.resolve(frame); }
       else unexpected.push(frame);
     });
   });
@@ -39,18 +41,27 @@ async function channel(t, platform, limits = messageLimits) {
     if ([firstUrl, secondUrl].includes(url) && init.method === 'GET') { mediaCalls.push({ url, signal: init.signal }); return readMedia(url, init); }
     unexpected.push(`${init.method} ${url}`); throw new Error(`Unexpected fixture request ${url}`);
   };
-  const adapter = platform === 'onebot' ? createOneBotAdapter({ fetchImpl, onError }) : createOfficialAdapter({ fetchImpl, onError });
+  const adapter = platform === 'onebot' ? createOneBotAdapter({ fetchImpl, onError })
+    : createOfficialAdapter({ fetchImpl, onError, gatewayFactory: (options) => {
+      const connection = new GatewayConnection({ ...options, reconnect: { delays: [1, 15, 30] }, session: { load: () => null, save: (snapshot) => { snapshots.push({ ...snapshot }); } } });
+      const delay = connection.reconnect.getNextDelay.bind(connection.reconnect);
+      connection.reconnect.getNextDelay = (wait) => { retryDelays.push(wait); return delay(wait); };
+      return connection;
+    } });
   function onError(error) { errors.push(error); failures.shift()?.resolve(error); }
   const controller = new AbortController();
   const settings = platform === 'onebot' ? { onebot__wsUrl: `ws://127.0.0.1:${wire.address().port}`, onebot__selfId: '999' }
     : { official__appId: 'fixture-app', official__appSecret: 'fixture-secret', official__apiBaseUrl: 'https://api.fixture.test', official__tokenBaseUrl: 'https://token.fixture.test' };
-  await adapter.start({ messageLimits: limits, settings, signal: controller.signal, instanceId: 'atomic-fixture', emit: async (event) => { events.push(event); emissions.shift()?.resolve(event); } });
+  await adapter.start({ messageLimits: limits, settings, signal: controller.signal, instanceId: 'atomic-fixture', emit: async (event) => { await admit(event); events.push(event); emissions.shift()?.resolve(event); } });
   t.after(async () => { await adapter.stop(); for (const item of wire.clients) item.terminate(); await new Promise((resolve) => wire.close(resolve)); assert.deepEqual(unexpected, []); });
-  return { adapter, controller, actions, events, errors, mediaCalls,
+  return { adapter, controller, actions, events, errors, mediaCalls, snapshots, retryDelays,
     media(handler) { readMedia = handler; },
+    admission(handler) { admit = handler; },
     nextEvent() { const pending = deferred(); emissions.push(pending); return pending.promise; },
     nextError() { const pending = deferred(); failures.push(pending); return pending.promise; },
-    send(raw = source(platform)) { socket.send(JSON.stringify(platform === 'official' ? { op: 0, t: 'GROUP_AT_MESSAGE_CREATE', s: 2, d: raw } : raw)); },
+    nextResume() { const pending = deferred(); resumes.push(pending); return pending.promise; },
+    disconnect() { socket.close(); },
+    send(raw = source(platform), seq = 2) { socket.send(JSON.stringify(platform === 'official' ? { op: 0, t: 'GROUP_AT_MESSAGE_CREATE', s: seq, d: raw } : raw)); },
   };
 }
 
@@ -74,7 +85,9 @@ for (const platform of ['onebot', 'official']) {
   test(`SG001 ${platform}: a failed later download emits zero parts and replay preserves the root/source IDs`, async (t) => {
     const f = await channel(t, platform);
     f.media(async (url) => url === firstUrl ? image([1]) : new Response('unavailable', { status: 503 }));
-    const failure = f.nextError(); f.send(); assert.equal((await failure).code, 'MEDIA_HTTP_ERROR'); assert.deepEqual(f.events, []);
+    const failure = f.nextError(), resumed = platform === 'official' ? f.nextResume() : undefined;
+    f.send(); assert.equal((await failure).code, 'MEDIA_HTTP_ERROR'); assert.deepEqual(f.events, []);
+    if (resumed) assert.equal((await resumed).d.seq, 1);
     f.media(async (url) => image(url === firstUrl ? [1] : [2]));
     const emitted = f.nextEvent(); f.send(); const event = await emitted;
     assert.equal(event.eventId, `${platform === 'official' ? 'official' : 'onebot'}:27`); assert.equal(event.sourceMessageId, '27');
@@ -138,9 +151,11 @@ for (const platform of ['onebot', 'official']) {
   test(`SG001 ${platform}: parent cancellation aborts the late download and emits no partial message`, async (t) => {
     const f = await channel(t, platform), secondEntered = deferred(), late = deferred();
     f.media(async (url) => { if (url === firstUrl) return image([1]); secondEntered.resolve(); return late.promise; });
-    const failure = f.nextError(); f.send(); await secondEntered.promise;
+    const failure = platform === 'onebot' ? f.nextError() : undefined;
+    f.send(); await secondEntered.promise;
     f.controller.abort(); assert.equal(f.mediaCalls.at(-1).signal.aborted, true);
-    late.resolve(image([2])); await failure; assert.deepEqual(f.events, []);
+    late.resolve(image([2])); if (failure) await failure;
+    await f.adapter.stop(); assert.deepEqual(f.events, []);
   });
 
   test(`SG001 ${platform}: 256 ordered parts are accepted; 257 reject the whole envelope`, async (t) => {
@@ -156,8 +171,10 @@ for (const platform of ['onebot', 'official']) {
     const f = await channel(t, platform), text = '😀'.repeat(messageLimits.textChars / 2);
     const accepted = f.nextEvent(); f.send(bodyAndImages(platform, text, 0));
     assert.equal((await accepted).parts[0].text, text);
-    const rejected = f.nextError(); f.send(bodyAndImages(platform, `${text}x`, 0));
+    const rejected = f.nextError(), resumed = platform === 'official' ? f.nextResume() : undefined;
+    f.send(bodyAndImages(platform, `${text}x`, 0));
     assert.equal((await rejected).code, 'MESSAGE_TOO_LARGE'); assert.equal(f.events.length, 1);
+    if (resumed) assert.equal((await resumed).d.seq, 2);
     const missingReason = f.nextError(); f.send(bodyAndImages(platform, text, 1));
     assert.equal((await missingReason).code, 'MESSAGE_TOO_LARGE'); assert.equal(f.events.length, 1);
   });
@@ -215,4 +232,79 @@ for (const platform of ['onebot', 'official']) test(`SG001 ${platform}: explicit
     assert.ok(part.text.includes(`image-${index}.png`)); assert.match(part.text, /no downloadable URL; local platform paths are not read/);
   }
   assert.deepEqual(f.mediaCalls, []); assert.deepEqual(f.errors, []);
+});
+
+test('PLUGIN-01 official: rejected Host admission resumes before the failed sequence; replay succeeds once', async (t) => {
+  const f = await channel(t, 'official');
+  f.admission(() => { throw Object.assign(new Error('fixture Host refused the complete message'), { code: 'HOST_REJECTED' }); });
+  const failure = f.nextError(), resumed = f.nextResume();
+  f.send();
+  assert.equal((await failure).code, 'HOST_REJECTED');
+  assert.deepEqual(f.events, []);
+  assert.deepEqual(f.snapshots.map(({ lastSeq }) => lastSeq), [1]);
+  assert.equal((await resumed).d.seq, 1);
+  f.admission(async () => {});
+  const replay = f.nextEvent(); f.send();
+  assert.equal((await replay).sourceMessageId, '27');
+  assert.deepEqual(f.events.map(({ sourceMessageId }) => sourceMessageId), ['27']);
+  const nextResume = f.nextResume();
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  f.disconnect();
+  assert.equal((await nextResume).d.seq, 2);
+  assert.equal(f.snapshots.at(-1).lastSeq, 2);
+  assert.equal(f.errors.length, 1);
+});
+
+test('PLUGIN-01 official: an unacknowledged admission may be a duplicate after resume, never a partial message', async (t) => {
+  const f = await channel(t, 'official');
+  const acceptedAtHost = [];
+  f.admission((event) => { acceptedAtHost.push(event.sourceMessageId); if (acceptedAtHost.length === 1) throw new Error('ack lost after Host accepted'); });
+  const failed = f.nextError(), resumed = f.nextResume();
+  f.send(); assert.match((await failed).message, /ack lost/);
+  assert.equal((await resumed).d.seq, 1);
+  const replay = f.nextEvent(); f.send();
+  assert.equal((await replay).sourceMessageId, '27');
+  assert.deepEqual(acceptedAtHost, ['27', '27']);
+  assert.equal(f.events.length, 1);
+});
+
+test('PLUGIN-01 OneBot: Host rejection is reported once and manual source replay can succeed', async (t) => {
+  const f = await channel(t, 'onebot');
+  f.admission(() => { throw Object.assign(new Error('Host rejected OneBot message'), { code: 'HOST_REJECTED' }); });
+  const failed = f.nextError(); f.send();
+  assert.equal((await failed).code, 'HOST_REJECTED'); assert.deepEqual(f.events, []);
+  f.admission(async () => {});
+  const replay = f.nextEvent(); f.send();
+  assert.equal((await replay).sourceMessageId, '27');
+  assert.equal(f.errors.length, 1);
+});
+
+test('PLUGIN-01 official: a later dispatch cannot advance the cursor while an earlier Host admission is pending', async (t) => {
+  const f = await channel(t, 'official'), entered = deferred(), release = deferred();
+  f.admission(async (event) => { if (event.sourceMessageId === '27') { entered.resolve(); await release.promise; } });
+  const first = f.nextEvent(), second = f.nextEvent();
+  f.send(); await entered.promise;
+  f.send({ ...source('official'), id: '28' }, 3);
+  assert.deepEqual(f.snapshots.map(({ lastSeq }) => lastSeq), [1]);
+  assert.deepEqual(f.events, []);
+  release.resolve();
+  assert.equal((await first).sourceMessageId, '27');
+  assert.equal((await second).sourceMessageId, '28');
+  const resumed = f.nextResume(); await new Promise((resolve) => setTimeout(resolve, 5)); f.disconnect();
+  assert.equal((await resumed).d.seq, 3);
+});
+
+test('PLUGIN-01 official: repeated rejection of the same source keeps its cursor and backs off', async (t) => {
+  const f = await channel(t, 'official');
+  f.media(async (url) => url === firstUrl ? image([1]) : new Response('unavailable', { status: 503 }));
+  for (const wait of [1, 15, 30]) {
+    const failed = f.nextError(), resumed = f.nextResume();
+    f.send(); assert.equal((await failed).code, 'MEDIA_HTTP_ERROR');
+    assert.equal((await resumed).d.seq, 1);
+    assert.equal(f.retryDelays.at(-1), wait);
+    assert.deepEqual(f.snapshots.map(({ lastSeq }) => lastSeq), Array(f.snapshots.length).fill(1));
+  }
+  assert.deepEqual(f.events, []);
+  f.media(async (url) => image(url === firstUrl ? [1] : [2]));
+  const replay = f.nextEvent(); f.send(); assert.equal((await replay).sourceMessageId, '27');
 });

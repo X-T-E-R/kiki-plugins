@@ -84,11 +84,11 @@ async function hydrate(event, options, limits) {
   return complete;
 }
 function emitUntilStopped(emit, event, signal) {
-  if (signal.aborted) return Promise.resolve();
+  if (signal.aborted) return Promise.resolve(false);
   return new Promise((resolve, reject) => {
-    const abort = () => resolve();
+    const abort = () => resolve(false);
     signal.addEventListener('abort', abort, { once: true });
-    Promise.resolve().then(() => signal.aborted ? undefined : emit(event)).then(resolve, reject)
+    Promise.resolve().then(() => signal.aborted ? false : emit(event).then(() => true)).then(resolve, reject)
       .finally(() => signal.removeEventListener('abort', abort));
   });
 }
@@ -121,14 +121,17 @@ function adapter(platform, definition, buildClient, deps) {
         const transport = platform === 'official' ? new OfficialGateway({ client, gatewayFactory: deps.gatewayFactory, intents: config.intents, maxInboundBytes: definition.maxInboundBytes }) : client;
         state.transport = transport;
         const result = await transport.start({ signal, onError: deps.onError, emit(event) {
-          state.queue = state.queue.then(async () => {
+          const admitted = state.queue.then(async () => {
             if (signal.aborted) return;
             const hydrated = await hydrate(event, { fetchImpl: deps.fetchImpl, signal, maxBytes: definition.maxInboundBytes }, messageLimits);
             if (signal.aborted) return;
             client.observe?.(hydrated);
-            await emitUntilStopped(context.emit, hydrated, signal);
-          }).catch((error) => deps.onError?.(error));
-          return state.queue;
+            if (!await emitUntilStopped(context.emit, hydrated, signal) || signal.aborted) {
+              throw Object.assign(new Error('QQ message admission interrupted; delivery outcome is unknown'), { code: 'ADMISSION_UNKNOWN' });
+            }
+          });
+          state.queue = admitted.catch(() => {});
+          return admitted;
         } });
         signal.throwIfAborted();
         if (platform === 'onebot') verifiedAccount = { config: JSON.stringify(config), id: String(result.accountId) };

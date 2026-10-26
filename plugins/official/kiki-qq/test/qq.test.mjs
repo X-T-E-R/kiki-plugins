@@ -412,11 +412,10 @@ test('OneBot status/retcode never synthesizes success from async or missing rece
 });
 
 test('media hydration rejects an oversized source and preserves missing audio with its ASR reference', async (t) => {
-  const fixture = fixtureFetch(t, []), errors = [];
-  const { adapter, gateway, events } = await startOfficial(t, fixture, { onError: (error) => errors.push(error) });
-  await gateway.options.onMessage({ rawEventType: 'C2C_MESSAGE_CREATE', raw: { id: 'large', author: { user_openid: 'u1' }, attachments: [{ filename: 'large.mp4', content_type: 'video/mp4', url: 'https://media.fixture.test/large', size: 9 * 1024 * 1024 }] } });
+  const fixture = fixtureFetch(t, []);
+  const { adapter, gateway, events } = await startOfficial(t, fixture);
+  await assert.rejects(gateway.options.onMessage({ rawEventType: 'C2C_MESSAGE_CREATE', raw: { id: 'large', author: { user_openid: 'u1' }, attachments: [{ filename: 'large.mp4', content_type: 'video/mp4', url: 'https://media.fixture.test/large', size: 9 * 1024 * 1024 }] } }), { code: 'MEDIA_TOO_LARGE' });
   assert.deepEqual(events, []);
-  assert.equal(errors.length, 1); assert.equal(errors[0].code, 'MEDIA_TOO_LARGE');
   await gateway.options.onMessage({ rawEventType: 'C2C_MESSAGE_CREATE', raw: { id: 'asr', author: { user_openid: 'u1' }, attachments: [{ filename: 'voice.silk', content_type: 'audio/silk', asr_refer_text: '参考' }] } });
   assert.equal(events.length, 1); assert.equal(events[0].kind, 'message');
   assert.equal(events[0].parts[0].kind, 'audio');
@@ -463,10 +462,11 @@ test('stop releases an unacknowledged Host emit, drops queued events and allows 
   gateways[0].options.onReady({}); await starting;
   await assert.rejects(adapter.start(context), /already running/);
   const raw = { author: { user_openid: 'u1' }, content: 'pending' };
-  gateways[0].options.onMessage({ rawEventType: 'C2C_MESSAGE_CREATE', raw: { ...raw, id: 'first' } });
-  gateways[0].options.onMessage({ rawEventType: 'C2C_MESSAGE_CREATE', raw: { ...raw, id: 'queued' } });
+  const first = gateways[0].options.onMessage({ rawEventType: 'C2C_MESSAGE_CREATE', raw: { ...raw, id: 'first' } });
+  const firstRejected = assert.rejects(first, { code: 'ADMISSION_UNKNOWN' });
+  const queued = gateways[0].options.onMessage({ rawEventType: 'C2C_MESSAGE_CREATE', raw: { ...raw, id: 'queued' } });
   await received.promise;
-  await adapter.stop();
+  await adapter.stop(); await firstRejected; await queued;
   assert.equal(gateways[0].stopped, true);
   const events = [];
   const restarting = adapter.start({ messageLimits, ...context, emit: async (event) => events.push(event) });
@@ -488,8 +488,9 @@ test('stop aborts attachment hydration before emit and cancels the owned downloa
     return new Promise((_, reject) => init.signal.addEventListener('abort', () => { cancelled = true; reject(init.signal.reason); }, { once: true }));
   } }]);
   const { adapter, gateway, events } = await startOfficial(t, fixture);
-  gateway.options.onMessage({ rawEventType: 'C2C_MESSAGE_CREATE', raw: { id: 'download', author: { user_openid: 'u1' }, attachments: [{ filename: 'a.png', content_type: 'image/png', url: 'https://media.fixture.test/pending' }] } });
-  await downloading.promise; await adapter.stop();
+  const incoming = gateway.options.onMessage({ rawEventType: 'C2C_MESSAGE_CREATE', raw: { id: 'download', author: { user_openid: 'u1' }, attachments: [{ filename: 'a.png', content_type: 'image/png', url: 'https://media.fixture.test/pending' }] } });
+  const rejected = assert.rejects(incoming);
+  await downloading.promise; await adapter.stop(); await rejected;
   assert.equal(cancelled, true);
   assert.deepEqual(events, []);
 });

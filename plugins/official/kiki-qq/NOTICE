@@ -6,8 +6,9 @@ License: MIT, Copyright (c) 2026 Tencent
 
 Included units:
 - vendor/qqbot-gateway: gateway-connection, codec, constants, errors,
-  event-dispatcher and reconnect. Only the ws import is redirected to the
-  vendored ws package.
+  event-dispatcher and reconnect. The ws import is redirected to the vendored
+  ws package. Gateway dispatch now awaits message admission before advancing
+  the resume sequence; rejection reconnects from the last admitted sequence.
 - vendor/qqbot-media: the buffer-input chunked upload protocol, its upload-only
   retry engine, route templates, required types and formatting utilities.
   Adaptations connect the existing client/token to AbortSignal cancellation,
