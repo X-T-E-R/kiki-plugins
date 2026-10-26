@@ -420,7 +420,14 @@
       "displayName": "Kiki Phone",
       "version": "0.1.0",
       "description": "Prepare the runtime, then use Mobilewright semantic scripts or Mobile MCP to operate a connected Android or iOS phone. Rooted Android also supports su commands.",
-      "keywords": ["phone", "android", "ios", "mobile", "mcp", "root"],
+      "keywords": [
+        "phone",
+        "android",
+        "ios",
+        "mobile",
+        "mcp",
+        "root"
+      ],
       "author": "Kiki",
       "license": "MIT",
       "source": "./official/kiki-phone",
@@ -428,7 +435,13 @@
       "localizations": {
         "zh": {
           "description": "准备运行环境后，用 Mobilewright 语义脚本或 Mobile MCP 操作已连接的安卓与 iOS 手机；root 安卓还可按需调用 su。",
-          "keywords": ["手机", "安卓", "苹果", "操作手机", "root"]
+          "keywords": [
+            "手机",
+            "安卓",
+            "苹果",
+            "操作手机",
+            "root"
+          ]
         }
       }
     },
