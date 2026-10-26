@@ -415,34 +415,6 @@
       }
     },
     {
-      "id": "kiki-qq",
-      "tier": "official",
-      "displayName": "QQ",
-      "version": "0.3.0",
-      "description": "Connect official QQ Bot and OneBot 11 accounts for messaging and media, with OneBot group history and read-only group tools.",
-      "keywords": [
-        "qq",
-        "onebot",
-        "chat",
-        "media"
-      ],
-      "author": "Kiki",
-      "license": "MIT",
-      "source": "./official/kiki-qq",
-      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-qq",
-      "localizations": {
-        "zh": {
-          "description": "接入官方 QQ Bot 与 OneBot 11 账号，收发聊天和媒体消息；OneBot 支持读取群历史、群列表与成员。",
-          "keywords": [
-            "QQ",
-            "OneBot",
-            "群聊",
-            "媒体消息"
-          ]
-        }
-      }
-    },
-    {
       "id": "kiki-phone",
       "tier": "official",
       "displayName": "Kiki Phone",
