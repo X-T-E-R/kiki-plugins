@@ -111,5 +111,3 @@ lib\start.cmd --adb "D:\Android SDK\platform-tools\adb.exe"
 插件为 MIT；Mobile MCP／Mobilewright 为 Apache-2.0，mobilecli 为 FSL-1.1-ALv2，Google platform-tools 遵循其 SDK 条款，见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
 
 2026-10-26 本机验证覆盖 ZIP 经生产 PluginManager 安装启用、四个原生工具注册、私有运行包与共享 ADB 复用、`phone_run` 设备发现／UI 树／PNG 附件，以及 MCP `initialize`／33 个上游工具／设备发现。Xiaomi 12S Ultra（Android 14）真机已验证语义点击、滑动、中文输入、按新快照确认输入值、清空及返回 HOME；该机未发现可用 `su`，iOS 尚无真机验证。
-
-Windows Host 的裸命令 PATH 解析问题仍待宿主修复；这轮生产消费显式指定了 Node 可执行文件，未验证未修复 Host 仅凭 manifest 中 `node` 自动启动。插件包不包含本机 Node 路径。
