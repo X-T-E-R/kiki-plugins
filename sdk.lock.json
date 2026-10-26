@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/X-T-E-R/kiki",
-  "ref": "a3c694c40255a05e51f727da5611d0beeedd1acc",
+  "ref": "c37f5990e636cba7514b44d46a4af4ef2f041068",
   "package": "@kiki/plugin-sdk",
   "version": "0.1.1",
   "artifact": "vendor/kiki-plugin-sdk-0.1.1-host-a3c694c402.tgz",

@@ -58,7 +58,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: X-T-E-R/kiki
-          ref: a3c694c40255a05e51f727da5611d0beeedd1acc
+          ref: c37f5990e636cba7514b44d46a4af4ef2f041068
           path: .tmp/sdk-upstream
           sparse-checkout: |
             packages/plugin-sdk
