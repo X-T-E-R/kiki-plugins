@@ -18,11 +18,11 @@ test('deterministic ZIPs, complete digest/icon contract, metadata reuse and immu
   await cp('plugins',join(dir,'plugins'),{recursive:true});
   const opts={pluginsRoot:join(dir,'plugins'),outDir:join(dir,'first'),tag:'batch-1',revision:'a'.repeat(40)};
   const catalog=JSON.parse(await readFile(join(opts.pluginsRoot,'marketplace.json'),'utf8'));
-  const packagedIds=['kiki-output-layer','kiki-cloudflare','kiki-office','kiki-writing','kiki-extract','kiki-notion','kiki-media','kiki-task-board','kiki-work','kiki-pet','kiki-sites','kiki-bilibili','kiki-voice','kiki-qq'];
+  const packagedIds=['kiki-output-layer','kiki-cloudflare','kiki-office','kiki-writing','kiki-extract','kiki-notion','kiki-media','kiki-task-board','kiki-work','kiki-pet','kiki-sites','kiki-bilibili','kiki-voice','kiki-qq','kiki-phone'];
   const external=catalog.plugins.filter(p=>!p.source.startsWith('./official/'));
   assert.deepEqual(catalog.plugins.filter(p=>p.source.startsWith('./official/')).map(p=>p.id),packagedIds);
   assert.deepEqual(external.map(p=>p.id),['kimi-datasource','kimi-webbridge','superpowers','vercel-plugin','modern-web-guidance']);
-  const first=await pack(opts);assert.deepEqual(first.newPackages.map(p=>p.id),packagedIds);assert.deepEqual(first.index.plugins.map(p=>p.id),catalog.plugins.map(p=>p.id));assert.equal(first.index.plugins.length,19);assert.deepEqual(first.index.plugins.filter(p=>p.id.startsWith('kiki-media')).map(p=>p.id),['kiki-media']);
+  const first=await pack(opts);assert.deepEqual(first.newPackages.map(p=>p.id),packagedIds);assert.deepEqual(first.index.plugins.map(p=>p.id),catalog.plugins.map(p=>p.id));assert.equal(first.index.plugins.length,20);assert.deepEqual(first.index.plugins.filter(p=>p.id.startsWith('kiki-media')).map(p=>p.id),['kiki-media']);
   for(const p of external){const entry=first.index.plugins.find(x=>x.id===p.id);for(const field of ['version','source','sha256','license','compatibility'])assert.deepEqual(entry[field],p[field]);}
   assert.deepEqual((await readdir(join(opts.outDir,'assets'))).sort(),['marketplace.json','SHA256SUMS',...first.newPackages.map(p=>p.filename)].sort());
   const second=await pack({...opts,outDir:join(dir,'second')});

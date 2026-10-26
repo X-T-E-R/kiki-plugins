@@ -443,6 +443,24 @@
       }
     },
     {
+      "id": "kiki-phone",
+      "tier": "official",
+      "displayName": "Kiki Phone",
+      "version": "0.1.0",
+      "description": "Prepare a phone connection in one step, then use semantic Mobilewright scripts and the complete Mobile MCP toolset for Android and iOS; rooted Android adds optional su commands.",
+      "keywords": ["phone", "android", "ios", "mobile", "mcp", "root"],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-phone",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-phone",
+      "localizations": {
+        "zh": {
+          "description": "一键准备连接，用 Mobilewright 语义脚本和完整 Mobile MCP 操作安卓与 iOS；root 安卓可按需调用 su。",
+          "keywords": ["手机", "安卓", "苹果", "操作手机", "root"]
+        }
+      }
+    },
+    {
       "id": "kimi-datasource",
       "tier": "official",
       "displayName": "Kimi Datasource",

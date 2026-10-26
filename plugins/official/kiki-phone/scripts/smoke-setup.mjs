@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { resolve, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const [adb, dataDir] = process.argv.slice(2).map(value => resolve(value));
+if (!adb || !dataDir) throw new Error('Provide an existing adb path and a scratch data directory.');
+const script = fileURLToPath(new URL('../lib/start.cmd', import.meta.url));
+const line = `""${script}" --json --adb "${adb}" --data-dir "${dataDir}" --no-warmup"`;
+const result = spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', line], { windowsVerbatimArguments: true, encoding: 'utf8' });
+process.stdout.write(result.stdout);
+process.stderr.write(result.stderr);
+assert.equal(result.status, 0);
+const report = JSON.parse(result.stdout);
+assert.equal(report.adb.path, adb);
+assert.equal(report.mcp.connected, false);
+assert.ok(['transport_ready', 'authorization_required', 'device_offline', 'no_device'].includes(report.status));
+console.log(`Windows entry verified; state saved under ${join(dataDir, 'adb.json')}`);

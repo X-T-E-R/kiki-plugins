@@ -16,6 +16,7 @@ This checkout validates against **plugin engine 0.4.1** and the vendored **SDK 0
 | Extract | Text and HTML work locally. PDF and Office conversion need Python and MarkItDown; MinerU upload is explicit and opt-in. See [Extract setup](plugins/official/kiki-extract/README.md). |
 | Office | OfficeCLI **1.0.152**, installed with consent; Windows x64, macOS arm64, and Linux x64 are supported by its pinned binary resolver. |
 | Notion | Notion's HTTP MCP service and its OAuth authorization. See [Notion](plugins/official/kiki-notion/README.md). |
+| Phone | One-step preparation and semantic Mobilewright scripts, plus the complete Mobile MCP toolset. Needs Node.js 22.12+ with npm; Android uses official platform-tools and USB or wireless debugging. iOS needs upstream device-agent preparation. See [Phone setup](plugins/official/kiki-phone/README.md). |
 | Media | Install the Media entry plus a provider; configure an entitled API connection or key. Cloud generation may incur charges. ComfyUI needs your running endpoint and installed workflow/models; no GPU engine or models are included. |
 
 The two Moonshot entries are **author-hosted references**, not mirrored source in this repository. Their original license and external daemon/service requirements apply. The three community entries keep pinned author commits; their Claude-plugin import compatibility is marked unverified, so inspect Kiki's unsupported-contribution diagnostics before enabling them.

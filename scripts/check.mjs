@@ -37,9 +37,10 @@ async function checkPackages(){
     console.log('Validated package',p.id,m.version);
   }
   run('plugins/official/media-runtime/distribute.mjs',['--check']);
-  for(const id of ['kiki-extract','kiki-office','kiki-media','kiki-bilibili','kiki-voice','kiki-qq'])if(!selected||selected===id)run(`plugins/official/${id}/scripts/sync-manifest.mjs`,['--check']);
+  for(const id of ['kiki-extract','kiki-office','kiki-media','kiki-bilibili','kiki-voice','kiki-qq','kiki-phone'])if(!selected||selected===id)run(`plugins/official/${id}/scripts/sync-manifest.mjs`,['--check']);
   if(!selected||selected==='kiki-bilibili')run('--test',['plugins/official/kiki-bilibili/test/bilibili.test.mjs']);
   if(!selected||selected==='kiki-voice')run('--test',['plugins/official/kiki-voice/test/voice.test.mjs']);
+  if(!selected||selected==='kiki-phone')run('--test',['plugins/official/kiki-phone/test/phone.test.mjs']);
   if(!selected||selected==='kiki-qq'){
     run('--test',['--test-timeout=15000','plugins/official/kiki-qq/test/qq.test.mjs','plugins/official/kiki-qq/test/qq-regressions.test.mjs','plugins/official/kiki-qq/test/qq-history.test.mjs','plugins/official/kiki-qq/test/qq-atomic-inbound.test.mjs']);
     run('plugins/official/kiki-qq/scripts/check-host-contract.mjs',[resolve('node_modules/@kiki/plugin-sdk/dist/im.js'),runner]);
