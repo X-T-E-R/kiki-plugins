@@ -1,17 +1,349 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>输出层设置</title>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>输出层设置</title>
 <style>
-:root{color-scheme:light;--paper:#fbfaf6;--ink:#1b1a17;--soft:#665e54;--line:#e4ddd0;--accent:#c8401a}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.5 'Instrument Sans', 'Segoe UI','Microsoft YaHei',sans-serif}main{max-width:680px;padding:8px 4px 24px}h2{font-size:16px;margin:0 0 16px}label{display:block;margin:12px 0 4px}input,select,textarea,button{font:inherit;color:inherit}input,select,textarea{width:100%;border:1px solid var(--line);border-radius:7px;padding:8px;background:transparent}textarea{min-height:112px;resize:vertical}input:focus,select:focus,textarea:focus{outline:1px solid var(--accent)}button{border:1px solid var(--line);border-radius:7px;padding:6px 12px;background:transparent;cursor:pointer}button.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}.row{display:flex;gap:8px;align-items:center}.row select{flex:1}.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}section+section{margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}footer{display:flex;gap:12px;align-items:center;margin-top:24px}#status{color:var(--soft)}#status.error{color:#b0261e}details{margin-top:16px}summary{cursor:pointer;color:var(--soft)}@media(max-width:420px){.grid{grid-template-columns:1fr}.row{flex-wrap:wrap}}
-</style></head><body><main>
-<section><h2>输出预设</h2><div class="row"><select id="preset" aria-label="输出预设"></select><button id="remove" type="button">删除</button></div><label for="template">新增预设</label><div class="row"><select id="template" aria-label="内置模板"></select><button id="add" type="button">添加</button></div>
-<label for="label">名称</label><input id="label" required>
-<label for="instruction">提示词</label><textarea id="instruction" required></textarea>
-<label for="modelId">Kiki 模型（留空不处理）</label><input id="modelId" autocomplete="off" list="models"><datalist id="models"></datalist><datalist id="connections"></datalist>
-<details><summary>已有连接上的自定义模型</summary><div class="grid"><div><label for="connectionId">连接 ID</label><input id="connectionId" autocomplete="off" list="connections"></div><div><label for="customModelId">自定义模型 ID</label><input id="customModelId" autocomplete="off"></div></div><label for="contextWindow">模型窗口 tokens</label><input id="contextWindow" type="number" min="1024"></details>
-<label for="maxOutputTokens">每组最大输出 tokens（留空不限制）</label><input id="maxOutputTokens" type="number" min="1">
-</section><section><h2>阅读与历史</h2><div class="grid"><div><label for="groupChars">每组 Unicode 字符</label><input id="groupChars" type="number" min="80" max="10000"></div><div><label for="historyTokens">历史 tokens（0 关闭）</label><input id="historyTokens" type="number" min="0" max="1048576"></div><div><label for="preloadBefore">向前预加载组数</label><input id="preloadBefore" type="number" min="0" max="20"></div><div><label for="preloadAfter">向后预加载组数</label><input id="preloadAfter" type="number" min="0" max="20"></div></div></section>
-<footer><button id="save" class="primary" type="button">保存</button><span id="status" role="status">正在加载…</span></footer>
-</main><script type="module">
+:root {
+  color-scheme: light dark;
+  --paper: #fbfaf6;
+  --panel: #fffdfa;
+  --hairline: #e4ddd0;
+  --hairline-strong: #cdc3b1;
+  --ink: #1b1a17;
+  --ink-soft: #4b453e;
+  --ink-faint: #665e54;
+  --accent: #c8401a;
+  --accent-deep: #9c3012;
+  --on-accent: #ffffff;
+  --danger: #b0261e;
+  --selected: #dfe8f0;
+  --selected-ink: #1d4d6d;
+  --motion-quick: 160ms;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #1b2226;
+    --panel: #252d31;
+    --hairline: #354047;
+    --hairline-strong: #596870;
+    --ink: #eeeae2;
+    --ink-soft: #c1c5c5;
+    --ink-faint: #a2acaf;
+    --accent: #eb946f;
+    --accent-deep: #f4b08f;
+    --on-accent: #261a14;
+    --danger: #f1a29a;
+    --selected: #24323b;
+    --selected-ink: #a3cbde;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #1b2226;
+  --panel: #252d31;
+  --hairline: #354047;
+  --hairline-strong: #596870;
+  --ink: #eeeae2;
+  --ink-soft: #c1c5c5;
+  --ink-faint: #a2acaf;
+  --accent: #eb946f;
+  --accent-deep: #f4b08f;
+  --on-accent: #261a14;
+  --danger: #f1a29a;
+  --selected: #24323b;
+  --selected-ink: #a3cbde;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 13px/1.5 'Instrument Sans', ui-sans-serif, system-ui, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+main {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 18px 16px 36px;
+}
+header {
+  margin-bottom: 24px;
+}
+h1 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--ink);
+}
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  margin-bottom: 14px;
+}
+.template-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: initial;
+  max-width: 100%;
+}
+.template-group select {
+  max-width: 160px;
+}
+.field {
+  margin-bottom: 14px;
+  min-width: 0;
+}
+.field:last-child {
+  margin-bottom: 0;
+}
+label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  margin-bottom: 5px;
+}
+input, select, textarea, button {
+  font: inherit;
+  color: inherit;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+input, select, textarea {
+  width: 100%;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 7px 10px;
+  background: var(--panel);
+  outline: none;
+  transition: border-color var(--motion-quick) ease-out;
+}
+input:hover, select:hover, textarea:hover {
+  border-color: var(--hairline-strong);
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+}
+input:disabled, select:disabled, textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+textarea {
+  min-height: 96px;
+  resize: vertical;
+  line-height: 1.5;
+  word-break: break-word;
+}
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background var(--motion-quick) ease-out, border-color var(--motion-quick) ease-out, color var(--motion-quick) ease-out;
+}
+button:hover:not(:disabled) {
+  border-color: var(--hairline-strong);
+  color: var(--ink);
+}
+button:focus-visible {
+  outline: 2px solid var(--selected-ink);
+  outline-offset: 1px;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+button.primary {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+  font-weight: 500;
+}
+button.primary:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+.row select {
+  flex: 1;
+  min-width: 0;
+}
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  min-width: 0;
+}
+section + section {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--hairline);
+}
+details {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--paper);
+  min-width: 0;
+}
+summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  user-select: none;
+}
+summary:hover {
+  color: var(--ink);
+}
+details[open] summary {
+  margin-bottom: 12px;
+}
+footer {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+}
+#status {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+#status.error {
+  color: var(--danger);
+  font-weight: 500;
+}
+@media (max-width: 520px) {
+  .grid {
+    grid-template-columns: 1fr;
+    gap: 12px 0;
+  }
+  .section-head {
+    align-items: flex-start;
+  }
+  .template-group {
+    width: 100%;
+  }
+  .template-group select {
+    max-width: none;
+    flex: 1;
+  }
+}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>输出层设置</h1>
+  </header>
+  <section>
+    <div class="section-head">
+      <h2>输出预设</h2>
+      <div class="template-group">
+        <select id="template" aria-label="内置模板"></select>
+        <button id="add" type="button">从模板添加</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="preset">选择预设</label>
+      <div class="row">
+        <select id="preset" aria-label="输出预设"></select>
+        <button id="remove" type="button">删除</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="label">名称</label>
+      <input id="label" required>
+    </div>
+    <div class="field">
+      <label for="instruction">提示词</label>
+      <textarea id="instruction" required></textarea>
+    </div>
+    <div class="field">
+      <label for="modelId">Kiki 模型（留空不处理）</label>
+      <input id="modelId" autocomplete="off" list="models">
+      <datalist id="models"></datalist>
+      <datalist id="connections"></datalist>
+    </div>
+    <details>
+      <summary>已有连接上的自定义模型</summary>
+      <div class="grid">
+        <div class="field">
+          <label for="connectionId">连接 ID</label>
+          <input id="connectionId" autocomplete="off" list="connections">
+        </div>
+        <div class="field">
+          <label for="customModelId">自定义模型 ID</label>
+          <input id="customModelId" autocomplete="off">
+        </div>
+      </div>
+      <div class="field" style="margin-top: 12px;">
+        <label for="contextWindow">模型窗口 tokens</label>
+        <input id="contextWindow" type="number" min="1024">
+      </div>
+    </details>
+    <div class="field" style="margin-top: 14px;">
+      <label for="maxOutputTokens">每组最大输出 tokens（留空不限制）</label>
+      <input id="maxOutputTokens" type="number" min="1">
+    </div>
+  </section>
+  <section>
+    <div class="section-head">
+      <h2>阅读与历史</h2>
+    </div>
+    <div class="grid">
+      <div class="field">
+        <label for="groupChars">每组 Unicode 字符</label>
+        <input id="groupChars" type="number" min="80" max="10000">
+      </div>
+      <div class="field">
+        <label for="historyTokens">历史 tokens（0 关闭）</label>
+        <input id="historyTokens" type="number" min="0" max="1048576">
+      </div>
+      <div class="field">
+        <label for="preloadBefore">向前预加载组数</label>
+        <input id="preloadBefore" type="number" min="0" max="20">
+      </div>
+      <div class="field">
+        <label for="preloadAfter">向后预加载组数</label>
+        <input id="preloadAfter" type="number" min="0" max="20">
+      </div>
+    </div>
+  </section>
+  <footer>
+    <button id="save" class="primary" type="button">保存</button>
+    <span id="status" role="status">正在加载…</span>
+  </footer>
+</main>
+<script type="module">
 const channel='kiki.panel.v1', waiting=new Map(); let next=0, config, selected=0, started=false;
 const $=id=>document.getElementById(id), fields=['label','instruction','modelId','connectionId','customModelId','contextWindow','maxOutputTokens'], numbers=['contextWindow','maxOutputTokens'], settings=['groupChars','historyTokens','preloadBefore','preloadAfter'];
 function ask(method,extra={}){const id=++next;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{waiting.delete(id);reject(new Error('请求超时，请重试'));},10000);waiting.set(id,{resolve:value=>{clearTimeout(timer);resolve(value)},reject:error=>{clearTimeout(timer);reject(error)}});parent.postMessage({channel,kind:'request',id,method,...extra},'*')})}
@@ -24,5 +356,7 @@ $('add').onclick=()=>{collect();const template=config.templates?.find(preset=>pr
 $('remove').onclick=()=>{config.presets.splice(selected,1);selected=Math.max(0,selected-1);render();status('未保存')};
 $('save').onclick=async()=>{try{collect();for(const key of settings){const field=$(key);if(!field.checkValidity())throw new Error('请检查阅读与历史的数值');config.settings[key]=Number(field.value)}if(config.presets.some(preset=>!preset.label?.trim()||!preset.instruction?.trim()))throw new Error('请填写预设名称和提示词');$('save').disabled=true;await ask('plugin.settings.patch',{values:{presets:JSON.stringify(config.presets),...config.settings}});render();status('已保存')}catch(error){status(error.message,true)}finally{$('save').disabled=false}};
 document.querySelector('main').addEventListener('input',()=>{status('未保存')});
-window.addEventListener('message',event=>{if(event.source!==parent||event.data?.channel!==channel)return;const data=event.data;if(data.kind==='init'&&!started){started=true;void boot()}if(data.kind==='response'){const item=waiting.get(data.id);if(!item)return;waiting.delete(data.id);data.ok?item.resolve(data.result):item.reject(new Error(data.error||'请求失败'))}});
-</script></body></html>
+window.addEventListener('message',event=>{if(event.source!==parent||event.data?.channel!==channel)return;const data=event.data;if(data.kind==='init'&&!started){started=true;void boot()}if(data.kind==='presentation'&&data.presentation?.theme){document.documentElement.dataset.theme=data.presentation.theme}if(data.kind==='response'){const item=waiting.get(data.id);if(!item)return;waiting.delete(data.id);data.ok?item.resolve(data.result):item.reject(new Error(data.error||'请求失败'))}});
+</script>
+</body>
+</html>
