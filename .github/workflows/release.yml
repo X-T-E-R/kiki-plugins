@@ -23,7 +23,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.18.0
+          node-version: 24.22.1
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run check && npm test
