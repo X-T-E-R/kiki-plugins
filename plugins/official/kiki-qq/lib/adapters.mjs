@@ -93,7 +93,24 @@ function emitUntilStopped(emit, event, signal) {
   });
 }
 function adapter(platform, definition, buildClient, deps) {
-  let run, readClient, readConfig, verifiedAccount;
+  let run, readClient, readConfig, verifiedAccount, nextSource = 0;
+  const diagnosticSources = new Map();
+  async function reportFailure(context, event, code) {
+    let source = diagnosticSources.get(event.eventId);
+    if (!source) {
+      if (diagnosticSources.size >= 32) diagnosticSources.delete(diagnosticSources.keys().next().value);
+      source = { id: `source-${++nextSource}`, codes: new Set() };
+      diagnosticSources.set(event.eventId, source);
+    }
+    source.codes.add(code);
+    await context.report?.({ status: 'failed', sourceId: source.id, code });
+  }
+  async function reportRecovery(context, event) {
+    const source = diagnosticSources.get(event.eventId);
+    if (!source) return;
+    for (const code of source.codes) await context.report?.({ status: 'recovered', sourceId: source.id, code });
+    diagnosticSources.delete(event.eventId);
+  }
   function sending(work, context) {
     const state = run;
     if (!state?.started || state.signal.aborted) return Promise.resolve(failed('Adapter is not running', 'not_sent'));
@@ -120,15 +137,27 @@ function adapter(platform, definition, buildClient, deps) {
         state.client = client;
         const transport = platform === 'official' ? new OfficialGateway({ client, gatewayFactory: deps.gatewayFactory, intents: config.intents, maxInboundBytes: definition.maxInboundBytes }) : client;
         state.transport = transport;
-        const result = await transport.start({ signal, onError: deps.onError, emit(event) {
+        const result = await transport.start({ signal, onError: deps.onError ?? (() => {}), emit(event) {
           const admitted = state.queue.then(async () => {
             if (signal.aborted) return;
-            const hydrated = await hydrate(event, { fetchImpl: deps.fetchImpl, signal, maxBytes: definition.maxInboundBytes }, messageLimits);
-            if (signal.aborted) return;
-            client.observe?.(hydrated);
-            if (!await emitUntilStopped(context.emit, hydrated, signal) || signal.aborted) {
-              throw Object.assign(new Error('QQ message admission interrupted; delivery outcome is unknown'), { code: 'ADMISSION_UNKNOWN' });
+            let code = 'hydrate_failed';
+            try {
+              const hydrated = await hydrate(event, { fetchImpl: deps.fetchImpl, signal, maxBytes: definition.maxInboundBytes }, messageLimits);
+              if (signal.aborted) return;
+              client.observe?.(hydrated);
+              code = 'admission_failed';
+              if (!await emitUntilStopped(context.emit, hydrated, signal) || signal.aborted) {
+                throw Object.assign(new Error('QQ message admission interrupted; delivery outcome is unknown'), { code: 'ADMISSION_UNKNOWN' });
+              }
+            } catch (error) {
+              if (!signal.aborted) {
+                if (['MEDIA_TOO_LARGE', 'MESSAGE_TOO_LARGE'].includes(error?.code)) code = 'message_too_large';
+                else if (String(error?.code).startsWith('MEDIA_')) code = 'download_failed';
+                await reportFailure(context, event, code).catch(() => {});
+              }
+              throw error;
             }
+            if (!signal.aborted) await reportRecovery(context, event).catch(() => {});
           });
           state.queue = admitted.catch(() => {});
           return admitted;

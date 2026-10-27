@@ -23,7 +23,7 @@ async function channel(t, platform, limits = messageLimits) {
   const wire = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await once(wire, 'listening');
   let socket, readMedia = async (url) => image(url === firstUrl ? [1, 2, 3] : [4, 5, 6]), admit = async () => {};
-  const actions = [], mediaCalls = [], unexpected = [], events = [], errors = [], emissions = [], failures = [], resumes = [], snapshots = [], retryDelays = [];
+  const actions = [], mediaCalls = [], unexpected = [], events = [], errors = [], emissions = [], failures = [], resumes = [], snapshots = [], retryDelays = [], diagnostics = [];
   wire.on('connection', (connected) => {
     socket = connected;
     if (platform === 'official') connected.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 60000 } }));
@@ -52,9 +52,9 @@ async function channel(t, platform, limits = messageLimits) {
   const controller = new AbortController();
   const settings = platform === 'onebot' ? { onebot__wsUrl: `ws://127.0.0.1:${wire.address().port}`, onebot__selfId: '999' }
     : { official__appId: 'fixture-app', official__appSecret: 'fixture-secret', official__apiBaseUrl: 'https://api.fixture.test', official__tokenBaseUrl: 'https://token.fixture.test' };
-  await adapter.start({ messageLimits: limits, settings, signal: controller.signal, instanceId: 'atomic-fixture', emit: async (event) => { await admit(event); events.push(event); emissions.shift()?.resolve(event); } });
+  await adapter.start({ messageLimits: limits, settings, signal: controller.signal, instanceId: 'atomic-fixture', report: async (diagnostic) => diagnostics.push(diagnostic), emit: async (event) => { await admit(event); events.push(event); emissions.shift()?.resolve(event); } });
   t.after(async () => { await adapter.stop(); for (const item of wire.clients) item.terminate(); await new Promise((resolve) => wire.close(resolve)); assert.deepEqual(unexpected, []); });
-  return { adapter, controller, actions, events, errors, mediaCalls, snapshots, retryDelays,
+  return { adapter, controller, actions, events, errors, mediaCalls, snapshots, retryDelays, diagnostics,
     media(handler) { readMedia = handler; },
     admission(handler) { admit = handler; },
     nextEvent() { const pending = deferred(); emissions.push(pending); return pending.promise; },
@@ -87,11 +87,19 @@ for (const platform of ['onebot', 'official']) {
     f.media(async (url) => url === firstUrl ? image([1]) : new Response('unavailable', { status: 503 }));
     const failure = f.nextError(), resumed = platform === 'official' ? f.nextResume() : undefined;
     f.send(); assert.equal((await failure).code, 'MEDIA_HTTP_ERROR'); assert.deepEqual(f.events, []);
-    if (resumed) assert.equal((await resumed).d.seq, 1);
+    assert.equal(f.diagnostics.length, 1);
+    const failedDiagnostic = f.diagnostics[0]; assertDiagnostic(failedDiagnostic, 'failed', 'download_failed');
+    assert.equal(failedDiagnostic.sourceId.includes('27'), false);
+    if (resumed) {
+      assert.equal((await resumed).d.seq, 1);
+      assert.deepEqual(f.snapshots.map(({ lastSeq }) => lastSeq), [1]);
+    }
     f.media(async (url) => image(url === firstUrl ? [1] : [2]));
     const emitted = f.nextEvent(); f.send(); const event = await emitted;
     assert.equal(event.eventId, `${platform === 'official' ? 'official' : 'onebot'}:27`); assert.equal(event.sourceMessageId, '27');
     assert.equal(event.parts.filter(({ media }) => media).length, 2); assert.equal(f.events.length, 1);
+    await settleReports();
+    assert.deepEqual(f.diagnostics, [failedDiagnostic, { status: 'recovered', sourceId: failedDiagnostic.sourceId, code: 'download_failed' }]);
     assert.deepEqual(f.mediaCalls.map(({ url }) => url), [firstUrl, secondUrl, firstUrl, secondUrl]);
   });
 
@@ -100,7 +108,7 @@ for (const platform of ['onebot', 'official']) {
     f.media(async (url) => { if (url === firstUrl) return image([1]); secondEntered.resolve(); return late.promise; });
     f.send(); await secondEntered.promise; const stopping = f.adapter.stop();
     assert.equal(f.mediaCalls.at(-1).signal.aborted, true); assert.deepEqual(f.events, []);
-    late.resolve(image([2])); await stopping; assert.deepEqual(f.events, []);
+    late.resolve(image([2])); await stopping; assert.deepEqual(f.events, []); assert.deepEqual(f.diagnostics, []);
   });
 }
 
@@ -147,6 +155,14 @@ function wireLength(event) {
   return JSON.stringify(event, (key, value) => key === 'media' && value?.bytes instanceof Uint8Array
     ? { name: value.name, mediaType: value.mediaType, base64: Buffer.from(value.bytes).toString('base64') } : value).length;
 }
+function assertDiagnostic(diagnostic, status, code) {
+  assert.equal(diagnostic.status, status);
+  assert.match(diagnostic.sourceId, /^[A-Za-z0-9_-]{1,64}$/);
+  assert.equal(diagnostic.code, code);
+}
+function settleReports() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
 for (const platform of ['onebot', 'official']) {
   test(`SG001 ${platform}: parent cancellation aborts the late download and emits no partial message`, async (t) => {
     const f = await channel(t, platform), secondEntered = deferred(), late = deferred();
@@ -155,7 +171,7 @@ for (const platform of ['onebot', 'official']) {
     f.send(); await secondEntered.promise;
     f.controller.abort(); assert.equal(f.mediaCalls.at(-1).signal.aborted, true);
     late.resolve(image([2])); if (failure) await failure;
-    await f.adapter.stop(); assert.deepEqual(f.events, []);
+    await f.adapter.stop(); assert.deepEqual(f.events, []); assert.deepEqual(f.diagnostics, []);
   });
 
   test(`SG001 ${platform}: 256 ordered parts are accepted; 257 reject the whole envelope`, async (t) => {
@@ -241,11 +257,15 @@ test('PLUGIN-01 official: rejected Host admission resumes before the failed sequ
   f.send();
   assert.equal((await failure).code, 'HOST_REJECTED');
   assert.deepEqual(f.events, []);
+  assert.equal(f.diagnostics.length, 1);
+  const failedDiagnostic = f.diagnostics[0]; assertDiagnostic(failedDiagnostic, 'failed', 'admission_failed');
   assert.deepEqual(f.snapshots.map(({ lastSeq }) => lastSeq), [1]);
   assert.equal((await resumed).d.seq, 1);
   f.admission(async () => {});
   const replay = f.nextEvent(); f.send();
   assert.equal((await replay).sourceMessageId, '27');
+  await settleReports();
+  assert.deepEqual(f.diagnostics, [failedDiagnostic, { status: 'recovered', sourceId: failedDiagnostic.sourceId, code: 'admission_failed' }]);
   assert.deepEqual(f.events.map(({ sourceMessageId }) => sourceMessageId), ['27']);
   const nextResume = f.nextResume();
   await new Promise((resolve) => setTimeout(resolve, 5));
@@ -273,9 +293,13 @@ test('PLUGIN-01 OneBot: Host rejection is reported once and manual source replay
   f.admission(() => { throw Object.assign(new Error('Host rejected OneBot message'), { code: 'HOST_REJECTED' }); });
   const failed = f.nextError(); f.send();
   assert.equal((await failed).code, 'HOST_REJECTED'); assert.deepEqual(f.events, []);
+  assert.equal(f.diagnostics.length, 1);
+  const failedDiagnostic = f.diagnostics[0]; assertDiagnostic(failedDiagnostic, 'failed', 'admission_failed');
   f.admission(async () => {});
   const replay = f.nextEvent(); f.send();
   assert.equal((await replay).sourceMessageId, '27');
+  await settleReports();
+  assert.deepEqual(f.diagnostics, [failedDiagnostic, { status: 'recovered', sourceId: failedDiagnostic.sourceId, code: 'admission_failed' }]);
   assert.equal(f.errors.length, 1);
 });
 

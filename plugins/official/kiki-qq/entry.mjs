@@ -2,9 +2,8 @@ import { createOfficialAdapter, createOneBotAdapter } from './lib/adapters.mjs';
 import { officialAdapterDefinition, onebotAdapterDefinition, toolDefinitions } from './lib/definitions.mjs';
 
 export function register(api) {
-  const report = (platform) => (error) => console.error(`[kiki-qq/${platform}] inbound failed (${error?.code ?? 'ERROR'}): ${error instanceof Error ? error.message : String(error)}`);
-  const onebot = createOneBotAdapter({ onError: report('onebot') });
-  api.registerImAdapter(officialAdapterDefinition, createOfficialAdapter({ onError: report('official') }));
+  const onebot = createOneBotAdapter();
+  api.registerImAdapter(officialAdapterDefinition, createOfficialAdapter());
   api.registerImAdapter(onebotAdapterDefinition, onebot);
   for (const definition of toolDefinitions) api.registerTool(definition, async (args, context) => {
     try {
