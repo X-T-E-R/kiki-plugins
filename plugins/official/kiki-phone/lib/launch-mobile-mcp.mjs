@@ -2,7 +2,8 @@ import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { findAdb, phoneDataDir } from './environment.mjs';
-import { upstreamEnvironment, runtimeInstalled } from './prepare.mjs';
+import { upstreamEnvironment, runtimeInstalled, facadeRuntimeInstalled, preparePhone } from './prepare.mjs';
+import { loadPhoneMcpSdk, servePhoneFacade } from './mobile-facade.mjs';
 import { nodeExecutable } from './node-executable.mjs';
 
 const npxArgs = ['--yes', '--package=@mobilenext/mobile-mcp@1.0.13', '--package=mobilecli@1.0.21', 'mcp-server-mobile', '--stdio'];
@@ -28,6 +29,27 @@ export async function launchMobileMcp() {
   return child;
 }
 
+export async function launchCompactMobileMcp() {
+  const dataDir = phoneDataDir();
+  // Like the previous npx launcher, first connection prepares private packages.
+  // The iOS preparation path installs runtime only: no ADB download or device I/O.
+  if (!(await facadeRuntimeInstalled(dataDir))) {
+    const prepared = await preparePhone({ platform: 'ios' });
+    if (prepared.status === 'error' || !(await facadeRuntimeInstalled(dataDir))) throw new Error(prepared.message || 'Run phone_prepare to prepare the MCP runtime.');
+  }
+  const adb = await findAdb({ dataDir });
+  const sdk = await loadPhoneMcpSdk(dataDir);
+  const running = await servePhoneFacade({ sdk, upstream: {
+    command: await nodeExecutable(), args: [resolve(dataDir, 'runtime/node_modules/@mobilenext/mobile-mcp/lib/index.js'), '--stdio'],
+    env: upstreamEnvironment(adb, process.env, dataDir),
+  } });
+  const shutdown = () => { void running.close().catch(error => { console.error(error.message); process.exitCode = 1; }); };
+  process.stdin.once('end', shutdown);
+  for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, shutdown);
+  return running;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  launchMobileMcp().catch(error => { console.error(`Cannot start Mobile MCP: ${error.message}`); process.exitCode = 1; });
+  const launch = process.argv.includes('--raw') ? launchMobileMcp : launchCompactMobileMcp;
+  launch().catch(error => { console.error(`Cannot start Mobile MCP: ${error.message}`); process.exitCode = 1; });
 }

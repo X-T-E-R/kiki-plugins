@@ -7,7 +7,14 @@ import { findAdb, phoneDataDir, saveAdb, mobileEnvironment } from './environment
 const exec = promisify(execFile);
 export const PLATFORM_TOOLS_URL = 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip';
 export const LICENSE_URL = 'https://developer.android.com/tools/releases/platform-tools';
-export const pinnedPackages = ['@mobilenext/mobile-mcp@1.0.13', 'mobilecli@1.0.21', 'mobilewright@0.0.67'];
+export const pinnedPackages = ['@mobilenext/mobile-mcp@1.0.13', 'mobilecli@1.0.21', 'mobilewright@0.0.67', '@modelcontextprotocol/sdk@1.27.1'];
+
+export async function facadeRuntimeInstalled(dataDir) {
+  try {
+    return await runtimeInstalled(dataDir)
+      && JSON.parse(await readFile(path.join(dataDir, 'runtime/node_modules/@modelcontextprotocol/sdk/package.json'), 'utf8')).version === '1.27.1';
+  } catch { return false; }
+}
 
 export async function runtimeInstalled(dataDir) {
   try {
@@ -93,14 +100,14 @@ export async function preparePhone({ download = false, adbPath, warmup = true, p
       result.adb = { path: binary, version };
     }
     const sharedEnv = upstreamEnvironment(binary, env, dataDir);
-    if (warmup && !(await runtimeInstalled(dataDir))) {
+    if (warmup && !(await facadeRuntimeInstalled(dataDir))) {
       const runtime = path.join(dataDir, 'runtime');
       await mkdir(runtime, { recursive: true });
       await writeFile(path.join(runtime, 'package.json'), JSON.stringify({ name: 'kiki-phone-runtime', version: '0.1.0', private: true }));
       const upstream = npmCommand(['install', '--prefix', '.', '--ignore-scripts', '--no-audit', '--no-fund', '--save-exact', ...pinnedPackages], sharedEnv, platform);
       await execute(upstream.file, upstream.args, { ...options, cwd: runtime, env: sharedEnv, timeout: 240_000 });
     }
-    result.runtimeInstalled = await runtimeInstalled(dataDir);
+    result.runtimeInstalled = await facadeRuntimeInstalled(dataDir);
     if (targetPlatform === 'ios') return { ...result, status: 'runtime_ready', message: 'Upstream packages are prepared. iOS UI use still requires a trusted device and a valid signed DeviceKit agent.' };
     const { stdout, stderr } = await execute(binary, ['devices', '-l'], { ...options, env: sharedEnv });
     result.devices = parseDevices(stdout);

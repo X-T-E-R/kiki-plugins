@@ -72,7 +72,22 @@ Android 11+ 无线调试先配对，再连接；两者端口不同：
 
 已配对时直接连接。`disconnect` 需填写具体连接地址。不会调用 `kill-server`、`adb root` 或 `tcpip 5555`。
 
-完整上游 `mobile_*` MCP 工具仍直接可用，包括设备发现、截图、UI 树、动作、文本、应用和录屏。`phone_run` 与这些工具操作同一台手机时按顺序执行；人工接管时暂停 Kiki 输入。避免同一设备同时运行 Appium／uiautomator2。云设备分配／登录须由用户另行提出并授权相关费用。
+`mobile` MCP server 只向 Kiki 注册两个紧凑工具，保留上游 33 项能力：
+
+- `phone_help`：不带参数返回操作名与标题；`query` 筛选名称和说明；`name` 返回单项完整参数 schema、说明与安全提示。
+- `phone_call`：传原操作名及其原参数，校验后调用固定版本 Mobile MCP，原样返回文本、图像、文件引用和错误。
+
+例如先用 `phone_help({"query":"recording"})` 找录屏操作，再用 `phone_help({"name":"mobile_start_screen_recording"})` 读取准确参数，最后调用：
+
+```json
+{ "name": "mobile_start_screen_recording", "arguments": { "device": "YOUR_DEVICE_ID" } }
+```
+
+停止时对 `mobile_stop_screen_recording` 使用同样的 `phone_call` 包装。录屏与云会话由同一个持续运行的 MCP 上游进程持有，不随原生工具的空闲回收而丢失；录屏完成前不要重连或更新插件。文件参数沿用上游格式，请使用明确的绝对路径。
+
+从 0.1.0 更新时，原四个原生工具及其参数不变；旧 `mobile_*` 工具调用改为 `phone_call({name:原名,arguments:原参})`。先完成在途手机操作并停止录屏，再对同一源目录重新安装。若设置了按旧工具名的允许／禁止规则，先检查并迁移规则；`phone_call` 是统一操作入口，不能用旧 `mobile_*` 名的规则约束其内部操作。仍需逐项限制且尚未建立等价规则时，保留旧安装或关闭 `phone_call`，不要直接放开统一入口。新会话或 `/reload` 用于刷新 skill／指令。在 MCP 管理入口确认 `mobile` 已重连，工具列表只有 `phone_help` 与 `phone_call`；若仍显示旧工具，重新连接该 server。独立 MCP 客户端确需旧工具列表时，显式运行 `node lib/launch-mobile-mcp.mjs --raw`；Kiki 默认入口不使用它。
+
+`phone_run` 与 `phone_call` 操作同一台手机时按顺序执行；人工接管时暂停 Kiki 输入。避免同一设备同时运行 Appium／uiautomator2。云设备分配／登录须由用户另行提出并授权相关费用。
 
 root 任务使用 `android_shell`，传 `android_connection devices` 返回的 ADB transport serial（可能不同于上游设备 id）：
 
@@ -104,6 +119,6 @@ lib\start.cmd --download
 lib\start.cmd --adb "D:\Android SDK\platform-tools\adb.exe"
 ```
 
-`node lib/prepare-cli.mjs --json` 输出完整准备报告；`--no-warmup` 只查 Node/npm/ADB，不安装上游包。
+`node lib/prepare-cli.mjs --json` 输出完整准备报告；`--no-warmup` 只查 Node/npm/ADB，不安装上游包。`--server` 在准备后启动紧凑 MCP 服务；独立旧客户端使用 `--server --raw` 恢复原始工具列表。
 
 插件为 MIT；Mobile MCP／Mobilewright 为 Apache-2.0，mobilecli 为 FSL-1.1-ALv2，Google platform-tools 遵循其 SDK 条款，见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。

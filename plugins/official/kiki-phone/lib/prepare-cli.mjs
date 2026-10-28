@@ -20,6 +20,6 @@ const output = args.includes('--json') ? JSON.stringify(result, null, 2)
 (server ? console.error : console.log)(output);
 if (['error', 'download_consent_required'].includes(result.status)) process.exitCode = 1;
 else if (server) {
-  const { launchMobileMcp } = await import('./launch-mobile-mcp.mjs');
-  await launchMobileMcp();
+  const { launchMobileMcp, launchCompactMobileMcp } = await import('./launch-mobile-mcp.mjs');
+  await (args.includes('--raw') ? launchMobileMcp : launchCompactMobileMcp)();
 }

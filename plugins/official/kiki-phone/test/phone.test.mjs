@@ -13,23 +13,24 @@ import { preparePhone, installOfficialTools } from '../lib/prepare.mjs';
 import { executePhoneScript } from '../lib/phone-run.mjs';
 import { nodeExecutable } from '../lib/node-executable.mjs';
 import { packageFiles } from '../../../../scripts/package-files.mjs';
+import './mobile-facade.test.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
 
-test('manifest declares the exact registered tools and the complete fixed upstream MCP', async () => {
+test('manifest retains exact native tools and selects only the compact MCP facade', async () => {
   assert.deepEqual(manifest['x-kiki'].tools, definitions);
   const registered = [];
   register({ registerTool(definition, execute) { registered.push(definition); assert.equal(typeof execute, 'function'); } });
   assert.deepEqual(registered, definitions);
   assert.deepEqual(manifest.mcpServers.mobile, {
     command: 'node',
-    args: ['./lib/launch-mobile-mcp.mjs'],
+    args: ['./lib/launch-mobile-mcp.mjs', '--compact'],
     cwd: './',
     env: { MOBILEMCP_DISABLE_TELEMETRY: '1', npm_config_ignore_scripts: 'true' },
   });
   const files = await packageFiles(root);
-  for (const file of ['kimi.plugin.json', 'entry.mjs', 'lib/adb.mjs', 'lib/definitions.mjs', 'lib/launch-mobile-mcp.mjs', 'lib/environment.mjs', 'lib/prepare.mjs', 'lib/prepare-cli.mjs', 'lib/start.cmd', 'lib/phone-run.mjs', 'lib/node-executable.mjs', 'skills/phone-control/SKILL.md', 'skills/phone-control/agents/openai.yaml', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md']) assert.ok(files.includes(file), file);
+  for (const file of ['kimi.plugin.json', 'entry.mjs', 'lib/adb.mjs', 'lib/definitions.mjs', 'lib/launch-mobile-mcp.mjs', 'lib/mobile-facade.mjs', 'lib/environment.mjs', 'lib/prepare.mjs', 'lib/prepare-cli.mjs', 'lib/start.cmd', 'lib/phone-run.mjs', 'lib/node-executable.mjs', 'skills/phone-control/SKILL.md', 'skills/phone-control/agents/openai.yaml', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md']) assert.ok(files.includes(file), file);
   assert.ok(files.every(file => !file.startsWith('test/') && !file.includes('node_modules') && !file.includes('.cache')));
   for (const file of files) assert.doesNotMatch(await readFile(resolve(root, file), 'utf8'), /C:\\Programs|C:\/Programs|C:\\Users|C:\/Users/);
 });
@@ -151,7 +152,7 @@ test('actual launcher inherits stdin/stdout/stderr and policies, propagates chil
       await writeFile(join(directory, 'npx'), '#!/usr/bin/env node\n' + await readFile(fixture, 'utf8'), { mode: 0o755 });
     }
     const input = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"text":"中文"}}\n';
-    const result = spawnSync(process.execPath, [join(root, 'lib/launch-mobile-mcp.mjs')], {
+    const result = spawnSync(process.execPath, [join(root, 'lib/launch-mobile-mcp.mjs'), '--raw'], {
       cwd: directory, encoding: 'utf8', input, timeout: 10_000,
       env: { ...process.env, ...manifest.mcpServers.mobile.env, KIKI_PHONE_DATA_DIR: join(directory, 'data'), PATH: directory + delimiter + process.env.PATH, KIKI_PHONE_FIXTURE_EXIT_CODE: '23' },
     });
@@ -290,7 +291,7 @@ test('prepared runtime launcher uses local fixed entry with pure stdout and shar
     await mkdir(join(sdk, 'platform-tools'), { recursive: true });
     await writeFile(binary, 'fixture', { mode: 0o755 });
     await writeFile(join(directory, 'adb.json'), JSON.stringify({ adbPath: binary }));
-    const result = spawnSync(process.execPath, [join(root, 'lib/launch-mobile-mcp.mjs')], { env: { ...process.env, KIKI_PHONE_DATA_DIR: directory }, input: 'protocol-only\n', encoding: 'utf8', timeout: 5000 });
+    const result = spawnSync(process.execPath, [join(root, 'lib/launch-mobile-mcp.mjs'), '--raw'], { env: { ...process.env, KIKI_PHONE_DATA_DIR: directory }, input: 'protocol-only\n', encoding: 'utf8', timeout: 5000 });
     assert.equal(result.status, 0);
     assert.equal(result.stderr, '');
     assert.deepEqual(JSON.parse(result.stdout), { input: 'protocol-only\n', adb: sdk, cache: join(directory, 'npm-cache'), node: process.execPath });
@@ -417,5 +418,38 @@ test('only user settings or direct CLI ADB may be saved after successful version
     const directCli = await preparePhone({ adbPath: valid, warmup: false }, support);
     assert.equal(directCli.status, 'no_device');
     assert.deepEqual(JSON.parse(await readFile(saved, 'utf8')), { adbPath: valid });
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('compact MCP SDK is installed privately at a fixed version without changing the legacy phone_run prerequisite', async () => {
+  const directory = await scratch('facade-prepare-');
+  const { pinnedPackages, runtimeInstalled, facadeRuntimeInstalled } = await import('../lib/prepare.mjs');
+  try {
+    for (const [name, version] of [['@mobilenext/mobile-mcp', '1.0.13'], ['mobilecli', '1.0.21'], ['mobilewright', '0.0.67']]) {
+      const location = join(directory, 'runtime/node_modules', name);
+      await mkdir(location, { recursive: true });
+      await writeFile(join(location, 'package.json'), JSON.stringify({ version }));
+    }
+    assert.equal(await runtimeInstalled(directory), true);
+    assert.equal(await facadeRuntimeInstalled(directory), false);
+    const calls = [];
+    const result = await preparePhone({ platform: 'ios' }, { dataDir: directory, execute: async (file, argv, options) => {
+      calls.push(argv);
+      if (argv.includes('install') || argv.some(value => value.includes('npm install'))) {
+        assert.equal(options.cwd, join(directory, 'runtime'));
+        assert.equal(options.env.npm_config_ignore_scripts, 'true');
+        for (const pinned of pinnedPackages) assert.ok(argv.join(' ').includes(pinned));
+        assert.ok(argv.join(' ').includes('--save-exact'));
+        assert.ok(argv.join(' ').includes('--ignore-scripts'));
+        assert.ok(!argv.includes('--global'));
+        const location = join(directory, 'runtime/node_modules/@modelcontextprotocol/sdk');
+        await mkdir(location, { recursive: true });
+        await writeFile(join(location, 'package.json'), JSON.stringify({ version: '1.27.1' }));
+      }
+      return { stdout: '11.16.0', stderr: '' };
+    } });
+    assert.equal(result.runtimeInstalled, true);
+    assert.equal(await facadeRuntimeInstalled(directory), true);
+    assert.equal(calls.length, 2);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

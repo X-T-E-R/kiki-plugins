@@ -1,10 +1,11 @@
 # Upstream components
 
-Kiki Phone invokes these published packages without copying or modifying their implementations. Preparation installs them privately with npm; an unprepared MCP launch uses the fixed npx packages. The plugin's MIT license does not replace upstream licenses.
+Kiki Phone invokes these published packages without copying or modifying their implementations. Preparation and the first compact MCP launch install them privately with npm. The explicit `--raw` launcher retains its fixed npx fallback. The plugin's MIT license does not replace upstream licenses.
 
 | Component | Selected version | License | Source |
 | --- | --- | --- | --- |
 | `@mobilenext/mobile-mcp` | `1.0.13` | Apache-2.0 | https://github.com/mobile-next/mobile-mcp |
+| `@modelcontextprotocol/sdk` | `1.27.1` | MIT | https://github.com/modelcontextprotocol/typescript-sdk |
 | `mobilewright` (Mobile MCP direct dependency) | `0.0.67` | Apache-2.0 | https://github.com/mobile-next/mobilewright |
 | `mobilecli` and its platform-specific `@mobilenext/mobilecli-*` executables | `1.0.21` | FSL-1.1-ALv2 | https://github.com/mobile-next/mobilecli |
 
