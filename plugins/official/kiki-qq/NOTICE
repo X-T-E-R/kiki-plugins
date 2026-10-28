@@ -47,6 +47,31 @@ Tencent Connect dsh-qqbot
 Source revision: c8b9158b37817b0dbc1e514e62e16204ad47a6ce
 The per-client passive reply-context cache and source limits are adapted in
 lib/reply-context.mjs. The MIT notice is preserved in the plugin LICENSE.
+The optional QR setup lifecycle in lib/official-binding.mjs follows
+src/setup/binding-service.ts from release 0.5.3, revision
+d998f72fb4ab5492eaab3c5e1cc9de1d7901e8a9 (MIT), with explicit candidate/save,
+owner tokens, expiry termination and late-callback fencing for Kiki.
+
+@tencent-connect/qqbot-connector 1.2.0
+Source: https://www.npmjs.com/package/@tencent-connect/qqbot-connector/v/1.2.0
+Published metadata: UNLICENSED. The npm package does not include a LICENSE.
+Its original package.json is preserved in vendor/qqbot-binding/metadata;
+this component is not relicensed as MIT by the plugin's own license.
+Included in vendor/qqbot-binding/binding.mjs: the public startQrConnect export,
+qr-connect and qqbot-session, mechanically bundled without protocol changes.
+The caller disables console QR output and prevents automatic refresh after
+expiry. No DSH Agent, session host or CLI is bundled.
+
+The same self-contained bundle includes:
+- qrcode-terminal 0.12.0 (Apache-2.0), including its QRCode implementation by
+  Kazuhiko Arase (MIT). Original package metadata, Apache license and QRCode
+  copyright/license notice are preserved in metadata/qrcode-terminal.
+- qrcode 1.5.4 (MIT): QR core and SVG renderer only; no PNG, CLI or yargs.
+- dijkstrajs 1.0.3 (MIT): required by the QR core.
+Their metadata and licenses are preserved under vendor/qqbot-binding/metadata.
+Pinned source units and the esbuild 0.25.12 build pin are recorded in
+vendor/qqbot-binding/provenance.json; scripts/vendor-binding.mjs reproduces
+this bundle using development packages installed only under ignored .tmp.
 
 @nb-im/core 0.3.0
 lib/onebot-transport.mjs adapts session/onebot-ws connect/linkFrom;

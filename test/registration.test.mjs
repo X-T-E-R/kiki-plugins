@@ -77,12 +77,17 @@ test('requires entry for executable contributions and validates the dependency m
   }
 });
 
-test('unknown package selection fails explicitly before any Host runner download', () => {
-  const result = spawnSync(process.execPath, ['scripts/check.mjs', 'unknown-fixture-package'], {
-    encoding: 'utf8', env: { ...process.env, KIKI_HOST_RUNNER: '' }, timeout: 5000,
-  });
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /No local package selected: unknown-fixture-package/);
+test('unknown or invalid package selection fails explicitly before any Host runner download', () => {
+  for (const [id, message] of [
+    ['unknown-fixture-package', /No local package selected: unknown-fixture-package/],
+    ['../outside', /Invalid local plugin id/],
+  ]) {
+    const result = spawnSync(process.execPath, ['scripts/check.mjs', id], {
+      encoding: 'utf8', env: { ...process.env, KIKI_HOST_RUNNER: '' }, timeout: 5000,
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, message);
+  }
 });
 
 test('CI catalog-only selection validates metadata without reading or downloading a runner', async () => {

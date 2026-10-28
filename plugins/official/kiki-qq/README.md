@@ -6,11 +6,35 @@
 
 每个适配器代表一个配置账号，Host 中的渠道名分别为 `plugin:kiki-qq/qq-official` 和 `plugin:kiki-qq/qq-onebot`。
 
-- **官方 QQ Bot**：填写 `official__appId`、`official__appSecret`，使用已获准群/C2C 消息权限的机器人应用。`official__intents` 默认 `100663296`，订阅群/C2C 消息和交互。API 默认 `https://api.sgroup.qq.com`，令牌默认 `https://bots.qq.com`；修改地址会把令牌或 AppSecret 发往新地址。
+- **官方 QQ Bot**：在插件的 **QQ 连接** 设置页点击“开始扫码”，使用手机 QQ 扫码并在官方页面确认机器人；核对返回的 AppID 后点击“保存此账号”。扫码是可选方式，也可展开“手动填写 / OneBot”，填写已有应用的 `official__appId`、`official__appSecret`。密钥输入留空会保留原值，已保存密钥不回显。应用仍需获准群/C2C 消息权限。
+- **官方连接参数**：`official__intents` 默认 `100663296`，订阅群/C2C 消息和交互。API 默认 `https://api.sgroup.qq.com`，令牌默认 `https://bots.qq.com`；修改地址会把令牌或 AppSecret 发往新地址。
 - **OneBot 11**：填写已有实现的 `onebot__wsUrl`，必须是同时提供事件和 API 动作的**正向通用 WebSocket**。`onebot__accessToken` 用于 HTTP 和 WS 的 Bearer 认证。启动和每次重连都调用 `get_login_info` 核实账号；可填写 `onebot__selfId` 锁定预期数字账号，返回不匹配时关闭连接。新连接核实完成前，业务动作返回未发送，不会排队迁移到另一账号。
 - **群读取工具**：渠道运行时直接复用已核实的 WS 连接，无需另配 HTTP 地址。未启动渠道时，工具使用 `onebot__baseUrl`（默认 `http://127.0.0.1:5700`）独立读取：每次先核实 HTTP 登录账号，再读列表；可用 `onebot__selfId` 预先锁定账号。
 
 在 Host 的 IM 配置中选择对应渠道并启动。OneBot 反向 WS、HTTP 事件轮询和 QQ 客户端安装/登录由外部实现负责，本插件不会创建本地 listener。同一真实 OneBot 账号由 Host 保持单一监听入口；从内置 OneBot 迁移时，先停止旧入口再启动此渠道。
+
+### 扫码与保存
+
+手机确认后，新的 AppSecret 只保存在插件后端内存中。点击“保存此账号”才通过 `PluginAppContext.updateSettings` 写入 `official__appId`、`official__appSecret`；保存前原配置保持不变，OneBot 和其他参数不变。保存失败时可再次保存；成功后重复点击不会再次写入。若扫码期间官方凭据已被手动更改，保存会提示冲突，需先核对配置再重新扫码。
+
+保存不改变 Host 的监听开关。原本已开启的 QQ 连接会按 Host 既有语义使用新配置重新连接；已停止的账号仍保持停止。扫码和状态读取都不会保存配置或启动消息连接。
+
+二维码过期后点击“重新扫码”，不会自动无限刷新，也不显示未经平台提供的倒计时。官方组件内部会重试轮询网络错误，页面保持等待，无法据此判断“已扫描”或网络故障。取消和重新扫码会清除当前候选；页面离开时尝试取消本页任务，插件停用时清除全部任务。取消只停止本地等待，不撤销已在手机页面确认的远端授权。候选不跨插件重启保存。
+
+### 面板动作合同
+
+`settings.html` 使用正式 `kiki.panel.v1` 的 `plugin.call`。共享合同定义在 `lib/bind-contract.mjs`，不暴露为模型工具。每个页面生成独立 `clientId`；`instanceId` 固定为 `plugin:kiki-qq/qq-official`。
+
+| action | args | 用途 |
+| --- | --- | --- |
+| `official_bind_start` | `{instanceId, clientId}` | 用户点击后创建任务，返回不透明 `requestId`，替换前一任务 |
+| `official_bind_status` | `{instanceId, clientId, requestId?}` | 纯读取；不带 requestId 时只读已配置账号 |
+| `official_bind_save` | `{instanceId, clientId, requestId}` | 用户明确保存候选，检查归属和当前凭据与开始快照 |
+| `official_bind_cancel` | `{instanceId, clientId, requestId}` | 清除本地任务与候选 |
+
+响应为 `{schemaVersion:1, ok, instanceId, configured, phase, appId?, requestId?, qrUrl?, qrDataUrl?, candidateAppId?, error?:{code}}`。`appId` 是已保存公开 ID；`candidateAppId` 仅在 `candidate` / `saving` 相位出现。二维码为官方 HTTPS URL 和本地生成的 SVG dataURL。相位是 `idle`、`starting`、`waiting`、`candidate`、`saving`、`saved`、`expired`、`cancelled`、`failed`。`saving` 期间取消/重扫码返回 `busy`，等待写入完成。错误只返回合同中的稳定码，不返回凭据、解密 key、上游原始响应、用户 OpenID 或堆栈。
+
+客户端、实例或 requestId 不匹配时不能读取候选或保存；旧回调受 generation 和 terminal fencing 隔离。`activate` 只接收生命周期及配置，不发起扫码，`deactivate` 中止轮询并清除候选。手填页沿用 Host 的 `plugin.settings.get/patch`，通过 schema 渲染原有全部字段。
 
 ### 当前接入状态
 
@@ -98,10 +122,21 @@ const page = await client.getGroupHistory({ groupId: '100', count: 20, signal })
 node --test --test-timeout=15000 plugins/official/kiki-qq/test/qq.test.mjs plugins/official/kiki-qq/test/qq-regressions.test.mjs
 node --test --test-timeout=15000 plugins/official/kiki-qq/test/qq-history.test.mjs
 node --test --test-timeout=15000 plugins/official/kiki-qq/test/qq-atomic-inbound.test.mjs
+node --test --test-timeout=15000 plugins/official/kiki-qq/test/qq-binding.test.mjs
 node plugins/official/kiki-qq/scripts/sync-manifest.mjs --check
 ```
 
 HTTP fixture 拒绝任何未列出的完整 URL/方法。官方 Gateway 和 OneBot 的连接测试使用 vendored 连接器与测试自己创建的回环 WS 服务，覆盖登录身份、重连核实窗口、真实引用形态、附件归属、分块选路、失败/unknown/partial、取消和 stop 释放。COS 上传由测试注入的传输验证 URL、实际分块字节与取消信号；测试不使用真实账号或向外网发送数据。
+
+`qq-binding.test.mjs` 使用真实 vendored `startQrConnect`，只替换末端 `node:https.request`，覆盖创建任务、官方 QR URL、poll 状态 2/3、真实 AES-GCM 解密、只保候选、明确保存的精确 patch，以及归属冲突、状态纯读、取消/重扫码/卸载、迟到结果、保存失败重试、重复保存与手动改值冲突。
+
+可用隔离父页检查设置页交互：
+
+```sh
+node plugins/official/kiki-qq/scripts/settings-browser-fixture.mjs
+```
+
+打开命令打印的回环地址。页面标记为 parent bridge stub，使用真实 `settings.html` 和绑定服务，替换 connector 回调及 Host bridge，手机确认/过期/失败由 fixture 按钮模拟；不会创建官方任务。iframe 保持 Host 的 `sandbox="allow-scripts"`，手填保存使用普通按钮调用正式 settings patch，不依赖表单提交权限。生产 Host 的 app lifecycle、panelBridge 和设置落盘需使用 Host 的隔离消费 fixture 验证。
 
 给定公开 SDK IM 模块和同版本 Host runner，可验证真实插件 RPC 注册、两种渠道的 start→event→send→stop 和 shutdown：
 
@@ -118,6 +153,7 @@ node plugins/official/kiki-qq/scripts/check-history-contract.mjs <sdk-im-module>
 
 ## 复用来源
 
+- `vendor/qqbot-binding/`：直接打包 `@tencent-connect/qqbot-connector 1.2.0` 的公开 `startQrConnect` 及完整扫码协议，包含其必要 `qrcode-terminal 0.12.0`；QR 图像复用 `qrcode 1.5.4` 的 core/SVG renderer 和 `dijkstrajs 1.0.3`。bundle 自包含，托管目录不依赖仓库根 `node_modules`，不要求用户安装 DSH。`lib/official-binding.mjs` 的生命周期参考 DSH `0.5.3` / `d998f72fb4ab5492eaab3c5e1cc9de1d7901e8a9` 的 binding-service，增加候选/明确保存与归属保护。官方 connector 的发布 license 字段是 `UNLICENSED`，原始元数据保留，不标为 MIT；其他组件许可证见 `NOTICE`。重建用 `scripts/vendor-binding.mjs` 顶部固定开发安装命令，仅写 ignored `.tmp`，再执行该脚本。
 - `vendor/qqbot-gateway/`：`@tencent-connect/qqbot-nodejs 1.0.5` 的 GatewayConnection、codec、constants、errors、event-dispatcher、reconnect 六个协议模块。保留官方心跳、IDENTIFY/RESUME、重连和取消生命周期；WS import 指向 vendored `ws 8.21.0`，消息派发改为确认后提交 RESUME 序号。
 - `vendor/qqbot-media/`：同一 SDK 的完整 buffer 分块上传协议与直属 retry、routes、types、format 单元，接入现有客户端令牌、HTTP 和取消链；不读取本地路径，不另建凭据缓存。`lib/official-references.mjs` 适配其 `quote-ref` 的有界引用索引关联。
 - `lib/onebot-transport.mjs` 与公共媒体地址策略：适配 `@nb-im/core 0.3.0` 的 `connect/linkFrom` 和公共地址检查，补齐早到帧、监听清理、固定 DNS 与有界负载。

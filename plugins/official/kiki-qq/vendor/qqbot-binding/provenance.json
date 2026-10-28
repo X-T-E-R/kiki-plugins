@@ -1,0 +1,45 @@
+{
+  "connector": {
+    "package": "@tencent-connect/qqbot-connector",
+    "version": "1.2.0",
+    "source": "https://registry.npmjs.org/@tencent-connect/qqbot-connector/-/qqbot-connector-1.2.0.tgz",
+    "license": "UNLICENSED",
+    "units": [
+      "dist/esm/index.js",
+      "dist/esm/qr-connect.js",
+      "dist/esm/qqbot-session.js"
+    ],
+    "modifications": "Bundled without protocol changes; terminal output disabled by caller."
+  },
+  "reference": {
+    "repository": "https://github.com/tencent-connect/dsh-qqbot",
+    "version": "0.5.3",
+    "revision": "d998f72fb4ab5492eaab3c5e1cc9de1d7901e8a9",
+    "unit": "src/setup/binding-service.ts",
+    "license": "MIT"
+  },
+  "dependencies": [
+    {
+      "name": "qrcode-terminal",
+      "version": "0.12.0"
+    },
+    {
+      "name": "qrcode",
+      "version": "1.5.4"
+    },
+    {
+      "name": "dijkstrajs",
+      "version": "1.0.3"
+    }
+  ],
+  "qrUnits": [
+    "qrcode/lib/core",
+    "qrcode/lib/renderer/svg-tag.js",
+    "qrcode/lib/renderer/utils.js",
+    "dijkstrajs/dijkstra.js"
+  ],
+  "build": {
+    "package": "esbuild",
+    "version": "0.25.12"
+  }
+}

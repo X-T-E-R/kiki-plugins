@@ -12,7 +12,12 @@ assert.equal(new Set(catalog.plugins.map(p=>p.id)).size,catalog.plugins.length,'
 for(const p of catalog.plugins){assert.ok(p.author&&p.license&&p.version&&p.source);if(!p.source.startsWith('./official/'))assert.ok(p.compatibility?.status);else assert.equal(p.source,`./official/${p.id}`);}
 const selected=process.argv[2];
 const packages=catalog.plugins.filter(p=>p.source.startsWith('./official/')&&(!selected||selected===p.id));
-if(selected && selected!=='catalog' && packages.length===0)throw new Error(`No local package selected: ${selected}`);
+if(selected && selected!=='catalog' && packages.length===0){
+  assert.match(selected,/^[a-z0-9][a-z0-9_-]{0,63}$/,'Invalid local plugin id');
+  const manifest=await readFile(resolve('plugins/official',selected,'kimi.plugin.json'),'utf8').catch(()=>{throw new Error(`No local package selected: ${selected}`);});
+  assert.equal(JSON.parse(manifest).name,selected);
+  packages.push({id:selected,source:`./official/${selected}`});
+}
 if(selected==='catalog')console.log(`Validated catalog: ${catalog.plugins.length} entries`);
 else await checkPackages();
 async function checkPackages(){
@@ -42,7 +47,7 @@ async function checkPackages(){
   if(!selected||selected==='kiki-voice')run('--test',['plugins/official/kiki-voice/test/voice.test.mjs']);
   if(!selected||selected==='kiki-phone')run('--test',['plugins/official/kiki-phone/test/phone.test.mjs']);
   if(!selected||selected==='kiki-qq'){
-    run('--test',['--test-timeout=15000','plugins/official/kiki-qq/test/qq.test.mjs','plugins/official/kiki-qq/test/qq-regressions.test.mjs','plugins/official/kiki-qq/test/qq-history.test.mjs','plugins/official/kiki-qq/test/qq-atomic-inbound.test.mjs']);
+    run('--test',['--test-timeout=15000','plugins/official/kiki-qq/test/qq.test.mjs','plugins/official/kiki-qq/test/qq-regressions.test.mjs','plugins/official/kiki-qq/test/qq-history.test.mjs','plugins/official/kiki-qq/test/qq-atomic-inbound.test.mjs','plugins/official/kiki-qq/test/qq-binding.test.mjs']);
     run('plugins/official/kiki-qq/scripts/check-host-contract.mjs',[resolve('node_modules/@kiki/plugin-sdk/dist/im.js'),runner]);
     run('plugins/official/kiki-qq/scripts/check-history-contract.mjs',[resolve('node_modules/@kiki/plugin-sdk/dist/im.js'),runner]);
   }

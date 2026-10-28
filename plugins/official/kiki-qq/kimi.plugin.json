@@ -1,7 +1,7 @@
 {
   "name": "kiki-qq",
-  "version": "0.3.1",
-  "description": "QQ Bot and OneBot 11 transport adapters with private/group messaging, media receipts and read-only OneBot group tools.",
+  "version": "0.4.0",
+  "description": "QQ Bot and OneBot 11 channels with optional official QR setup, messaging, media receipts and read-only OneBot group tools.",
   "license": "MIT",
   "interface": {
     "displayName": "QQ",
@@ -16,7 +16,8 @@
       "net": [
         "*"
       ],
-      "secrets": true
+      "secrets": true,
+      "uiPanel": true
     },
     "settings": {
       "schemaVersion": 1,
@@ -301,6 +302,16 @@
             "rendering": "onebot-segment"
           }
         ]
+      }
+    ],
+    "activation": "app",
+    "panels": [
+      {
+        "schemaVersion": 1,
+        "id": "qq-connection",
+        "label": "QQ connection",
+        "slot": "settings",
+        "path": "./settings.html"
       }
     ]
   }
