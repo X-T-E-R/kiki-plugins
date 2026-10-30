@@ -1,0 +1,133 @@
+{
+  "name": "kiki-everything",
+  "version": "0.1.1",
+  "description": "Find local files and folders through the Everything index by name, path, extension, size and modification time.",
+  "license": "MIT",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Everything Search",
+    "shortDescription": "Fast indexed file and folder search on Windows"
+  },
+  "x-kiki": {
+    "engines": {
+      "kiki": "^0.4.0"
+    },
+    "entry": "./entry.mjs",
+    "activation": "app",
+    "permissions": {
+      "fs": "outside",
+      "exec": [
+        "es.exe",
+        "powershell.exe"
+      ]
+    },
+    "settings": {
+      "schemaVersion": 1,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "esPath": {
+            "type": "string",
+            "title": "Official ES executable",
+            "description": "Optional absolute path to voidtools es.exe >=1.1.0.37. Empty searches PATH, then the current user's WinGet installation."
+          },
+          "instance": {
+            "type": "string",
+            "title": "Everything instance",
+            "description": "Empty uses the default instance. Set only for a named instance, such as 1.5a. An unavailable instance fails instead of switching indexes."
+          },
+          "timeoutMs": {
+            "type": "number",
+            "default": 30000,
+            "title": "Search wait limit (milliseconds)",
+            "description": "Integer 100–120000, default 30000. Cancellation/timeout stops waiting, not Everything's query. Calls report busy until ES exits."
+          }
+        }
+      }
+    },
+    "tools": [
+      {
+        "schemaVersion": 1,
+        "name": "search",
+        "description": "Search the local Windows Everything 1.5 index by file/directory name, path, extension, size or modification time. Pass root=C:/ (or another admitted drive/directory) for disk-wide search. Query terms are ANDed; quote phrases. Supports ext:pdf, size:>1gb and dm:today. Returns metadata only after Kiki path admission and sensitive/VCS filtering. Keep Glob for repository glob patterns and Grep for file contents. Index pages precede filtering; total is unknown. No HTTP or Python needed.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "root": {
+              "type": "string",
+              "description": "Directory/drive root to search, workspace-relative or absolute. Kiki approves external paths. Search each drive separately (e.g. C:/, D:/)."
+            },
+            "query": {
+              "type": "string",
+              "maxLength": 4096,
+              "default": "",
+              "description": "Everything indexed search syntax; spaces mean AND. Examples: report ext:pdf; \"annual report\"; size:>1gb; dm:today. No content/property-reading functions."
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "both",
+                "file",
+                "directory"
+              ],
+              "default": "both"
+            },
+            "sort": {
+              "type": "string",
+              "enum": [
+                "name",
+                "name-descending",
+                "path",
+                "path-descending",
+                "extension",
+                "size",
+                "size-descending",
+                "date-modified",
+                "date-modified-descending"
+              ],
+              "default": "date-modified-descending"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147480000,
+              "default": 0,
+              "description": "Raw index offset BEFORE path/sensitive filtering. Continue with pagination.next_offset, even if a filtered page is empty."
+            },
+            "match_case": {
+              "type": "boolean",
+              "default": false
+            },
+            "match_path": {
+              "type": "boolean",
+              "default": false
+            },
+            "match_whole_word": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "root"
+          ],
+          "additionalProperties": false
+        },
+        "accesses": [
+          {
+            "kind": "file",
+            "operation": "search",
+            "path": "$.root",
+            "recursive": true
+          }
+        ],
+        "disclosure": "deferred"
+      }
+    ]
+  }
+}

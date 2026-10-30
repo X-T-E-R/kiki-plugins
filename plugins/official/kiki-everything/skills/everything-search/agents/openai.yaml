@@ -1,0 +1,4 @@
+interface:
+  display_name: "Everything Search"
+  short_description: "Find indexed files, large files and recent changes"
+  default_prompt: "Use $everything-search to find local files and folders by name, path, extension, size or modification time."
