@@ -22,7 +22,7 @@ const businessPackage = JSON.parse(await readFile(new URL('../package.json', imp
 test('business package exports the reusable runtime without Kiki host entrypoints', () => {
   assert.equal(businessPackage.name, '@kiki/phone-business');
   assert.equal(businessPackage.version, manifest.version);
-  assert.deepEqual(Object.keys(businessPackage.exports).sort(), ['./adb', './definitions', './environment', './mobile-facade', './package.json', './phone-run', './prepare', './runtime']);
+  assert.deepEqual(Object.keys(businessPackage.exports).sort(), ['./adb', './definitions', './environment', './mobile-facade', './package.json', './phone-run', './prepare', './runtime', './skill']);
   assert.ok(!JSON.stringify(businessPackage).includes('entry.mjs'));
 });
 

@@ -12,10 +12,12 @@
     "./phone-run": "./lib/phone-run.mjs",
     "./prepare": "./lib/prepare.mjs",
     "./runtime": "./lib/launch-mobile-mcp.mjs",
+    "./skill": "./lib/skill.mjs",
     "./package.json": "./package.json"
   },
   "files": [
     "lib/*.mjs",
+    "skills/phone-control/SKILL.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md"
   ],
