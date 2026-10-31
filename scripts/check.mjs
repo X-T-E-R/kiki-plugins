@@ -55,6 +55,6 @@ async function checkPackages(){
   if(!selected||selected==='kiki-extract')run('--test',['plugins/official/kiki-extract/test/documents.test.mjs']);
   if(!selected||selected==='kiki-office')run('--test',['plugins/official/kiki-office/test/office.test.mjs']);
   if(!selected||selected==='kiki-task-board')run('--test',['plugins/official/kiki-task-board/test/board.test.mjs','plugins/official/kiki-task-board/test/engine.test.mjs','plugins/official/kiki-task-board/test/panel-recovery.test.mjs']);
-  if(!selected||selected==='kiki-media') { run('plugins/official/kiki-media/scripts/sync-sources.mjs',['--check']); run('scripts/sync-media-catalog.mjs',['--check']); }
+  if(!selected||selected==='kiki-media') { run('plugins/official/kiki-media/scripts/sync-sources.mjs',['--check']); run('scripts/sync-media-catalog.mjs',['--check']); run('--test',['test/media-concurrency.test.mjs','plugins/official/kiki-media/test/settings-panel.test.mjs']); }
   if(!selected||selected.startsWith('kiki-media-'))run('--test',['plugins/official/media-runtime/test/protocol.test.mjs']);
 }

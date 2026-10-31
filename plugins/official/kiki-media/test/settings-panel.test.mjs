@@ -7,7 +7,7 @@ import { handlePanelRequest } from '../entry.mjs';
 
 test('ships a settings panel and a catalog of real provider ids', async () => {
   const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.version, '0.2.1');
+  assert.equal(manifest.version, '0.2.2');
   assert.equal(manifest['x-kiki'].permissions.uiPanel, true);
   const panel = manifest['x-kiki'].panels.find((item) => item.id === 'settings');
   assert.deepEqual(panel, { schemaVersion: 1, id: 'settings', label: 'Settings', slot: 'settings', path: './settings.html' });

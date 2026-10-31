@@ -22,6 +22,8 @@ const ZH_TEXT = {
   'Default video provider': '默认视频来源',
   'Default speech provider': '默认语音来源',
   'Custom media scripts': '自定义媒体脚本',
+  'Maximum concurrent provider requests': '提供方并发请求上限',
+  'Concurrent submit or poll requests per provider; use a positive integer.': '每个提供方同时执行的提交或轮询请求数，请填写正整数。',
   'Enabled': '启用',
   'Removed': '已移除',
   'Kiki connection (optional)': 'Kiki 连接（可选）',
@@ -109,6 +111,7 @@ for (const vendor of vendors) {
   for (const [key, property] of Object.entries(original['x-kiki'].settings.schema.properties)) {
     properties[prefix + key] = localized({ ...property, group: vendor, groupTitle: label }, groupTitle);
   }
+  properties[prefix + 'maxConcurrentRequests'] = localized({ type: 'number', default: 8, title: 'Maximum concurrent provider requests', description: 'Concurrent submit or poll requests per provider; use a positive integer.', group: vendor, groupTitle: label }, groupTitle);
   properties[prefix + 'enabled'] = localized({ type: 'boolean', default: true, title: 'Enabled', group: vendor, groupTitle: label }, groupTitle);
   properties[prefix + 'removed'] = localized({ type: 'boolean', default: false, hidden: true, title: 'Removed', group: vendor, groupTitle: label }, groupTitle);
   properties[prefix + 'cleared'] = localized({ type: 'string', default: '[]', hidden: true, group: vendor, groupTitle: label }, groupTitle);
@@ -123,7 +126,7 @@ for (const [key, kind] of [['defaultImageProvider', 'image'], ['defaultVideoProv
   if (properties[key]) properties[key] = localized({ ...properties[key], enum: idsFor(kind) });
 }
 properties.scriptSources = localized({ type: 'string', default: '[]', title: 'Custom media scripts', multiline: true, advanced: true });
-manifest.version = '0.2.1';
+manifest.version = '0.2.2';
 manifest['x-kiki'].mediaProviders = providers;
 manifest['x-kiki'].mediaSources = sources;
 manifest['x-kiki'].mediaScriptProvider = 'custom-script';

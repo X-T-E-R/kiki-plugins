@@ -1,6 +1,6 @@
 {
   "name": "kiki-media",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Generate images, videos and speech with built-in services and your own scripts in one media plugin.",
   "license": "MIT AND Apache-2.0",
   "skills": "./skills/",
@@ -338,6 +338,7 @@
             "kind": "all"
           }
         ],
+        "concurrencySafe": true,
         "display": {
           "type": "media_generation"
         },
@@ -469,6 +470,7 @@
             "kind": "all"
           }
         ],
+        "concurrencySafe": true,
         "display": {
           "type": "media_generation"
         },
@@ -599,6 +601,21 @@
               }
             }
           },
+          "openai__maxConcurrentRequests": {
+            "type": "number",
+            "default": 8,
+            "title": "Maximum concurrent provider requests",
+            "description": "Concurrent submit or poll requests per provider; use a positive integer.",
+            "group": "openai",
+            "groupTitle": "OpenAI Media",
+            "localizations": {
+              "zh": {
+                "title": "提供方并发请求上限",
+                "description": "每个提供方同时执行的提交或轮询请求数，请填写正整数。",
+                "groupTitle": "OpenAI 媒体"
+              }
+            }
+          },
           "openai__enabled": {
             "type": "boolean",
             "default": true,
@@ -700,6 +717,21 @@
             "localizations": {
               "zh": {
                 "title": "默认 Veo 模型",
+                "groupTitle": "Google 媒体"
+              }
+            }
+          },
+          "google__maxConcurrentRequests": {
+            "type": "number",
+            "default": 8,
+            "title": "Maximum concurrent provider requests",
+            "description": "Concurrent submit or poll requests per provider; use a positive integer.",
+            "group": "google",
+            "groupTitle": "Google Media",
+            "localizations": {
+              "zh": {
+                "title": "提供方并发请求上限",
+                "description": "每个提供方同时执行的提交或轮询请求数，请填写正整数。",
                 "groupTitle": "Google 媒体"
               }
             }
@@ -810,6 +842,21 @@
               }
             }
           },
+          "ark__maxConcurrentRequests": {
+            "type": "number",
+            "default": 8,
+            "title": "Maximum concurrent provider requests",
+            "description": "Concurrent submit or poll requests per provider; use a positive integer.",
+            "group": "ark",
+            "groupTitle": "Ark Media",
+            "localizations": {
+              "zh": {
+                "title": "提供方并发请求上限",
+                "description": "每个提供方同时执行的提交或轮询请求数，请填写正整数。",
+                "groupTitle": "Ark 媒体"
+              }
+            }
+          },
           "ark__enabled": {
             "type": "boolean",
             "default": true,
@@ -911,6 +958,21 @@
             "localizations": {
               "zh": {
                 "title": "默认视频模型",
+                "groupTitle": "xAI 媒体"
+              }
+            }
+          },
+          "xai__maxConcurrentRequests": {
+            "type": "number",
+            "default": 8,
+            "title": "Maximum concurrent provider requests",
+            "description": "Concurrent submit or poll requests per provider; use a positive integer.",
+            "group": "xai",
+            "groupTitle": "xAI Media",
+            "localizations": {
+              "zh": {
+                "title": "提供方并发请求上限",
+                "description": "每个提供方同时执行的提交或轮询请求数，请填写正整数。",
                 "groupTitle": "xAI 媒体"
               }
             }
@@ -1033,6 +1095,21 @@
               }
             }
           },
+          "minimax__maxConcurrentRequests": {
+            "type": "number",
+            "default": 8,
+            "title": "Maximum concurrent provider requests",
+            "description": "Concurrent submit or poll requests per provider; use a positive integer.",
+            "group": "minimax",
+            "groupTitle": "MiniMax Media",
+            "localizations": {
+              "zh": {
+                "title": "提供方并发请求上限",
+                "description": "每个提供方同时执行的提交或轮询请求数，请填写正整数。",
+                "groupTitle": "MiniMax 媒体"
+              }
+            }
+          },
           "minimax__enabled": {
             "type": "boolean",
             "default": true,
@@ -1125,6 +1202,21 @@
               }
             }
           },
+          "stepfun__maxConcurrentRequests": {
+            "type": "number",
+            "default": 8,
+            "title": "Maximum concurrent provider requests",
+            "description": "Concurrent submit or poll requests per provider; use a positive integer.",
+            "group": "stepfun",
+            "groupTitle": "StepFun Speech",
+            "localizations": {
+              "zh": {
+                "title": "提供方并发请求上限",
+                "description": "每个提供方同时执行的提交或轮询请求数，请填写正整数。",
+                "groupTitle": "StepFun 语音"
+              }
+            }
+          },
           "stepfun__enabled": {
             "type": "boolean",
             "default": true,
@@ -1211,6 +1303,21 @@
             "localizations": {
               "zh": {
                 "title": "实际端点模型",
+                "groupTitle": "Novita 视频"
+              }
+            }
+          },
+          "novita__maxConcurrentRequests": {
+            "type": "number",
+            "default": 8,
+            "title": "Maximum concurrent provider requests",
+            "description": "Concurrent submit or poll requests per provider; use a positive integer.",
+            "group": "novita",
+            "groupTitle": "Novita Compatible Video",
+            "localizations": {
+              "zh": {
+                "title": "提供方并发请求上限",
+                "description": "每个提供方同时执行的提交或轮询请求数，请填写正整数。",
                 "groupTitle": "Novita 视频"
               }
             }
@@ -1306,6 +1413,21 @@
               }
             }
           },
+          "agnes__maxConcurrentRequests": {
+            "type": "number",
+            "default": 8,
+            "title": "Maximum concurrent provider requests",
+            "description": "Concurrent submit or poll requests per provider; use a positive integer.",
+            "group": "agnes",
+            "groupTitle": "Agnes Video",
+            "localizations": {
+              "zh": {
+                "title": "提供方并发请求上限",
+                "description": "每个提供方同时执行的提交或轮询请求数，请填写正整数。",
+                "groupTitle": "Agnes 视频"
+              }
+            }
+          },
           "agnes__enabled": {
             "type": "boolean",
             "default": true,
@@ -1396,6 +1518,21 @@
               }
             }
           },
+          "newapi__maxConcurrentRequests": {
+            "type": "number",
+            "default": 8,
+            "title": "Maximum concurrent provider requests",
+            "description": "Concurrent submit or poll requests per provider; use a positive integer.",
+            "group": "newapi",
+            "groupTitle": "NewAPI Compatible Video",
+            "localizations": {
+              "zh": {
+                "title": "提供方并发请求上限",
+                "description": "每个提供方同时执行的提交或轮询请求数，请填写正整数。",
+                "groupTitle": "NewAPI 视频"
+              }
+            }
+          },
           "newapi__enabled": {
             "type": "boolean",
             "default": true,
@@ -1471,6 +1608,21 @@
             "localizations": {
               "zh": {
                 "title": "可选的端点 API 密钥",
+                "groupTitle": "ComfyUI 工作流"
+              }
+            }
+          },
+          "comfyui__maxConcurrentRequests": {
+            "type": "number",
+            "default": 8,
+            "title": "Maximum concurrent provider requests",
+            "description": "Concurrent submit or poll requests per provider; use a positive integer.",
+            "group": "comfyui",
+            "groupTitle": "ComfyUI Workflow",
+            "localizations": {
+              "zh": {
+                "title": "提供方并发请求上限",
+                "description": "每个提供方同时执行的提交或轮询请求数，请填写正整数。",
                 "groupTitle": "ComfyUI 工作流"
               }
             }

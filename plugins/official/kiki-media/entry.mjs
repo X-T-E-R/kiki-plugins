@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { createProviderLimiter } from './lib/provider-concurrency.mjs';
 
 async function readManifest() {
   return JSON.parse(await readFile(new URL('./kimi.plugin.json', import.meta.url), 'utf8'));
@@ -25,6 +26,7 @@ export async function handlePanelRequest(action) {
 
 export async function register(api) {
   const manifest = await readManifest();
+  const limitProvider = createProviderLimiter();
   for (const source of manifest['x-kiki'].mediaSources) {
     const { adapters } = await import(`./lib/sources/${source.id}.mjs`);
     for (const id of source.providerIds) {
@@ -41,11 +43,11 @@ export async function register(api) {
           return adapter[action](input, context);
         };
       }
-      api.registerMediaProvider(definition, wrapped);
+      api.registerMediaProvider(definition, limitProvider(wrapped, id));
     }
   }
   const { scriptAdapter } = await import('./lib/script.mjs');
-  api.registerMediaProvider(manifest['x-kiki'].mediaProviders.find((item) => item.id === manifest['x-kiki'].mediaScriptProvider), scriptAdapter);
+  api.registerMediaProvider(manifest['x-kiki'].mediaProviders.find((item) => item.id === manifest['x-kiki'].mediaScriptProvider), limitProvider(scriptAdapter, 'custom-script'));
   for (const definition of manifest['x-kiki'].tools) {
     api.registerTool(definition, async (input, context) => {
       if (definition.name === 'generate') {
