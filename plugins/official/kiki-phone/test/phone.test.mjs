@@ -17,6 +17,14 @@ import './mobile-facade.test.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
+const businessPackage = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+
+test('business package exports the reusable runtime without Kiki host entrypoints', () => {
+  assert.equal(businessPackage.name, '@kiki/phone-business');
+  assert.equal(businessPackage.version, manifest.version);
+  assert.deepEqual(Object.keys(businessPackage.exports).sort(), ['./adb', './definitions', './environment', './mobile-facade', './package.json', './phone-run', './prepare', './runtime']);
+  assert.ok(!JSON.stringify(businessPackage).includes('entry.mjs'));
+});
 
 test('manifest retains exact native tools and selects only the compact MCP facade', async () => {
   assert.deepEqual(manifest['x-kiki'].tools, definitions);

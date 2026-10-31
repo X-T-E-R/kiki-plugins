@@ -1,0 +1,25 @@
+{
+  "name": "@kiki/phone-business",
+  "version": "0.1.2",
+  "description": "Host-independent Kiki Phone business implementation",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    "./adb": "./lib/adb.mjs",
+    "./definitions": "./lib/definitions.mjs",
+    "./environment": "./lib/environment.mjs",
+    "./mobile-facade": "./lib/mobile-facade.mjs",
+    "./phone-run": "./lib/phone-run.mjs",
+    "./prepare": "./lib/prepare.mjs",
+    "./runtime": "./lib/launch-mobile-mcp.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/*.mjs",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
