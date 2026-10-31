@@ -5,18 +5,19 @@
   "type": "module",
   "license": "MIT",
   "exports": {
-    "./adb": "./lib/adb.mjs",
+    "./adb": { "types": "./types/adb.d.ts", "default": "./lib/adb.mjs" },
     "./definitions": "./lib/definitions.mjs",
     "./environment": "./lib/environment.mjs",
-    "./mobile-facade": "./lib/mobile-facade.mjs",
-    "./phone-run": "./lib/phone-run.mjs",
-    "./prepare": "./lib/prepare.mjs",
-    "./runtime": "./lib/launch-mobile-mcp.mjs",
-    "./skill": "./lib/skill.mjs",
+    "./mobile-facade": { "types": "./types/mobile-facade.d.ts", "default": "./lib/mobile-facade.mjs" },
+    "./phone-run": { "types": "./types/phone-run.d.ts", "default": "./lib/phone-run.mjs" },
+    "./prepare": { "types": "./types/prepare.d.ts", "default": "./lib/prepare.mjs" },
+    "./runtime": { "types": "./types/runtime.d.ts", "default": "./lib/launch-mobile-mcp.mjs" },
+    "./skill": { "types": "./types/skill.d.ts", "default": "./lib/skill.mjs" },
     "./package.json": "./package.json"
   },
   "files": [
     "lib/*.mjs",
+    "types/*.d.ts",
     "skills/phone-control/SKILL.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md"
