@@ -8,6 +8,7 @@
     "./adb": { "types": "./types/adb.d.ts", "default": "./lib/adb.mjs" },
     "./definitions": "./lib/definitions.mjs",
     "./environment": "./lib/environment.mjs",
+    "./guidance": { "types": "./types/guidance.d.ts", "default": "./lib/guidance.mjs" },
     "./mobile-facade": { "types": "./types/mobile-facade.d.ts", "default": "./lib/mobile-facade.mjs" },
     "./phone-run": { "types": "./types/phone-run.d.ts", "default": "./lib/phone-run.mjs" },
     "./prepare": { "types": "./types/prepare.d.ts", "default": "./lib/prepare.mjs" },
