@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { findAdb, phoneDataDir } from './environment.mjs';
 import { upstreamEnvironment, runtimeInstalled, facadeRuntimeInstalled, preparePhone } from './prepare.mjs';
-import { loadPhoneMcpSdk, servePhoneFacade } from './mobile-facade.mjs';
+import { createPhoneFacade, loadPhoneMcpSdk, servePhoneFacade } from './mobile-facade.mjs';
 import { nodeExecutable } from './node-executable.mjs';
 
 const npxArgs = ['--yes', '--package=@mobilenext/mobile-mcp@1.0.13', '--package=mobilecli@1.0.21', 'mcp-server-mobile', '--stdio'];
@@ -27,6 +27,28 @@ export async function launchMobileMcp() {
   });
   child.once('exit', code => { process.exitCode = code ?? 1; });
   return child;
+}
+
+export async function createCompactPhoneFacade({ dataDir = phoneDataDir(), prepare = true } = {}) {
+  if (!(await facadeRuntimeInstalled(dataDir))) {
+    if (!prepare) throw new Error('Run phone_prepare first to install the fixed Mobile MCP runtime.');
+    const prepared = await preparePhone({ platform: 'ios' }, { dataDir });
+    if (prepared.status === 'error' || !(await facadeRuntimeInstalled(dataDir))) throw new Error(prepared.message || 'Run phone_prepare to prepare the MCP runtime.');
+  }
+  const adb = await findAdb({ dataDir });
+  const sdk = await loadPhoneMcpSdk(dataDir);
+  return createPhoneFacade({
+    validator: new sdk.AjvJsonSchemaValidator(),
+    connect: async () => {
+      const client = new sdk.Client({ name: 'kiki-phone', version: '0.1.1' });
+      const transport = new sdk.StdioClientTransport({
+        command: await nodeExecutable(), args: [resolve(dataDir, 'runtime/node_modules/@mobilenext/mobile-mcp/lib/index.js'), '--stdio'],
+        env: upstreamEnvironment(adb, process.env, dataDir),
+      });
+      try { await client.connect(transport); return { client, transport }; }
+      catch (error) { await client.close(); throw error; }
+    },
+  });
 }
 
 export async function launchCompactMobileMcp() {

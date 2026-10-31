@@ -10,7 +10,7 @@ import { adbArguments, runAdb } from '../lib/adb.mjs';
 import { register, prepareOptions } from '../entry.mjs';
 import { findAdb, mobileEnvironment } from '../lib/environment.mjs';
 import { preparePhone, installOfficialTools } from '../lib/prepare.mjs';
-import { executePhoneScript } from '../lib/phone-run.mjs';
+import { createPhoneScriptRunner, executePhoneScript } from '../lib/phone-run.mjs';
 import { nodeExecutable } from '../lib/node-executable.mjs';
 import { packageFiles } from '../../../../scripts/package-files.mjs';
 import './mobile-facade.test.mjs';
@@ -365,6 +365,32 @@ test('actual worker bridge returns script text/images and cancels a running isol
     if (previous === undefined) delete process.env.KIKI_PHONE_DATA_DIR; else process.env.KIKI_PHONE_DATA_DIR = previous;
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('runner instances own worker serialization, data directory and disposal', async () => {
+  const calls = [];
+  const callbacks = [];
+  const executeFile = (node, argv, options, callback) => {
+    calls.push({ node, argv, options });
+    callbacks.push(callback);
+    return { stdin: { on() {}, end() {} } };
+  };
+  const runner = createPhoneScriptRunner({ executeFile, resolveNode: async () => 'node-fixture', dataDir: 'phone-data' });
+  const first = runner.run({ script: 'first' });
+  const overlap = await runner.run({ script: 'second' });
+  assert.equal(overlap.isError, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.env.KIKI_PHONE_DATA_DIR, 'phone-data');
+  callbacks[0](null, JSON.stringify({ output: 'done' }), '');
+  assert.deepEqual(await first, { output: 'done' });
+  const running = runner.run({ script: 'third' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls.length, 2);
+  const closing = runner.close();
+  assert.equal(calls[1].options.signal.aborted, true);
+  callbacks[1](Object.assign(new Error('aborted'), { name: 'AbortError' }), '', '');
+  assert.equal((await running).isError, true);
+  await closing;
 });
 
 test('external Node resolver reuses native Node and reports missing packaged-host Node', async () => {

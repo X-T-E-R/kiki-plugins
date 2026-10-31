@@ -61,29 +61,48 @@ export async function executePhoneScript({ script, device: requested, platform =
   }
 }
 
-let running = false;
-export async function runPhoneScript(args, context = {}) {
-  if (running) return { isError: true, output: 'A phone script is already running. Wait for it to finish before operating the phone.' };
-  running = true;
-  try {
-    const node = await nodeExecutable();
-    return await new Promise((resolve) => {
-      const child = execFile(node, [fileURLToPath(import.meta.url), '--worker'], {
-        signal: context.signal, timeout: args.timeoutMs || 90_000, maxBuffer: 24 * 1024 * 1024,
-        encoding: 'utf8', windowsHide: true,
-      }, (error, stdout, stderr) => {
-        if (error) resolve({ isError: true, output: `Phone script interrupted or failed: ${stderr || error.message}. Observe before repeating an action; completed actions are not rolled back.` });
-        else {
-          try { resolve(JSON.parse(stdout)); }
-          catch { resolve({ isError: true, output: `Phone script returned invalid output: ${stdout}\n${stderr}` }); }
+export function createPhoneScriptRunner({ executeFile = execFile, resolveNode = nodeExecutable, dataDir } = {}) {
+  let running;
+  const lifetime = new AbortController();
+  return {
+    async run(args, context = {}) {
+      if (running) return { isError: true, output: 'A phone script is already running. Wait for it to finish before operating the phone.' };
+      const signal = context.signal ? AbortSignal.any([context.signal, lifetime.signal]) : lifetime.signal;
+      running = (async () => {
+        try {
+          const node = await resolveNode();
+          return await new Promise((resolve) => {
+            const child = executeFile(node, [fileURLToPath(import.meta.url), '--worker'], {
+              signal, timeout: args.timeoutMs || 90_000, maxBuffer: 24 * 1024 * 1024,
+              encoding: 'utf8', windowsHide: true,
+              env: dataDir ? { ...process.env, KIKI_PHONE_DATA_DIR: dataDir } : process.env,
+            }, (error, stdout, stderr) => {
+              if (error) resolve({ isError: true, output: `Phone script interrupted or failed: ${stderr || error.message}. Observe before repeating an action; completed actions are not rolled back.` });
+              else {
+                try { resolve(JSON.parse(stdout)); }
+                catch { resolve({ isError: true, output: `Phone script returned invalid output: ${stdout}\n${stderr}` }); }
+              }
+            });
+            child.stdin.on('error', () => {});
+            child.stdin.end(JSON.stringify(args));
+          });
+        } catch (error) {
+          return { isError: true, output: error.message };
         }
-      });
-      child.stdin.on('error', () => {});
-      child.stdin.end(JSON.stringify(args));
-    });
-  } catch (error) {
-    return { isError: true, output: error.message };
-  } finally { running = false; }
+      })();
+      try { return await running; }
+      finally { running = undefined; }
+    },
+    async close() {
+      lifetime.abort(new Error('Phone script runner disposed'));
+      await running;
+    },
+  };
+}
+
+const defaultRunner = createPhoneScriptRunner();
+export function runPhoneScript(args, context = {}) {
+  return defaultRunner.run(args, context);
 }
 
 if (process.argv[2] === '--worker' && process.argv[1] === fileURLToPath(import.meta.url)) {

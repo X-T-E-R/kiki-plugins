@@ -1,6 +1,6 @@
 {
   "name": "kiki-phone",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Prepare and operate Android or iOS phones with Mobilewright semantic scripts, snapshots and screenshots, plus the complete Mobile MCP toolset and optional Android su commands.",
   "license": "MIT",
   "author": "Kiki",

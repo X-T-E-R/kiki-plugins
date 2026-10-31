@@ -40,7 +40,7 @@ export function adbArguments(name, args) {
 export async function runAdb(name, args, context = {}, execute = executeFile) {
   try {
     const argv = adbArguments(name, args);
-    const binary = context.settings?.adbPath || await findAdb() || 'adb';
+    const binary = context.settings?.adbPath || await findAdb({ dataDir: context.dataDir }) || 'adb';
     const { stdout, stderr } = await execute(binary, argv, {
       encoding: 'utf8', windowsHide: true, timeout: 30_000,
       maxBuffer: 8 * 1024 * 1024, signal: context.signal,
