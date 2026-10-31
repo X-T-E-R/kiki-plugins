@@ -29,10 +29,12 @@ export async function launchMobileMcp() {
   return child;
 }
 
-export async function createCompactPhoneFacade({ dataDir = phoneDataDir(), prepare = true } = {}) {
+export async function createCompactPhoneFacade({ dataDir = phoneDataDir(), prepare = true, signal } = {}) {
+  signal?.throwIfAborted();
   if (!(await facadeRuntimeInstalled(dataDir))) {
     if (!prepare) throw new Error('Run phone_prepare first to install the fixed Mobile MCP runtime.');
-    const prepared = await preparePhone({ platform: 'ios' }, { dataDir });
+    const prepared = await preparePhone({ platform: 'ios' }, { dataDir, signal });
+    signal?.throwIfAborted();
     if (prepared.status === 'error' || !(await facadeRuntimeInstalled(dataDir))) throw new Error(prepared.message || 'Run phone_prepare to prepare the MCP runtime.');
   }
   const adb = await findAdb({ dataDir });
