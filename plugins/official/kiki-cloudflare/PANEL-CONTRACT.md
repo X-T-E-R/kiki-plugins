@@ -1,6 +1,6 @@
 # Cloudflare panel contract
 
-Panel id `cloudflare`; page `./panel.html`; slot `sidebar` keeps this App service's management available without a workspace or session, including when workspace plugin-use filtering is enabled. Use the existing Kiki panel bridge and settings/prerequisite installation UI. This package requires the separate App-lifecycle Host candidate; do not publish it against an unchanged Host. The private candidate registers `plugin_app_lifecycle` (default off), enabled in development with `KIKI_EXPERIMENTAL_PLUGIN_APP_LIFECYCLE=1`. Release integration must make the capability available by default, publish the matching SDK, and add the package to the catalog; the experimental switch is not a permanent user step.
+Panel id `cloudflare`; page `./panel.html`; slot `sidebar` keeps this App service's management available without a workspace or session, including when workspace plugin-use filtering is enabled. Use the existing Kiki panel bridge and settings/prerequisite installation UI. This package needs the Host's App-plugin lifecycle (`plugin_app_lifecycle`, registered in `agent-core-v2/src/app/plugin/flag.ts`, default on since Kiki 0.4.0). `KIKI_EXPERIMENTAL_PLUGIN_APP_LIFECYCLE` remains only as the rollback switch; it is not a user setup step. The package is listed in `plugins/marketplace.json`.
 
 ## Intended path
 

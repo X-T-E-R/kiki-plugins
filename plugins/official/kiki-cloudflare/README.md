@@ -2,7 +2,7 @@
 
 Connect remote spaces through Cloudflare without installing an operating-system service. The plugin runs the official `cloudflared` connector as a Kiki-owned process; the plugin archive does not contain a binary. It is a connection capability, not a model provider.
 
-Requires a Kiki build with App-plugin lifecycle support. For development builds, enable `KIKI_EXPERIMENTAL_PLUGIN_APP_LIFECYCLE=1`; released support must work without that extra setup. Catalog publication requires the matching Host, SDK and panel integration.
+Requires Kiki 0.4 or later with App-plugin lifecycle support. That capability is on by default; no extra setup is needed. If someone turned it off with `KIKI_EXPERIMENTAL_PLUGIN_APP_LIFECYCLE=0` (or the `[experimental]` config section), the panel reports that App lifecycle support is missing.
 
 ## Connect
 
