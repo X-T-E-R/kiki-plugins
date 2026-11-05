@@ -17,7 +17,9 @@ Extract vendor changes must preserve the fixed runtime lock and notices. Run `np
 
 ## Check and pack a local plugin
 
-For a package under `plugins/<id>/`, run `npm run check -- <id>` to validate its manifest and registrations against the pinned Kiki SDK. Run `npm run build -- --plugin <id>` to create `dist/local/<id>-<version>.zip`. This ZIP can be installed directly in Kiki; the command leaves the marketplace unchanged.
+For a package under `plugins/<id>/`, run `npm run check -- <id>` to validate its manifest and registrations against the pinned Kiki SDK. For local development, install the source directory with `/plugins install --trust ./plugins/<id>`.
+
+Run `npm run build -- --plugin <id>` to create `dist/local/<id>-<version>.zip` for distribution. Kiki accepts ZIPs from HTTPS URLs with the publisher's SHA-256 checksum; local installation uses the directory. Packing leaves the marketplace unchanged.
 
 ## Propose a third-party entry
 
