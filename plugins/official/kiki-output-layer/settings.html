@@ -3,360 +3,220 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>输出层设置</title>
+<title>Output Layer</title>
 <style>
-:root {
-  color-scheme: light dark;
-  --paper: #fbfaf6;
-  --panel: #fffdfa;
-  --hairline: #e4ddd0;
-  --hairline-strong: #cdc3b1;
-  --ink: #1b1a17;
-  --ink-soft: #4b453e;
-  --ink-faint: #665e54;
-  --accent: #c8401a;
-  --accent-deep: #9c3012;
-  --on-accent: #ffffff;
-  --danger: #b0261e;
-  --selected: #dfe8f0;
-  --selected-ink: #1d4d6d;
-  --motion-quick: 160ms;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --paper: #1b2226;
-    --panel: #252d31;
-    --hairline: #354047;
-    --hairline-strong: #596870;
-    --ink: #eeeae2;
-    --ink-soft: #c1c5c5;
-    --ink-faint: #a2acaf;
-    --accent: #eb946f;
-    --accent-deep: #f4b08f;
-    --on-accent: #261a14;
-    --danger: #f1a29a;
-    --selected: #24323b;
-    --selected-ink: #a3cbde;
-  }
-}
-:root[data-theme="dark"] {
-  --paper: #1b2226;
-  --panel: #252d31;
-  --hairline: #354047;
-  --hairline-strong: #596870;
-  --ink: #eeeae2;
-  --ink-soft: #c1c5c5;
-  --ink-faint: #a2acaf;
-  --accent: #eb946f;
-  --accent-deep: #f4b08f;
-  --on-accent: #261a14;
-  --danger: #f1a29a;
-  --selected: #24323b;
-  --selected-ink: #a3cbde;
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  background: var(--paper);
-  color: var(--ink);
-  font: 13px/1.5 'Instrument Sans', ui-sans-serif, system-ui, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
-main {
-  max-width: 680px;
-  margin: 0 auto;
-  padding: 18px 16px 36px;
-}
-header {
-  margin-bottom: 24px;
-}
-h1 {
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin: 0;
-}
-h2 {
-  font-size: 14px;
-  font-weight: 600;
-  margin: 0;
-  color: var(--ink);
-}
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px 12px;
-  margin-bottom: 14px;
-}
-.template-group {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex: initial;
-  max-width: 100%;
-}
-.template-group select {
-  max-width: 160px;
-}
-.field {
-  margin-bottom: 14px;
-  min-width: 0;
-}
-.field:last-child {
-  margin-bottom: 0;
-}
-label {
-  display: block;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--ink-soft);
-  margin-bottom: 5px;
-}
-input, select, textarea, button {
-  font: inherit;
-  color: inherit;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-input, select, textarea {
-  width: 100%;
-  border: 1px solid var(--hairline);
-  border-radius: 6px;
-  padding: 7px 10px;
-  background: var(--panel);
-  outline: none;
-  transition: border-color var(--motion-quick) ease-out;
-}
-input:hover, select:hover, textarea:hover {
-  border-color: var(--hairline-strong);
-}
-input:focus, select:focus, textarea:focus {
-  border-color: var(--accent);
-}
-input:disabled, select:disabled, textarea:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-textarea {
-  min-height: 96px;
-  resize: vertical;
-  line-height: 1.5;
-  word-break: break-word;
-}
-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--hairline);
-  border-radius: 6px;
-  background: var(--panel);
-  color: var(--ink-soft);
-  cursor: pointer;
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition: background var(--motion-quick) ease-out, border-color var(--motion-quick) ease-out, color var(--motion-quick) ease-out;
-}
-button:hover:not(:disabled) {
-  border-color: var(--hairline-strong);
-  color: var(--ink);
-}
-button:focus-visible {
-  outline: 2px solid var(--selected-ink);
-  outline-offset: 1px;
-}
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-button.primary {
-  background: var(--ink);
-  color: var(--paper);
-  border-color: var(--ink);
-  font-weight: 500;
-}
-button.primary:hover:not(:disabled) {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
-}
-.row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  min-width: 0;
-}
-.row select {
-  flex: 1;
-  min-width: 0;
-}
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px 16px;
-  min-width: 0;
-}
-section + section {
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid var(--hairline);
-}
-details {
-  margin-top: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--hairline);
-  border-radius: 6px;
-  background: var(--paper);
-  min-width: 0;
-}
-summary {
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--ink-soft);
-  user-select: none;
-}
-summary:hover {
-  color: var(--ink);
-}
-details[open] summary {
-  margin-bottom: 12px;
-}
-footer {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  margin-top: 28px;
-  padding-top: 16px;
-  border-top: 1px solid var(--hairline);
-}
-#status {
-  font-size: 12px;
-  color: var(--ink-faint);
-}
-#status.error {
-  color: var(--danger);
-  font-weight: 500;
-}
-@media (max-width: 520px) {
-  .grid {
-    grid-template-columns: 1fr;
-    gap: 12px 0;
-  }
-  .section-head {
-    align-items: flex-start;
-  }
-  .template-group {
-    width: 100%;
-  }
-  .template-group select {
-    max-width: none;
-    flex: 1;
-  }
-}
+:root{color-scheme:light;--paper:#fbfaf6;--panel:#fffdfa;--line:#e4ddd0;--ink:#1b1a17;--soft:#665e54;--accent:#c8401a;--danger:#b0261e;--selected:#dfe8f0;--selected-ink:#1d4d6d}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:13px/1.5 'Instrument Sans','Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}main{max-width:680px;padding:4px 0 12px}button,input,select,textarea{font:inherit;color:inherit;max-width:100%}input,select,textarea,.picker-trigger{width:100%;min-width:0;border:1px solid var(--line);border-radius:6px;padding:7px 10px;background:var(--panel)}textarea{resize:vertical;min-height:150px;line-height:1.6}button{min-height:34px;padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:transparent;cursor:pointer;flex-shrink:0}button:hover:not(:disabled){background:var(--selected)}button:disabled,fieldset:disabled{opacity:.55;cursor:default}input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--selected-ink);outline-offset:2px}button.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}button.primary:hover:not(:disabled){background:var(--selected-ink);border-color:var(--selected-ink);color:var(--paper)}button.danger{color:var(--danger)}button.quiet{border-color:transparent;color:var(--soft)}fieldset{padding:0;margin:0;border:0;min-width:0}.field{margin-bottom:14px;min-width:0}label{display:block;margin-bottom:5px;color:var(--soft);font-size:12px}.row{display:flex;align-items:center;gap:8px;min-width:0}.row select{flex:1}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}.hint{margin:6px 0 0;font-size:12px;color:var(--soft)}.error{color:var(--danger)}[hidden]{display:none!important}details{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}summary{cursor:pointer;color:var(--soft);padding:3px 0;font-size:12px}details[open]>summary{margin-bottom:12px}.picker-trigger{display:flex;justify-content:space-between;align-items:center;text-align:left;gap:10px;min-height:38px}.picker-trigger span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.picker{margin-top:5px;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:6px}.picker input{background:var(--paper)}#model-options{max-height:216px;overflow-y:auto;overscroll-behavior:contain;padding-top:4px}.option{display:block;width:100%;text-align:left;border:0;border-radius:4px;padding:8px;min-height:36px}.option small{display:block;color:var(--soft);font-size:11px;overflow:hidden;text-overflow:ellipsis}.option[aria-selected="true"],.option.active{background:var(--selected);color:var(--selected-ink)}footer{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:18px;padding-top:12px;border-top:1px solid var(--line)}#status{font-size:12px;color:var(--soft);flex:1;min-width:0;overflow-wrap:anywhere}#status.error{color:var(--danger)}#load-error,#catalog-error{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;margin:8px 0}#empty{color:var(--soft);margin:8px 0 18px}dialog{color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:20px;max-width:min(400px,calc(100% - 24px))}dialog::backdrop{background:rgb(20 25 28 / .24)}dialog h2{font-size:16px;margin:0 0 8px}dialog p{overflow-wrap:anywhere}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}@media(max-width:520px){.grid{grid-template-columns:1fr}.row{gap:6px}button{min-height:36px}main{padding-top:2px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
 </style>
 </head>
 <body>
 <main>
-  <header>
-    <h1>输出层设置</h1>
-  </header>
-  <section>
-    <div class="section-head">
-      <h2>输出预设</h2>
-      <div class="template-group">
-        <select id="template" aria-label="内置模板"></select>
-        <button id="add" type="button">从模板添加</button>
-      </div>
-    </div>
+  <div id="load-error" hidden role="alert"><span id="load-message"></span><button id="retry" data-copy="retry" type="button">重试</button></div>
+  <p id="loading" role="status" data-copy="loading">正在加载…</p>
+  <fieldset id="editor" disabled hidden>
     <div class="field">
-      <label for="preset">选择预设</label>
-      <div class="row">
-        <select id="preset" aria-label="输出预设"></select>
-        <button id="remove" type="button">删除</button>
-      </div>
+      <label for="preset" data-copy="preset">输出预设</label>
+      <div class="row"><select id="preset"></select><button id="remove" class="quiet danger" data-copy="remove" type="button">删除</button></div>
     </div>
-    <div class="field">
-      <label for="label">名称</label>
-      <input id="label" required>
-    </div>
-    <div class="field">
-      <label for="instruction">提示词</label>
-      <textarea id="instruction" required></textarea>
-    </div>
-    <div class="field">
-      <label for="modelId">Kiki 模型（留空不处理）</label>
-      <input id="modelId" autocomplete="off" list="models">
-      <datalist id="models"></datalist>
-      <datalist id="connections"></datalist>
-    </div>
-    <details>
-      <summary>已有连接上的自定义模型</summary>
-      <div class="grid">
-        <div class="field">
-          <label for="connectionId">连接 ID</label>
-          <input id="connectionId" autocomplete="off" list="connections">
+    <p id="empty" hidden data-copy="empty">还没有预设。从下方模板添加一个。</p>
+    <div id="preset-fields">
+      <div class="field">
+        <label for="model-picker" data-copy="model">处理模型</label>
+        <button id="model-picker" class="picker-trigger" aria-haspopup="listbox" aria-expanded="false" type="button"><span id="model-name"></span><span aria-hidden="true">⌄</span></button>
+        <div id="model-list" class="picker" hidden>
+          <input id="model-search" role="combobox" aria-controls="model-options" aria-expanded="true" autocomplete="off">
+          <div id="model-options" role="listbox"></div>
         </div>
-        <div class="field">
-          <label for="customModelId">自定义模型 ID</label>
-          <input id="customModelId" autocomplete="off">
+        <div id="catalog-error" hidden><span id="catalog-message" class="error"></span><button id="retry-models" data-copy="retry" type="button">重试</button></div>
+        <p id="model-hint" class="hint"></p>
+      </div>
+      <div id="custom-fields" hidden class="grid">
+        <div class="field"><label for="connectionId" data-copy="connection">已有连接</label><select id="connectionId"></select></div>
+        <div class="field"><label for="customModelId" data-copy="customModel">自定义模型 ID</label><input id="customModelId" autocomplete="off"></div>
+      </div>
+      <details id="prompt-details"><summary data-copy="promptDetails">名称与提示词</summary>
+        <div class="field"><label for="label" data-copy="name">名称</label><input id="label" required></div>
+        <div class="field"><label for="instruction" data-copy="instruction">提示词</label><textarea id="instruction" required></textarea></div>
+      </details>
+      <details id="preset-advanced"><summary data-copy="advanced">模型高级设置</summary>
+        <div class="grid">
+          <div class="field"><label for="maxOutputTokens" data-copy="maxOutput">每组输出上限（tokens）</label><input id="maxOutputTokens" type="number" min="1" step="1" data-placeholder="unlimited"></div>
+          <div class="field"><label for="contextWindow" data-copy="contextWindow">模型窗口（tokens）</label><input id="contextWindow" type="number" min="1" step="1"></div>
         </div>
-      </div>
-      <div class="field" style="margin-top: 12px;">
-        <label for="contextWindow">模型窗口 tokens</label>
-        <input id="contextWindow" type="number" min="1024">
-      </div>
-    </details>
-    <div class="field" style="margin-top: 14px;">
-      <label for="maxOutputTokens">每组最大输出 tokens（留空不限制）</label>
-      <input id="maxOutputTokens" type="number" min="1">
+      </details>
     </div>
-  </section>
-  <section>
-    <div class="section-head">
-      <h2>阅读与历史</h2>
-    </div>
-    <div class="grid">
-      <div class="field">
-        <label for="groupChars">每组 Unicode 字符</label>
-        <input id="groupChars" type="number" min="80" max="10000">
-      </div>
-      <div class="field">
-        <label for="historyTokens">历史 tokens（0 关闭）</label>
-        <input id="historyTokens" type="number" min="0" max="1048576">
-      </div>
-      <div class="field">
-        <label for="preloadBefore">向前预加载组数</label>
-        <input id="preloadBefore" type="number" min="0" max="20">
-      </div>
-      <div class="field">
-        <label for="preloadAfter">向后预加载组数</label>
-        <input id="preloadAfter" type="number" min="0" max="20">
-      </div>
-    </div>
-  </section>
-  <footer>
-    <button id="save" class="primary" type="button">保存</button>
-    <span id="status" role="status">正在加载…</span>
-  </footer>
+    <details id="add-details"><summary data-copy="addPreset">添加预设</summary><label for="template" data-copy="template">内置模板</label><div class="row"><select id="template"></select><button id="add" data-copy="add" type="button">添加</button></div></details>
+    <details id="reading-details"><summary data-copy="reading">阅读与历史</summary><div class="grid">
+      <div class="field"><label for="groupChars" data-copy="groupChars">每组字符数</label><input id="groupChars" type="number" min="80" max="10000" step="1" required></div>
+      <div class="field"><label for="historyTokens" data-copy="historyTokens">历史 tokens（0 关闭）</label><input id="historyTokens" type="number" min="0" max="1048576" step="1" required></div>
+      <div class="field"><label for="preloadBefore" data-copy="preloadBefore">向前预加载组数</label><input id="preloadBefore" type="number" min="0" max="20" step="1" required></div>
+      <div class="field"><label for="preloadAfter" data-copy="preloadAfter">向后预加载组数</label><input id="preloadAfter" type="number" min="0" max="20" step="1" required></div>
+    </div></details>
+  </fieldset>
+  <footer id="footer" hidden><button id="save" class="primary" data-copy="save" type="button" disabled>保存</button><span id="status" role="status" aria-live="polite"></span></footer>
 </main>
+<dialog id="remove-dialog" aria-labelledby="remove-title"><h2 id="remove-title" data-copy="removeTitle">删除预设？</h2><p id="remove-body"></p><div class="dialog-actions"><button id="cancel-remove" type="button" data-copy="cancel">取消</button><button id="confirm-remove" class="danger" type="button" data-copy="remove">删除</button></div></dialog>
 <script type="module">
-const channel='kiki.panel.v1', waiting=new Map(); let next=0, config, selected=0, started=false;
-const $=id=>document.getElementById(id), fields=['label','instruction','modelId','connectionId','customModelId','contextWindow','maxOutputTokens'], numbers=['contextWindow','maxOutputTokens'], settings=['groupChars','historyTokens','preloadBefore','preloadAfter'];
-function ask(method,extra={}){const id=++next;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{waiting.delete(id);reject(new Error('请求超时，请重试'));},10000);waiting.set(id,{resolve:value=>{clearTimeout(timer);resolve(value)},reject:error=>{clearTimeout(timer);reject(error)}});parent.postMessage({channel,kind:'request',id,method,...extra},'*')})}
-function status(text,error=false){$('status').textContent=text;$('status').className=error?'error':''}
-function collect(){if(!config?.presets[selected])return;const preset=config.presets[selected];for(const key of fields){const value=String($(key).value).trim();if(!value)delete preset[key];else if(numbers.includes(key)){if(!$(key).checkValidity())throw new Error('请检查模型窗口和输出上限');preset[key]=Number(value)}else preset[key]=value}}
-function render(){const picker=$('preset');picker.replaceChildren();config.presets.forEach((preset,index)=>{const option=document.createElement('option');option.value=String(index);option.textContent=preset.label;picker.append(option)});picker.value=String(selected);const preset=config.presets[selected];for(const key of fields){$(key).value=preset?.[key]??'';$(key).disabled=!preset}for(const key of settings)$(key).value=config.settings[key];$('remove').disabled=!preset}
-async function boot(){try{const [prepared,catalog]=await Promise.all([ask('plugin.call',{action:'configuration',args:{}}),ask('plugin.models.list')]);config=prepared;for(const preset of config.templates??[]){const option=document.createElement('option');option.value=preset.id;option.textContent=preset.label;$('template').append(option)}for(const [id,items] of [['models',catalog.models],['connections',catalog.connections]]){for(const item of items){const option=document.createElement('option');option.value=item.id;option.textContent=item.display_name||item.type||item.id;$(id).append(option)}}render();status('')}catch(error){status(error.message,true)}}
-$('preset').onchange=()=>{collect();selected=Number($('preset').value);render()};
-$('add').onclick=()=>{collect();const template=config.templates?.find(preset=>preset.id===$('template').value);if(!template)return;config.presets.push({...structuredClone(template),id:crypto.randomUUID()});selected=config.presets.length-1;render();status('未保存');$('label').focus()};
-$('remove').onclick=()=>{config.presets.splice(selected,1);selected=Math.max(0,selected-1);render();status('未保存')};
-$('save').onclick=async()=>{try{collect();for(const key of settings){const field=$(key);if(!field.checkValidity())throw new Error('请检查阅读与历史的数值');config.settings[key]=Number(field.value)}if(config.presets.some(preset=>!preset.label?.trim()||!preset.instruction?.trim()))throw new Error('请填写预设名称和提示词');$('save').disabled=true;await ask('plugin.settings.patch',{values:{presets:JSON.stringify(config.presets),...config.settings}});render();status('已保存')}catch(error){status(error.message,true)}finally{$('save').disabled=false}};
-document.querySelector('main').addEventListener('input',()=>{status('未保存')});
-window.addEventListener('message',event=>{if(event.source!==parent||event.data?.channel!==channel)return;const data=event.data;if(data.kind==='init'&&!started){started=true;void boot()}if(data.kind==='presentation'&&data.presentation?.theme){document.documentElement.dataset.theme=data.presentation.theme}if(data.kind==='response'){const item=waiting.get(data.id);if(!item)return;waiting.delete(data.id);data.ok?item.resolve(data.result):item.reject(new Error(data.error||'请求失败'))}});
+const channel='kiki.panel.v1', waiting=new Map(), $=id=>document.getElementById(id);
+const fields=['label','instruction','customModelId','contextWindow','maxOutputTokens'], numeric=['contextWindow','maxOutputTokens'], settingKeys=['groupChars','historyTokens','preloadBefore','preloadAfter'];
+const copy={
+  zh:{preset:'输出预设',model:'处理模型',remove:'删除',empty:'还没有预设。从下方模板添加一个。',connection:'已有连接',customModel:'自定义模型 ID',promptDetails:'名称与提示词',name:'名称',instruction:'提示词',advanced:'模型高级设置',maxOutput:'每组输出上限（tokens）',contextWindow:'模型窗口（tokens）',unlimited:'不限制',addPreset:'添加预设',template:'内置模板',add:'添加',reading:'阅读与历史',groupChars:'每组字符数',historyTokens:'历史 tokens（0 关闭）',preloadBefore:'向前预加载组数',preloadAfter:'向后预加载组数',save:'保存',saving:'正在保存…',saved:'已保存',dirty:'未保存',loading:'正在加载…',retry:'重试',noModel:'不处理，保留原文',noModelHint:'选择模型后才会处理正文。',custom:'已有连接上的自定义模型',search:'搜索模型或连接…',noMatch:'没有匹配的模型',catalogFailed:'模型目录未加载，已有配置仍可编辑。',required:'请填写预设名称和提示词。',invalid:'请输入范围内的整数。',customPair:'请选择连接并填写自定义模型 ID。',timeout:'请求超时，请重试。',failed:'请求失败，请重试。',removeTitle:'删除预设？',removeBody:'保存后将移除此预设，内置模板仍可重新添加。',cancel:'取消',stored:'已保存的模型'},
+  en:{preset:'Output preset',model:'Processing model',remove:'Delete',empty:'No presets yet. Add one from a template below.',connection:'Existing connection',customModel:'Custom model ID',promptDetails:'Name & prompt',name:'Name',instruction:'Prompt',advanced:'Advanced model settings',maxOutput:'Output limit per group (tokens)',contextWindow:'Model context window (tokens)',unlimited:'Unlimited',addPreset:'Add preset',template:'Built-in template',add:'Add',reading:'Reading & history',groupChars:'Characters per group',historyTokens:'History tokens (0 to disable)',preloadBefore:'Preload groups before',preloadAfter:'Preload groups after',save:'Save',saving:'Saving…',saved:'Saved',dirty:'Unsaved changes',loading:'Loading…',retry:'Retry',noModel:'Keep original, no processing',noModelHint:'Choose a model to process the text.',custom:'Custom model on an existing connection',search:'Search models or connections…',noMatch:'No matching models',catalogFailed:'Model catalog unavailable. Your saved configuration is still editable.',required:'Enter a preset name and prompt.',invalid:'Enter a whole number within the allowed range.',customPair:'Choose a connection and enter a custom model ID.',timeout:'Request timed out. Try again.',failed:'Request failed. Try again.',removeTitle:'Delete preset?',removeBody:'Saving removes this preset. You can add its built-in template again.',cancel:'Cancel',stored:'Saved model'},
+};
+const templateLabels={en:{translate:'Translate to Chinese','translate-en':'Translate to English',plain:'Plain language',catgirl:'Catgirl',tsundere:'Tsundere',custom:'Custom'}};
+let locale='zh', next=0, config, selected=0, started=false, baseline='', dirty=false, saving=false, mode='catalog', modelId='', catalog={models:[],connections:[]}, catalogLoading=false, options=[], active=0, statusKey='';
+const text=key=>copy[locale][key];
+function ask(method,extra={}){const id=++next;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{waiting.delete(id);reject(new Error(text('timeout')))},15000);waiting.set(id,{resolve:value=>{clearTimeout(timer);resolve(value)},reject:error=>{clearTimeout(timer);reject(error)}});parent.postMessage({channel,kind:'request',id,method,...extra},'*')})}
+function reportDirty(value){if(dirty===value)return;dirty=value;void ask('plugin.dirty',{dirty}).catch(error=>status(error.message,true));$('save').disabled=!dirty||saving}
+function status(value,error=false,key=''){statusKey=key;$('status').textContent=value;$('status').className=error?'error':''}
+const snapshot=()=>({presets:JSON.stringify(config.presets),...config.settings});
+const patch=()=>Object.fromEntries(Object.entries(snapshot()).filter(([key,value])=>value!==baseline[key]));
+function changed(){
+  const hasChanges=Object.keys(patch()).length>0;
+  status(hasChanges?text('dirty'):'',false,hasChanges?'dirty':'');
+  reportDirty(hasChanges);
+}
+function templateLabel(template){return templateLabels[locale]?.[template.id]??template.label}
+function present(p){if(!p)return;if(p.theme==='light'||p.theme==='dark'){document.documentElement.dataset.theme=p.theme;document.documentElement.style.colorScheme=p.theme}for(const [name,source] of Object.entries({paper:'paper',panel:'panel',line:'hairline',ink:'ink',soft:'ink-soft',accent:'accent',danger:'danger',selected:'selected','selected-ink':'selected-ink'})){const value=p.tokens?.[`--color-${source}`];if(value)document.documentElement.style.setProperty(`--${name}`,value)}if(p.locale==='en'||p.locale==='zh')locale=p.locale;document.documentElement.lang=locale==='zh'?'zh-CN':'en';document.querySelectorAll('[data-copy]').forEach(node=>{node.textContent=text(node.dataset.copy)});document.querySelectorAll('[data-placeholder]').forEach(node=>{node.placeholder=text(node.dataset.placeholder)});$('model-search').placeholder=text('search');$('model-search').setAttribute('aria-label',text('search'));$('model-options').setAttribute('aria-label',text('model'));if(statusKey)status(text(statusKey),false,statusKey);if(config){renderTemplates();renderModel();renderConnections()}if(!$('remove-dialog').open)return;$('remove-body').textContent=`${config.presets[selected]?.label??''} · ${text('removeBody')}`}
+function editField(field){
+  const key=field.id;
+  if(settingKeys.includes(key))config.settings[key]=Number(field.value);
+  else {
+    const preset=config.presets[selected];
+    const value=key==='instruction'?field.value:field.value.trim();
+    if(field.validity.badInput)preset[key]=0;
+    else if(!value)delete preset[key];
+    else preset[key]=numeric.includes(key)?Number(value):value;
+    if(key==='label')renderPresetList();
+  }
+  changed();
+}
+function renderTemplates(){const previous=$('template').value;$('template').replaceChildren(...config.templates.map(item=>new Option(templateLabel(item),item.id)));if(config.templates.some(item=>item.id===previous))$('template').value=previous}
+function renderConnections(current=$('connectionId').value){const entries=[new Option(text('connection'),'')];if(current&&!catalog.connections.some(item=>item.id===current))entries.push(new Option(current,current));for(const item of catalog.connections)entries.push(new Option(item.display_name||item.name||item.id,item.id));$('connectionId').replaceChildren(...entries);$('connectionId').value=current}
+function renderModel(){const selectedModel=catalog.models.find(item=>item.id===modelId);$('model-name').textContent=mode==='custom'?text('custom'):modelId?(selectedModel?.display_name||selectedModel?.name||modelId):text('noModel');$('custom-fields').hidden=mode!=='custom';$('model-hint').hidden=mode==='custom'||Boolean(modelId);$('model-hint').textContent=text('noModelHint');if(!$('model-list').hidden)renderOptions()}
+function renderPresetList(){
+  const picker=$('preset');
+  picker.replaceChildren(...config.presets.map((item,index)=>{
+    const template=config.templates.find(candidate=>candidate.id===item.id&&candidate.label===item.label);
+    return new Option((template?templateLabel(template):item.label)||text('name'),String(index));
+  }));
+  picker.value=String(selected);
+  picker.disabled=config.presets.length===0;
+}
+function render(){
+  renderPresetList();
+  const preset=config.presets[selected];
+  $('preset-fields').hidden=!preset;
+  $('empty').hidden=Boolean(preset);
+  $('remove').disabled=!preset;
+  for(const key of fields)$(key).value=preset?.[key]??'';
+  modelId=preset?.modelId??'';
+  mode=preset?.connectionId||preset?.customModelId?'custom':'catalog';
+  renderConnections(preset?.connectionId??'');
+  renderModel();
+}
+function closePicker(){ $('model-list').hidden=true;$('model-picker').setAttribute('aria-expanded','false') }
+function renderOptions(){const query=$('model-search').value.toLocaleLowerCase();options=[{id:'',label:text('noModel')},...catalog.models.map(item=>({id:item.id,label:item.display_name||item.name||item.id,hint:item.provider_id||item.providerName||item.id}))];if(modelId&&!catalog.models.some(item=>item.id===modelId))options.push({id:modelId,label:modelId,hint:text('stored')});options.push({id:'__custom',label:text('custom')});options=options.filter(item=>`${item.label} ${item.id} ${item.hint??''}`.toLocaleLowerCase().includes(query));active=Math.min(active,options.length-1);$('model-options').replaceChildren();options.forEach((item,index)=>{const button=document.createElement('button');button.type='button';button.tabIndex=-1;button.id=`model-option-${index}`;button.className=`option${index===active?' active':''}`;button.setAttribute('role','option');button.setAttribute('aria-selected',String((mode==='custom'?'__custom':modelId)===item.id));button.append(document.createTextNode(item.label));if(item.hint){const hint=document.createElement('small');hint.textContent=item.hint;button.append(hint)}button.onclick=()=>choose(item.id);$('model-options').append(button)});if(!options.length){const empty=document.createElement('p');empty.className='hint';empty.textContent=text('noMatch');$('model-options').append(empty)}$('model-search').setAttribute('aria-activedescendant',active>=0?`model-option-${active}`:'')}
+function choose(id){
+  const preset=config.presets[selected];
+  if(id==='__custom'){
+    if(mode!=='custom')delete preset.modelId;
+    mode='custom';
+  }else{
+    mode='catalog';
+    modelId=id;
+    if(id)preset.modelId=id;
+    else delete preset.modelId;
+    delete preset.connectionId;
+    delete preset.customModelId;
+    $('connectionId').value='';
+    $('customModelId').value='';
+  }
+  closePicker();
+  renderModel();
+  changed();
+  $(mode==='custom'?'connectionId':'model-picker').focus();
+}
+async function loadCatalog(){if(catalogLoading)return;catalogLoading=true;$('retry-models').disabled=true;try{catalog=await ask('plugin.models.list');$('catalog-error').hidden=true;if(config){renderConnections();renderModel()}}catch(error){$('catalog-message').textContent=`${text('catalogFailed')} ${error.message}`;$('catalog-error').hidden=false}finally{catalogLoading=false;$('retry-models').disabled=false}}
+async function boot(){
+  $('loading').hidden=false;
+  $('load-error').hidden=true;
+  $('retry').disabled=true;
+  try{
+    config=await ask('plugin.call',{action:'configuration',args:{}});
+    baseline=snapshot();
+    selected=0;
+    for(const key of settingKeys)$(key).value=config.settings[key];
+    renderTemplates();
+    render();
+    $('editor').hidden=false;
+    $('editor').disabled=false;
+    $('footer').hidden=false;
+    status('');
+  }catch(error){
+    $('load-message').textContent=error.message;
+    $('load-error').hidden=false;
+  }finally{
+    $('loading').hidden=true;
+    $('retry').disabled=false;
+  }
+}
+function invalidField(key,message,index){
+  if(index!==undefined&&index!==selected){selected=index;render()}
+  const field=$(key), detail=field.closest('details');
+  if(detail)detail.open=true;
+  field.focus();
+  throw new Error(text(message));
+}
+function validate(){
+  for(const key of settingKeys)if(!$(key).checkValidity())invalidField(key,'invalid');
+  for(const [index,preset] of config.presets.entries()){
+    if(!preset.label?.trim())invalidField('label','required',index);
+    if(!preset.instruction?.trim())invalidField('instruction','required',index);
+    if(Boolean(preset.connectionId)!==Boolean(preset.customModelId))invalidField(preset.connectionId?'customModelId':'connectionId','customPair',index);
+    for(const key of numeric)if(preset[key]!==undefined&&(!Number.isSafeInteger(preset[key])||preset[key]<1))invalidField(key,'invalid',index);
+  }
+}
+$('model-picker').onclick=()=>{if(!$('model-list').hidden){closePicker();return}$('model-list').hidden=false;$('model-picker').setAttribute('aria-expanded','true');$('model-search').value='';active=0;renderOptions();$('model-search').focus()};
+$('model-search').oninput=event=>{event.stopPropagation();active=0;renderOptions()};
+$('model-search').onkeydown=event=>{if(event.key==='Escape'){event.preventDefault();closePicker();$('model-picker').focus()}else if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();active=options.length?(active+(event.key==='ArrowDown'?1:-1)+options.length)%options.length:-1;renderOptions();$(`model-option-${active}`)?.scrollIntoView({block:'nearest'})}else if(event.key==='Enter'&&options[active]){event.preventDefault();choose(options[active].id)}else if(event.key==='Tab')closePicker()};
+document.addEventListener('click',event=>{if(!event.target.closest('#model-list')&&!event.target.closest('#model-picker'))closePicker()});
+$('preset').onchange=()=>{selected=Number($('preset').value);closePicker();render()};
+$('add').onclick=()=>{const template=config.templates.find(item=>item.id===$('template').value);const preset=structuredClone(template);preset.id=crypto.randomUUID();delete preset.modelId;delete preset.connectionId;delete preset.customModelId;delete preset.maxOutputTokens;config.presets.push(preset);selected=config.presets.length-1;render();$('add-details').open=false;$('prompt-details').open=true;changed();$('label').focus()};
+$('remove').onclick=()=>{$('remove-body').textContent=`${config.presets[selected].label} · ${text('removeBody')}`;$('remove-dialog').showModal();$('cancel-remove').focus()};
+$('cancel-remove').onclick=()=>$('remove-dialog').close();
+$('confirm-remove').onclick=()=>{config.presets.splice(selected,1);selected=Math.max(0,selected-1);render();$('remove-dialog').close();changed();$('preset').focus()};
+$('save').onclick=async()=>{
+  if(!dirty||saving)return;
+  try{
+    validate();
+    saving=true;
+    $('editor').disabled=true;
+    $('save').disabled=true;
+    status(text('saving'),false,'saving');
+    const values=patch();
+    const result=await ask('plugin.settings.patch',{values});
+    if(values.presets!==undefined)config.presets=JSON.parse(result.values.presets);
+    for(const key of settingKeys)if(values[key]!==undefined){
+      config.settings[key]=result.values[key];
+      $(key).value=config.settings[key];
+    }
+    baseline=snapshot();
+    reportDirty(false);
+    render();
+    status(text('saved'),false,'saved');
+  }catch(error){
+    status(error.message,true);
+  }finally{
+    saving=false;
+    $('editor').disabled=false;
+    $('save').disabled=!dirty;
+  }
+};
+for(const key of [...fields,...settingKeys])$(key).oninput=event=>editField(event.currentTarget);
+$('connectionId').onchange=event=>editField(event.currentTarget);
+$('retry').onclick=()=>void boot();$('retry-models').onclick=()=>void loadCatalog();
+window.addEventListener('message',event=>{if(event.source!==parent||event.data?.channel!==channel)return;const data=event.data;if(data.kind==='init'||data.kind==='presentation')present(data.presentation);if(data.kind==='init'&&!started){started=true;void boot();void loadCatalog()}if(data.kind==='response'){const item=waiting.get(data.id);if(!item)return;waiting.delete(data.id);data.ok?item.resolve(data.result):item.reject(new Error(data.error||text('failed')))}});
 </script>
 </body>
 </html>

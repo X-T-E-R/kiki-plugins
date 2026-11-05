@@ -11,7 +11,7 @@ test('output layer package contains no model tools and provides editable default
   const root = fileURLToPath(new URL('../plugins/official/kiki-output-layer/', import.meta.url));
   const manifest = JSON.parse(await readFile(new URL('../plugins/official/kiki-output-layer/kimi.plugin.json', import.meta.url), 'utf8'));
   const catalog = JSON.parse(await readFile(new URL('../plugins/marketplace.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.version, '0.1.1');
+  assert.equal(manifest.version, '0.1.2');
   assert.equal(catalog.plugins.find(item => item.id === manifest.name).version, manifest.version);
   assert.equal(manifest['x-kiki'].tools, undefined);
   assert.equal(manifest['x-kiki'].commands, undefined);
@@ -44,52 +44,69 @@ test('settings panel correlates numeric bridge request and response IDs when loa
   const script = html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
   assert.ok(script);
   const elements = new Map();
-  const element = () => ({ value: '', disabled: false, textContent: '', className: '',
-    replaceChildren() {}, append() {}, addEventListener() {}, checkValidity: () => true, focus() {} });
-  const get = id => { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); };
+  const element = (id) => ({ id, value: '', disabled: false, hidden: true, textContent: '', className: '', validity: {},
+    replaceChildren() {}, append() {}, addEventListener() {}, checkValidity: () => true, focus() {}, setAttribute() {} });
+  const get = id => { if (!elements.has(id)) elements.set(id, element(id)); return elements.get(id); };
+  const type = (id, value) => { const field = get(id); field.value = value; field.oninput({ currentTarget: field }); };
   const requests = [];
   let receive;
+  let failCatalog = true;
+  let failSave = true;
   const parent = { postMessage(request) {
     assert.ok(Number.isSafeInteger(request.id));
     assert.equal(request.channel, 'kiki.panel.v1');
     requests.push(request);
-    let result;
+    let result, error;
     if (request.method === 'plugin.call') result = structuredClone(configuration());
-    else if (request.method === 'plugin.models.list') result = { models: [], connections: [] };
-    else if (request.method === 'plugin.settings.patch') result = { values: request.values, secretsConfigured: [] };
+    else if (request.method === 'plugin.models.list') {
+      if (failCatalog) error = 'Catalog unavailable';
+      else result = { models: [], connections: [] };
+    } else if (request.method === 'plugin.settings.patch') {
+      if (failSave) error = 'Write refused';
+      else result = { values: request.values, secretsConfigured: [] };
+    } else if (request.method === 'plugin.dirty') result = true;
     else assert.fail(`Unexpected bridge method ${request.method}`);
-    queueMicrotask(() => receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: true, result } }));
+    queueMicrotask(() => receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: error === undefined, result, error } }));
   } };
-  runInNewContext(script, { document: { getElementById: get, createElement: element, querySelector: () => element() },
-    window: { addEventListener: (type, listener) => { assert.equal(type, 'message'); receive = listener; } },
+  runInNewContext(script, { document: { getElementById: get, addEventListener() {} },
+    window: { addEventListener: (kind, listener) => { assert.equal(kind, 'message'); receive = listener; } },
+    Option: class { constructor(label, value) { this.label = label; this.value = value; } },
     parent, setTimeout, clearTimeout, structuredClone, crypto: { randomUUID: () => 'example-preset' } });
   receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'init' } });
   await new Promise(resolve => setImmediate(resolve));
+  assert.equal(get('editor').disabled, false);
+  assert.equal(get('catalog-error').hidden, false);
   assert.equal(get('label').value, configuration().presets[0].label);
-  assert.equal(get('status').textContent, '');
-  assert.equal(get('modelId').value, '');
+  failCatalog = false;
+  get('retry-models').onclick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(get('catalog-error').hidden, true);
   assert.equal(get('maxOutputTokens').value, '');
-  get('instruction').value = 'Translate into Japanese';
-  get('modelId').value = '   ';
+  const instruction = '  Translate into Japanese\n\n';
+  type('instruction', instruction);
+  type('maxOutputTokens', '512');
   await get('save').onclick();
+  assert.equal(get('status').textContent, 'Write refused');
+  assert.equal(get('save').disabled, false);
+  assert.equal(requests.filter(request => request.method === 'plugin.dirty').at(-1).dirty, true);
+  failSave = false;
+  await get('save').onclick();
+  const lastPatch = () => requests.filter(request => request.method === 'plugin.settings.patch').at(-1).values;
+  let saved = JSON.parse(lastPatch().presets);
   assert.equal(get('status').textContent, '已保存');
-  assert.deepEqual(requests.map(request => request.id), [1, 2, 3]);
-  let saved = JSON.parse(requests.at(-1).values.presets);
-  assert.equal(saved[0].instruction, 'Translate into Japanese');
+  assert.deepEqual(Object.keys(lastPatch()), ['presets']);
+  assert.equal(saved[0].instruction, instruction);
   assert.equal(saved[0].modelId, undefined);
-  assert.equal(saved[0].maxOutputTokens, undefined);
-  get('modelId').value = 'chosen-model';
-  get('maxOutputTokens').value = '512';
-  await get('save').onclick();
-  saved = JSON.parse(requests.at(-1).values.presets);
-  assert.equal(saved[0].modelId, 'chosen-model');
   assert.equal(saved[0].maxOutputTokens, 512);
   get('template').value = defaultPresets.at(-1).id;
   get('add').onclick();
   assert.equal(get('maxOutputTokens').value, '');
   await get('save').onclick();
-  saved = JSON.parse(requests.at(-1).values.presets);
+  saved = JSON.parse(lastPatch().presets);
   assert.equal(saved.length, defaultPresets.length + 1);
   assert.equal(saved.at(-1).instruction, defaultPresets.at(-1).instruction);
-  assert.equal(saved[0].instruction, 'Translate into Japanese');
+  assert.equal(saved.at(-1).modelId, undefined);
+  assert.equal(saved.at(-1).maxOutputTokens, undefined);
+  assert.equal(saved[0].instruction, instruction);
+  assert.deepEqual(requests.map(request => request.id), requests.map((_, index) => index + 1));
 });
