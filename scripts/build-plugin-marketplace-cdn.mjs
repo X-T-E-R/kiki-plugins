@@ -225,7 +225,7 @@ function publicUrl(publicBaseUrl, relativePath) {
   return `${publicBaseUrl.replace(/\/*$/, '/')}${relativePath}`;
 }
 
-async function zipDirectory(sourceRoot, outputFile) {
+export async function zipDirectory(sourceRoot, outputFile) {
   await mkdir(dirname(outputFile), { recursive: true });
   const zipfile = new yazl.ZipFile();
   const output = createWriteStream(outputFile);

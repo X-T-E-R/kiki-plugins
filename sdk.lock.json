@@ -1,10 +1,10 @@
 {
   "repository": "https://github.com/X-T-E-R/kiki",
-  "ref": "c37f5990e636cba7514b44d46a4af4ef2f041068",
+  "ref": "bee3b441b7c6a5a8d2038083b43dac144211bafa",
   "package": "@kiki/plugin-sdk",
   "version": "0.1.1",
-  "artifact": "vendor/kiki-plugin-sdk-0.1.1-host-a3c694c402.tgz",
-  "sha256": "1de90ef7628abce0a28e19f85c9864a5bff6f446020b6a916317adbbf9d6a630",
-  "hostRunnerSha256": "0cc68df8d8b2e22f8fe4a54902169f0d32e96d1426378c253c9cd3ea17886fa2",
-  "pluginEngineVersion": "0.4.1"
+  "artifact": "vendor/kiki-plugin-sdk-0.1.1-host-bee3b441b.tgz",
+  "sha256": "3cd1daf45730464493a82d64353ae0f8e0d8baa1ff4710356cd7809b35a19cf8",
+  "hostRunnerSha256": "6c36fb8688de9e38bd1088ae1e1039750d61c3add7482baf687f8630f75f266d",
+  "pluginEngineVersion": "0.4.2"
 }

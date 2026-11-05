@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { resolve, join } from 'node:path';
 import { validateRegistration } from '../scripts/validate-registration.mjs';
+import { resolveLocalPlugin } from '../scripts/local-plugin.mjs';
 
 const im = {
   schemaVersion: 1, id: 'example-im', label: 'Example IM', inbound: true, outbound: true,
@@ -97,4 +99,39 @@ test('CI catalog-only selection validates metadata without reading or downloadin
   });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout.trim(), `Validated catalog: ${catalog.plugins.length} entries`);
+});
+
+test('validates harness account sources and their complete lifecycle without acquiring credentials', async () => {
+  const source = { schemaVersion: 1, id: 'example-oauth', label: 'Example OAuth', engineIds: ['agy-cli', 'codex-app-server'] };
+  const m = { name: 'example', 'x-kiki': { entry: './entry.mjs', harnessAccountSources: [source] } };
+  const implementation = { async list() { throw new Error('must not execute'); }, async prepare() { throw new Error('must not execute'); }, async release() { throw new Error('must not execute'); } };
+  await validateRegistration(m, api => api.registerHarnessAccountSource(source, implementation));
+  await assert.rejects(validateRegistration(m, () => {}), /Missing registered harnessAccountSources/);
+  await assert.rejects(validateRegistration(m, api => api.registerHarnessAccountSource({ ...source, label: 'Changed' }, implementation)), /Registered harnessAccountSources changed/);
+  await assert.rejects(validateRegistration(m, api => {
+    api.registerHarnessAccountSource(source, implementation);
+    api.registerHarnessAccountSource(source, implementation);
+  }), /Duplicate registered harnessAccountSources/);
+  await assert.rejects(validateRegistration({ 'x-kiki': { harnessAccountSources: [source] } }), /harnessAccountSources requires x-kiki.entry/);
+  for (const method of ['list', 'prepare', 'release']) {
+    await assert.rejects(validateRegistration(m, api => api.registerHarnessAccountSource(source, { ...implementation, [method]: undefined })), new RegExp(`needs ${method}\\(\\)`));
+  }
+  await assert.rejects(validateRegistration({ ...m, 'x-kiki': { ...m['x-kiki'], harnessAccountSources: [{ ...source, engineIds: [] }] } }, () => {}));
+});
+
+test('resolves non-catalog local packages without classifying them as official', async () => {
+  await mkdir('.tmp', { recursive: true });
+  const dir = await mkdtemp(resolve('.tmp/local-plugin-'));
+  try {
+    const id = 'example-oauth';
+    const root = join(dir, id);
+    await mkdir(root);
+    await writeFile(join(root, 'kimi.plugin.json'), JSON.stringify({ name: id, version: '0.1.0' }));
+    assert.equal((await resolveLocalPlugin(id, dir)).source, `./${id}`);
+    await assert.rejects(resolveLocalPlugin('../outside', dir), /Invalid local plugin id/);
+    await assert.rejects(resolveLocalPlugin('missing', dir), /No local package selected/);
+    await mkdir(join(dir, 'official', id), { recursive: true });
+    await writeFile(join(dir, 'official', id, 'kimi.plugin.json'), JSON.stringify({ name: id }));
+    await assert.rejects(resolveLocalPlugin(id, dir), /Ambiguous local package/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

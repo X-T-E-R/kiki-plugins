@@ -1,9 +1,25 @@
-import { readFile, writeFile, mkdir, copyFile, readdir, rm } from 'node:fs/promises';
-import { resolve, basename, join } from 'node:path';
+import { readFile, writeFile, mkdir, copyFile, readdir, rm, stat } from 'node:fs/promises';
+import { resolve, basename, join, relative, isAbsolute } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { compare as compareVersion } from 'semver';
-import { buildPluginMarketplaceCdn } from './build-plugin-marketplace-cdn.mjs';
+import { compare as compareVersion, valid } from 'semver';
+import { buildPluginMarketplaceCdn, zipDirectory } from './build-plugin-marketplace-cdn.mjs';
 import { inputDigest } from './package-files.mjs';
+import { resolveLocalPlugin } from './local-plugin.mjs';
+import { validateRegistration } from './validate-registration.mjs';
+
+export async function packLocalPlugin({ id, pluginsRoot = resolve('plugins'), outDir = resolve('dist/local') }) {
+  const { root, manifest } = await resolveLocalPlugin(id, pluginsRoot);
+  if (valid(manifest.version) === null) throw new Error(`Invalid package version: ${id}`);
+  const target = resolve(outDir, `${id}-${manifest.version}.zip`);
+  const inside = relative(root, target);
+  if (!inside.startsWith('..') && !isAbsolute(inside)) throw new Error('Output must be outside the plugin source');
+  const exists = await stat(target).catch(error => { if (error.code !== 'ENOENT') throw error; });
+  if (exists !== undefined) throw new Error(`Output already exists: ${target}`);
+  const module = manifest['x-kiki']?.entry ? await import(pathToFileURL(resolve(root, manifest['x-kiki'].entry))) : undefined;
+  await validateRegistration(manifest, module?.register);
+  await zipDirectory(root, target);
+  return target;
+}
 
 export async function pack({ pluginsRoot = resolve('plugins'), outDir = resolve('dist'), tag = 'local', previous, revision = 'local', siteBase = 'https://x-t-e-r.github.io/kiki-plugins/', releaseBase = `https://github.com/X-T-E-R/kiki-plugins/releases/download/${tag}/` } = {}) {
   if (!/^[a-zA-Z0-9._-]+$/.test(tag)) throw new Error('Invalid release tag');
@@ -67,6 +83,10 @@ export async function pack({ pluginsRoot = resolve('plugins'), outDir = resolve(
 function escape(s=''){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function render(index){return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kiki Plugins</title><style>body{font:18px Georgia,serif;max-width:960px;margin:48px auto;padding:0 24px;color:#25231e;background:#faf8f2}h1{font-size:48px}article{border-top:1px solid #ddd5c7;padding:24px 0}img{width:48px;height:48px;float:right}small{color:#665d50}a{color:#225c54}p{line-height:1.5}</style><h1>Kiki Plugins</h1><p>Install from Kiki's plugin market. Preview permissions and dependencies before enabling.</p><p><a href="marketplace.json">Catalog JSON</a> · <a href="https://github.com/X-T-E-R/kiki-plugins">Source & contribution guide</a></p>${index.plugins.map(p=>`<article>${p.icon?`<img alt="" src="${escape(p.icon)}">`:''}<h2>${escape(p.displayName)}</h2><small>${escape(p.author)} · ${escape(p.version)} · ${escape(p.license)} · ${escape(p.engines?.kiki ?? p.compatibility?.status ?? 'engine not declared')}</small><p>${escape(p.description)}</p>${p.compatibility?`<p>${escape(p.compatibility.notes)}</p>`:''}<a href="${escape(p.homepage??p.source)}">Author / source</a> · <a href="${escape(p.source)}">Package source</a>${p.sha256?`<p><small>SHA-256: ${escape(p.sha256)}</small></p>`:''}</article>`).join('')}</html>\n`;}
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href){
- const previous=process.env.PREVIOUS_INDEX ? JSON.parse(await readFile(process.env.PREVIOUS_INDEX,'utf8')) : undefined;
- await pack({tag:process.env.RELEASE_TAG??'local',revision:process.env.GITHUB_SHA??'local',previous});
+ if(process.argv[2]==='--plugin' && process.argv.length===4) console.log(await packLocalPlugin({id:process.argv[3]}));
+ else {
+  if(process.argv.length!==2) throw new Error('Usage: node scripts/pack.mjs [--plugin <id>]');
+  const previous=process.env.PREVIOUS_INDEX ? JSON.parse(await readFile(process.env.PREVIOUS_INDEX,'utf8')) : undefined;
+  await pack({tag:process.env.RELEASE_TAG??'local',revision:process.env.GITHUB_SHA??'local',previous});
+ }
 }

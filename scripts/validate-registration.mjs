@@ -3,21 +3,29 @@ import { validRange } from 'semver';
 import { sessionSourceDefinitionSchema } from '@kiki/plugin-sdk/session-import';
 import { mediaProviderDefinitionSchema } from '@kiki/plugin-sdk/media';
 import { pluginImAdapterDefinitionSchema } from '@kiki/plugin-sdk/im';
+import { harnessAccountSourceDefinitionSchema } from '@kiki/plugin-sdk/harness-account';
 
 const contributions = [
   { field: 'tools', method: 'registerTool', key: 'name' },
   { field: 'sessionSources', method: 'registerSessionSource', key: 'id', schema: sessionSourceDefinitionSchema },
   { field: 'mediaProviders', method: 'registerMediaProvider', key: 'id', schema: mediaProviderDefinitionSchema },
   { field: 'imAdapters', method: 'registerImAdapter', key: 'id', schema: pluginImAdapterDefinitionSchema },
+  { field: 'harnessAccountSources', method: 'registerHarnessAccountSource', key: 'id', schema: harnessAccountSourceDefinitionSchema },
 ];
+
+const adapterMethods = {
+  sessionSources: ['discover', 'probe', 'parse'],
+  mediaProviders: ['describe', 'submit'],
+  imAdapters: ['start', 'stop'],
+  harnessAccountSources: ['list', 'prepare', 'release'],
+};
 
 function checkAdapter(field, definition, adapter) {
   if (field === 'tools') {
     assert.equal(typeof adapter, 'function', `Tool ${definition.name} needs an execute function`);
     return;
   }
-  const methods = field === 'sessionSources' ? ['discover', 'probe', 'parse']
-    : field === 'mediaProviders' ? ['describe', 'submit'] : ['start', 'stop'];
+  const methods = [...adapterMethods[field]];
   if (field === 'imAdapters') {
     if (definition.outbound) methods.push('sendText');
     if (definition.supportsEdit) methods.push('editText');

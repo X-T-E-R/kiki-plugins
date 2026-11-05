@@ -7,7 +7,7 @@ import { inc } from 'semver';
 import yauzl from 'yauzl';
 import { packageFiles } from '../scripts/package-files.mjs';
 import { retainHistoricalIcons, readArchiveIcon } from '../scripts/historical-icons.mjs';
-import { pack } from '../scripts/pack.mjs';
+import { pack, packLocalPlugin } from '../scripts/pack.mjs';
 import { changedPackages } from '../scripts/changes.mjs';
 import { startPluginMarketplaceServer } from '../scripts/dev-plugin-marketplace-server.mjs';
 const sha=b=>createHash('sha256').update(b).digest('hex');
@@ -147,4 +147,39 @@ test('ships settings documents in immutable plugin ZIPs without packaging proofs
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('packs a non-catalog OAuth plugin as a standalone install ZIP', async () => {
+  const dir = await mkdtemp(resolve('.tmp/local-pack-test-'));
+  try {
+    const id = 'example-oauth';
+    const pluginsRoot = join(dir, 'plugins');
+    const root = join(pluginsRoot, id);
+    const outDir = join(dir, 'local');
+    await mkdir(join(root, 'test'), { recursive: true });
+    const source = { schemaVersion: 1, id, label: 'Example OAuth', engineIds: ['agy-cli'] };
+    await writeFile(join(root, 'kimi.plugin.json'), JSON.stringify({ name: id, version: '0.1.0', license: 'MIT', 'x-kiki': {
+      engines: { kiki: '>=0.4.2' }, entry: './entry.mjs', harnessAccountSources: [source],
+    } }));
+    await writeFile(join(root, 'entry.mjs'), `export function register(api) { api.registerHarnessAccountSource(${JSON.stringify(source)}, { list() {}, prepare() {}, release() {} }); }\n`);
+    await writeFile(join(root, 'LICENSE'), 'MIT\n');
+    await writeFile(join(root, 'test/private.mjs'), 'throw new Error("not a package asset");\n');
+    const options = { id, pluginsRoot, outDir };
+    const file = await packLocalPlugin(options);
+    assert.equal(file, join(outDir, `${id}-0.1.0.zip`));
+    const names = await new Promise((resolveEntries, reject) => {
+      yauzl.open(file, { lazyEntries: true }, (error, zip) => {
+        if (error) { reject(error); return; }
+        const found = [];
+        zip.on('error', reject);
+        zip.on('end', () => resolveEntries(found));
+        zip.on('entry', entry => { found.push(entry.fileName); zip.readEntry(); });
+        zip.readEntry();
+      });
+    });
+    assert.deepEqual(names, [`${id}/LICENSE`, `${id}/entry.mjs`, `${id}/kimi.plugin.json`]);
+    assert.deepEqual(await readdir(outDir), [`${id}-0.1.0.zip`]);
+    await assert.rejects(packLocalPlugin(options), /Output already exists/);
+    await assert.rejects(packLocalPlugin({ ...options, outDir: root }), /outside the plugin source/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

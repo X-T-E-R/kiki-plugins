@@ -15,6 +15,10 @@ The runtime ZIP whitelist includes the manifest, runtime entry/adapters, panel, 
 
 Extract vendor changes must preserve the fixed runtime lock and notices. Run `npm ci --ignore-scripts --prefix plugins/official/kiki-extract/runtime`, then `node plugins/official/kiki-extract/scripts/build-vendor.mjs`, and inspect the vendor diff before proposing a new Extract version.
 
+## Check and pack a local plugin
+
+For a package under `plugins/<id>/`, run `npm run check -- <id>` to validate its manifest and registrations against the pinned Kiki SDK. Run `npm run build -- --plugin <id>` to create `dist/local/<id>-<version>.zip`. This ZIP can be installed directly in Kiki; the command leaves the marketplace unchanged.
+
 ## Propose a third-party entry
 
 Keep source with its author. Add a catalog entry with a unique ID, display name, purpose, real author, license, homepage, version, and compatible source locator. Use either an author-hosted ZIP plus SHA-256 or a GitHub URL ending in `/commit/<40-character-sha>`. Do not use a monorepo subdirectory URL as an install package.

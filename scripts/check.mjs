@@ -7,16 +7,15 @@ import { createHash } from 'node:crypto';
 import { satisfies } from 'semver';
 import { packageFiles } from './package-files.mjs';
 import { validateRegistration } from './validate-registration.mjs';
+import { resolveLocalPlugin } from './local-plugin.mjs';
 const catalog=JSON.parse(await readFile('plugins/marketplace.json','utf8'));
 assert.equal(new Set(catalog.plugins.map(p=>p.id)).size,catalog.plugins.length,'Duplicate catalog id');
 for(const p of catalog.plugins){assert.ok(p.author&&p.license&&p.version&&p.source);if(!p.source.startsWith('./official/'))assert.ok(p.compatibility?.status);else assert.equal(p.source,`./official/${p.id}`);}
 const selected=process.argv[2];
 const packages=catalog.plugins.filter(p=>p.source.startsWith('./official/')&&(!selected||selected===p.id));
 if(selected && selected!=='catalog' && packages.length===0){
-  assert.match(selected,/^[a-z0-9][a-z0-9_-]{0,63}$/,'Invalid local plugin id');
-  const manifest=await readFile(resolve('plugins/official',selected,'kimi.plugin.json'),'utf8').catch(()=>{throw new Error(`No local package selected: ${selected}`);});
-  assert.equal(JSON.parse(manifest).name,selected);
-  packages.push({id:selected,source:`./official/${selected}`});
+  const {id,source}=await resolveLocalPlugin(selected);
+  packages.push({id,source});
 }
 if(selected==='catalog')console.log(`Validated catalog: ${catalog.plugins.length} entries`);
 else await checkPackages();
@@ -41,7 +40,7 @@ async function checkPackages(){
     await validateRegistration(m,module?.register);
     console.log('Validated package',p.id,m.version);
   }
-  run('plugins/official/media-runtime/distribute.mjs',['--check']);
+  if(!selected||packages.some(p=>p.source.startsWith('./official/')))run('plugins/official/media-runtime/distribute.mjs',['--check']);
   for(const id of ['kiki-extract','kiki-office','kiki-media','kiki-bilibili','kiki-voice','kiki-qq','kiki-phone','kiki-everything'])if(!selected||selected===id)run(`plugins/official/${id}/scripts/sync-manifest.mjs`,['--check']);
   if(!selected||selected==='kiki-everything')run('--test',['--test-timeout=15000','plugins/official/kiki-everything/test/everything.test.mjs']);
   if(!selected||selected==='kiki-bilibili')run('--test',['plugins/official/kiki-bilibili/test/bilibili.test.mjs']);
