@@ -987,8 +987,10 @@
 
       busy('connection:save', true);
       let ok = false;
+      let createdConnection;
       try {
-        await call('save_connection', args);
+        const result = await call('save_connection', args);
+        createdConnection = result.connection;
         ok = true;
         view.connectionForm = null;
         view.previews.clear();
@@ -1003,7 +1005,7 @@
         view.afterConnection = null;
         view.pendingTarget = null;
         if (pending) {
-          const created = view.connections.find((item) => item.service === pending.service);
+          const created = createdConnection?.service === pending.service ? createdConnection : undefined;
           view.targetForm = Object.assign({}, pending, { open: true, connectionId: created ? created.id : pending.connectionId });
         }
       }

@@ -330,7 +330,7 @@
       "id": "kiki-sites",
       "tier": "official",
       "displayName": "Kiki Sites",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Connect code hosting and deploy sites or apps through official service CLIs and APIs.",
       "keywords": [
         "sites",
