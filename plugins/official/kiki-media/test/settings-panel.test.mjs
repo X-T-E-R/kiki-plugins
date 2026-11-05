@@ -72,11 +72,15 @@ test('ships a settings panel and a catalog of real provider ids', async () => {
 test('marks only connection-replaceable required fields in every provider and prefixes them in unified Media', async () => {
   const unified = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
   const unifiedProperties = unified['x-kiki'].settings.schema.properties;
+  const unifiedRequired = unified['x-kiki'].settings.schema.required ?? [];
   const annotated = [];
   for (const vendor of ['openai', 'google', 'ark', 'xai', 'minimax', 'stepfun', 'novita', 'agnes', 'newapi', 'comfyui']) {
     const manifest = JSON.parse(await readFile(new URL(`../../kiki-media-${vendor}/kimi.plugin.json`, import.meta.url), 'utf8'));
     const properties = manifest['x-kiki'].settings.schema.properties;
     const required = manifest['x-kiki'].settings.schema.required ?? [];
+    const source = unified['x-kiki'].mediaSources.find((item) => item.id === vendor);
+    assert.deepEqual(source.required, required, `${manifest.name} mediaSources.required`);
+    for (const key of required) assert.ok(unifiedRequired.includes(`${vendor}__${key}`), `Missing unified required ${vendor}__${key}`);
     for (const [key, property] of Object.entries(properties)) {
       const expected = required.includes(key) && ['apiKey', 'baseUrl'].includes(key) && properties.connectionId ? 'connectionId' : undefined;
       assert.equal(property.requiredUnless, expected, `${manifest.name}.${key}`);

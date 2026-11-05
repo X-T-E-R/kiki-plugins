@@ -1074,12 +1074,13 @@ el.save.addEventListener('click', async () => {
   render();
   try {
     const next = await call('configure', { values: collect() });
+    status = next;
     el.token.value = '';
     el.apitoken.value = '';
     clearedSecrets.clear();
     syncFields();
     savedNote = ['running', 'starting', 'retrying'].includes(next?.service?.state) ? t.saved : t.savedOnly;
-    render(next);
+    render();
     announce(savedNote);
   } catch (error) {
     showFormError(normalizeError(error));

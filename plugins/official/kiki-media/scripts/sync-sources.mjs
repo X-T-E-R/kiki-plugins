@@ -4,6 +4,7 @@ const target = new URL('../', import.meta.url);
 const vendors = ['openai', 'google', 'ark', 'xai', 'minimax', 'stepfun', 'novita', 'agnes', 'newapi', 'comfyui'];
 const manifest = JSON.parse(await readFile(new URL('kimi.plugin.json', target), 'utf8'));
 const properties = Object.fromEntries(Object.entries(manifest['x-kiki'].settings.schema.properties).filter(([key]) => key.startsWith('default')));
+const coreRequired = (manifest['x-kiki'].settings.schema.required ?? []).filter((key) => !vendors.some((vendor) => key.startsWith(`${vendor}__`)));
 const providers = [];
 const sources = [];
 async function output(url, content) {
@@ -134,6 +135,9 @@ manifest['x-kiki'].mediaProviders = providers;
 manifest['x-kiki'].mediaSources = sources;
 manifest['x-kiki'].mediaScriptProvider = 'custom-script';
 manifest['x-kiki'].settings.schema.properties = properties;
+const required = [...coreRequired, ...sources.flatMap((source) => source.required.map((key) => source.settingsPrefix + key))];
+if (required.length > 0) manifest['x-kiki'].settings.schema.required = required;
+else delete manifest['x-kiki'].settings.schema.required;
 manifest['x-kiki'].permissions.secrets = true;
 manifest['x-kiki'].permissions.exec = ['*'];
 manifest['x-kiki'].permissions.uiPanel = true;

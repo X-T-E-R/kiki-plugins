@@ -1687,7 +1687,18 @@
               }
             }
           }
-        }
+        },
+        "required": [
+          "openai__apiKey",
+          "google__apiKey",
+          "ark__apiKey",
+          "xai__apiKey",
+          "minimax__apiKey",
+          "stepfun__apiKey",
+          "novita__baseUrl",
+          "agnes__baseUrl",
+          "newapi__baseUrl"
+        ]
       }
     },
     "mediaSurface": {

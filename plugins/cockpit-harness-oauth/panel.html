@@ -30,6 +30,7 @@
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
   margin: 0; background: var(--paper); color: var(--ink);
   font: 13px/1.5 'Instrument Sans', ui-sans-serif, system-ui, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
@@ -100,14 +101,15 @@ li .id { color: var(--faint); font: 11.5px 'JetBrains Mono', ui-monospace, Conso
   <hr class="rule">
   <section>
     <div class="section-head"><h2>Backend configuration</h2></div>
-    <div class="configuration" id="configuration">
+    <div class="configuration" id="configuration" hidden>
       <label class="config-field" for="backendPath"><span>Backend executable</span><input id="backendPath" type="text" autocomplete="off" spellcheck="false" placeholder="Absolute path to cockpit-harness-oauth"></label>
       <label class="config-field" for="sidecarPath"><span>Cockpit sidecar</span><input id="sidecarPath" type="text" autocomplete="off" spellcheck="false" placeholder="Absolute path to the Cockpit sidecar"></label>
       <label class="config-field" for="dataDir"><span>Data directory (optional)</span><input id="dataDir" type="text" autocomplete="off" spellcheck="false" placeholder="Cockpit default store"></label>
     </div>
     <div class="config-actions">
-      <button class="primary" id="save" type="button" disabled>Save configuration</button>
-      <p class="status" id="config-status" role="status" aria-live="polite"></p>
+      <button class="primary" id="save" type="button" disabled hidden>Save configuration</button>
+      <button id="retry-settings" type="button" hidden>Retry settings</button>
+      <p class="status" id="config-status" role="status" aria-live="polite">Loading settings…</p>
     </div>
   </section>
   <section>
@@ -123,6 +125,9 @@ li .id { color: var(--faint); font: 11.5px 'JetBrains Mono', ui-monospace, Conso
   let sequence = 0;
   let refreshing = false;
   let saving = false;
+  let settingsLoading = false;
+  let settingsReady = false;
+  let dirty = false;
   let settingsView = { values: {}, secretsConfigured: [] };
   const keys = ['backendPath', 'sidecarPath', 'dataDir'];
   const $ = (id) => document.getElementById(id);
@@ -152,15 +157,50 @@ li .id { color: var(--faint); font: 11.5px 'JetBrains Mono', ui-monospace, Conso
     }
     return patch;
   }
-  function updateDirty() { $('save').disabled = saving || refreshing || Object.keys(patchOf()).length === 0; }
+  function mark(next) {
+    if (dirty === next) return;
+    dirty = next;
+    /* The host rate-limits frame requests, so report only the boolean edge. */
+    void request('plugin.dirty', { dirty: next }).catch(() => undefined);
+  }
+  function updateDirty() {
+    const changed = settingsReady && Object.keys(patchOf()).length > 0;
+    $('save').disabled = !settingsReady || settingsLoading || saving || refreshing || !changed;
+    mark(changed);
+  }
   function adoptSettings(next) {
     settingsView = next && typeof next === 'object' ? next : { values: {}, secretsConfigured: [] };
     for (const key of keys) $(key).value = String(settingsView?.values?.[key] ?? '');
     updateDirty();
   }
   async function loadSettings() {
-    try { adoptSettings(await request('plugin.settings.get')); configNote(''); }
-    catch (error) { configNote(error?.message || 'Could not load settings.', 'error'); }
+    if (settingsLoading) return false;
+    settingsLoading = true;
+    settingsReady = false;
+    $('configuration').hidden = true;
+    $('save').hidden = true;
+    $('retry-settings').hidden = true;
+    $('retry-settings').disabled = true;
+    for (const key of keys) $(key).disabled = true;
+    updateDirty(); configNote('Loading settings…');
+    try {
+      const next = await request('plugin.settings.get');
+      settingsReady = true;
+      adoptSettings(next);
+      $('configuration').hidden = false;
+      $('save').hidden = false;
+      configNote('');
+      return true;
+    } catch (error) {
+      configNote(error?.message || 'Could not load settings.', 'error');
+      $('retry-settings').hidden = false;
+      return false;
+    } finally {
+      settingsLoading = false;
+      for (const key of keys) $(key).disabled = saving || !settingsReady;
+      $('retry-settings').disabled = false;
+      updateDirty();
+    }
   }
   window.addEventListener('message', (event) => {
     if (event.source !== window.parent || !event.data || event.data.channel !== CHANNEL) return;
@@ -197,7 +237,7 @@ li .id { color: var(--faint); font: 11.5px 'JetBrains Mono', ui-monospace, Conso
   }
   async function refresh() {
     if (refreshing) return;
-    refreshing = true; $('refresh').disabled = true; note('Refreshing account metadata…');
+    refreshing = true; $('refresh').disabled = true; note('Refreshing account metadata…'); updateDirty();
     try {
       const result = await call('refresh');
       renderAccounts(result?.accounts);
@@ -209,6 +249,9 @@ li .id { color: var(--faint); font: 11.5px 'JetBrains Mono', ui-monospace, Conso
     } finally { refreshing = false; $('refresh').disabled = false; updateDirty(); }
   }
   $('refresh').addEventListener('click', () => { void refresh(); });
+  $('retry-settings').addEventListener('click', () => {
+    void (async () => { if (await loadSettings()) await refresh(); })();
+  });
   for (const key of keys) {
     $(key).addEventListener('input', () => { configNote(''); updateDirty(); });
     $(key).addEventListener('keydown', (event) => {
