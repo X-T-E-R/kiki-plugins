@@ -138,3 +138,24 @@ test('controlled API fixture denies unexpected URLs, pages full accounts and nev
   const result = await account.accounts(); assert.equal(result.length, 2); assert.equal(calls.length, 2); assert.equal(JSON.stringify(result).includes('synthetic-account-key'), false);
   await assert.rejects(new CloudflareAccount({}).accounts(), /API token/);
 });
+
+test('explicit null clears saved secrets and stale non-secret settings without starting a tunnel', async (t) => {
+  const f = await fixture(t);
+  Object.assign(f.stored, {
+    mode: 'token', tunnelToken: 'synthetic-token', apiToken: 'synthetic-account-key',
+    accountId: '0'.repeat(32), publicUrl: 'https://stale.example.test',
+    certificatePath: path.join(f.root, 'custom-cert.pem'), autoStart: false,
+  });
+  await f.service.activate(f.context(f.stored));
+  await f.service.configure({ tunnelToken: null, apiToken: null, accountId: null, publicUrl: null, certificatePath: null });
+  const state = await f.service.status();
+  assert.equal(state.configuration.tokenConfigured, false);
+  assert.equal(state.account.apiToken, false);
+  assert.equal(state.configuration.accountId, '');
+  assert.equal(state.configuration.publicUrl, '');
+  assert.equal(state.configuration.certificatePath, path.join(f.root, '.cloudflared', 'cert.pem'));
+  assert.equal(f.children.length, 0);
+  for (const key of ['tunnelToken', 'apiToken', 'accountId', 'publicUrl', 'certificatePath']) assert.equal(Object.hasOwn(f.stored, key), false);
+  assert.equal(JSON.stringify(state).includes('synthetic-token'), false);
+  assert.equal(JSON.stringify(state).includes('synthetic-account-key'), false);
+});

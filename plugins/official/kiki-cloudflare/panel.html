@@ -196,11 +196,14 @@ a.link:hover { color: var(--ink); }
       </div>
       <p class="hint" id="create-hint" data-i18n="createHint"></p>
 
-      <label class="field" for="token" id="wrap-token" style="margin-top:14px">
-        <span class="label" data-i18n="tokenLabel">Tunnel connector token</span>
+      <div class="field" id="wrap-token" style="margin-top:14px">
+        <label class="label" for="token" data-i18n="tokenLabel">Tunnel connector token</label>
         <input type="password" id="token" autocomplete="off" spellcheck="false" data-i18n-placeholder="tokenPlaceholder">
+        <div class="actions tight" id="clear-token-row">
+          <button type="button" class="quiet" id="clear-token" data-i18n="clearSecret" hidden>Clear saved token</button>
+        </div>
         <span class="hint" id="token-hint"></span>
-      </label>
+      </div>
 
       <div class="choices" id="mode" role="radiogroup" data-i18n-aria="modeGroup" aria-label="Configuration source">
         <label class="choice">
@@ -261,11 +264,14 @@ a.link:hover { color: var(--ink); }
     <div class="inside">
       <p class="hint" id="cert-fact"></p>
 
-      <label class="field" for="apitoken" style="margin-top:12px">
-        <span class="label" data-i18n="apiTokenLabel">Account API token (optional)</span>
+      <div class="field" style="margin-top:12px">
+        <label class="label" for="apitoken" data-i18n="apiTokenLabel">Account API token (optional)</label>
         <input type="password" id="apitoken" autocomplete="off" spellcheck="false" data-i18n-placeholder="apiTokenPlaceholder">
+        <div class="actions tight" id="clear-apitoken-row">
+          <button type="button" class="quiet" id="clear-apitoken" data-i18n="clearSecret" hidden>Clear saved token</button>
+        </div>
         <span class="hint" data-i18n="apiTokenHint"></span>
-      </label>
+      </div>
 
       <label class="field" for="accountid">
         <span class="label" data-i18n="accountIdLabel">Account ID</span>
@@ -358,6 +364,9 @@ const I18N = {
     tokenConfigured: 'A token is already saved.',
     tokenSavedHint: 'A token is saved. Paste a new one to replace it.',
     tokenReplace: 'Paste a new connector token to replace the saved one',
+    clearSecret: 'Clear saved token',
+    undoSecret: 'Undo clear',
+    clearPending: 'The saved token will be cleared when you save.',
     modeGroup: 'Configuration source',
     modeToken: 'Tunnel token',
     modeLocal: 'Existing local tunnel',
@@ -398,6 +407,7 @@ const I18N = {
     reuseClose: 'Close list',
     saving: 'Saving and connecting',
     saved: 'Saved. The tunnel is connecting.',
+    savedOnly: 'Settings saved.',
     stopped_note: 'Stopped for this Kiki run.',
     started_note: 'The tunnel is connecting.',
     err: {
@@ -470,6 +480,9 @@ const I18N = {
     tokenConfigured: '已保存一个 token。',
     tokenSavedHint: '已保存一个 token。粘贴新的 token 即可替换。',
     tokenReplace: '粘贴新的 connector token 以替换已保存的值',
+    clearSecret: '清除已保存 token',
+    undoSecret: '撤销清除',
+    clearPending: '保存后将清除已保存的 token。',
     modeGroup: '配置来源',
     modeToken: '隧道 token',
     modeLocal: '已有本地隧道',
@@ -510,6 +523,7 @@ const I18N = {
     reuseClose: '关闭列表',
     saving: '正在保存并连接',
     saved: '已保存，隧道正在连接。',
+    savedOnly: '设置已保存。',
     stopped_note: '本次 Kiki 运行已停止。',
     started_note: '隧道正在连接。',
     err: {
@@ -558,7 +572,7 @@ const el = {
   loginUrl: $('login-url'), cancelLogin: $('cancel-login'),
   reusePanel: $('reuse-panel'), reuseState: $('reuse-state'), tunnels: $('tunnels'), reuseClose: $('reuse-close'),
   savedNote: $('saved-note'), ruleAdvanced: $('rule-advanced'), advanced: $('advanced'), certFact: $('cert-fact'),
-  apitoken: $('apitoken'), accountid: $('accountid'), tokenfile: $('tokenfile'),
+  apitoken: $('apitoken'), clearToken: $('clear-token'), clearApiToken: $('clear-apitoken'), accountid: $('accountid'), tokenfile: $('tokenfile'),
   certpath: $('certpath'), credfile: $('credfile'), binarypath: $('binarypath'), publicurl: $('publicurl'),
   autoStart: $('autoStart')
 };
@@ -579,6 +593,7 @@ let publicUrlFact = '';
 let lastLoginUrl = '';
 let depInstallError = '';
 let loginDismissed = false;
+const clearedSecrets = new Set();
 
 function detectLocale() {
   return (navigator.language || 'en').toLowerCase().startsWith('zh') ? 'zh' : 'en';
@@ -674,7 +689,7 @@ const UUID = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
    complete: a path, an account id or an endpoint is a real change. Only an
    entirely empty form in token mode is rejected. */
 function hasPendingEdit() {
-  return [
+  return clearedSecrets.size > 0 || [
     el.token, el.tunnelid, el.configpath, el.accountid, el.tokenfile, el.certpath,
     el.credfile, el.binarypath, el.publicurl, el.apitoken
   ].some((node) => node.value.trim() !== '');
@@ -686,7 +701,7 @@ function validate() {
        token mode. So does any other pending edit, because that is how a user
        prepares a tunnel without typing the token yet. */
     if (el.token.value.trim() || el.tokenfile.value.trim()) return null;
-    if (status?.configuration?.tokenConfigured) return null;
+    if (status?.configuration?.tokenConfigured && !clearedSecrets.has('tunnelToken')) return null;
     if (hasPendingEdit()) return null;
     return t.err.tokenRequired;
   }
@@ -707,17 +722,24 @@ function collect() {
     if (tunnelId) values.tunnelId = tunnelId;
     if (configPath) values.configPath = configPath;
   }
+  if (clearedSecrets.has('tunnelToken')) values.tunnelToken = null;
+  const cfg = status?.configuration || {};
+  const savedValues = {
+    accountId: cfg.accountId || '', tokenFile: cfg.tokenFile || '',
+    certificatePath: cfg.certificatePath && cfg.certificatePath.indexOf('.cloudflared') === -1 ? cfg.certificatePath : '',
+    credentialsFile: cfg.credentialsFile || '', cloudflaredPath: cfg.cloudflaredPath || '', publicUrl: cfg.publicUrl || ''
+  };
   for (const [node, key] of [
     [el.accountid, 'accountId'], [el.tokenfile, 'tokenFile'], [el.certpath, 'certificatePath'],
     [el.credfile, 'credentialsFile'], [el.binarypath, 'cloudflaredPath'], [el.publicurl, 'publicUrl']
   ]) {
     const value = node.value.trim();
-    if (value) values[key] = value;
+    if (value !== String(savedValues[key]).trim()) values[key] = value || null;
   }
-  /* A typed API token replaces a stored one; it is write-only, so the stored
-     value never comes back to compare against. */
+  /* An explicit clear must survive the write-only secret round trip. */
   const apiToken = el.apitoken.value.trim();
   if (apiToken) values.apiToken = apiToken;
+  else if (clearedSecrets.has('apiToken')) values.apiToken = null;
   if (el.autoStart.checked !== (status?.configuration?.autoStart !== false)) {
     values.autoStart = el.autoStart.checked;
   }
@@ -861,9 +883,15 @@ function render(next) {
   el.createHint.hidden = configured;
   /* The saved state reads once, as the hint; the placeholder only invites a
      replacement, so a configured token never appears twice in a row. */
-  el.tokenHint.textContent = cfg.tokenConfigured ? t.tokenSavedHint : t.tokenHint;
+  el.tokenHint.textContent = clearedSecrets.has('tunnelToken') ? t.clearPending : (cfg.tokenConfigured ? t.tokenSavedHint : t.tokenHint);
   el.token.placeholder = cfg.tokenConfigured ? t.tokenReplace : t.tokenPlaceholder;
-  el.apitoken.placeholder = status?.account?.apiToken ? t.tokenSavedHint : t.apiTokenPlaceholder;
+  el.apitoken.placeholder = clearedSecrets.has('apiToken') ? t.clearPending : (status?.account?.apiToken ? t.tokenSavedHint : t.apiTokenPlaceholder);
+  el.clearToken.hidden = mode === 'local' || cfg.credentialSource !== 'plugin-secret-store';
+  el.clearApiToken.hidden = !status?.account?.apiToken;
+  el.clearToken.textContent = clearedSecrets.has('tunnelToken') ? t.undoSecret : t.clearSecret;
+  el.clearApiToken.textContent = clearedSecrets.has('apiToken') ? t.undoSecret : t.clearSecret;
+  el.clearToken.disabled = working;
+  el.clearApiToken.disabled = working;
   el.save.disabled = working;
   el.login.disabled = working;
   el.reuse.disabled = working;
@@ -1021,8 +1049,20 @@ el.mode.addEventListener('change', (event) => {
   clearFormError();
   render();
 });
-el.token.addEventListener('input', clearFormError);
-el.apitoken.addEventListener('input', clearFormError);
+for (const [input, key] of [[el.token, 'tunnelToken'], [el.apitoken, 'apiToken']]) {
+  input.addEventListener('input', () => { clearedSecrets.delete(key); clearFormError(); render(); });
+}
+for (const [button, key] of [[el.clearToken, 'tunnelToken'], [el.clearApiToken, 'apiToken']]) {
+  button.addEventListener('click', () => {
+    if (clearedSecrets.has(key)) clearedSecrets.delete(key);
+    else {
+      clearedSecrets.add(key);
+      (key === 'tunnelToken' ? el.token : el.apitoken).value = '';
+    }
+    clearFormError();
+    render();
+  });
+}
 
 /* A sandboxed frame has no allow-forms, so there is no <form> to submit; the
    primary button is the one action and Enter still reaches it. */
@@ -1036,10 +1076,11 @@ el.save.addEventListener('click', async () => {
     const next = await call('configure', { values: collect() });
     el.token.value = '';
     el.apitoken.value = '';
+    clearedSecrets.clear();
     syncFields();
-    savedNote = t.saved;
+    savedNote = ['running', 'starting', 'retrying'].includes(next?.service?.state) ? t.saved : t.savedOnly;
     render(next);
-    announce(t.saved);
+    announce(savedNote);
   } catch (error) {
     showFormError(normalizeError(error));
   } finally {

@@ -1,6 +1,6 @@
 {
   "name": "kiki-cloudflare",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Connect existing Cloudflare accounts and keep a managed Cloudflare Tunnel running with Kiki.",
   "license": "MIT",
   "icon": "./icon.svg",
