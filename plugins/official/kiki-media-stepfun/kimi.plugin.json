@@ -1,6 +1,6 @@
 {
   "name": "kiki-media-stepfun",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "StepFun HTTP binary/SSE file speech. Trusted Node HTTP adaptation, not an Android SDK or WebSocket live-session runtime.",
   "license": "MIT AND Apache-2.0",
   "interface": {
@@ -9,7 +9,7 @@
   },
   "x-kiki": {
     "engines": {
-      "kiki": "^0.4.0"
+      "kiki": ">=0.4.3"
     },
     "entry": "./entry.mjs",
     "permissions": {
@@ -35,7 +35,8 @@
           "apiKey": {
             "type": "string",
             "title": "API key",
-            "secret": true
+            "secret": true,
+            "requiredUnless": "connectionId"
           },
           "baseUrl": {
             "type": "string",

@@ -1,6 +1,6 @@
 {
   "name": "kiki-media",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Generate images, videos and speech with built-in services and your own scripts in one media plugin.",
   "license": "MIT AND Apache-2.0",
   "skills": "./skills/",
@@ -10,7 +10,7 @@
   },
   "x-kiki": {
     "engines": {
-      "kiki": ">=0.4.0"
+      "kiki": ">=0.4.3"
     },
     "entry": "./entry.mjs",
     "permissions": {
@@ -553,6 +553,7 @@
             "type": "string",
             "title": "API key",
             "secret": true,
+            "requiredUnless": "openai__connectionId",
             "group": "openai",
             "groupTitle": "OpenAI Media",
             "localizations": {
@@ -673,6 +674,7 @@
             "type": "string",
             "title": "API key",
             "secret": true,
+            "requiredUnless": "google__connectionId",
             "group": "google",
             "groupTitle": "Google Media",
             "localizations": {
@@ -793,6 +795,7 @@
             "type": "string",
             "title": "API key",
             "secret": true,
+            "requiredUnless": "ark__connectionId",
             "group": "ark",
             "groupTitle": "Ark Media",
             "localizations": {
@@ -914,6 +917,7 @@
             "type": "string",
             "title": "API key",
             "secret": true,
+            "requiredUnless": "xai__connectionId",
             "group": "xai",
             "groupTitle": "xAI Media",
             "localizations": {
@@ -1034,6 +1038,7 @@
             "type": "string",
             "title": "API key",
             "secret": true,
+            "requiredUnless": "minimax__connectionId",
             "group": "minimax",
             "groupTitle": "MiniMax Media",
             "localizations": {
@@ -1167,6 +1172,7 @@
             "type": "string",
             "title": "API key",
             "secret": true,
+            "requiredUnless": "stepfun__connectionId",
             "group": "stepfun",
             "groupTitle": "StepFun Speech",
             "localizations": {
@@ -1286,6 +1292,7 @@
           "novita__baseUrl": {
             "type": "string",
             "title": "Compatible API base URL",
+            "requiredUnless": "novita__connectionId",
             "group": "novita",
             "groupTitle": "Novita Compatible Video",
             "localizations": {
@@ -1391,6 +1398,7 @@
           "agnes__baseUrl": {
             "type": "string",
             "title": "Compatible API base URL",
+            "requiredUnless": "agnes__connectionId",
             "group": "agnes",
             "groupTitle": "Agnes Video",
             "localizations": {
@@ -1497,6 +1505,7 @@
           "newapi__baseUrl": {
             "type": "string",
             "title": "Compatible API base URL",
+            "requiredUnless": "newapi__connectionId",
             "group": "newapi",
             "groupTitle": "NewAPI Compatible Video",
             "localizations": {

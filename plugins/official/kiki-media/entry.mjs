@@ -5,9 +5,41 @@ async function readManifest() {
   return JSON.parse(await readFile(new URL('./kimi.plugin.json', import.meta.url), 'utf8'));
 }
 
-export async function handlePanelRequest(action) {
+function sourceSettings(source, manifest, stored = {}) {
+  const values = {};
+  for (const [key, property] of Object.entries(manifest['x-kiki'].settings.schema.properties)) {
+    if (!key.startsWith(source.settingsPrefix) || property.secret === true) continue;
+    const localKey = key.slice(source.settingsPrefix.length);
+    values[localKey] = stored[key] ?? stored[localKey] ?? property.default;
+  }
+  return values;
+}
+
+export async function handlePanelRequest(action, _args = {}, context = {}) {
   if (action !== 'catalog') return { error: 'unknown action' };
   const manifest = await readManifest();
+  const providers = await Promise.all(manifest['x-kiki'].mediaProviders.map(async (provider) => {
+    const source = manifest['x-kiki'].mediaSources.find((item) => item.providerIds.includes(provider.id));
+    let models = [];
+    if (source) {
+      try {
+        const { adapters } = await import(`./lib/sources/${source.id}.mjs`);
+        const adapter = adapters[provider.id.slice(source.id.length + 1)];
+        if (typeof adapter?.describe === 'function') {
+          const capabilities = await adapter.describe({}, {
+            settings: sourceSettings(source, manifest, context.settings),
+            signal: context.signal ?? new AbortController().signal,
+          });
+          models = (capabilities.models ?? []).filter((model) => typeof model.id === 'string' && model.id)
+            .map((model) => ({ id: model.id, kind: model.kind }));
+        }
+      } catch {
+        // Model suggestions are optional; a capability error must not block the
+        // source's saved connection, credentials or custom model ID from editing.
+      }
+    }
+    return { id: provider.id, label: provider.label, kinds: provider.kinds, models };
+  }));
   return {
     sources: manifest['x-kiki'].mediaSources.map((source) => ({
       id: source.id,
@@ -16,11 +48,7 @@ export async function handlePanelRequest(action) {
       providerIds: source.providerIds,
       required: source.required,
     })),
-    providers: manifest['x-kiki'].mediaProviders.map((provider) => ({
-      id: provider.id,
-      label: provider.label,
-      kinds: provider.kinds,
-    })),
+    providers,
   };
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "kiki-media-google",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Google Gemini native images and Veo asynchronous video. Trusted Node HTTP adapters; generated originals are saved as files.",
   "license": "MIT",
   "interface": {
@@ -9,7 +9,7 @@
   },
   "x-kiki": {
     "engines": {
-      "kiki": "^0.4.0"
+      "kiki": ">=0.4.3"
     },
     "entry": "./entry.mjs",
     "permissions": {
@@ -35,7 +35,8 @@
           "apiKey": {
             "type": "string",
             "title": "API key",
-            "secret": true
+            "secret": true,
+            "requiredUnless": "connectionId"
           },
           "baseUrl": {
             "type": "string",

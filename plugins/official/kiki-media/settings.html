@@ -182,6 +182,10 @@
   button:focus-visible, .chip:focus-visible { outline: 2px solid var(--color-selected-ink); outline-offset: 2px; }
   @keyframes kiki-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
   .anim-enter { animation: kiki-enter 200ms ease-out both; }
+  @media (pointer: coarse) {
+    .btn, .chip, input, select, textarea { min-height: 44px; }
+    .switch { min-height: 44px; }
+  }
   @media (prefers-reduced-motion: reduce) {
     .anim-enter { animation: none; }
     * { transition: none !important; }
@@ -225,6 +229,9 @@ const lifecycle = new Set(['enabled', 'removed', 'cleared']);
 let seq = 1;
 const waiting = new Map();
 let catalog = { sources: [], providers: [] };
+let connectionCatalog = { models: [], connections: [] };
+let connectionState = 'idle';
+let connectionError = '';
 let view = { schema: { schema: { properties: {} } }, values: {}, secretsConfigured: [] };
 let draft = {};
 let secrets = {};
@@ -242,6 +249,9 @@ const STRINGS = {
     secretSet: 'Saved in Kiki credentials', secretUnset: 'Not set', secretReplace: 'Type a new value to replace', secretNew: 'Paste a value',
     secretClear: 'Clear', secretUndo: 'Undo', secretClearPending: 'Will be removed when you save',
     loadError: 'Could not load settings', saveError: 'Could not save', timeoutError: 'Connection timed out',
+    notSet: 'Not set', ownConnection: 'Use my own endpoint and key', connectionsLoading: 'Loading Kiki connections…',
+    connectionLoadError: 'Could not load Kiki connections. Your own endpoint and key remain available.', retryConnections: 'Retry connections',
+    connectionActive: 'The selected Kiki connection supplies the endpoint and credentials. Saved local values are kept but not used.',
   },
   zh: {
     title: '媒体设置', defaults: '默认提供方', image: '图像', video: '视频', speech: '语音',
@@ -250,6 +260,9 @@ const STRINGS = {
     secretSet: '已保存在 Kiki 凭据中', secretUnset: '未设置', secretReplace: '输入新值以替换', secretNew: '粘贴值',
     secretClear: '清除', secretUndo: '撤销', secretClearPending: '保存后将移除',
     loadError: '无法加载设置', saveError: '保存失败', timeoutError: '连接超时',
+    notSet: '不设置', ownConnection: '使用自己的地址和密钥', connectionsLoading: '正在加载 Kiki 连接…',
+    connectionLoadError: '无法加载 Kiki 连接，仍可使用自己的地址和密钥。', retryConnections: '重试加载连接',
+    connectionActive: '所选 Kiki 连接提供地址和认证。本地已保存的值会保留，但不会在此连接下使用。',
   },
 };
 let locale = typeof navigator === 'object' && String(navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
@@ -364,6 +377,100 @@ function sourceLabel(source) {
   return localizedText(property, 'groupTitle') ?? property?.groupTitle ?? source.label;
 }
 
+function hasSelectedConnection(source) {
+  const key = source.prefix + 'connectionId';
+  return properties()[key] !== undefined && String(valueOf(key, properties()[key]) ?? '').trim() !== '';
+}
+function connectionLocked(key, source) {
+  return hasSelectedConnection(source) && [source.prefix + 'apiKey', source.prefix + 'baseUrl'].includes(key);
+}
+function connectionControl(key) {
+  const wrap = document.createElement('div');
+  const select = document.createElement('select');
+  select.id = key;
+  const own = document.createElement('option');
+  own.value = '';
+  own.textContent = t('ownConnection');
+  select.append(own);
+  const current = String(valueOf(key, properties()[key]) ?? '');
+  const connections = Array.isArray(connectionCatalog.connections) ? connectionCatalog.connections : [];
+  if (current && !connections.some((item) => item.id === current)) {
+    const option = document.createElement('option');
+    option.value = current;
+    option.textContent = current;
+    select.append(option);
+  }
+  for (const connection of connections) {
+    const option = document.createElement('option');
+    option.value = connection.id;
+    option.textContent = [connection.id, connection.type, connection.authentication].filter(Boolean).join(' · ');
+    select.append(option);
+  }
+  select.value = current;
+  select.onchange = () => { draft[key] = select.value; mark(true); render(); };
+  wrap.append(select);
+  if (current) {
+    const active = document.createElement('p');
+    active.className = 'help';
+    active.textContent = t('connectionActive');
+    wrap.append(active);
+  }
+  if (connectionState === 'loading' || connectionState === 'idle') {
+    const status = document.createElement('p');
+    status.className = 'help';
+    status.setAttribute('role', 'status');
+    status.textContent = t('connectionsLoading');
+    wrap.append(status);
+  } else if (connectionState === 'error') {
+    const status = document.createElement('p');
+    status.className = 'help';
+    status.id = key + '-error';
+    status.setAttribute('role', 'alert');
+    status.textContent = connectionError || t('connectionLoadError');
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.id = key + '-retry';
+    retry.className = 'btn btn-secondary';
+    retry.textContent = t('retryConnections');
+    retry.onclick = () => void loadConnections();
+    wrap.append(status, retry);
+  }
+  return wrap;
+}
+async function loadConnections() {
+  if (connectionState === 'loading') return;
+  connectionState = 'loading';
+  connectionError = '';
+  if (booted) render();
+  try {
+    connectionCatalog = await ask('plugin.models.list');
+    connectionState = 'ready';
+  } catch (error) {
+    connectionCatalog = { models: [], connections: [] };
+    connectionError = error.message || t('connectionLoadError');
+    connectionState = 'error';
+  }
+  if (booted) render();
+}
+function modelDatalist(source, key) {
+  const kind = key.endsWith('imageModel') ? 'image' : key.endsWith('videoModel') ? 'video' : key.endsWith('speechModel') ? 'tts' : '';
+  if (!kind) return undefined;
+  const ids = new Set();
+  for (const provider of catalog.providers) {
+    if (!source.providerIds.includes(provider.id)) continue;
+    for (const model of provider.models ?? []) if (model.kind === kind && model.id) ids.add(model.id);
+  }
+  if (ids.size === 0) return undefined;
+  const list = document.createElement('datalist');
+  list.id = key + '-models';
+  for (const id of ids) {
+    const option = document.createElement('option');
+    option.value = id;
+    list.append(option);
+  }
+  return list;
+}
+
 function switchRow(key, labelText, checked) {
   const wrap = document.createElement('label');
   wrap.className = 'switch';
@@ -397,7 +504,7 @@ function renderDefaults() {
     select.id = key;
     const empty = document.createElement('option');
     empty.value = '';
-    empty.textContent = '—';
+    empty.textContent = t('notSet');
     select.append(empty);
     for (const provider of providersFor(kind)) {
       const option = document.createElement('option');
@@ -472,7 +579,9 @@ function render() {
     name.htmlFor = key;
     name.textContent = localizedText(property, 'title') ?? key.slice(source.prefix.length);
     field.append(name);
-    if (property.secret === true) {
+    if (key === source.prefix + 'connectionId') {
+      field.append(connectionControl(key));
+    } else if (property.secret === true) {
       /* Write-only, same contract as the generic form's SecretField: a stored
        * value is only ever reported as configured; a draft is the typist's own
        * value and survives re-renders; Clear stages a null patch, Undo drops it. */
@@ -509,6 +618,7 @@ function render() {
         clear.onclick = () => { secrets[key] = null; mark(true); render(); };
         row.append(clear);
       }
+      if (connectionLocked(key, source)) for (const control of row.children) control.dataset.connectionLocked = '1';
       field.append(row);
       const state = document.createElement('p');
       state.className = 'help';
@@ -522,7 +632,7 @@ function render() {
       select.id = key;
       const empty = document.createElement('option');
       empty.value = '';
-      empty.textContent = '—';
+      empty.textContent = t('notSet');
       select.append(empty);
       for (const choice of property.enum) {
         const option = document.createElement('option');
@@ -547,7 +657,11 @@ function render() {
       input.value = valueOf(key, property);
       input.placeholder = property.default === undefined ? '' : String(property.default);
       input.oninput = () => { draft[key] = input.value; mark(true); };
+      if (connectionLocked(key, source)) input.dataset.connectionLocked = '1';
+      const models = modelDatalist(source, key);
+      if (models) input.setAttribute('list', models.id);
       field.append(input);
+      if (models) field.append(models);
     }
     if (localizedText(property, 'description') !== undefined) {
       const help = document.createElement('p');
@@ -561,11 +675,11 @@ function render() {
 }
 
 /* A save in flight owns the form: every control locks so the async patch can
- * never swallow an edit made after it was read. `data-locked` marks the one
- * control that stays disabled either way — the input of a staged secret clear. */
+ * never swallow an edit made after it was read. Local credentials also stay
+ * locked while a Kiki connection is selected, without clearing their drafts. */
 function applyBusy() {
   const controls = document.querySelectorAll('#content input, #content select, #content textarea, #content button');
-  for (const control of controls) control.disabled = saving || control.dataset.locked === '1';
+  for (const control of controls) control.disabled = saving || control.dataset.locked === '1' || control.dataset.connectionLocked === '1';
 }
 
 function renderSaveBar() {
@@ -655,6 +769,7 @@ async function boot() {
     document.getElementById('content').hidden = false;
     void ask('plugin.dirty', { dirty: false }).catch(() => undefined);
     render();
+    void loadConnections();
   } catch (error) {
     loadingEl.hidden = true;
     document.getElementById('content').hidden = true;

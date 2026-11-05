@@ -7,7 +7,8 @@ import { handlePanelRequest } from '../entry.mjs';
 
 test('ships a settings panel and a catalog of real provider ids', async () => {
   const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.version, '0.2.2');
+  assert.equal(manifest.version, '0.2.3');
+  assert.equal(manifest['x-kiki'].engines.kiki, '>=0.4.3');
   assert.equal(manifest['x-kiki'].permissions.uiPanel, true);
   const panel = manifest['x-kiki'].panels.find((item) => item.id === 'settings');
   assert.deepEqual(panel, { schemaVersion: 1, id: 'settings', label: 'Settings', slot: 'settings', path: './settings.html' });
@@ -15,6 +16,7 @@ test('ships a settings panel and a catalog of real provider ids', async () => {
   assert.match(html, /kiki\.panel\.v1/);
   assert.match(html, /plugin\.settings\.patch/);
   assert.match(html, /plugin\.settings\.get/);
+  assert.match(html, /plugin\.models\.list/);
   assert.doesNotMatch(html, /allow-same-origin/);
   assert.doesNotMatch(html, /\bfetch\s*\(/);
   assert.doesNotMatch(html, /type\s*=\s*['"]time['"]/);
@@ -50,7 +52,7 @@ test('ships a settings panel and a catalog of real provider ids', async () => {
   // A save in flight locks every control, so the async success path can clear
   // the draft without swallowing an edit made after the patch was read.
   assert.match(html, /function applyBusy\(\)/);
-  assert.match(html, /control\.disabled = saving \|\| control\.dataset\.locked === '1'/);
+  assert.match(html, /control\.disabled = saving \|\| control\.dataset\.locked === '1' \|\| control\.dataset\.connectionLocked === '1'/);
   const properties = manifest['x-kiki'].settings.schema.properties;
   assert.equal(properties.openai__cleared.hidden, true);
   assert.equal(properties.openai__removed.hidden, true);
@@ -61,7 +63,34 @@ test('ships a settings panel and a catalog of real provider ids', async () => {
   const source = catalog.sources.find((item) => item.id === 'openai');
   assert.deepEqual(source.providerIds, manifest['x-kiki'].mediaSources.find((item) => item.id === 'openai').providerIds);
   assert.ok(catalog.providers.some((item) => item.id === 'openai-image' && item.kinds.includes('image')));
+  assert.ok(catalog.providers.find((item) => item.id === 'openai-image').models.some((model) => model.id === 'gpt-image-1.5'));
+  const custom = await handlePanelRequest('catalog', {}, { settings: { ark__imageModel: 'endpoint-wire-model' } });
+  assert.deepEqual(custom.providers.find((item) => item.id === 'ark-image').models, [{ id: 'endpoint-wire-model', kind: 'image' }]);
   assert.deepEqual(await handlePanelRequest('nope'), { error: 'unknown action' });
+});
+
+test('marks only connection-replaceable required fields in every provider and prefixes them in unified Media', async () => {
+  const unified = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
+  const unifiedProperties = unified['x-kiki'].settings.schema.properties;
+  const annotated = [];
+  for (const vendor of ['openai', 'google', 'ark', 'xai', 'minimax', 'stepfun', 'novita', 'agnes', 'newapi', 'comfyui']) {
+    const manifest = JSON.parse(await readFile(new URL(`../../kiki-media-${vendor}/kimi.plugin.json`, import.meta.url), 'utf8'));
+    const properties = manifest['x-kiki'].settings.schema.properties;
+    const required = manifest['x-kiki'].settings.schema.required ?? [];
+    for (const [key, property] of Object.entries(properties)) {
+      const expected = required.includes(key) && ['apiKey', 'baseUrl'].includes(key) && properties.connectionId ? 'connectionId' : undefined;
+      assert.equal(property.requiredUnless, expected, `${manifest.name}.${key}`);
+      if (expected) {
+        assert.equal(manifest.version, '0.1.2');
+        assert.equal(manifest['x-kiki'].engines.kiki, '>=0.4.3');
+        const fullKey = `${vendor}__${key}`;
+        assert.equal(unifiedProperties[fullKey].requiredUnless, `${vendor}__connectionId`);
+        annotated.push(fullKey);
+      }
+    }
+  }
+  assert.equal(annotated.length, 9);
+  assert.deepEqual(Object.entries(unifiedProperties).filter(([, property]) => property.requiredUnless).map(([key]) => key).sort(), annotated.sort());
 });
 
 test('carries Chinese text for every field, and the panel reads it per locale', async () => {
@@ -335,6 +364,13 @@ function createDomHarness(htmlSource) {
   };
 }
 
+function answerConnections(h, result = { models: [], connections: [] }) {
+  const request = h.postedMessages.find((message) => message.method === 'plugin.models.list');
+  assert.ok(request, 'connection catalog request');
+  h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: true, result });
+  return request;
+}
+
 test('executes real settings.html script in simulated DOM: boot, render, save, error retention, secret undo, control lock, and retry', async () => {
   const html = await readFile(new URL('../settings.html', import.meta.url), 'utf8');
   const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
@@ -361,6 +397,7 @@ test('executes real settings.html script in simulated DOM: boot, render, save, e
     h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: callReq.id, ok: true, result: catalogFixture });
     h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: getReq.id, ok: true, result: viewFixture });
     await new Promise((r) => setTimeout(r, 0));
+    answerConnections(h);
 
     assert.equal(h.elements.get('loading').hidden, true);
     assert.equal(h.elements.get('content').hidden, false);
@@ -398,6 +435,7 @@ test('executes real settings.html script in simulated DOM: boot, render, save, e
     h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: callReq.id, ok: true, result: catalogFixture });
     h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: getReq.id, ok: true, result: viewFixture });
     await new Promise((r) => setTimeout(r, 0));
+    answerConnections(h);
 
     const input = h.elements.get('openai__baseUrl');
     input.value = 'https://custom.endpoint.test/v1';
@@ -424,6 +462,7 @@ test('executes real settings.html script in simulated DOM: boot, render, save, e
     h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: callReq.id, ok: true, result: catalogFixture });
     h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: getReq.id, ok: true, result: viewFixture });
     await new Promise((r) => setTimeout(r, 0));
+    answerConnections(h);
 
     const input = h.elements.get('openai__baseUrl');
     input.value = 'https://my-endpoint.example.com';
@@ -457,6 +496,7 @@ test('executes real settings.html script in simulated DOM: boot, render, save, e
     h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: callReq.id, ok: true, result: catalogFixture });
     h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: getReq.id, ok: true, result: viewFixture });
     await new Promise((r) => setTimeout(r, 0));
+    answerConnections(h);
 
     const input = h.elements.get('openai__baseUrl');
     input.value = 'https://lock-test.example.com';
@@ -509,3 +549,139 @@ test('executes real settings.html script in simulated DOM: boot, render, save, e
   }
 });
 
+
+
+async function bootWithConnections(html, catalog, view, connections) {
+  const h = createDomHarness(html);
+  h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'init', presentation: { locale: 'en' } });
+  const callReq = h.postedMessages.find((message) => message.method === 'plugin.call');
+  const getReq = h.postedMessages.find((message) => message.method === 'plugin.settings.get');
+  h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: callReq.id, ok: true, result: catalog });
+  h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: getReq.id, ok: true, result: view });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  answerConnections(h, { models: [], connections });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  return h;
+}
+
+test('connection choice locks but preserves local credentials, survives source tabs and saves only edited keys', async () => {
+  const html = await readFile(new URL('../settings.html', import.meta.url), 'utf8');
+  const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
+  const catalog = await handlePanelRequest('catalog');
+  const view = {
+    schema: manifest['x-kiki'].settings,
+    values: {
+      openai__enabled: true,
+      openai__baseUrl: 'https://own-openai.example.test/v1',
+      openai__imageModel: 'gpt-image-1.5',
+      google__baseUrl: 'https://own-google.example.test/v1beta',
+    },
+    secretsConfigured: ['openai__apiKey', 'google__apiKey'],
+  };
+  const h = await bootWithConnections(html, catalog, view, [
+    { id: 'openai-main', type: 'openai', status: 'ready', service: 'chat', authentication: 'api-key' },
+  ]);
+
+  const select = h.elements.get('openai__connectionId');
+  assert.equal(select.value, '');
+  assert.equal(select.children[0].textContent, 'Use my own endpoint and key');
+  select.value = 'openai-main';
+  select.onchange();
+  assert.equal(h.elements.get('openai__apiKey').disabled, true);
+  assert.equal(h.elements.get('openai__baseUrl').disabled, true);
+  assert.equal(h.elements.get('openai__imageModel').getAttribute('list'), 'openai__imageModel-models');
+  assert.ok(h.elements.get('openai__imageModel-models').children.some((option) => option.value === 'gpt-image-1.5'));
+
+  h.elements.get('chips').children.find((button) => button.textContent === 'Google Media').onclick();
+  assert.equal(h.elements.get('google__baseUrl').disabled, false);
+  h.elements.get('chips').children.find((button) => button.textContent === 'OpenAI Media').onclick();
+  assert.equal(h.elements.get('openai__connectionId').value, 'openai-main');
+  assert.equal(h.elements.get('openai__baseUrl').value, 'https://own-openai.example.test/v1');
+
+  const firstSave = h.elements.get('save').onclick();
+  const firstPatch = h.postedMessages.find((message) => message.method === 'plugin.settings.patch');
+  assert.deepEqual({ ...firstPatch.values }, { openai__connectionId: 'openai-main' });
+  const connectedView = { ...view, values: { ...view.values, openai__connectionId: 'openai-main' } };
+  h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: firstPatch.id, ok: true, result: connectedView });
+  await firstSave;
+  assert.equal(h.elements.get('openai__baseUrl').disabled, true);
+
+  h.elements.get('openai__connectionId').value = '';
+  h.elements.get('openai__connectionId').onchange();
+  assert.equal(h.elements.get('openai__apiKey').disabled, false);
+  assert.equal(h.elements.get('openai__baseUrl').disabled, false);
+  const secondSave = h.elements.get('save').onclick();
+  const patches = h.postedMessages.filter((message) => message.method === 'plugin.settings.patch');
+  const secondPatch = patches.at(-1);
+  assert.deepEqual({ ...secondPatch.values }, { openai__connectionId: null });
+  h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: secondPatch.id, ok: true, result: view });
+  await secondSave;
+  assert.equal(JSON.stringify(h.postedMessages).includes('fixture-secret'), false);
+});
+
+test('connection catalog failure keeps own credentials usable and retries without losing drafts', async () => {
+  const html = await readFile(new URL('../settings.html', import.meta.url), 'utf8');
+  const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
+  const catalog = await handlePanelRequest('catalog');
+  const view = {
+    schema: manifest['x-kiki'].settings,
+    values: { openai__enabled: true, openai__baseUrl: 'https://own.example.test/v1' },
+    secretsConfigured: ['openai__apiKey'],
+  };
+  const h = createDomHarness(html);
+  h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'init', presentation: { locale: 'en' } });
+  const callReq = h.postedMessages.find((message) => message.method === 'plugin.call');
+  const getReq = h.postedMessages.find((message) => message.method === 'plugin.settings.get');
+  h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: callReq.id, ok: true, result: catalog });
+  h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: getReq.id, ok: true, result: view });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const failed = h.postedMessages.find((message) => message.method === 'plugin.models.list');
+  h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: failed.id, ok: false, error: 'Connection catalog unavailable' });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(h.elements.get('content').hidden, false);
+  assert.equal(h.elements.get('openai__apiKey').disabled, false);
+  assert.equal(h.elements.get('openai__connectionId-error').textContent, 'Connection catalog unavailable');
+  h.elements.get('openai__baseUrl').value = 'https://draft.example.test/v1';
+  h.elements.get('openai__baseUrl').oninput();
+  h.elements.get('openai__connectionId-retry').onclick();
+  const retried = h.postedMessages.filter((message) => message.method === 'plugin.models.list').at(-1);
+  h.dispatchMessage({
+    channel: 'kiki.panel.v1', kind: 'response', id: retried.id, ok: true,
+    result: { models: [], connections: [{ id: 'recovered', type: 'openai', authentication: 'oauth' }] },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(h.elements.get('openai__baseUrl').value, 'https://draft.example.test/v1');
+  assert.equal(h.elements.get('openai__connectionId').children.some((option) => option.value === 'recovered'), true);
+  assert.equal(h.elements.get('source').querySelectorAll('button').some((button) => button.id === 'openai__connectionId-retry'), false);
+});
+
+test('secret clear and replacement are explicit patches and never reveal the stored value', async () => {
+  const html = await readFile(new URL('../settings.html', import.meta.url), 'utf8');
+  const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
+  const catalog = await handlePanelRequest('catalog');
+  const view = {
+    schema: manifest['x-kiki'].settings,
+    values: { openai__enabled: true, openai__baseUrl: 'https://own.example.test/v1' },
+    secretsConfigured: ['openai__apiKey'],
+  };
+  const h = await bootWithConnections(html, catalog, view, []);
+  h.elements.get('content').querySelectorAll('button').find((button) => button.dataset.secretClear === 'openai__apiKey').onclick();
+  const clearingSave = h.elements.get('save').onclick();
+  const clearing = h.postedMessages.filter((message) => message.method === 'plugin.settings.patch').at(-1);
+  assert.deepEqual({ ...clearing.values }, { openai__apiKey: null });
+  const clearedView = { ...view, secretsConfigured: [] };
+  h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: clearing.id, ok: true, result: clearedView });
+  await clearingSave;
+
+  const input = h.elements.get('openai__apiKey');
+  assert.equal(input.value, '');
+  input.value = 'fixture-replacement-secret';
+  input.oninput();
+  const replacingSave = h.elements.get('save').onclick();
+  const replacing = h.postedMessages.filter((message) => message.method === 'plugin.settings.patch').at(-1);
+  assert.deepEqual({ ...replacing.values }, { openai__apiKey: 'fixture-replacement-secret' });
+  h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: replacing.id, ok: true, result: view });
+  await replacingSave;
+  assert.equal(h.elements.get('openai__apiKey').value, '');
+});

@@ -1,6 +1,6 @@
 {
   "name": "kiki-media-minimax",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "MiniMax portrait-reference images, H3/H3-Max video and HTTP/SSE file speech with optional subtitles. No CLI/OAuth/runtime dependency or implicit long-text paid splitting.",
   "license": "MIT",
   "interface": {
@@ -9,7 +9,7 @@
   },
   "x-kiki": {
     "engines": {
-      "kiki": "^0.4.0"
+      "kiki": ">=0.4.3"
     },
     "entry": "./entry.mjs",
     "permissions": {
@@ -35,7 +35,8 @@
           "apiKey": {
             "type": "string",
             "title": "API key",
-            "secret": true
+            "secret": true,
+            "requiredUnless": "connectionId"
           },
           "baseUrl": {
             "type": "string",

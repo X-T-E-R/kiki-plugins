@@ -1,6 +1,6 @@
 {
   "name": "kiki-media-newapi",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Optional NewAPI /video/generations compatible gateway adapter. Model availability and audio generation depend on your endpoint.",
   "license": "MIT",
   "interface": {
@@ -9,7 +9,7 @@
   },
   "x-kiki": {
     "engines": {
-      "kiki": "^0.4.0"
+      "kiki": ">=0.4.3"
     },
     "entry": "./entry.mjs",
     "permissions": {
@@ -39,7 +39,8 @@
           },
           "baseUrl": {
             "type": "string",
-            "title": "Compatible API base URL"
+            "title": "Compatible API base URL",
+            "requiredUnless": "connectionId"
           },
           "videoModel": {
             "type": "string",

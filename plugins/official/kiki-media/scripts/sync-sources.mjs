@@ -109,7 +109,9 @@ for (const vendor of vendors) {
   const label = original.interface.displayName;
   const groupTitle = ZH_GROUPS[vendor];
   for (const [key, property] of Object.entries(original['x-kiki'].settings.schema.properties)) {
-    properties[prefix + key] = localized({ ...property, group: vendor, groupTitle: label }, groupTitle);
+    const projected = { ...property, group: vendor, groupTitle: label };
+    if (projected.requiredUnless) projected.requiredUnless = prefix + projected.requiredUnless;
+    properties[prefix + key] = localized(projected, groupTitle);
   }
   properties[prefix + 'maxConcurrentRequests'] = localized({ type: 'number', default: 8, title: 'Maximum concurrent provider requests', description: 'Concurrent submit or poll requests per provider; use a positive integer.', group: vendor, groupTitle: label }, groupTitle);
   properties[prefix + 'enabled'] = localized({ type: 'boolean', default: true, title: 'Enabled', group: vendor, groupTitle: label }, groupTitle);
@@ -126,7 +128,8 @@ for (const [key, kind] of [['defaultImageProvider', 'image'], ['defaultVideoProv
   if (properties[key]) properties[key] = localized({ ...properties[key], enum: idsFor(kind) });
 }
 properties.scriptSources = localized({ type: 'string', default: '[]', title: 'Custom media scripts', multiline: true, advanced: true });
-manifest.version = '0.2.2';
+manifest.version = '0.2.3';
+manifest['x-kiki'].engines.kiki = '>=0.4.3';
 manifest['x-kiki'].mediaProviders = providers;
 manifest['x-kiki'].mediaSources = sources;
 manifest['x-kiki'].mediaScriptProvider = 'custom-script';
