@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cockpit OAuth</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --paper: #fbfaf6;
+  --panel: #fffdfa;
+  --ink: #1b1a17;
+  --soft: #4b453e;
+  --faint: #665e54;
+  --line: #e4ddd0;
+  --line-strong: #cdc3b1;
+  --accent: #c8401a;
+  --accent-deep: #9c3012;
+  --on-accent: #fff;
+  --ok: #2f6b45;
+  --selected: #1d4d6d;
+  --danger: #b0261e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1b2226; --panel: #252d31; --ink: #eeEae2; --soft: #c1c5c5;
+    --faint: #a2acaf; --line: #354047; --line-strong: #596870;
+    --accent: #eb946f; --accent-deep: #f4ae8d; --on-accent: #261a14;
+    --ok: #9ac6ae; --selected: #a3cbde; --danger: #f1a29a;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font: 13px/1.5 'Instrument Sans', ui-sans-serif, system-ui, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+main { max-width: 700px; margin: 0 auto; padding: 22px 20px 44px; }
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+h1 { margin: 0; font-size: 19px; font-weight: 500; letter-spacing: -.01em; }
+header p { flex: 1 1 100%; margin: -5px 0 0; color: var(--faint); }
+button {
+  min-height: 34px; border: 1px solid var(--line-strong); border-radius: 7px;
+  padding: 0 13px; background: transparent; color: var(--ink); font: inherit;
+  cursor: pointer; transition: background-color .15s ease, border-color .15s ease;
+}
+button.primary { border-color: transparent; background: var(--accent); color: var(--on-accent); }
+button.primary:hover:not(:disabled) { background: var(--accent-deep); }
+button:hover:not(:disabled) { background: rgb(27 26 23 / .06); }
+button:disabled { cursor: default; opacity: .5; }
+button:focus-visible { outline: 2px solid var(--selected); outline-offset: 2px; }
+.rule { height: 1px; margin: 17px 0; border: 0; background: var(--line); }
+.status { min-height: 1.4em; color: var(--faint); }
+.status.error { color: var(--danger); }
+.status.ok { color: var(--ok); }
+section { margin-top: 18px; }
+.section-head { display: flex; align-items: baseline; gap: 10px; }
+h2 { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--soft); }
+.section-head span { margin-left: auto; color: var(--faint); font-size: 12px; }
+dl { display: grid; grid-template-columns: minmax(130px, .3fr) minmax(0, 1fr); gap: 0; margin: 8px 0 0; border-top: 1px solid var(--line); }
+dt, dd { min-width: 0; margin: 0; padding: 8px 0; border-bottom: 1px solid var(--line); }
+dt { color: var(--soft); }
+dd { overflow-wrap: anywhere; color: var(--ink); }
+code { font: 12px/1.45 'JetBrains Mono', ui-monospace, Consolas, monospace; }
+.empty { margin: 9px 0 0; color: var(--faint); }
+.account { margin-top: 10px; padding: 11px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; }
+.account h3 { margin: 0; font-size: 14px; font-weight: 550; }
+.account .engine { color: var(--faint); font: 11.5px 'JetBrains Mono', ui-monospace, Consolas, monospace; }
+ul { list-style: none; margin: 8px 0 0; padding: 0; border-top: 1px solid var(--line); }
+li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+li .label { flex: 1 1 180px; overflow-wrap: anywhere; }
+li .id { color: var(--faint); font: 11.5px 'JetBrains Mono', ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
+.badge { padding: 2px 7px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--soft); font-size: 11px; }
+.badge.ready { border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); color: var(--ok); }
+.badge.signed_out { color: var(--faint); }
+.badge.disabled { color: var(--danger); }
+.note { margin: 8px 0 0; color: var(--danger); overflow-wrap: anywhere; }
+@media (pointer: coarse) { button { min-height: 44px; } }
+@media (max-width: 520px) { main { padding: 18px 14px 34px; } dl { grid-template-columns: 1fr; } dt { padding-bottom: 2px; border-bottom: 0; } dd { padding-top: 0; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Cockpit OAuth</h1>
+      <p>Use a Cockpit account when adding an AGY or Codex instance.</p>
+    </div>
+    <button class="primary" id="refresh" type="button">Refresh accounts</button>
+  </header>
+  <p class="status" id="status" role="status" aria-live="polite">Waiting for Kiki.</p>
+  <hr class="rule">
+  <section>
+    <div class="section-head"><h2>Backend configuration</h2></div>
+    <dl id="configuration"></dl>
+  </section>
+  <section>
+    <div class="section-head"><h2>Accounts</h2><span id="account-count"></span></div>
+    <div id="accounts"></div>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const CHANNEL = 'kiki.panel.v1';
+  const pending = new Map();
+  let sequence = 0;
+  let refreshing = false;
+  const $ = (id) => document.getElementById(id);
+  const text = (value, empty = 'Not configured') => value === undefined || value === null || value === '' ? empty : String(value);
+  const statusLabel = (value) => ({ ready: 'Ready', signed_out: 'Signed out', disabled: 'Disabled' }[value] || String(value || 'Unknown'));
+  function note(message, tone) { $('status').textContent = message || ''; $('status').className = 'status' + (tone ? ' ' + tone : ''); }
+  function request(action, args) {
+    const id = ++sequence;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { pending.delete(id); reject(new Error('The Kiki panel did not receive a response.')); }, 12000);
+      pending.set(id, (message) => {
+        clearTimeout(timer); pending.delete(id);
+        if (!message || message.ok !== true) { reject(new Error(typeof message?.error === 'string' ? message.error : 'The plugin did not answer.')); return; }
+        resolve(message.result);
+      });
+      try { window.parent.postMessage({ channel: CHANNEL, kind: 'request', id, method: 'plugin.call', action, args: args || {} }, '*'); }
+      catch (error) { clearTimeout(timer); pending.delete(id); reject(error); }
+    });
+  }
+  window.addEventListener('message', (event) => {
+    if (event.source !== window.parent || !event.data || event.data.channel !== CHANNEL) return;
+    if (event.data.kind === 'response') pending.get(event.data.id)?.(event.data);
+    if (event.data.kind === 'init') void refresh();
+  });
+  function renderConfiguration(configuration) {
+    const root = $('configuration'); root.replaceChildren();
+    for (const [label, key] of [['Backend executable', 'backendPath'], ['Cockpit sidecar', 'sidecarPath'], ['Data directory', 'dataDir']]) {
+      const dt = document.createElement('dt'); dt.textContent = label;
+      const dd = document.createElement('dd'); const code = document.createElement('code'); code.textContent = text(configuration?.[key], key === 'dataDir' ? 'Cockpit default store' : 'Not configured'); dd.append(code);
+      root.append(dt, dd);
+    }
+  }
+  function renderAccounts(accounts) {
+    const root = $('accounts'); root.replaceChildren();
+    let total = 0;
+    for (const account of Array.isArray(accounts) ? accounts : []) {
+      const article = document.createElement('article'); article.className = 'account';
+      const heading = document.createElement('h3'); heading.textContent = account.label || account.engineId || 'Harness';
+      const engine = document.createElement('div'); engine.className = 'engine'; engine.textContent = account.engineId || '';
+      article.append(heading, engine);
+      const items = Array.isArray(account.items) ? account.items : [];
+      total += items.length;
+      if (items.length) {
+        const list = document.createElement('ul');
+        for (const item of items) {
+          const row = document.createElement('li');
+          const label = document.createElement('span'); label.className = 'label'; label.textContent = item.label || 'Unnamed account';
+          const id = document.createElement('span'); id.className = 'id'; id.textContent = item.id || '';
+          const badge = document.createElement('span'); badge.className = 'badge ' + (item.status || ''); badge.textContent = statusLabel(item.status);
+          row.append(label, id, badge); list.append(row);
+        }
+        article.append(list);
+      } else {
+        const empty = document.createElement('p'); empty.className = 'empty'; empty.textContent = account.error || 'No account metadata returned.'; article.append(empty);
+      }
+      if (account.error && items.length) { const error = document.createElement('p'); error.className = 'note'; error.textContent = account.error; article.append(error); }
+      root.append(article);
+    }
+    $('account-count').textContent = total ? total + ' account' + (total === 1 ? '' : 's') : '';
+  }
+  async function refresh() {
+    if (refreshing) return;
+    refreshing = true; $('refresh').disabled = true; note('Refreshing account metadata…');
+    try {
+      const result = await request('refresh');
+      renderConfiguration(result?.configuration); renderAccounts(result?.accounts);
+      const failed = result?.accounts?.filter(account => account.error).length ?? 0;
+      if (failed) note(failed === result.accounts.length ? 'Could not load Cockpit accounts.' : 'Some accounts could not be loaded.', 'error');
+      else note('Accounts refreshed.', 'ok');
+    } catch (error) {
+      note(error?.message || 'The plugin did not answer.', 'error');
+    } finally { refreshing = false; $('refresh').disabled = false; }
+  }
+  $('refresh').addEventListener('click', () => { void refresh(); });
+})();
+</script>
+</body>
+</html>

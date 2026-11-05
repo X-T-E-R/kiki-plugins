@@ -1,0 +1,72 @@
+{
+  "name": "cockpit-harness-oauth",
+  "version": "0.1.0",
+  "description": "Optional Cockpit OAuth account source for AGY CLI and Codex app-server harnesses.",
+  "license": "MIT",
+  "interface": {
+    "displayName": "Cockpit OAuth",
+    "shortDescription": "Use configured Cockpit OAuth accounts with AGY and Codex"
+  },
+  "x-kiki": {
+    "engines": { "kiki": ">=0.4.2" },
+    "entry": "./entry.mjs",
+    "permissions": {
+      "fs": "outside",
+      "exec": ["cockpit-harness-oauth", "cockpit-harness-oauth.exe"],
+      "uiPanel": true
+    },
+    "prerequisites": {
+      "schemaVersion": 1,
+      "items": [
+        {
+          "id": "cockpit-harness-oauth",
+          "kind": "executable",
+          "required": true,
+          "executionHost": "plugin-runtime",
+          "setting": "backendPath",
+          "capabilityImpact": ["cockpit-harness-account-source"]
+        }
+      ]
+    },
+    "settings": {
+      "schemaVersion": 1,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "backendPath": {
+            "type": "string",
+            "title": "cockpit-harness-oauth executable",
+            "description": "Absolute path to the separately installed cockpit-harness-oauth[.exe] backend."
+          },
+          "sidecarPath": {
+            "type": "string",
+            "title": "Cockpit sidecar path",
+            "description": "Absolute path to the configured Cockpit sidecar used by the backend."
+          },
+          "dataDir": {
+            "type": "string",
+            "title": "Cockpit data directory",
+            "description": "Optional absolute data directory passed to the backend."
+          }
+        }
+      }
+    },
+    "harnessAccountSources": [
+      {
+        "schemaVersion": 1,
+        "id": "cockpit-oauth",
+        "label": "Cockpit OAuth",
+        "engineIds": ["agy-cli", "codex-app-server"]
+      }
+    ],
+    "panels": [
+      {
+        "schemaVersion": 1,
+        "id": "cockpit-oauth",
+        "label": "Cockpit OAuth",
+        "slot": "settings",
+        "path": "./panel.html"
+      }
+    ]
+  }
+}
