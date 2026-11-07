@@ -6,7 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import manifest from '../kimi.plugin.json' with { type: 'json' };
-import { antigravityQuotaSourceDefinition, magpieQuotaService, register } from '../entry.mjs';
+import { antigravityQuotaSourceDefinition, register } from '../entry.mjs';
 import {
   MagpieQuotaService,
   mapMagpieAccountRows,
@@ -63,7 +63,7 @@ const FIXTURE_MAGPIE_ACCOUNTS = [
     active: false,
     on: true,
     seat: 'Seat 2',
-    asOf: '2026-11-07T02:58:00Z',
+    readAt: '2026-11-07T02:58:00Z',
     windows: [
       {
         name: 'Gemini 4 Argon · 7 days',
@@ -84,6 +84,39 @@ const FIXTURE_MAGPIE_ACCOUNTS = [
         unlimited: true,
         used: 0,
         remaining: 100,
+      },
+    ],
+  },
+  {
+    agent: 'antigravity',
+    user: 'stale-asof@example.test',
+    active: false,
+    on: true,
+    error: 'quota request failed',
+    readAt: '2026-11-06T00:00:00Z',
+    asOf: '2026-11-06T00:00:00Z',
+    windows: [
+      {
+        name: 'Gemini 4 Argon · 7 days',
+        pool: 'Gemini 4 Argon',
+        used: 12,
+        remaining: 88,
+        resetsAt: '2026-11-12T00:00:00Z',
+      },
+    ],
+  },
+  {
+    agent: 'antigravity',
+    user: 'asof-only@example.test',
+    active: false,
+    on: true,
+    asOf: '2026-11-06T05:00:00Z',
+    windows: [
+      {
+        name: 'Gemini · 5 hours',
+        pool: 'Gemini',
+        used: 10,
+        remaining: 90,
       },
     ],
   },
@@ -138,10 +171,9 @@ test('manifest and entry registration match the exact harnessQuotaSources contra
   assert.equal(registered.length, 1);
   assert.deepEqual(registered[0].definition, declaredSource);
   assert.equal(typeof registered[0].adapter.read, 'function');
-  assert.equal(magpieQuotaService.cache, undefined);
 });
 
-test('maps pooled Magpie windows via explicit modelWindows, preserves 0 vs unknown, and keeps unmapped pools display-only', () => {
+test('maps pooled Magpie windows via explicit modelWindows, marks stale asOf/error readings unknown while preserving timestamps, and keeps 0 vs unknown distinct', () => {
   const modelWindows = JSON.stringify({
     'claude-opus-5-5-high': { pool: 'Claude & GPT', name: '5 hours' },
     'claude-sonnet-4-6': { pool: 'Claude & GPT', name: '5 hours' },
@@ -182,7 +214,7 @@ test('maps pooled Magpie windows via explicit modelWindows, preserves 0 vs unkno
   assert.equal(gemini5h.modelIds, undefined);
   assert.equal(gemini5h.remaining, 90);
 
-  // Exhausted Argon pool on work-a keeps genuine 0 remaining, while work-b has 75 remaining and uses asOf/seat fallback.
+  // Exhausted Argon pool on work-a keeps genuine 0 remaining, while healthy work-b has 75 remaining.
   const argonA = readings.find((r) => r.accountId === 'work-a@example.test' && r.pool === 'Gemini 4 Argon');
   assert.equal(argonA.remaining, 0);
   assert.deepEqual(argonA.modelIds, ['gemini-4-argon-high', 'gemini-4-argon-medium']);
@@ -191,6 +223,19 @@ test('maps pooled Magpie windows via explicit modelWindows, preserves 0 vs unkno
   assert.equal(argonB.remaining, 75);
   assert.equal(argonB.accountLabel, 'Seat 2');
   assert.equal(argonB.readAt, '2026-11-07T02:58:00.000Z');
+
+  // Magpie login_usage.go:43-55 contract: error + readAt + asOf retains timestamp, but old 88% window is NOT usable current quota.
+  const staleAsOf = readings.find((r) => r.accountId === 'stale-asof@example.test');
+  assert.equal(staleAsOf.remaining, undefined);
+  assert.equal(staleAsOf.unit, undefined);
+  assert.equal(staleAsOf.readAt, '2026-11-06T00:00:00.000Z');
+  assert.equal(staleAsOf.resetsAt, '2026-11-12T00:00:00.000Z');
+  assert.deepEqual(staleAsOf.modelIds, ['gemini-4-argon-high', 'gemini-4-argon-medium']);
+
+  // asOf without explicit error is also a held fallback from a failed refresh -> remaining must be undefined, readAt preserved from asOf.
+  const asOfOnly = readings.find((r) => r.accountId === 'asof-only@example.test');
+  assert.equal(asOfOnly.remaining, undefined);
+  assert.equal(asOfOnly.readAt, '2026-11-06T05:00:00.000Z');
 
   // Text-only and unlimited windows never fabricate numeric remaining (neither 100 nor 0).
   const promo = readings.find((r) => r.accountId === 'work-b@example.test' && r.window === 'Promo Note');
@@ -239,20 +284,21 @@ test('preserves unpooled per-model fallback windows when retrieveUserQuotaSummar
   ]);
 });
 
-test('batches all accounts into one CLI invocation, coalesces concurrent reads (single-flight), and respects the 5-minute refresh interval', async () => {
-  let clock = 1_000_000;
+test('batches all accounts into one CLI invocation and propagates AbortSignal cancellation cleanly', async () => {
   let calls = 0;
   const seenArgs = [];
   const seenHomes = [];
 
   const service = new MagpieQuotaService({
-    now: () => clock,
-    minRefreshIntervalMs: 300_000,
     execCommand: async (executable, args, options) => {
       calls += 1;
       seenArgs.push({ executable, args });
       seenHomes.push(options.env.HOME);
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      if (options.signal?.aborted) {
+        const err = new Error('aborted');
+        err.code = 'ABORT_ERR';
+        throw err;
+      }
       return { stdout: JSON.stringify(FIXTURE_MAGPIE_ACCOUNTS), stderr: '' };
     },
   });
@@ -268,36 +314,22 @@ test('batches all accounts into one CLI invocation, coalesces concurrent reads (
     },
   };
 
-  // Three concurrent callers share one single-flight CLI read.
-  const [r1, r2, r3] = await Promise.all([
-    service.adapter.read(context),
-    service.adapter.read(context),
-    service.adapter.read(context),
-  ]);
+  const result = await service.adapter.read(context);
   assert.equal(calls, 1);
   assert.deepEqual(seenArgs[0], {
     executable: magpiePath,
     args: ['accounts', 'antigravity', '--json'],
   });
   assert.equal(seenHomes[0], path.resolve('/home/tester'));
-  assert.deepEqual(r1, r2);
-  assert.deepEqual(r2, r3);
+  assert.ok(result.length > 0);
 
-  // Within 5 minutes, returns cached snapshot without invoking CLI again.
-  clock += 299_999;
-  const cached = await service.adapter.read(context);
+  const abortedController = new AbortController();
+  abortedController.abort();
+  await assert.rejects(
+    service.adapter.read({ ...context, signal: abortedController.signal }),
+    { code: 'ABORT_ERR' },
+  );
   assert.equal(calls, 1);
-  assert.deepEqual(cached, r1);
-
-  // Mutating returned array does not corrupt internal cache.
-  cached[0].remaining = 999;
-  const cachedAgain = await service.adapter.read(context);
-  assert.notEqual(cachedAgain[0].remaining, 999);
-
-  // After 5 minutes, refreshes once.
-  clock += 2;
-  await service.adapter.read(context);
-  assert.equal(calls, 2);
 });
 
 test('executes a synthetic CLI script once in a temporary directory and validates settings errors cleanly', async () => {

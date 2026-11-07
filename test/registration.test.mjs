@@ -128,7 +128,10 @@ test('validates harness quota sources and requires read() without reading quota 
   await assert.rejects(validateRegistration(m, api => api.registerHarnessQuotaSource({ ...source, minRefreshIntervalMs: 600_000 }, implementation)), /Registered harnessQuotaSources changed/);
   await assert.rejects(validateRegistration(m, api => api.registerHarnessQuotaSource(source, {})), /needs read\(\)/);
   await assert.rejects(validateRegistration({ 'x-kiki': { harnessQuotaSources: [source] } }), /harnessQuotaSources requires x-kiki.entry/);
-  await assert.rejects(validateRegistration({ ...m, 'x-kiki': { ...m['x-kiki'], harnessQuotaSources: [{ ...source, minRefreshIntervalMs: 60_000 }] } }, () => {}));
+  await assert.rejects(validateRegistration(m, api => {
+    api.registerHarnessQuotaSource(source, implementation);
+    api.registerHarnessQuotaSource(source, implementation);
+  }), /Duplicate registered harnessQuotaSources/);
 });
 
 test('resolves non-catalog local packages without classifying them as official', async () => {

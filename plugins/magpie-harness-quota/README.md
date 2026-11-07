@@ -4,7 +4,7 @@ Read Antigravity (`agy-cli`) account quota windows through the official `magpie`
 
 ## Source ID & Host Configuration
 
-Registers `plugin:magpie-harness-quota/antigravity` with a 5-minute (`300000` ms) minimum refresh interval and single-flight batch reads across all configured Antigravity accounts.
+Registers `plugin:magpie-harness-quota/antigravity` with `minRefreshIntervalMs: 300000` (5 minutes). Refresh throttling and single-flight caching are owned by the Kiki Host; each plugin `read()` executes a single batch CLI read across all configured Antigravity accounts and respects `AbortSignal` cancellation.
 
 To enable automatic instance selection on AGY CLI while keeping `main` as the fallback when quota is unknown:
 
@@ -32,7 +32,7 @@ Bind each named `agent_executor_instances` entry's `quota_account_id` to the exa
 }
 ```
 
-Pooled readings without a matching `modelWindows` entry omit `modelIds` so they remain visible in quota displays without misrouting requests. Unknown, lapsed, unlimited, or text-only windows retain `remaining: undefined` rather than fabricating `0` or an infinite value.
+Pooled readings without a matching `modelWindows` entry omit `modelIds` so they remain visible in quota displays without misrouting requests. Unknown, lapsed, unlimited, text-only, or error/stale fallback (`asOf` / `error`) windows retain `readAt`/`asOf` timestamps with `remaining: undefined` rather than fabricating `0` or using stale readings as live schedulable quota.
 
 ## Install & Disable
 

@@ -81,6 +81,7 @@ export function normalizeCandidateDefinition(raw, index = 0) {
     ...(typeof raw.family === 'string' && raw.family.trim() ? { family: raw.family.trim().toLowerCase() } : {}),
     defaultRank: Number.isInteger(raw.defaultRank) && raw.defaultRank >= 0 ? raw.defaultRank : index * 10,
     isRoleDefault: raw.isRoleDefault === true,
+    ...(typeof raw.available === 'boolean' ? { available: raw.available } : {}),
     ...(Array.isArray(raw.allowedModels) ? { allowedModels: sanitizeStringList(raw.allowedModels, 128) } : {}),
     ...(Array.isArray(raw.deniedModels) ? { deniedModels: sanitizeStringList(raw.deniedModels, 128) } : {}),
   };
@@ -119,6 +120,9 @@ function sanitizeStoredState(parsed) {
         id: group.trim(),
         label: typeof entry.label === 'string' && entry.label.trim() ? entry.label.trim() : group.trim(),
         protectedRoleDefault: entry.protectedRoleDefault === true,
+        ...(typeof entry.defaultRole === 'string' && entry.defaultRole.trim()
+          ? { defaultRole: entry.defaultRole.trim() }
+          : {}),
         candidates,
         updatedAt: typeof entry.updatedAt === 'string' ? entry.updatedAt : null,
       };
@@ -136,14 +140,23 @@ function sanitizeStoredState(parsed) {
 // Per-file in-process serialization so concurrent mutations never interleave temp renames.
 const writeQueues = new Map();
 
+export function getActiveWriteQueueCountForTesting() {
+  return writeQueues.size;
+}
+
 function enqueueFileMutation(filePath, fn) {
   const key = path.resolve(filePath);
   const previous = writeQueues.get(key) ?? Promise.resolve();
-  const next = previous.catch(() => undefined).then(fn);
-  writeQueues.set(key, next.finally(() => {
-    if (writeQueues.get(key) === next) writeQueues.delete(key);
-  }));
-  return next;
+  const tracked = previous
+    .catch(() => undefined)
+    .then(fn)
+    .finally(() => {
+      if (writeQueues.get(key) === tracked) {
+        writeQueues.delete(key);
+      }
+    });
+  writeQueues.set(key, tracked);
+  return tracked;
 }
 
 export class PreferenceStore {

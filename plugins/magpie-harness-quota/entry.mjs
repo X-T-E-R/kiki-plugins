@@ -1,9 +1,7 @@
 import { antigravityQuotaSourceDefinition, harnessQuotaSourceDefinitions } from './lib/definitions.mjs';
 import { MagpieQuotaService } from './lib/magpie.mjs';
 
-const service = new MagpieQuotaService({
-  minRefreshIntervalMs: antigravityQuotaSourceDefinition.minRefreshIntervalMs,
-});
+const service = new MagpieQuotaService();
 
 export function register(api) {
   if (typeof api?.registerHarnessQuotaSource !== 'function') {

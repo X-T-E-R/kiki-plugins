@@ -4,18 +4,8 @@ import { sessionSourceDefinitionSchema } from '@kiki/plugin-sdk/session-import';
 import { mediaProviderDefinitionSchema } from '@kiki/plugin-sdk/media';
 import { pluginImAdapterDefinitionSchema } from '@kiki/plugin-sdk/im';
 import { harnessAccountSourceDefinitionSchema } from '@kiki/plugin-sdk/harness-account';
-import { z } from 'zod';
 
 const sdkHarnessQuota = await import('@kiki/plugin-sdk/harness-quota').catch(() => undefined);
-const fallbackQuotaId = z.string().min(1).max(1024).regex(/^[^\s\u0000]+$/);
-// Temporary schema until @kiki/plugin-sdk/harness-quota artifact is bumped in vendor/.
-const harnessQuotaSourceDefinitionSchema = sdkHarnessQuota?.harnessQuotaSourceDefinitionSchema ?? z.object({
-  schemaVersion: z.literal(1),
-  id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
-  label: z.string().min(1),
-  engineIds: z.array(fallbackQuotaId).min(1).refine((ids) => new Set(ids).size === ids.length, 'Duplicate engine id'),
-  minRefreshIntervalMs: z.number().int().min(300_000).optional(),
-}).strict();
 
 const contributions = [
   { field: 'tools', method: 'registerTool', key: 'name' },
@@ -23,7 +13,7 @@ const contributions = [
   { field: 'mediaProviders', method: 'registerMediaProvider', key: 'id', schema: mediaProviderDefinitionSchema },
   { field: 'imAdapters', method: 'registerImAdapter', key: 'id', schema: pluginImAdapterDefinitionSchema },
   { field: 'harnessAccountSources', method: 'registerHarnessAccountSource', key: 'id', schema: harnessAccountSourceDefinitionSchema },
-  { field: 'harnessQuotaSources', method: 'registerHarnessQuotaSource', key: 'id', schema: harnessQuotaSourceDefinitionSchema },
+  { field: 'harnessQuotaSources', method: 'registerHarnessQuotaSource', key: 'id', schema: sdkHarnessQuota?.harnessQuotaSourceDefinitionSchema },
 ];
 
 const adapterMethods = {

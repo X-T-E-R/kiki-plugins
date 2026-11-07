@@ -201,9 +201,9 @@ function accountLabelOf(row) {
  *
  * Rules:
  * - Binds `accountId` to the exact CLI `user`.
- * - Preserves `remaining`, `resetsAt`, `readAt` (falling back to `asOf` when Magpie serves a cached reading),
- *   and retains `undefined` (unknown) when an account has `lapsed`, `error` with empty windows, `text`, or `unlimited`,
- *   never fabricating `0` or an infinite number. `0` is preserved only when genuinely reported as exhausted.
+ * - Preserves `remaining`, `resetsAt`, `readAt` (falling back to `asOf`), and retains `undefined` (unknown)
+ *   whenever Magpie marks the reading as failed or held from before (`lapsed`, `error`, or `asOf != nil` per
+ *   `internal/provider/login_usage.go:43-55`), or when a window is `text` or `unlimited`.
  * - Uses `modelWindows` to map exact native model IDs onto pooled/named windows; omits `modelIds` on a pooled reading
  *   when unmapped so it can be displayed without routing misattribution.
  */
@@ -224,11 +224,15 @@ export function mapMagpieAccountRows(rows, { engineId = 'agy-cli', agent = 'anti
     }
     const accountId = row.user.trim();
     const accountLabel = accountLabelOf(row);
-    const readAt = normalizeIsoTimestamp(row.readAt) ?? normalizeIsoTimestamp(row.asOf);
+    const asOf = normalizeIsoTimestamp(row.asOf);
+    const readAt = normalizeIsoTimestamp(row.readAt) ?? asOf;
     const windows = Array.isArray(row.windows) ? row.windows : [];
-    const isLapsed = typeof row.lapsed === 'string' && row.lapsed.trim().length > 0;
-    const isStaleFallback = typeof row.error === 'string' && row.error.trim().length > 0 && !row.readAt;
-    const hasHardAccountFailure = isLapsed || isStaleFallback;
+    const hasLapsed = typeof row.lapsed === 'string' && row.lapsed.trim().length > 0;
+    const hasError = typeof row.error === 'string' && row.error.trim().length > 0;
+    const hasAsOfFallback = asOf !== undefined || (row.asOf !== undefined && row.asOf !== null && String(row.asOf).trim() !== '');
+    // Per Magpie login_usage.go:43-55, AsOf != nil or Error != "" means the latest read failed
+    // and any windows shown are stale fallback values, never usable as current schedulable quota.
+    const isUnusableAccountReading = hasLapsed || hasError || hasAsOfFallback;
 
     if (windows.length === 0) {
       const reading = {
@@ -246,7 +250,7 @@ export function mapMagpieAccountRows(rows, { engineId = 'agy-cli', agent = 'anti
       const pool = cleanSingleLine(span.pool, 'window.pool');
       const windowLabel = normalizeWindowLabel(span.name, pool);
       const resetsAt = normalizeIsoTimestamp(span.resetsAt) ?? normalizeIsoTimestamp(span.runsOutAt);
-      const metrics = hasHardAccountFailure ? { unit: undefined, remaining: undefined } : extractWindowMetrics(span);
+      const metrics = isUnusableAccountReading ? { unit: undefined, remaining: undefined } : extractWindowMetrics(span);
       const mappedIds = resolveMappedModelIds(span, windowLabel, map);
 
       let modelIds;
@@ -314,21 +318,16 @@ function defaultExecCommand(executable, args, options) {
   });
 }
 
+/**
+ * Single-shot batch reader for Magpie `accounts antigravity --json`.
+ * Refresh throttling and single-flight caching are owned by the Kiki Host.
+ */
 export class MagpieQuotaService {
-  constructor({ execCommand = defaultExecCommand, now = () => Date.now(), minRefreshIntervalMs = 300_000 } = {}) {
+  constructor({ execCommand = defaultExecCommand } = {}) {
     this.execCommand = execCommand;
-    this.now = now;
-    this.minRefreshIntervalMs = minRefreshIntervalMs;
-    this.inFlight = undefined;
-    this.inFlightKey = undefined;
-    this.cache = undefined;
     this.adapter = {
       read: (context) => this.read(context),
     };
-  }
-
-  #cacheKey(executable, osHome, modelWindowsRaw) {
-    return JSON.stringify([executable, osHome ?? '', typeof modelWindowsRaw === 'string' ? modelWindowsRaw.trim() : modelWindowsRaw ?? '']);
   }
 
   async read(context = {}) {
@@ -339,100 +338,25 @@ export class MagpieQuotaService {
     const executable = resolveMagpieExecutable(settings);
     const modelWindows = parseModelWindows(settings.modelWindows);
     const osHome = cleanSingleLine(context?.osHome, 'osHome', { maxLength: 16_384 });
-    const key = this.#cacheKey(executable, osHome, settings.modelWindows);
+    const env = buildCliEnvironment(osHome);
 
-    const currentTime = this.now();
-    if (this.cache && this.cache.key === key && (currentTime - this.cache.fetchedAt) < this.minRefreshIntervalMs) {
-      return structuredClone(this.cache.readings);
-    }
+    const { stdout } = await this.execCommand(
+      executable,
+      ['accounts', 'antigravity', '--json'],
+      { signal, env, timeoutMs: DEFAULT_TIMEOUT_MS },
+    );
+    if (signal?.aborted) throw abortError();
 
-    if (this.inFlight && this.inFlightKey === key) {
-      return this.#awaitWithSignal(this.inFlight, signal);
-    }
-
-    const controller = new AbortController();
-    const waiters = new Set();
-    const releaseWaiter = (waiter) => {
-      waiters.delete(waiter);
-      if (waiters.size === 0 && !settled) {
-        controller.abort();
-      }
-    };
-
-    let settled = false;
-    const flight = (async () => {
-      try {
-        const env = buildCliEnvironment(osHome);
-        const { stdout } = await this.execCommand(
-          executable,
-          ['accounts', 'antigravity', '--json'],
-          { signal: controller.signal, env, timeoutMs: DEFAULT_TIMEOUT_MS },
-        );
-        let parsed;
-        try {
-          parsed = JSON.parse(stdout);
-        } catch {
-          throw new Error('Magpie CLI returned invalid JSON for `accounts antigravity --json`.');
-        }
-        const readings = mapMagpieAccountRows(parsed, {
-          engineId: ANTIGRAVITY_ENGINE_IDS[0],
-          agent: 'antigravity',
-          modelWindows,
-        });
-        this.cache = {
-          key,
-          fetchedAt: this.now(),
-          readings,
-        };
-        return readings;
-      } finally {
-        settled = true;
-        if (this.inFlight === flight) {
-          this.inFlight = undefined;
-          this.inFlightKey = undefined;
-        }
-      }
-    })();
-
-    flight.waiters = waiters;
-    flight.releaseWaiter = releaseWaiter;
-    this.inFlight = flight;
-    this.inFlightKey = key;
-
-    return this.#awaitWithSignal(flight, signal);
-  }
-
-  async #awaitWithSignal(flight, signal) {
-    if (!signal) {
-      const waiter = Symbol('waiter');
-      flight.waiters?.add(waiter);
-      try {
-        return structuredClone(await flight);
-      } finally {
-        flight.releaseWaiter?.(waiter);
-      }
-    }
-    if (signal.aborted) throw abortError();
-    const waiter = Symbol('waiter');
-    flight.waiters?.add(waiter);
-    let onAbort;
+    let parsed;
     try {
-      const result = await new Promise((resolve, reject) => {
-        onAbort = () => {
-          flight.releaseWaiter?.(waiter);
-          reject(abortError());
-        };
-        signal.addEventListener('abort', onAbort, { once: true });
-        flight.then(resolve, reject);
-      });
-      return structuredClone(result);
-    } finally {
-      if (onAbort) signal.removeEventListener('abort', onAbort);
-      flight.releaseWaiter?.(waiter);
+      parsed = JSON.parse(stdout);
+    } catch {
+      throw new Error('Magpie CLI returned invalid JSON for `accounts antigravity --json`.');
     }
-  }
-
-  clearCache() {
-    this.cache = undefined;
+    return mapMagpieAccountRows(parsed, {
+      engineId: ANTIGRAVITY_ENGINE_IDS[0],
+      agent: 'antigravity',
+      modelWindows,
+    });
   }
 }
