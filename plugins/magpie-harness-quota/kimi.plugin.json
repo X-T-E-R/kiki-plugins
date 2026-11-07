@@ -1,0 +1,57 @@
+{
+  "name": "magpie-harness-quota",
+  "version": "0.1.0",
+  "description": "Optional Magpie CLI quota source for Antigravity (AGY CLI) harness instances.",
+  "license": "MIT",
+  "interface": {
+    "displayName": "Magpie Harness Quota",
+    "shortDescription": "Read Antigravity account allowances via official Magpie CLI"
+  },
+  "x-kiki": {
+    "engines": { "kiki": ">=0.4.3" },
+    "entry": "./entry.mjs",
+    "permissions": {
+      "exec": ["magpie", "magpie.exe"]
+    },
+    "settings": {
+      "schemaVersion": 1,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "magpiePath": {
+            "type": "string",
+            "title": "Magpie executable",
+            "description": "Optional absolute path to the official magpie[.exe] binary. Leave empty to resolve magpie from PATH.",
+            "localizations": {
+              "zh": {
+                "title": "Magpie 可执行文件",
+                "description": "可选的官方 magpie[.exe] 绝对路径；留空时从 PATH 查找。"
+              }
+            }
+          },
+          "modelWindows": {
+            "type": "string",
+            "multiline": true,
+            "title": "Model window mappings (JSON)",
+            "description": "JSON object mapping exact native AGY model IDs to Magpie pool/name windows, e.g. {\"gemini-4-argon-high\":{\"pool\":\"Gemini 4 Argon\"},\"claude-opus-5-5-high\":{\"pool\":\"Claude & GPT\",\"name\":\"5 hours\"}}.",
+            "localizations": {
+              "zh": {
+                "title": "模型额度池映射（JSON）",
+                "description": "将精确原生 AGY 模型 ID 映射到 Magpie 的 pool/name 窗口，例如 {\"gemini-4-argon-high\":{\"pool\":\"Gemini 4 Argon\"},\"claude-opus-5-5-high\":{\"pool\":\"Claude & GPT\",\"name\":\"5 hours\"}}。"
+              }
+            }
+          }
+        }
+      }
+    },
+    "harnessQuotaSources": [
+      {
+        "schemaVersion": 1,
+        "id": "antigravity",
+        "label": "Magpie · Antigravity",
+        "engineIds": ["agy-cli"],
+        "minRefreshIntervalMs": 300000
+      }
+    ]
+  }
+}

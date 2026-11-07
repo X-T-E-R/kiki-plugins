@@ -183,3 +183,29 @@ test('packs a non-catalog OAuth plugin as a standalone install ZIP', async () =>
     await assert.rejects(packLocalPlugin({ ...options, outDir: root }), /outside the plugin source/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test('packs magpie-harness-quota and model-dispatch-advisor cleanly without leaking tests or scripts', async () => {
+  const outDir = await mkdtemp(resolve('.tmp/local-dispatch-pack-'));
+  try {
+    for (const id of ['magpie-harness-quota', 'model-dispatch-advisor']) {
+      const zipFile = await packLocalPlugin({ id, outDir });
+      assert.equal(zipFile, join(outDir, `${id}-0.1.0.zip`));
+      const names = await new Promise((resolveEntries, reject) => {
+        yauzl.open(zipFile, { lazyEntries: true }, (error, zip) => {
+          if (error) { reject(error); return; }
+          const found = [];
+          zip.on('error', reject);
+          zip.on('end', () => resolveEntries(found));
+          zip.on('entry', entry => { found.push(entry.fileName); zip.readEntry(); });
+          zip.readEntry();
+        });
+      });
+      assert.ok(names.includes(`${id}/kimi.plugin.json`));
+      assert.ok(names.includes(`${id}/entry.mjs`));
+      assert.ok(names.includes(`${id}/LICENSE`));
+      assert.ok(names.includes(`${id}/README.md`));
+      assert.ok(names.some(name => name.startsWith(`${id}/lib/`)));
+      assert.ok(!names.some(name => name.includes('/test/') || name.includes('/scripts/')));
+    }
+  } finally { await rm(outDir, { recursive: true, force: true }); }
+});

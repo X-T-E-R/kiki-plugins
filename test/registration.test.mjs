@@ -119,6 +119,18 @@ test('validates harness account sources and their complete lifecycle without acq
   await assert.rejects(validateRegistration({ ...m, 'x-kiki': { ...m['x-kiki'], harnessAccountSources: [{ ...source, engineIds: [] }] } }, () => {}));
 });
 
+test('validates harness quota sources and requires read() without reading quota at registration time', async () => {
+  const source = { schemaVersion: 1, id: 'antigravity', label: 'Magpie · Antigravity', engineIds: ['agy-cli'], minRefreshIntervalMs: 300_000 };
+  const m = { name: 'magpie-harness-quota', 'x-kiki': { entry: './entry.mjs', harnessQuotaSources: [source] } };
+  const implementation = { async read() { throw new Error('must not execute'); } };
+  await validateRegistration(m, api => api.registerHarnessQuotaSource(source, implementation));
+  await assert.rejects(validateRegistration(m, () => {}), /Missing registered harnessQuotaSources/);
+  await assert.rejects(validateRegistration(m, api => api.registerHarnessQuotaSource({ ...source, minRefreshIntervalMs: 600_000 }, implementation)), /Registered harnessQuotaSources changed/);
+  await assert.rejects(validateRegistration(m, api => api.registerHarnessQuotaSource(source, {})), /needs read\(\)/);
+  await assert.rejects(validateRegistration({ 'x-kiki': { harnessQuotaSources: [source] } }), /harnessQuotaSources requires x-kiki.entry/);
+  await assert.rejects(validateRegistration({ ...m, 'x-kiki': { ...m['x-kiki'], harnessQuotaSources: [{ ...source, minRefreshIntervalMs: 60_000 }] } }, () => {}));
+});
+
 test('resolves non-catalog local packages without classifying them as official', async () => {
   await mkdir('.tmp', { recursive: true });
   const dir = await mkdtemp(resolve('.tmp/local-plugin-'));

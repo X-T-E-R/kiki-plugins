@@ -1,0 +1,195 @@
+export const PLUGIN_ID = 'model-dispatch-advisor';
+
+const candidateSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    id: { type: 'string', minLength: 1, maxLength: 256, description: 'Stable candidate identifier inside the functional group.' },
+    label: { type: 'string', minLength: 1, maxLength: 256 },
+    kind: { type: 'string', enum: ['native-model', 'external-harness', 'profile'], description: 'Candidate execution surface.' },
+    profile: { type: 'string', minLength: 1, maxLength: 128, description: 'Optional subagent profile name (e.g. implementer, implementer-grokbuild, implementer-argon).' },
+    executorId: { type: 'string', minLength: 1, maxLength: 128, description: 'External harness engine ID when kind is external-harness (e.g. grok-acp, agy-cli, codex-app-server).' },
+    modelId: { type: 'string', minLength: 1, maxLength: 256, description: 'Configured Kiki model alias/ID or native harness model ID.' },
+    effort: { type: 'string', minLength: 1, maxLength: 64 },
+    family: { type: 'string', minLength: 1, maxLength: 64, description: 'Model family tag such as gpt, grok, gemini, claude, kimi, deepseek.' },
+    defaultRank: { type: 'integer', minimum: 0, maximum: 1000, description: 'Baseline priority within the functional group (lower is earlier).' },
+    isRoleDefault: { type: 'boolean', description: 'True when this candidate represents the role default when no explicit preference applies.' },
+    allowedModels: {
+      type: 'array',
+      maxItems: 128,
+      items: { type: 'string', minLength: 1, maxLength: 256 },
+      description: 'Optional hard model allowlist from the target profile; hard constraints are never overridden by soft preferences.',
+    },
+    deniedModels: {
+      type: 'array',
+      maxItems: 128,
+      items: { type: 'string', minLength: 1, maxLength: 256 },
+      description: 'Optional hard model denylist from the target profile or caller.',
+    },
+  },
+  required: ['id'],
+};
+
+const constraintsSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    allowedModels: {
+      type: 'array',
+      maxItems: 128,
+      items: { type: 'string', minLength: 1, maxLength: 256 },
+    },
+    deniedModels: {
+      type: 'array',
+      maxItems: 128,
+      items: { type: 'string', minLength: 1, maxLength: 256 },
+    },
+    allowedProfiles: {
+      type: 'array',
+      maxItems: 64,
+      items: { type: 'string', minLength: 1, maxLength: 128 },
+    },
+    deniedProfiles: {
+      type: 'array',
+      maxItems: 64,
+      items: { type: 'string', minLength: 1, maxLength: 128 },
+    },
+  },
+};
+
+export const dispatchAdvisorRecommendTool = {
+  schemaVersion: 1,
+  name: 'dispatch_advisor_recommend',
+  description: 'Read shared model/harness quota snapshots, active user selection preferences, and ranked same-function dispatch candidates. Returns soft recommendations with quota status, user preference provenance, and concise reasons without mutating profiles, global config, or active dispatches.',
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      group: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 128,
+        description: 'Functional group to evaluate (e.g. "implementation", "frontend", "review", "research", "writing", "thinking", "director", or a custom group). Defaults to "implementation".',
+      },
+      role: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 128,
+        description: 'Optional target agent role/profile (e.g. "implementer", "writer", "think", "director"). Protected roles (writer, think, director) keep their role default unless an explicit user-authorized preference targets that role/group or explicitTarget is set.',
+      },
+      explicitTarget: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 256,
+        description: 'Model ID, candidate ID, profile, or harness explicitly named by the user for this turn. Explicit user selection outranks soft preferences while still respecting hard profile constraints.',
+      },
+      candidates: {
+        type: 'array',
+        maxItems: 64,
+        items: candidateSchema,
+        description: 'Optional explicit candidate list (including external harnesses/profiles) to merge or evaluate for this group.',
+      },
+      constraints: {
+        ...constraintsSchema,
+        description: 'Optional hard profile/caller admission constraints (allowedModels, deniedModels, allowedProfiles, deniedProfiles).',
+      },
+      includeAllGroups: {
+        type: 'boolean',
+        description: 'When true, also include a compact summary of saved preferences across all functional groups.',
+      },
+    },
+  },
+  accesses: [{ kind: 'all' }],
+  concurrencySafe: true,
+  disclosure: 'deferred',
+};
+
+export const dispatchPreferenceUpdateTool = {
+  schemaVersion: 1,
+  name: 'dispatch_preference_update',
+  description: 'Save, inspect, or clear user-stated model/harness selection preferences and custom functional groups in this plugin’s own data store. Recording a preference requires explicit user authorization (userAuthorized=true and userQuote/sourceNote); model-inferred guesses are rejected.',
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      action: {
+        type: 'string',
+        enum: ['set', 'clear', 'get', 'define_group', 'remove_group'],
+        description: 'set saves/replaces a functional group preference; clear removes one group or all preferences; get reads stored state; define_group/remove_group manages custom functional groups and candidates.',
+      },
+      group: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 128,
+        description: 'Functional group ID (e.g. "implementation"). Required for set, define_group, remove_group, and single-group clear.',
+      },
+      clearAll: {
+        type: 'boolean',
+        description: 'When action="clear" and clearAll=true, removes all stored preferences (and custom groups if includeCustomGroups=true).',
+      },
+      includeCustomGroups: {
+        type: 'boolean',
+        description: 'When action="clear" and clearAll=true, also clear custom group definitions.',
+      },
+      prefer: {
+        type: 'array',
+        maxItems: 32,
+        items: { type: 'string', minLength: 1, maxLength: 256 },
+        description: 'Candidate IDs, families (e.g. "grok", "gemini"), profiles (e.g. "implementer-grokbuild", "implementer-argon"), or model IDs to prioritize inside this group.',
+      },
+      avoid: {
+        type: 'array',
+        maxItems: 32,
+        items: { type: 'string', minLength: 1, maxLength: 256 },
+        description: 'Candidate IDs, families (e.g. "gpt"), profiles, or model IDs to deprioritize softly (use less) inside this group.',
+      },
+      authorizedRoles: {
+        type: 'array',
+        maxItems: 32,
+        items: { type: 'string', minLength: 1, maxLength: 128 },
+        description: 'Explicit roles (such as "writer", "think", "director") the user explicitly authorized changing. Omit for general implementation preferences.',
+      },
+      userAuthorized: {
+        type: 'boolean',
+        description: 'Must be true when saving a preference: confirms the preference comes from an explicit user instruction rather than agent self-inference.',
+      },
+      userQuote: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 1000,
+        description: 'Concise verbatim user instruction or summary of what the user stated (e.g. "现在 GPT 少用一点，实现优先用 Grok Build 或其他非 GPT").',
+      },
+      sourceNote: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 500,
+        description: 'Provenance anchor such as turn/session note or operator entry.',
+      },
+      groupLabel: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 256,
+        description: 'Display label when action="define_group".',
+      },
+      protectedRoleDefault: {
+        type: 'boolean',
+        description: 'When action="define_group", marks whether this group protects its role default unless explicitly authorized.',
+      },
+      candidates: {
+        type: 'array',
+        maxItems: 64,
+        items: candidateSchema,
+        description: 'Custom candidates for action="define_group" (or optional group candidate overrides).',
+      },
+    },
+    required: ['action'],
+  },
+  accesses: [{ kind: 'all' }],
+  concurrencySafe: false,
+  disclosure: 'deferred',
+};
+
+export const definitions = [
+  dispatchAdvisorRecommendTool,
+  dispatchPreferenceUpdateTool,
+];
