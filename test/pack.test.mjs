@@ -189,7 +189,7 @@ test('packs magpie-harness-quota and model-dispatch-advisor cleanly without leak
   try {
     for (const id of ['magpie-harness-quota', 'model-dispatch-advisor']) {
       const zipFile = await packLocalPlugin({ id, outDir });
-      assert.equal(zipFile, join(outDir, `${id}-0.1.0.zip`));
+      assert.equal(zipFile, join(outDir, `${id}-0.1.1.zip`));
       const names = await new Promise((resolveEntries, reject) => {
         yauzl.open(zipFile, { lazyEntries: true }, (error, zip) => {
           if (error) { reject(error); return; }

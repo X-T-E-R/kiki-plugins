@@ -1,6 +1,6 @@
 {
   "name": "model-dispatch-advisor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Present shared model/harness quota snapshots and persist explicit user selection preferences scoped by functional group.",
   "license": "MIT",
   "interface": {

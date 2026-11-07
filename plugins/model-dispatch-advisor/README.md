@@ -1,6 +1,6 @@
-# Model Dispatch Advisor
+# Model Dispatch Advisor (`model-dispatch-advisor` `0.1.1`)
 
-Information-only Kiki plugin that reads shared cached harness quota snapshots via `context.harnessQuota.cached()` alongside explicit user selection preferences scoped by functional group.
+Information-only Kiki plugin that reads shared cached harness quota snapshots across all registered quota sources (such as `plugin:magpie-harness-quota/grok`, `plugin:magpie-harness-quota/antigravity`, `plugin:magpie-harness-quota/codex`, etc.) via `context.harnessQuota.cached()` alongside explicit user selection preferences scoped by functional group.
 
 This plugin never polls Magpie or any quota backend directly, never computes a "winner" or ranked recommendation, never hardcodes protected roles or candidate profiles, and never rewrites agent profiles, default models, `config.toml`, credentials, or in-flight dispatches. The AI reads the returned quota snapshots, timestamps, and scoped user preferences, then makes its own dispatch decision through standard `AgentRun` / profile contracts.
 
@@ -14,8 +14,9 @@ This plugin never polls Magpie or any quota backend directly, never computes a "
 ## Contract Guarantees
 
 1. **Sole read-only quota cache consumer:** Consumes `context.harnessQuota.cached()` exclusively—no top-level `readings`, no legacy fallback guesses, and zero direct CLI/backend calls. When `readings` is omitted on a source (not yet cached or failed within the refresh interval) or when the host predates `context.harnessQuota`, status is reported honestly as `"unknown"` / `"unavailable"` (`remaining: null`), never fabricated as `0` or unlimited. True `0` remaining is reported as `status: "exhausted"`.
-2. **Pure information supply—no selection engine:** Returns raw source snapshots and stored preferences (`informationOnly: true`). Contains zero hardcoded role lists, default model bindings, candidate injection, unit comparisons, or `recommended` winners.
-3. **Functional scope isolation & explicit provenance:** Preferences are stored under the caller-supplied `group` key (for example `"implementation"`). Querying another scope returns `preference: null` without leaking rules across scopes or altering any profile defaults. `action: "set"` requires `userAuthorized: true` and `userQuote`/`sourceNote`; model-inferred guesses are rejected.
+2. **Engine-bounded filtering without dropping uncached unknown sources:** Explicit `engineIds` defines the boundary of relevant quota sources. When querying by model `targets` (for example `["gemini-4-argon-high"]`) or `accountIds` while an engine-admitted source has not yet populated `readings`, that uncached source is preserved as `status: "unknown"` (`readings: null`)—and top-level `quota.status` reports `"unknown"` when no cached source matched—rather than silently returning `status: "ok"` with `sources: []` or fabricating model ownership.
+3. **Pure information supply—no selection engine:** Returns raw source snapshots and stored preferences (`informationOnly: true`). Contains zero hardcoded role lists, default model bindings, candidate injection, unit comparisons, or `recommended` winners.
+4. **Functional scope isolation & explicit provenance:** Preferences are stored under the caller-supplied `group` key (for example `"implementation"`). Querying another scope returns `preference: null` without leaking rules across scopes or altering any profile defaults. `action: "set"` requires `userAuthorized: true` and `userQuote`/`sourceNote`; model-inferred guesses are rejected.
 
 ## Storage & Lifecycle
 

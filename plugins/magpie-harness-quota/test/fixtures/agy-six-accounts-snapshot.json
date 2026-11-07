@@ -1,0 +1,1314 @@
+{
+  "protocol": "magpie-antigravity-direct-quota",
+  "schemaVersion": 1,
+  "source": "magpie-antigravity-direct-codeassist",
+  "origin": "https://daily-cloudcode-pa.googleapis.com",
+  "userAgent": "antigravity/hub/2.29.0 windows/amd64",
+  "batchReadAt": "2026-11-07T17:02:11.168Z",
+  "readings": [
+    {
+      "accountId": "acct-01@example.test",
+      "modelIds": [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-3-flash",
+        "gemini-3.1-flash-image",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash-low",
+        "gemini-3.8-flash-medium",
+        "gemini-3.8-flash-tiered",
+        "gemini-4-argon-high",
+        "gemini-4-argon-low",
+        "gemini-4-argon-medium"
+      ],
+      "pool": "Gemini",
+      "unit": "percent",
+      "window": "7 days",
+      "remaining": 83.1026,
+      "resetAt": "2026-11-14T02:05:06.000Z",
+      "readAt": "2026-11-07T17:02:11.168Z"
+    },
+    {
+      "accountId": "acct-01@example.test",
+      "modelIds": [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-3-flash",
+        "gemini-3.1-flash-image",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash-low",
+        "gemini-3.8-flash-medium",
+        "gemini-3.8-flash-tiered",
+        "gemini-4-argon-high",
+        "gemini-4-argon-low",
+        "gemini-4-argon-medium"
+      ],
+      "pool": "Gemini",
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 78.1332,
+      "resetAt": "2026-11-07T18:45:21.000Z",
+      "readAt": "2026-11-07T17:02:11.168Z"
+    },
+    {
+      "accountId": "acct-01@example.test",
+      "modelIds": [
+        "claude-opus-5-5-high",
+        "claude-opus-5-5-low",
+        "claude-opus-5-5-medium",
+        "claude-sonnet-5-5-high",
+        "claude-sonnet-5-5-low",
+        "claude-sonnet-5-5-medium",
+        "gpt-oss-120b-medium"
+      ],
+      "pool": "Claude & GPT",
+      "unit": "percent",
+      "window": "7 days",
+      "remaining": 99.9885,
+      "resetAt": "2026-11-11T10:13:56.000Z",
+      "readAt": "2026-11-07T17:02:11.168Z"
+    },
+    {
+      "accountId": "acct-01@example.test",
+      "modelIds": [
+        "claude-opus-5-5-high",
+        "claude-opus-5-5-low",
+        "claude-opus-5-5-medium",
+        "claude-sonnet-5-5-high",
+        "claude-sonnet-5-5-low",
+        "claude-sonnet-5-5-medium",
+        "gpt-oss-120b-medium"
+      ],
+      "pool": "Claude & GPT",
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 100,
+      "resetAt": "2026-11-07T22:02:12.000Z",
+      "readAt": "2026-11-07T17:02:11.168Z"
+    },
+    {
+      "accountId": "acct-02@example.test",
+      "modelIds": [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-3-flash",
+        "gemini-3.1-flash-image",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash-low",
+        "gemini-3.8-flash-medium",
+        "gemini-3.8-flash-tiered",
+        "gemini-4-argon-high",
+        "gemini-4-argon-low",
+        "gemini-4-argon-medium"
+      ],
+      "pool": "Gemini",
+      "unit": "percent",
+      "window": "7 days",
+      "remaining": 100,
+      "resetAt": "2026-11-14T17:02:09.000Z",
+      "readAt": "2026-11-07T17:02:08.403Z"
+    },
+    {
+      "accountId": "acct-02@example.test",
+      "modelIds": [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-3-flash",
+        "gemini-3.1-flash-image",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash-low",
+        "gemini-3.8-flash-medium",
+        "gemini-3.8-flash-tiered",
+        "gemini-4-argon-high",
+        "gemini-4-argon-low",
+        "gemini-4-argon-medium"
+      ],
+      "pool": "Gemini",
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 100,
+      "resetAt": "2026-11-07T22:02:09.000Z",
+      "readAt": "2026-11-07T17:02:08.403Z"
+    },
+    {
+      "accountId": "acct-02@example.test",
+      "modelIds": [
+        "claude-opus-5-5-high",
+        "claude-opus-5-5-low",
+        "claude-opus-5-5-medium",
+        "claude-sonnet-5-5-high",
+        "claude-sonnet-5-5-low",
+        "claude-sonnet-5-5-medium",
+        "gpt-oss-120b-medium"
+      ],
+      "pool": "Claude & GPT",
+      "unit": "percent",
+      "window": "7 days",
+      "remaining": 87.1543,
+      "resetAt": "2026-11-12T09:23:37.000Z",
+      "readAt": "2026-11-07T17:02:08.403Z"
+    },
+    {
+      "accountId": "acct-02@example.test",
+      "modelIds": [
+        "claude-opus-5-5-high",
+        "claude-opus-5-5-low",
+        "claude-opus-5-5-medium",
+        "claude-sonnet-5-5-high",
+        "claude-sonnet-5-5-low",
+        "claude-sonnet-5-5-medium",
+        "gpt-oss-120b-medium"
+      ],
+      "pool": "Claude & GPT",
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 100,
+      "resetAt": "2026-11-07T22:02:09.000Z",
+      "readAt": "2026-11-07T17:02:08.403Z"
+    },
+    {
+      "accountId": "acct-03@example.test",
+      "modelIds": [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-3-flash",
+        "gemini-3.1-flash-image",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash-low",
+        "gemini-3.8-flash-medium",
+        "gemini-3.8-flash-tiered",
+        "gemini-4-argon-high",
+        "gemini-4-argon-low",
+        "gemini-4-argon-medium"
+      ],
+      "pool": "Gemini",
+      "unit": "percent",
+      "window": "7 days",
+      "remaining": 100,
+      "resetAt": "2026-11-14T17:02:09.000Z",
+      "readAt": "2026-11-07T17:02:08.331Z"
+    },
+    {
+      "accountId": "acct-03@example.test",
+      "modelIds": [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-3-flash",
+        "gemini-3.1-flash-image",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash-low",
+        "gemini-3.8-flash-medium",
+        "gemini-3.8-flash-tiered",
+        "gemini-4-argon-high",
+        "gemini-4-argon-low",
+        "gemini-4-argon-medium"
+      ],
+      "pool": "Gemini",
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 100,
+      "resetAt": "2026-11-07T22:02:09.000Z",
+      "readAt": "2026-11-07T17:02:08.331Z"
+    },
+    {
+      "accountId": "acct-03@example.test",
+      "modelIds": [
+        "claude-opus-5-5-high",
+        "claude-opus-5-5-low",
+        "claude-opus-5-5-medium",
+        "claude-sonnet-5-5-high",
+        "claude-sonnet-5-5-low",
+        "claude-sonnet-5-5-medium",
+        "gpt-oss-120b-medium"
+      ],
+      "pool": "Claude & GPT",
+      "unit": "percent",
+      "window": "7 days",
+      "remaining": 100,
+      "resetAt": "2026-11-14T17:02:09.000Z",
+      "readAt": "2026-11-07T17:02:08.331Z"
+    },
+    {
+      "accountId": "acct-03@example.test",
+      "modelIds": [
+        "claude-opus-5-5-high",
+        "claude-opus-5-5-low",
+        "claude-opus-5-5-medium",
+        "claude-sonnet-5-5-high",
+        "claude-sonnet-5-5-low",
+        "claude-sonnet-5-5-medium",
+        "gpt-oss-120b-medium"
+      ],
+      "pool": "Claude & GPT",
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 100,
+      "resetAt": "2026-11-07T22:02:09.000Z",
+      "readAt": "2026-11-07T17:02:08.331Z"
+    },
+    {
+      "accountId": "acct-04@example.test",
+      "modelIds": [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-3-flash",
+        "gemini-3.1-flash-image",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash-low",
+        "gemini-3.8-flash-medium",
+        "gemini-3.8-flash-tiered",
+        "gemini-4-argon-high",
+        "gemini-4-argon-low",
+        "gemini-4-argon-medium"
+      ],
+      "pool": "Gemini",
+      "unit": "percent",
+      "window": "7 days",
+      "remaining": 99.9972,
+      "resetAt": "2026-11-14T03:48:32.000Z",
+      "readAt": "2026-11-07T17:02:09.419Z"
+    },
+    {
+      "accountId": "acct-04@example.test",
+      "modelIds": [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-3-flash",
+        "gemini-3.1-flash-image",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash-low",
+        "gemini-3.8-flash-medium",
+        "gemini-3.8-flash-tiered",
+        "gemini-4-argon-high",
+        "gemini-4-argon-low",
+        "gemini-4-argon-medium"
+      ],
+      "pool": "Gemini",
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 100,
+      "resetAt": "2026-11-07T22:02:10.000Z",
+      "readAt": "2026-11-07T17:02:09.419Z"
+    },
+    {
+      "accountId": "acct-04@example.test",
+      "modelIds": [
+        "claude-opus-5-5-high",
+        "claude-opus-5-5-low",
+        "claude-opus-5-5-medium",
+        "claude-sonnet-5-5-high",
+        "claude-sonnet-5-5-low",
+        "claude-sonnet-5-5-medium",
+        "gpt-oss-120b-medium"
+      ],
+      "pool": "Claude & GPT",
+      "unit": "percent",
+      "window": "7 days",
+      "remaining": 77.7106,
+      "resetAt": "2026-11-11T10:12:45.000Z",
+      "readAt": "2026-11-07T17:02:09.419Z"
+    },
+    {
+      "accountId": "acct-04@example.test",
+      "modelIds": [
+        "claude-opus-5-5-high",
+        "claude-opus-5-5-low",
+        "claude-opus-5-5-medium",
+        "claude-sonnet-5-5-high",
+        "claude-sonnet-5-5-low",
+        "claude-sonnet-5-5-medium",
+        "gpt-oss-120b-medium"
+      ],
+      "pool": "Claude & GPT",
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 100,
+      "resetAt": "2026-11-07T22:02:10.000Z",
+      "readAt": "2026-11-07T17:02:09.419Z"
+    },
+    {
+      "accountId": "acct-05@example.test",
+      "modelIds": [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-3-flash",
+        "gemini-3.1-flash-image",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash-low",
+        "gemini-3.8-flash-medium",
+        "gemini-3.8-flash-tiered",
+        "gemini-4-argon-high",
+        "gemini-4-argon-low",
+        "gemini-4-argon-medium"
+      ],
+      "pool": "Gemini",
+      "unit": "percent",
+      "window": "7 days",
+      "remaining": 63.5099,
+      "resetAt": "2026-11-14T02:04:11.000Z",
+      "readAt": "2026-11-07T17:02:08.370Z"
+    },
+    {
+      "accountId": "acct-05@example.test",
+      "modelIds": [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-3-flash",
+        "gemini-3.1-flash-image",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash-low",
+        "gemini-3.8-flash-medium",
+        "gemini-3.8-flash-tiered",
+        "gemini-4-argon-high",
+        "gemini-4-argon-low",
+        "gemini-4-argon-medium"
+      ],
+      "pool": "Gemini",
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 52.5234,
+      "resetAt": "2026-11-07T18:45:58.000Z",
+      "readAt": "2026-11-07T17:02:08.370Z"
+    },
+    {
+      "accountId": "acct-05@example.test",
+      "pool": "Claude & GPT",
+      "unit": "percent",
+      "window": "7 days",
+      "remaining": 0,
+      "resetAt": "2026-11-09T17:30:15.000Z",
+      "readAt": "2026-11-07T17:02:08.370Z"
+    },
+    {
+      "accountId": "acct-05@example.test",
+      "modelIds": [
+        "claude-opus-5-5-high"
+      ],
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 0,
+      "resetAt": "2026-11-09T17:30:15.000Z",
+      "readAt": "2026-11-07T17:02:08.370Z"
+    },
+    {
+      "accountId": "acct-05@example.test",
+      "modelIds": [
+        "claude-opus-5-5-low"
+      ],
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 0,
+      "resetAt": "2026-11-09T17:30:15.000Z",
+      "readAt": "2026-11-07T17:02:08.370Z"
+    },
+    {
+      "accountId": "acct-05@example.test",
+      "modelIds": [
+        "claude-opus-5-5-medium"
+      ],
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 0,
+      "resetAt": "2026-11-09T17:30:15.000Z",
+      "readAt": "2026-11-07T17:02:08.370Z"
+    },
+    {
+      "accountId": "acct-05@example.test",
+      "modelIds": [
+        "claude-sonnet-5-5-high"
+      ],
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 0,
+      "resetAt": "2026-11-09T17:30:15.000Z",
+      "readAt": "2026-11-07T17:02:08.370Z"
+    },
+    {
+      "accountId": "acct-05@example.test",
+      "modelIds": [
+        "claude-sonnet-5-5-low"
+      ],
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 0,
+      "resetAt": "2026-11-09T17:30:15.000Z",
+      "readAt": "2026-11-07T17:02:08.370Z"
+    },
+    {
+      "accountId": "acct-05@example.test",
+      "modelIds": [
+        "claude-sonnet-5-5-medium"
+      ],
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 0,
+      "resetAt": "2026-11-09T17:30:15.000Z",
+      "readAt": "2026-11-07T17:02:08.370Z"
+    },
+    {
+      "accountId": "acct-05@example.test",
+      "modelIds": [
+        "gpt-oss-120b-medium"
+      ],
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 0,
+      "resetAt": "2026-11-09T17:30:15.000Z",
+      "readAt": "2026-11-07T17:02:08.370Z"
+    },
+    {
+      "accountId": "acct-06@example.test",
+      "modelIds": [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-3-flash",
+        "gemini-3.1-flash-image",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash-low",
+        "gemini-3.8-flash-medium",
+        "gemini-3.8-flash-tiered",
+        "gemini-4-argon-high",
+        "gemini-4-argon-low",
+        "gemini-4-argon-medium"
+      ],
+      "pool": "Gemini",
+      "unit": "percent",
+      "window": "7 days",
+      "remaining": 100,
+      "resetAt": "2026-11-14T17:02:11.000Z",
+      "readAt": "2026-11-07T17:02:09.918Z"
+    },
+    {
+      "accountId": "acct-06@example.test",
+      "modelIds": [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-3-flash",
+        "gemini-3.1-flash-image",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash-low",
+        "gemini-3.8-flash-medium",
+        "gemini-3.8-flash-tiered",
+        "gemini-4-argon-high",
+        "gemini-4-argon-low",
+        "gemini-4-argon-medium"
+      ],
+      "pool": "Gemini",
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 100,
+      "resetAt": "2026-11-07T22:02:11.000Z",
+      "readAt": "2026-11-07T17:02:09.918Z"
+    },
+    {
+      "accountId": "acct-06@example.test",
+      "modelIds": [
+        "claude-opus-5-5-high",
+        "claude-opus-5-5-low",
+        "claude-opus-5-5-medium",
+        "claude-sonnet-5-5-high",
+        "claude-sonnet-5-5-low",
+        "claude-sonnet-5-5-medium",
+        "gpt-oss-120b-medium"
+      ],
+      "pool": "Claude & GPT",
+      "unit": "percent",
+      "window": "7 days",
+      "remaining": 100,
+      "resetAt": "2026-11-14T06:09:12.000Z",
+      "readAt": "2026-11-07T17:02:09.918Z"
+    },
+    {
+      "accountId": "acct-06@example.test",
+      "modelIds": [
+        "claude-opus-5-5-high",
+        "claude-opus-5-5-low",
+        "claude-opus-5-5-medium",
+        "claude-sonnet-5-5-high",
+        "claude-sonnet-5-5-low",
+        "claude-sonnet-5-5-medium",
+        "gpt-oss-120b-medium"
+      ],
+      "pool": "Claude & GPT",
+      "unit": "percent",
+      "window": "5 hours",
+      "remaining": 100,
+      "resetAt": "2026-11-07T22:02:11.000Z",
+      "readAt": "2026-11-07T17:02:09.918Z"
+    }
+  ],
+  "accounts": [
+    {
+      "userHash": "acct_hash_01",
+      "active": true,
+      "on": true,
+      "proxyEndpoint": "http://198.51.100.10:18906",
+      "origin": "https://daily-cloudcode-pa.googleapis.com",
+      "plan": "Google AI Ultra",
+      "currentTier": "standard-tier",
+      "paidTier": "g1-ultra-tier",
+      "entitlementUsed": null,
+      "readAt": "2026-11-07T17:02:11.168Z",
+      "status": "ok",
+      "catalogModelCount": 20,
+      "argonCatalogModels": [
+        {
+          "modelId": "gemini-4-argon-high",
+          "displayName": "Gemini 4 Argon (High)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 78.1399,
+          "reset5hAt": "2026-11-07T18:45:21.000Z"
+        },
+        {
+          "modelId": "gemini-4-argon-low",
+          "displayName": "Gemini 4 Argon (Low)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 78.1399,
+          "reset5hAt": "2026-11-07T18:45:21.000Z"
+        },
+        {
+          "modelId": "gemini-4-argon-medium",
+          "displayName": "Gemini 4 Argon (Medium)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 78.1399,
+          "reset5hAt": "2026-11-07T18:45:21.000Z"
+        }
+      ],
+      "summaryGroups": [
+        {
+          "displayName": "Gemini Models",
+          "description": "Models within this group: Gemini Flash, Gemini Pro",
+          "pool": "Gemini",
+          "versioned": false,
+          "claimedModelIds": [
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-3-flash",
+            "gemini-3.1-flash-image",
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash-lite",
+            "gemini-3.8-flash-high",
+            "gemini-3.8-flash-low",
+            "gemini-3.8-flash-medium",
+            "gemini-3.8-flash-tiered",
+            "gemini-4-argon-high",
+            "gemini-4-argon-low",
+            "gemini-4-argon-medium"
+          ],
+          "buckets": [
+            {
+              "bucketId": "gemini-weekly",
+              "period": "weekly",
+              "window": "7 days",
+              "remainingPercent": 83.1026,
+              "usedPercent": 16.8974,
+              "resetAt": "2026-11-14T02:05:06.000Z"
+            },
+            {
+              "bucketId": "gemini-5h",
+              "period": "5h",
+              "window": "5 hours",
+              "remainingPercent": 78.1332,
+              "usedPercent": 21.8668,
+              "resetAt": "2026-11-07T18:45:21.000Z"
+            }
+          ]
+        },
+        {
+          "displayName": "Claude and GPT models",
+          "description": "Models within this group: Claude Opus, Claude Sonnet, GPT-OSS",
+          "pool": "Claude & GPT",
+          "versioned": false,
+          "claimedModelIds": [
+            "claude-opus-5-5-high",
+            "claude-opus-5-5-low",
+            "claude-opus-5-5-medium",
+            "claude-sonnet-5-5-high",
+            "claude-sonnet-5-5-low",
+            "claude-sonnet-5-5-medium",
+            "gpt-oss-120b-medium"
+          ],
+          "buckets": [
+            {
+              "bucketId": "3p-weekly",
+              "period": "weekly",
+              "window": "7 days",
+              "remainingPercent": 99.9885,
+              "usedPercent": 0.0115,
+              "resetAt": "2026-11-11T10:13:56.000Z"
+            },
+            {
+              "bucketId": "3p-5h",
+              "period": "5h",
+              "window": "5 hours",
+              "remainingPercent": 100,
+              "usedPercent": 0,
+              "resetAt": "2026-11-07T22:02:12.000Z"
+            }
+          ]
+        }
+      ],
+      "argonWeekly": {
+        "status": "known",
+        "offeredInCatalog": true,
+        "argonModelIds": [
+          "gemini-4-argon-high",
+          "gemini-4-argon-low",
+          "gemini-4-argon-medium"
+        ],
+        "poolMode": "ultra_shared_family_group",
+        "pool": "Gemini",
+        "groupDisplayName": "Gemini Models",
+        "weeklyBucketId": "gemini-weekly",
+        "remainingPercent": 83.1026,
+        "usedPercent": 16.8974,
+        "resetAt": "2026-11-14T02:05:06.000Z"
+      }
+    },
+    {
+      "userHash": "acct_hash_02",
+      "active": false,
+      "on": true,
+      "proxyEndpoint": "http://198.51.100.10:18903",
+      "origin": "https://daily-cloudcode-pa.googleapis.com",
+      "plan": "Google AI Ultra",
+      "currentTier": "free-tier",
+      "paidTier": "g1-ultra-tier",
+      "entitlementUsed": null,
+      "readAt": "2026-11-07T17:02:08.403Z",
+      "status": "ok",
+      "catalogModelCount": 20,
+      "argonCatalogModels": [
+        {
+          "modelId": "gemini-4-argon-high",
+          "displayName": "Gemini 4 Argon (High)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 100,
+          "reset5hAt": "2026-11-07T22:02:08.000Z"
+        },
+        {
+          "modelId": "gemini-4-argon-low",
+          "displayName": "Gemini 4 Argon (Low)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 100,
+          "reset5hAt": "2026-11-07T22:02:08.000Z"
+        },
+        {
+          "modelId": "gemini-4-argon-medium",
+          "displayName": "Gemini 4 Argon (Medium)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 100,
+          "reset5hAt": "2026-11-07T22:02:08.000Z"
+        }
+      ],
+      "summaryGroups": [
+        {
+          "displayName": "Gemini Models",
+          "description": "Models within this group: Gemini Flash, Gemini Pro",
+          "pool": "Gemini",
+          "versioned": false,
+          "claimedModelIds": [
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-3-flash",
+            "gemini-3.1-flash-image",
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash-lite",
+            "gemini-3.8-flash-high",
+            "gemini-3.8-flash-low",
+            "gemini-3.8-flash-medium",
+            "gemini-3.8-flash-tiered",
+            "gemini-4-argon-high",
+            "gemini-4-argon-low",
+            "gemini-4-argon-medium"
+          ],
+          "buckets": [
+            {
+              "bucketId": "gemini-weekly",
+              "period": "weekly",
+              "window": "7 days",
+              "remainingPercent": 100,
+              "usedPercent": 0,
+              "resetAt": "2026-11-14T17:02:09.000Z"
+            },
+            {
+              "bucketId": "gemini-5h",
+              "period": "5h",
+              "window": "5 hours",
+              "remainingPercent": 100,
+              "usedPercent": 0,
+              "resetAt": "2026-11-07T22:02:09.000Z"
+            }
+          ]
+        },
+        {
+          "displayName": "Claude and GPT models",
+          "description": "Models within this group: Claude Opus, Claude Sonnet, GPT-OSS",
+          "pool": "Claude & GPT",
+          "versioned": false,
+          "claimedModelIds": [
+            "claude-opus-5-5-high",
+            "claude-opus-5-5-low",
+            "claude-opus-5-5-medium",
+            "claude-sonnet-5-5-high",
+            "claude-sonnet-5-5-low",
+            "claude-sonnet-5-5-medium",
+            "gpt-oss-120b-medium"
+          ],
+          "buckets": [
+            {
+              "bucketId": "3p-weekly",
+              "period": "weekly",
+              "window": "7 days",
+              "remainingPercent": 87.1543,
+              "usedPercent": 12.8457,
+              "resetAt": "2026-11-12T09:23:37.000Z"
+            },
+            {
+              "bucketId": "3p-5h",
+              "period": "5h",
+              "window": "5 hours",
+              "remainingPercent": 100,
+              "usedPercent": 0,
+              "resetAt": "2026-11-07T22:02:09.000Z"
+            }
+          ]
+        }
+      ],
+      "argonWeekly": {
+        "status": "known",
+        "offeredInCatalog": true,
+        "argonModelIds": [
+          "gemini-4-argon-high",
+          "gemini-4-argon-low",
+          "gemini-4-argon-medium"
+        ],
+        "poolMode": "ultra_shared_family_group",
+        "pool": "Gemini",
+        "groupDisplayName": "Gemini Models",
+        "weeklyBucketId": "gemini-weekly",
+        "remainingPercent": 100,
+        "usedPercent": 0,
+        "resetAt": "2026-11-14T17:02:09.000Z"
+      }
+    },
+    {
+      "userHash": "acct_hash_03",
+      "active": false,
+      "on": true,
+      "proxyEndpoint": "http://198.51.100.10:18906",
+      "origin": "https://daily-cloudcode-pa.googleapis.com",
+      "plan": "Google AI Ultra",
+      "currentTier": "free-tier",
+      "paidTier": "g1-ultra-tier",
+      "entitlementUsed": null,
+      "readAt": "2026-11-07T17:02:08.331Z",
+      "status": "ok",
+      "catalogModelCount": 20,
+      "argonCatalogModels": [
+        {
+          "modelId": "gemini-4-argon-high",
+          "displayName": "Gemini 4 Argon (High)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 100,
+          "reset5hAt": "2026-11-07T22:02:08.000Z"
+        },
+        {
+          "modelId": "gemini-4-argon-low",
+          "displayName": "Gemini 4 Argon (Low)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 100,
+          "reset5hAt": "2026-11-07T22:02:08.000Z"
+        },
+        {
+          "modelId": "gemini-4-argon-medium",
+          "displayName": "Gemini 4 Argon (Medium)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 100,
+          "reset5hAt": "2026-11-07T22:02:08.000Z"
+        }
+      ],
+      "summaryGroups": [
+        {
+          "displayName": "Gemini Models",
+          "description": "Models within this group: Gemini Flash, Gemini Pro",
+          "pool": "Gemini",
+          "versioned": false,
+          "claimedModelIds": [
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-3-flash",
+            "gemini-3.1-flash-image",
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash-lite",
+            "gemini-3.8-flash-high",
+            "gemini-3.8-flash-low",
+            "gemini-3.8-flash-medium",
+            "gemini-3.8-flash-tiered",
+            "gemini-4-argon-high",
+            "gemini-4-argon-low",
+            "gemini-4-argon-medium"
+          ],
+          "buckets": [
+            {
+              "bucketId": "gemini-weekly",
+              "period": "weekly",
+              "window": "7 days",
+              "remainingPercent": 100,
+              "usedPercent": 0,
+              "resetAt": "2026-11-14T17:02:09.000Z"
+            },
+            {
+              "bucketId": "gemini-5h",
+              "period": "5h",
+              "window": "5 hours",
+              "remainingPercent": 100,
+              "usedPercent": 0,
+              "resetAt": "2026-11-07T22:02:09.000Z"
+            }
+          ]
+        },
+        {
+          "displayName": "Claude and GPT models",
+          "description": "Models within this group: Claude Opus, Claude Sonnet, GPT-OSS",
+          "pool": "Claude & GPT",
+          "versioned": false,
+          "claimedModelIds": [
+            "claude-opus-5-5-high",
+            "claude-opus-5-5-low",
+            "claude-opus-5-5-medium",
+            "claude-sonnet-5-5-high",
+            "claude-sonnet-5-5-low",
+            "claude-sonnet-5-5-medium",
+            "gpt-oss-120b-medium"
+          ],
+          "buckets": [
+            {
+              "bucketId": "3p-weekly",
+              "period": "weekly",
+              "window": "7 days",
+              "remainingPercent": 100,
+              "usedPercent": 0,
+              "resetAt": "2026-11-14T17:02:09.000Z"
+            },
+            {
+              "bucketId": "3p-5h",
+              "period": "5h",
+              "window": "5 hours",
+              "remainingPercent": 100,
+              "usedPercent": 0,
+              "resetAt": "2026-11-07T22:02:09.000Z"
+            }
+          ]
+        }
+      ],
+      "argonWeekly": {
+        "status": "known",
+        "offeredInCatalog": true,
+        "argonModelIds": [
+          "gemini-4-argon-high",
+          "gemini-4-argon-low",
+          "gemini-4-argon-medium"
+        ],
+        "poolMode": "ultra_shared_family_group",
+        "pool": "Gemini",
+        "groupDisplayName": "Gemini Models",
+        "weeklyBucketId": "gemini-weekly",
+        "remainingPercent": 100,
+        "usedPercent": 0,
+        "resetAt": "2026-11-14T17:02:09.000Z"
+      }
+    },
+    {
+      "userHash": "acct_hash_04",
+      "active": false,
+      "on": true,
+      "proxyEndpoint": "http://198.51.100.10:18903",
+      "origin": "https://daily-cloudcode-pa.googleapis.com",
+      "plan": "Google AI Ultra",
+      "currentTier": "free-tier",
+      "paidTier": "g1-ultra-tier",
+      "entitlementUsed": null,
+      "readAt": "2026-11-07T17:02:09.419Z",
+      "status": "ok",
+      "catalogModelCount": 20,
+      "argonCatalogModels": [
+        {
+          "modelId": "gemini-4-argon-high",
+          "displayName": "Gemini 4 Argon (High)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 100,
+          "reset5hAt": "2026-11-07T22:02:08.000Z"
+        },
+        {
+          "modelId": "gemini-4-argon-low",
+          "displayName": "Gemini 4 Argon (Low)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 100,
+          "reset5hAt": "2026-11-07T22:02:08.000Z"
+        },
+        {
+          "modelId": "gemini-4-argon-medium",
+          "displayName": "Gemini 4 Argon (Medium)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 100,
+          "reset5hAt": "2026-11-07T22:02:08.000Z"
+        }
+      ],
+      "summaryGroups": [
+        {
+          "displayName": "Gemini Models",
+          "description": "Models within this group: Gemini Flash, Gemini Pro",
+          "pool": "Gemini",
+          "versioned": false,
+          "claimedModelIds": [
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-3-flash",
+            "gemini-3.1-flash-image",
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash-lite",
+            "gemini-3.8-flash-high",
+            "gemini-3.8-flash-low",
+            "gemini-3.8-flash-medium",
+            "gemini-3.8-flash-tiered",
+            "gemini-4-argon-high",
+            "gemini-4-argon-low",
+            "gemini-4-argon-medium"
+          ],
+          "buckets": [
+            {
+              "bucketId": "gemini-weekly",
+              "period": "weekly",
+              "window": "7 days",
+              "remainingPercent": 99.9972,
+              "usedPercent": 0.0028,
+              "resetAt": "2026-11-14T03:48:32.000Z"
+            },
+            {
+              "bucketId": "gemini-5h",
+              "period": "5h",
+              "window": "5 hours",
+              "remainingPercent": 100,
+              "usedPercent": 0,
+              "resetAt": "2026-11-07T22:02:10.000Z"
+            }
+          ]
+        },
+        {
+          "displayName": "Claude and GPT models",
+          "description": "Models within this group: Claude Opus, Claude Sonnet, GPT-OSS",
+          "pool": "Claude & GPT",
+          "versioned": false,
+          "claimedModelIds": [
+            "claude-opus-5-5-high",
+            "claude-opus-5-5-low",
+            "claude-opus-5-5-medium",
+            "claude-sonnet-5-5-high",
+            "claude-sonnet-5-5-low",
+            "claude-sonnet-5-5-medium",
+            "gpt-oss-120b-medium"
+          ],
+          "buckets": [
+            {
+              "bucketId": "3p-weekly",
+              "period": "weekly",
+              "window": "7 days",
+              "remainingPercent": 77.7106,
+              "usedPercent": 22.2894,
+              "resetAt": "2026-11-11T10:12:45.000Z"
+            },
+            {
+              "bucketId": "3p-5h",
+              "period": "5h",
+              "window": "5 hours",
+              "remainingPercent": 100,
+              "usedPercent": 0,
+              "resetAt": "2026-11-07T22:02:10.000Z"
+            }
+          ]
+        }
+      ],
+      "argonWeekly": {
+        "status": "known",
+        "offeredInCatalog": true,
+        "argonModelIds": [
+          "gemini-4-argon-high",
+          "gemini-4-argon-low",
+          "gemini-4-argon-medium"
+        ],
+        "poolMode": "ultra_shared_family_group",
+        "pool": "Gemini",
+        "groupDisplayName": "Gemini Models",
+        "weeklyBucketId": "gemini-weekly",
+        "remainingPercent": 99.9972,
+        "usedPercent": 0.0028,
+        "resetAt": "2026-11-14T03:48:32.000Z"
+      }
+    },
+    {
+      "userHash": "acct_hash_05",
+      "active": false,
+      "on": true,
+      "proxyEndpoint": "http://198.51.100.10:18906",
+      "origin": "https://daily-cloudcode-pa.googleapis.com",
+      "plan": "Google AI Ultra",
+      "currentTier": "free-tier",
+      "paidTier": "g1-ultra-lite-tier",
+      "entitlementUsed": null,
+      "readAt": "2026-11-07T17:02:08.370Z",
+      "status": "ok",
+      "catalogModelCount": 20,
+      "argonCatalogModels": [
+        {
+          "modelId": "gemini-4-argon-high",
+          "displayName": "Gemini 4 Argon (High)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 52.5234,
+          "reset5hAt": "2026-11-07T18:45:58.000Z"
+        },
+        {
+          "modelId": "gemini-4-argon-low",
+          "displayName": "Gemini 4 Argon (Low)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 52.5234,
+          "reset5hAt": "2026-11-07T18:45:58.000Z"
+        },
+        {
+          "modelId": "gemini-4-argon-medium",
+          "displayName": "Gemini 4 Argon (Medium)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 52.5234,
+          "reset5hAt": "2026-11-07T18:45:58.000Z"
+        }
+      ],
+      "summaryGroups": [
+        {
+          "displayName": "Gemini Models",
+          "description": "Models within this group: Gemini Flash, Gemini Pro",
+          "pool": "Gemini",
+          "versioned": false,
+          "claimedModelIds": [
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-3-flash",
+            "gemini-3.1-flash-image",
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash-lite",
+            "gemini-3.8-flash-high",
+            "gemini-3.8-flash-low",
+            "gemini-3.8-flash-medium",
+            "gemini-3.8-flash-tiered",
+            "gemini-4-argon-high",
+            "gemini-4-argon-low",
+            "gemini-4-argon-medium"
+          ],
+          "buckets": [
+            {
+              "bucketId": "gemini-weekly",
+              "period": "weekly",
+              "window": "7 days",
+              "remainingPercent": 63.5099,
+              "usedPercent": 36.4901,
+              "resetAt": "2026-11-14T02:04:11.000Z"
+            },
+            {
+              "bucketId": "gemini-5h",
+              "period": "5h",
+              "window": "5 hours",
+              "remainingPercent": 52.5234,
+              "usedPercent": 47.4766,
+              "resetAt": "2026-11-07T18:45:58.000Z"
+            }
+          ]
+        },
+        {
+          "displayName": "Claude and GPT models",
+          "description": "Models within this group: Claude Opus, Claude Sonnet, GPT-OSS",
+          "pool": "Claude & GPT",
+          "versioned": false,
+          "claimedModelIds": [],
+          "buckets": [
+            {
+              "bucketId": "3p-weekly",
+              "period": "weekly",
+              "window": "7 days",
+              "remainingPercent": 0,
+              "usedPercent": 100,
+              "resetAt": "2026-11-09T17:30:15.000Z"
+            }
+          ]
+        }
+      ],
+      "argonWeekly": {
+        "status": "known",
+        "offeredInCatalog": true,
+        "argonModelIds": [
+          "gemini-4-argon-high",
+          "gemini-4-argon-low",
+          "gemini-4-argon-medium"
+        ],
+        "poolMode": "ultra_shared_family_group",
+        "pool": "Gemini",
+        "groupDisplayName": "Gemini Models",
+        "weeklyBucketId": "gemini-weekly",
+        "remainingPercent": 63.5099,
+        "usedPercent": 36.4901,
+        "resetAt": "2026-11-14T02:04:11.000Z"
+      }
+    },
+    {
+      "userHash": "acct_hash_06",
+      "active": false,
+      "on": true,
+      "proxyEndpoint": "http://198.51.100.10:18903",
+      "origin": "https://daily-cloudcode-pa.googleapis.com",
+      "plan": "Google AI Ultra",
+      "currentTier": "free-tier",
+      "paidTier": "g1-ultra-lite-tier",
+      "entitlementUsed": null,
+      "readAt": "2026-11-07T17:02:09.918Z",
+      "status": "ok",
+      "catalogModelCount": 20,
+      "argonCatalogModels": [
+        {
+          "modelId": "gemini-4-argon-high",
+          "displayName": "Gemini 4 Argon (High)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 100,
+          "reset5hAt": "2026-11-07T22:02:08.000Z"
+        },
+        {
+          "modelId": "gemini-4-argon-low",
+          "displayName": "Gemini 4 Argon (Low)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 100,
+          "reset5hAt": "2026-11-07T22:02:08.000Z"
+        },
+        {
+          "modelId": "gemini-4-argon-medium",
+          "displayName": "Gemini 4 Argon (Medium)",
+          "assignedPool": "Gemini",
+          "remaining5hPercent": 100,
+          "reset5hAt": "2026-11-07T22:02:08.000Z"
+        }
+      ],
+      "summaryGroups": [
+        {
+          "displayName": "Gemini Models",
+          "description": "Models within this group: Gemini Flash, Gemini Pro",
+          "pool": "Gemini",
+          "versioned": false,
+          "claimedModelIds": [
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-3-flash",
+            "gemini-3.1-flash-image",
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash-lite",
+            "gemini-3.8-flash-high",
+            "gemini-3.8-flash-low",
+            "gemini-3.8-flash-medium",
+            "gemini-3.8-flash-tiered",
+            "gemini-4-argon-high",
+            "gemini-4-argon-low",
+            "gemini-4-argon-medium"
+          ],
+          "buckets": [
+            {
+              "bucketId": "gemini-weekly",
+              "period": "weekly",
+              "window": "7 days",
+              "remainingPercent": 100,
+              "usedPercent": 0,
+              "resetAt": "2026-11-14T17:02:11.000Z"
+            },
+            {
+              "bucketId": "gemini-5h",
+              "period": "5h",
+              "window": "5 hours",
+              "remainingPercent": 100,
+              "usedPercent": 0,
+              "resetAt": "2026-11-07T22:02:11.000Z"
+            }
+          ]
+        },
+        {
+          "displayName": "Claude and GPT models",
+          "description": "Models within this group: Claude Opus, Claude Sonnet, GPT-OSS",
+          "pool": "Claude & GPT",
+          "versioned": false,
+          "claimedModelIds": [
+            "claude-opus-5-5-high",
+            "claude-opus-5-5-low",
+            "claude-opus-5-5-medium",
+            "claude-sonnet-5-5-high",
+            "claude-sonnet-5-5-low",
+            "claude-sonnet-5-5-medium",
+            "gpt-oss-120b-medium"
+          ],
+          "buckets": [
+            {
+              "bucketId": "3p-weekly",
+              "period": "weekly",
+              "window": "7 days",
+              "remainingPercent": 100,
+              "usedPercent": 0,
+              "resetAt": "2026-11-14T06:09:12.000Z"
+            },
+            {
+              "bucketId": "3p-5h",
+              "period": "5h",
+              "window": "5 hours",
+              "remainingPercent": 100,
+              "usedPercent": 0,
+              "resetAt": "2026-11-07T22:02:11.000Z"
+            }
+          ]
+        }
+      ],
+      "argonWeekly": {
+        "status": "known",
+        "offeredInCatalog": true,
+        "argonModelIds": [
+          "gemini-4-argon-high",
+          "gemini-4-argon-low",
+          "gemini-4-argon-medium"
+        ],
+        "poolMode": "ultra_shared_family_group",
+        "pool": "Gemini",
+        "groupDisplayName": "Gemini Models",
+        "weeklyBucketId": "gemini-weekly",
+        "remainingPercent": 100,
+        "usedPercent": 0,
+        "resetAt": "2026-11-14T17:02:11.000Z"
+      }
+    }
+  ],
+  "secretsIncluded": false,
+  "fullEmailsIncluded": false
+}

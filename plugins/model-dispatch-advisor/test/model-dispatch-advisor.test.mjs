@@ -39,11 +39,13 @@ const harnessQuotaCacheResponseSchema = z.object({
   sources: z.array(harnessQuotaSnapshotSchema),
 }).strict();
 
-const TASK92_HOST_RUNNER = process.env.KIKI_TASK92_HOST_RUNNER
-  ?? 'E:/kiki-wt/executor-instance-scheduling-20261107/packages/agent-core-v2/src/app/plugin/hostRunner.mjs';
+const SIBLING_TASK92_RUNNER = path.resolve(
+  import.meta.dirname,
+  '../../../../executor-instance-scheduling-20261107/packages/agent-core-v2/src/app/plugin/hostRunner.mjs',
+);
 
 async function resolveQuotaCapableRunner() {
-  for (const candidate of [TASK92_HOST_RUNNER, process.env.KIKI_HOST_RUNNER].filter(Boolean)) {
+  for (const candidate of [process.env.KIKI_TASK92_HOST_RUNNER, process.env.KIKI_HOST_RUNNER, SIBLING_TASK92_RUNNER].filter(Boolean)) {
     try {
       await access(candidate);
       const source = await readFile(candidate, 'utf8');
@@ -213,67 +215,101 @@ test('consumes context.harnessQuota.cached() ({ sources }) exclusively without p
     assert.equal(unavailableRes.connectedModels.length, 1);
     assert.equal(unavailableRes.connectedModels[0].id, 'xai/grok-code');
 
-    // 2. Build a genuine Host cache snapshot from Magpie batch output (validated against harnessQuotaCacheResponseSchema),
-    //    plus an unpopulated/failed source whose `readings` is omitted (`undefined`).
+    // 2. Build a genuine multi-source Host cache snapshot from Magpie batch outputs (Antigravity + plugin-served Grok + Codex
+    //    validated against harnessQuotaCacheResponseSchema), plus an unpopulated/failed source whose `readings` is omitted (`undefined`).
     let magpieCliCalls = 0;
     const magpie = new MagpieQuotaService({
-      execCommand: async () => {
+      execCommand: async (_exe, args) => {
         magpieCliCalls += 1;
-        return {
-          stdout: JSON.stringify([
-            {
-              agent: 'antigravity',
-              user: 'acct-active@example.test',
-              alias: 'AGY Active',
-              readAt: '2026-11-07T05:00:00Z',
-              windows: [
-                { name: 'Gemini 4 Argon · 7 days', pool: 'Gemini 4 Argon', remaining: 40, resetsAt: '2026-11-12T00:00:00Z' },
-                { name: 'Gemini · 7 days', pool: 'Gemini', remaining: 85, resetsAt: '2026-11-12T00:00:00Z' },
-                { name: 'Claude & GPT · 5 hours', pool: 'Claude & GPT', remaining: 0, resetsAt: '2026-11-07T09:00:00Z' },
-              ],
-            },
-            {
-              agent: 'antigravity',
-              user: 'acct-stale@example.test',
-              error: 'quota request failed',
-              readAt: '2026-11-06T00:00:00Z',
-              asOf: '2026-11-06T00:00:00Z',
-              windows: [
-                { name: 'Gemini 4 Argon · 7 days', pool: 'Gemini 4 Argon', remaining: 88, resetsAt: '2026-11-10T00:00:00Z' },
-              ],
-            },
-          ]),
-          stderr: '',
-        };
+        const agent = args[1];
+        if (agent === 'antigravity') {
+          return {
+            stdout: JSON.stringify([
+              {
+                agent: 'antigravity',
+                user: 'acct-active@example.test',
+                alias: 'AGY Active',
+                readAt: '2026-11-07T05:00:00Z',
+                windows: [
+                  { name: 'Gemini 4 Argon · 7 days', pool: 'Gemini 4 Argon', remaining: 40, resetsAt: '2026-11-12T00:00:00Z' },
+                  { name: 'Gemini · 7 days', pool: 'Gemini', remaining: 85, resetsAt: '2026-11-12T00:00:00Z' },
+                  { name: 'Claude & GPT · 5 hours', pool: 'Claude & GPT', remaining: 0, resetsAt: '2026-11-07T09:00:00Z' },
+                ],
+              },
+              {
+                agent: 'antigravity',
+                user: 'acct-stale@example.test',
+                error: 'quota request failed',
+                readAt: '2026-11-06T00:00:00Z',
+                asOf: '2026-11-06T00:00:00Z',
+                windows: [
+                  { name: 'Gemini 4 Argon · 7 days', pool: 'Gemini 4 Argon', remaining: 88, resetsAt: '2026-11-10T00:00:00Z' },
+                ],
+              },
+            ]),
+            stderr: '',
+          };
+        }
+        if (agent === 'grok') {
+          return {
+            stdout: JSON.stringify([
+              {
+                agent: 'plugin:grok',
+                user: 'grok-seat-1@example.test',
+                alias: 'Grok Seat 1',
+                readAt: '2026-11-08T01:00:00Z',
+                windows: [
+                  { name: '7 days', used: 79, remaining: 21, resetsAt: '2026-11-14T12:00:00Z' },
+                ],
+              },
+            ]),
+            stderr: '',
+          };
+        }
+        throw new Error(`Unexpected CLI agent: ${agent}`);
       },
     });
 
-    // Host populates its cache once; subsequent tool calls only read `context.harnessQuota.cached()` and never touch Magpie.
-    const { readings: magpieReadings } = await magpie.adapter.read({
+    // Host populates its cache once per source; subsequent tool calls only read `context.harnessQuota.cached()` and never touch Magpie.
+    const { readings: magpieReadings } = await magpie.adapterFor('antigravity').read({
       kikiHome,
       settings: {
         modelWindows: JSON.stringify({
-          'gemini-4-argon-high': { pool: 'Gemini 4 Argon' },
-          'claude-opus-5-5-high': { pool: 'Claude & GPT' },
+          antigravity: {
+            'gemini-4-argon-high': { pool: 'Gemini 4 Argon' },
+            'claude-opus-5-5-high': { pool: 'Claude & GPT' },
+          },
         }),
       },
     });
-    assert.equal(magpieCliCalls, 1);
+    const { readings: grokReadings } = await magpie.adapterFor('grok').read({
+      kikiHome,
+      settings: {},
+    });
+    assert.equal(magpieCliCalls, 2);
 
     const cachedPayload = harnessQuotaCacheResponseSchema.parse({
       sources: [
         {
           id: 'plugin:magpie-harness-quota/antigravity',
           label: 'Magpie · Antigravity',
-          engineIds: ['agy-cli'],
+          engineIds: ['agy-cli', 'antigravity-acp'],
           minRefreshIntervalMs: 300_000,
           readAt: '2026-11-07T05:00:05.000Z',
           readings: magpieReadings,
         },
         {
-          id: 'plugin:other-quota/grok',
-          label: 'Other · Grok',
+          id: 'plugin:magpie-harness-quota/grok',
+          label: 'Magpie · Grok Build',
           engineIds: ['grok-acp'],
+          minRefreshIntervalMs: 300_000,
+          readAt: '2026-11-08T01:00:03.000Z',
+          readings: grokReadings,
+        },
+        {
+          id: 'plugin:magpie-harness-quota/codex',
+          label: 'Magpie · Codex',
+          engineIds: ['codex-app-server', 'codex-acp'],
           minRefreshIntervalMs: 300_000,
           // `readings` omitted: cache not yet populated or failed read inside interval -> must be `unknown`
         },
@@ -292,11 +328,11 @@ test('consumes context.harnessQuota.cached() ({ sources }) exclusively without p
     const viewA = await advisor.recommend({ group: 'implementation' }, hostContext);
     const viewB = await advisor.recommend({ group: 'implementation' }, hostContext);
     // Advisor never triggered Magpie CLI again!
-    assert.equal(magpieCliCalls, 1);
+    assert.equal(magpieCliCalls, 2);
     assert.equal(viewA.quota.status, 'ok');
     assert.equal(Object.hasOwn(viewA.quota, 'readings'), false); // No top-level readings
-    assert.equal(viewA.quota.sources.length, 2);
-    assert.equal(viewB.quota.sources.length, 2);
+    assert.equal(viewA.quota.sources.length, 3);
+    assert.equal(viewB.quota.sources.length, 3);
 
     const agySource = viewA.quota.sources.find((s) => s.id === 'plugin:magpie-harness-quota/antigravity');
     assert.equal(agySource.status, 'cached');
@@ -324,21 +360,118 @@ test('consumes context.harnessQuota.cached() ({ sources }) exclusively without p
     assert.equal(staleArgon.remaining, null);
     assert.equal(staleArgon.readAt, '2026-11-06T00:00:00.000Z');
 
-    // Unpopulated/failed source without `readings` reports `status: "unknown"`, `cached: false`, `readings: null`.
-    const grokSource = viewA.quota.sources.find((s) => s.id === 'plugin:other-quota/grok');
-    assert.equal(grokSource.status, 'unknown');
-    assert.equal(grokSource.cached, false);
-    assert.equal(grokSource.readings, null);
+    // Cached Grok source reports known 21% remaining without any fabricated pool or modelIds.
+    const grokSource = viewA.quota.sources.find((s) => s.id === 'plugin:magpie-harness-quota/grok');
+    assert.equal(grokSource.status, 'cached');
+    assert.equal(grokSource.cached, true);
+    assert.equal(grokSource.readings.length, 1);
+    assert.equal(grokSource.readings[0].accountId, 'grok-seat-1@example.test');
+    assert.equal(grokSource.readings[0].remaining, 21);
+    assert.equal(grokSource.readings[0].window, '7 days');
+    assert.equal(grokSource.readings[0].pool, null);
+    assert.deepEqual(grokSource.readings[0].modelIds, []);
 
-    // Filtering by exact model target `gemini-4-argon-high` matches ONLY Argon readings, never ordinary Gemini 7d!
+    // Unpopulated/failed Codex source without `readings` reports `status: "unknown"`, `cached: false`, `readings: null`.
+    const codexSource = viewA.quota.sources.find((s) => s.id === 'plugin:magpie-harness-quota/codex');
+    assert.equal(codexSource.status, 'unknown');
+    assert.equal(codexSource.cached, false);
+    assert.equal(codexSource.readings, null);
+
+    // Filtering by exact model target `gemini-4-argon-high` keeps cached Antigravity Argon readings AND preserves
+    // uncached Codex source as `status: "unknown"`, `readings: null` (since model membership inside an uncached source
+    // cannot be ruled out without guessing model lists), while omitting cached non-matching Grok!
     const filteredArgon = await advisor.recommend({
       group: 'implementation',
       targets: ['gemini-4-argon-high'],
-      engineIds: ['agy-cli'],
     }, hostContext);
-    assert.equal(filteredArgon.quota.sources.length, 1);
+    assert.equal(filteredArgon.quota.status, 'ok');
+    assert.deepEqual(
+      filteredArgon.quota.sources.map((s) => ({ id: s.id, status: s.status })),
+      [
+        { id: 'plugin:magpie-harness-quota/antigravity', status: 'cached' },
+        { id: 'plugin:magpie-harness-quota/codex', status: 'unknown' },
+      ],
+    );
     assert.equal(filteredArgon.quota.sources[0].readings.length, 2);
     assert.ok(filteredArgon.quota.sources[0].readings.every((r) => r.pool === 'Gemini 4 Argon'));
+    assert.equal(filteredArgon.quota.sources[1].readings, null);
+
+    // Explicit `engineIds: ["agy-cli"]` scopes known relevant sources to Antigravity only, omitting uncached Codex.
+    const filteredArgonScopedEngine = await advisor.recommend({
+      group: 'implementation',
+      engineIds: ['agy-cli'],
+      targets: ['gemini-4-argon-high'],
+    }, hostContext);
+    assert.equal(filteredArgonScopedEngine.quota.sources.length, 1);
+    assert.equal(filteredArgonScopedEngine.quota.sources[0].id, 'plugin:magpie-harness-quota/antigravity');
+
+    // Counterexample 1: When Antigravity is not yet read (`readings` omitted), querying `targets: ["gemini-4-argon-high"]`
+    // MUST NOT drop the uncached Antigravity source and return `status: "ok", sources: []` — it preserves `status: "unknown"`!
+    const uncachedAgyContext = {
+      ...hostContext,
+      harnessQuota: {
+        cached: async () => ({
+          sources: [
+            {
+              id: 'plugin:magpie-harness-quota/antigravity',
+              label: 'Magpie · Antigravity',
+              engineIds: ['agy-cli', 'antigravity-acp'],
+              minRefreshIntervalMs: 300_000,
+            },
+            {
+              id: 'plugin:magpie-harness-quota/grok',
+              label: 'Magpie · Grok Build',
+              engineIds: ['grok-acp'],
+              minRefreshIntervalMs: 300_000,
+              readAt: '2026-11-08T01:00:03.000Z',
+              readings: grokReadings,
+            },
+          ],
+        }),
+      },
+    };
+    const coldArgonLookup = await advisor.recommend({
+      group: 'implementation',
+      targets: ['gemini-4-argon-high'],
+    }, uncachedAgyContext);
+    assert.equal(coldArgonLookup.quota.status, 'unknown');
+    assert.equal(coldArgonLookup.quota.sources.length, 1);
+    assert.equal(coldArgonLookup.quota.sources[0].id, 'plugin:magpie-harness-quota/antigravity');
+    assert.equal(coldArgonLookup.quota.sources[0].status, 'unknown');
+    assert.equal(coldArgonLookup.quota.sources[0].readings, null);
+
+    // Counterexample 2: Querying `accountIds: ["acct-unseen@example.test"]` when an engine source has not been read yet
+    // MUST NOT drop the uncached source and claim `status: "ok", sources: []` — it preserves `status: "unknown"` without fabricating account ownership!
+    const coldAccountLookup = await advisor.recommend({
+      group: 'implementation',
+      accountIds: ['acct-unseen@example.test'],
+    }, uncachedAgyContext);
+    assert.equal(coldAccountLookup.quota.status, 'unknown');
+    assert.equal(coldAccountLookup.quota.sources.length, 1);
+    assert.equal(coldAccountLookup.quota.sources[0].id, 'plugin:magpie-harness-quota/antigravity');
+    assert.equal(coldAccountLookup.quota.sources[0].status, 'unknown');
+    assert.equal(coldAccountLookup.quota.sources[0].readings, null);
+
+    // Filtering by `targets: ["grok"]` or `engineIds: ["grok-acp"]` isolates Grok cleanly.
+    const filteredGrokByTarget = await advisor.recommend({
+      group: 'implementation',
+      engineIds: ['grok-acp'],
+      targets: ['grok'],
+    }, hostContext);
+    assert.equal(filteredGrokByTarget.quota.sources.length, 1);
+    assert.equal(filteredGrokByTarget.quota.sources[0].id, 'plugin:magpie-harness-quota/grok');
+    assert.equal(filteredGrokByTarget.quota.sources[0].readings[0].remaining, 21);
+
+    // Filtering by `targets: ["codex"]` preserves uncached Codex source's honest `unknown` status and marks top-level `quota.status = "unknown"`!
+    const filteredUncachedCodex = await advisor.recommend({
+      group: 'implementation',
+      targets: ['codex'],
+    }, hostContext);
+    assert.equal(filteredUncachedCodex.quota.status, 'unknown');
+    assert.equal(filteredUncachedCodex.quota.sources.length, 1);
+    assert.equal(filteredUncachedCodex.quota.sources[0].id, 'plugin:magpie-harness-quota/codex');
+    assert.equal(filteredUncachedCodex.quota.sources[0].status, 'unknown');
+    assert.equal(filteredUncachedCodex.quota.sources[0].readings, null);
   });
 });
 
@@ -403,7 +536,7 @@ test('executes end-to-end over Task92 hostRunner RPC (harness-quota-cached + mod
         {
           id: 'plugin:magpie-harness-quota/antigravity',
           label: 'Magpie · Antigravity',
-          engineIds: ['agy-cli'],
+          engineIds: ['agy-cli', 'antigravity-acp'],
           minRefreshIntervalMs: 300_000,
           readAt: '2026-11-07T06:00:00.000Z',
           readings: [
@@ -417,6 +550,23 @@ test('executes end-to-end over Task92 hostRunner RPC (harness-quota-cached + mod
               remaining: 72,
               resetAt: '2026-11-13T00:00:00.000Z',
               readAt: '2026-11-07T06:00:00.000Z',
+            },
+          ],
+        },
+        {
+          id: 'plugin:magpie-harness-quota/grok',
+          label: 'Magpie · Grok Build',
+          engineIds: ['grok-acp'],
+          minRefreshIntervalMs: 300_000,
+          readAt: '2026-11-08T01:00:00.000Z',
+          readings: [
+            {
+              accountId: 'grok-seat-1@example.test',
+              unit: 'percent',
+              window: '7 days',
+              remaining: 21,
+              resetAt: '2026-11-14T12:00:00.000Z',
+              readAt: '2026-11-08T01:00:00.000Z',
             },
           ],
         },
@@ -507,8 +657,11 @@ test('executes end-to-end over Task92 hostRunner RPC (harness-quota-cached + mod
       assert.deepEqual(body.preference.prefer, ['implementer-grokbuild', 'non-gpt']);
       assert.equal(body.quota.status, 'ok');
       assert.equal(Object.hasOwn(body.quota, 'readings'), false);
+      assert.equal(body.quota.sources.length, 2);
       assert.equal(body.quota.sources[0].id, 'plugin:magpie-harness-quota/antigravity');
       assert.equal(body.quota.sources[0].readings[0].remaining, 72);
+      assert.equal(body.quota.sources[1].id, 'plugin:magpie-harness-quota/grok');
+      assert.equal(body.quota.sources[1].readings[0].remaining, 21);
       assert.equal(body.connectedModels.length, 1);
       assert.equal(body.connectedModels[0].id, 'xai/grok-code');
     } finally {

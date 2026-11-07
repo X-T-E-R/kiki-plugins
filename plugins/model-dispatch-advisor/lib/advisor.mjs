@@ -133,12 +133,16 @@ async function readHostCachedQuota(context, filters) {
     };
   }
 
-  const sources = [];
+  const hasReadingLevelFilter = filters.targetTokens.length > 0 || filters.accountTokens.length > 0;
+  const cachedMatchingSources = [];
+  const uncachedSources = [];
+
   for (const rawSource of response.sources) {
     if (!isRecord(rawSource) || typeof rawSource.id !== 'string' || !rawSource.id.trim()) continue;
     const engineIds = Array.isArray(rawSource.engineIds)
       ? rawSource.engineIds.filter((e) => typeof e === 'string' && e.trim()).map((e) => e.trim())
       : [];
+    // `engineIds` is the explicit boundary for known relevant quota sources.
     if (!sourceMatchesEngineFilter(engineIds, filters.engineTokens)) continue;
 
     const id = rawSource.id.trim();
@@ -150,15 +154,24 @@ async function readHostCachedQuota(context, filters) {
 
     if (!Array.isArray(rawSource.readings)) {
       // Per contract: omitted `readings` means unknown (cache not yet populated or last read failed within interval).
-      sources.push({
-        id,
-        label,
-        engineIds,
-        minRefreshIntervalMs,
-        status: 'unknown',
-        cached: false,
-        readAt,
-        readings: null,
+      // Model/account membership inside an uncached source cannot be proven or ruled out without guessing model lists,
+      // so keep engine-admitted uncached sources as `status: "unknown"`, `readings: null` without fabricating ownership.
+      const metaFields = [id, label, ...engineIds].map((v) => v.toLowerCase());
+      const directlyNamed = filters.accountTokens.length === 0
+        && filters.targetTokens.length > 0
+        && filters.targetTokens.some((token) => metaFields.some((field) => field === token || field.endsWith(`/${token}`)));
+      uncachedSources.push({
+        entry: {
+          id,
+          label,
+          engineIds,
+          minRefreshIntervalMs,
+          status: 'unknown',
+          cached: false,
+          readAt,
+          readings: null,
+        },
+        directlyNamed,
       });
       continue;
     }
@@ -169,7 +182,11 @@ async function readHostCachedQuota(context, filters) {
       .map((item) => presentQuotaReading(item, readAt ?? undefined))
       .filter((item) => readingMatchesFilters(item, sourceMeta, filters));
 
-    sources.push({
+    if (hasReadingLevelFilter && presentedReadings.length === 0) {
+      continue;
+    }
+
+    cachedMatchingSources.push({
       id,
       label,
       engineIds,
@@ -182,8 +199,17 @@ async function readHostCachedQuota(context, filters) {
     });
   }
 
+  // If `targets` explicitly named a specific uncached source id/label/engine (e.g. `targets: ["codex"]`) and no cached source matched,
+  // narrow uncached entries to the directly named source(s); otherwise keep all engine-admitted uncached sources visible as `unknown`.
+  const narrowedUncached = (cachedMatchingSources.length === 0 && uncachedSources.some((item) => item.directlyNamed))
+    ? uncachedSources.filter((item) => item.directlyNamed).map((item) => item.entry)
+    : uncachedSources.map((item) => item.entry);
+
+  const sources = [...cachedMatchingSources, ...narrowedUncached];
+  const overallStatus = (sources.length > 0 && cachedMatchingSources.length === 0) ? 'unknown' : 'ok';
+
   return {
-    status: 'ok',
+    status: overallStatus,
     sources,
   };
 }
