@@ -10,7 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { MagpieAntigravityDirectQuotaService, clearCollectorRuntimeCaches } from '../lib/antigravity-direct-quota.mjs';
+import { MagpieAntigravityDirectQuotaService, clearCollectorRuntimeCaches, ensureFreshAccessToken } from '../lib/antigravity-direct-quota.mjs';
 import { MagpieAntigravityAccountService } from '../lib/antigravity-account-source.mjs';
 
 const SECRET = 'synthetic-oauth-secret';
@@ -19,22 +19,20 @@ const TOKEN_A = 'TOKEN-A-DO-NOT-LEAK';
 const REFRESH_A = 'REFRESH-A-DO-NOT-LEAK';
 const TOKEN_B = 'TOKEN-B-DO-NOT-LEAK';
 const REFRESH_B = 'REFRESH-B-DO-NOT-LEAK';
-const SIDECAR = process.env.MAGPIE_AGY_SIDECAR
-  ?? 'C:\\Programs\\AI\\EasyAgent\\systems\\cockpit-tools\\sidecars\\cockpit-cliproxy\\bin\\cockpit-cliproxy-x86_64-pc-windows-msvc.exe';
-const HOST_RUNNER = process.env.MAGPIE_AGY_HOST_RUNNER
-  ?? fileURLToPath(new URL('../../../../build-executor-schedule-20261108/packages/agent-core-v2/src/app/plugin/hostRunner.mjs', import.meta.url));
+const SIDECAR = process.env.MAGPIE_AGY_SIDECAR ?? path.resolve('.tmp', 'fixture-sidecar');
+const HOST_RUNNER = process.env.MAGPIE_AGY_HOST_RUNNER;
 const PLUGIN_ENTRY = fileURLToPath(new URL('../entry.mjs', import.meta.url));
 
 let serial = Promise.resolve();
 function exclusive(name, fn) {
-  test(name, async () => {
+  test(name, async (context) => {
     const previous = serial;
     let release;
     serial = new Promise((resolve) => { release = resolve; });
     await previous;
     try {
       clearCollectorRuntimeCaches();
-      await fn();
+      await fn(context);
     } finally {
       clearCollectorRuntimeCaches();
       release();
@@ -417,7 +415,11 @@ exclusive('explicit instance proxy wins and cancel or release stays on that leas
   }
 });
 
-exclusive('real sidecar and HostRunner keep A and B on their own proxies', async () => {
+exclusive('real sidecar and HostRunner keep A and B on their own proxies', async (context) => {
+  if (!HOST_RUNNER || !process.env.MAGPIE_AGY_SIDECAR) {
+    context.skip('Set MAGPIE_AGY_HOST_RUNNER and MAGPIE_AGY_SIDECAR to run the integration fixture.');
+    return;
+  }
   const root = await mkdtemp(path.join(os.tmpdir(), 'magpie-agy-host-'));
   const upstream = await startUpstream();
   startUpstream.saw429 = false;
@@ -583,5 +585,108 @@ exclusive('real sidecar and HostRunner keep A and B on their own proxies', async
     ]);
     if (child.exitCode === null) child.kill();
     await Promise.all([upstream.close(), proxyA.close(), proxyB.close(), rm(root, { recursive: true, force: true })]);
+  }
+});
+
+exclusive('concurrent refresh updates each caller, isolates cancellation and uses the requested route', async () => {
+  const account = (proxyUrl = 'http://proxy-a.test') => ({
+    userHash: 'fixture-account',
+    _secrets: { accessToken: 'expired', expiryMs: 1, refreshToken: 'fixture-refresh', proxyUrl },
+  });
+  const requests = [];
+  const requestFn = (url, options) => new Promise((resolve) => requests.push({ url, options, resolve }));
+  const oauthClient = { clientId: CLIENT_ID, clientSecret: SECRET };
+  const success = (index, access_token) => requests[index].resolve({ status: 200, body: JSON.stringify({ access_token, expires_in: 3600 }) });
+  const cancel = new AbortController();
+  const cancelled = ensureFreshAccessToken(account(), { requestFn, oauthClient, signal: cancel.signal });
+  const a = account();
+  const b = account();
+  const pA = ensureFreshAccessToken(a, { requestFn, oauthClient });
+  const pB = ensureFreshAccessToken(b, { requestFn, oauthClient });
+  const separate = account('http://proxy-b.test');
+  const pSeparate = ensureFreshAccessToken(separate, { requestFn, oauthClient, tokenUrl: 'https://issuer-b.test/token' });
+  cancel.abort();
+  success(0, 'fresh-a');
+  if (requests.length > 1) success(1, 'fresh-b');
+  const results = await Promise.allSettled([cancelled, pA, pB, pSeparate]);
+  assert.deepEqual(requests.map(({ url, options }) => [url, options.proxyUrl]), [
+    ['https://oauth2.googleapis.com/token', 'http://proxy-a.test'],
+    ['https://issuer-b.test/token', 'http://proxy-b.test'],
+  ]);
+  assert.equal(results[0].status, 'rejected');
+  assert.equal(results[0].reason.code, 'ABORT_ERR');
+  assert.deepEqual(results.slice(1).map((result) => result.value), ['fresh-a', 'fresh-a', 'fresh-b']);
+  assert.equal(a._secrets.accessToken, 'fresh-a');
+  assert.equal(b._secrets.accessToken, 'fresh-a');
+  assert.equal(a._secrets.expiryMs, b._secrets.expiryMs);
+  assert.ok(b._secrets.expiryMs > Date.now());
+  assert.equal(separate._secrets.accessToken, 'fresh-b');
+  assert.equal(await ensureFreshAccessToken(account(), { requestFn, oauthClient }), 'fresh-a');
+  assert.equal(await ensureFreshAccessToken(account(), { requestFn, oauthClient, tokenUrl: 'https://issuer-b.test/token' }), 'fresh-b');
+  assert.equal(requests.length, 2);
+
+  clearCollectorRuntimeCaches();
+  const only = new AbortController();
+  const abandoned = ensureFreshAccessToken(account(), { requestFn, oauthClient, signal: only.signal });
+  const rejected = assert.rejects(abandoned, { code: 'ABORT_ERR' });
+  only.abort();
+  await rejected;
+  assert.equal(requests[2].options.signal.aborted, true);
+  success(2, 'discarded');
+});
+
+exclusive('shared project is omitted only from the catalog and a broken stdin stays on its lease', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'magpie-agy-pipe-'));
+  const catalog = [];
+  const server = http.createServer(async (req, res) => {
+    const body = JSON.parse(await readBody(req));
+    if (req.url !== '/v1internal:fetchAvailableModels') { res.writeHead(404).end(); return; }
+    catalog.push(body);
+    if (body.project === 'aicode-consumers') { res.writeHead(403).end(); return; }
+    res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ models: { 'gemini-4-argon-high': {} } }));
+  });
+  const port = await listen(server);
+  const normal = fakeSpawn();
+  const broken = [];
+  const service = new MagpieAntigravityAccountService({
+    env: { GATEWAY_ANTIGRAVITY_FORWARD_BASE_URL: `http://127.0.0.1:${port}` },
+    spawnFn(command, args, options) {
+      if (normal.calls.length === 0) return normal.spawnFn(command, args, options);
+      const fixture = fakeSpawn();
+      const child = fixture.spawnFn(command, args, options);
+      child.stdin.removeAllListeners('data');
+      child.stdin.write = () => { child.stdin.destroy(new Error('write EOF (TOKEN-A-DO-NOT-LEAK)')); return false; };
+      broken.push(child);
+      return child;
+    },
+  });
+  try {
+    await writeFile(path.join(root, 'logins.json'), JSON.stringify([{
+      agent: 'antigravity', user: 'shared@example.test', project: 'aicode-consumers',
+      auth: { access_token: TOKEN_A, refresh_token: REFRESH_A, expiry_date: Date.now() + 3_600_000 },
+    }]));
+    await writeFile(path.join(root, 'providers.json'), '[]');
+    const input = { engineId: 'agy-cli', accountId: 'shared@example.test', instanceId: 'shared', proxy: { mode: 'direct' } };
+    const settings = { magpieConfigDir: root, antigravitySidecarPath: SIDECAR };
+    const first = await service.prepare(input, { settings });
+    assert.deepEqual(first.connection.modelIds, ['gemini-4-argon-high']);
+    assert.equal(normal.calls[0].messages[0].bearer.project_id, 'aicode-consumers');
+    await assert.rejects(service.prepare(input, { settings }), (error) => {
+      noSecrets(error.message);
+      return /sidecar.*pipe/i.test(error.message);
+    });
+    assert.equal(broken[0].killed, true);
+    assert.equal(normal.calls[0].child.killed, false);
+    await assert.rejects(service.prepare(input, { settings: { magpieConfigDir: root } }), /Configure antigravitySidecarPath/);
+    assert.deepEqual(catalog, [{}, {}]);
+    const live = normal.calls[0].child;
+    const closed = new Promise((resolve) => live.once('exit', resolve));
+    live.stdin.write = () => { live.stdin.destroy(new Error('write EOF during refresh')); return false; };
+    live.stdout.write('{"type":"harness_refresh"}\n');
+    await closed;
+    assert.equal(live.killed, true);
+    await service.release({ leaseId: first.leaseId });
+  } finally {
+    await Promise.all([closeServer(server), rm(root, { recursive: true, force: true })]);
   }
 });

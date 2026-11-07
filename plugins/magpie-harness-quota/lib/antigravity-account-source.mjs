@@ -350,15 +350,16 @@ export class MagpieAntigravityAccountService {
       }
       projectId = discovered.trim();
     }
-    const tiers = antigravityEntitlementCandidates(loadResp, account._secrets.refreshToken, projectId);
+    const catalogProject = projectId.trim() === 'aicode-consumers' ? '' : projectId.trim();
+    const tiers = antigravityEntitlementCandidates(loadResp, account._secrets.refreshToken, catalogProject);
     let modelsResp = null;
     let lastStatus = 0;
     for (const tier of tiers) {
       const modelsRaw = await requestFn(`${origin}/v1internal:fetchAvailableModels`, {
         method: 'POST',
-        headers: { ...headers, Authorization: `Bearer ${account._secrets.accessToken}` },
+        headers,
         body: JSON.stringify({
-          ...(projectId ? { project: projectId } : {}),
+          ...(catalogProject ? { project: catalogProject } : {}),
           ...(tier ? { entitlement: { userTier: tier } } : {}),
         }),
         proxyUrl: account._secrets.proxyUrl,
@@ -387,7 +388,7 @@ export class MagpieAntigravityAccountService {
   #issueBearer(lease, rejected) {
     const run = lease.refresh.then(async () => {
       const secrets = lease.account._secrets;
-      if (rejected && rejected === secrets.accessToken) forgetAntigravityAccessToken(lease.account);
+      if (rejected && rejected === secrets.accessToken) forgetAntigravityAccessToken(lease.account, lease.tokenUrl);
       await ensureFreshAccessToken(lease.account, {
         tokenUrl: lease.tokenUrl,
         requestFn: requestWithProxy(secrets.proxyUrl),
@@ -433,47 +434,50 @@ export class MagpieAntigravityAccountService {
       env: sidecarEnvironment(lease.env),
     });
     lease.child = child;
-    let stderr = '';
-    child.stderr?.on('data', (chunk) => {
-      if (stderr.length < 2000) stderr += chunk.toString('utf8');
-    });
+    child.stderr?.resume();
     const lines = createInterface({ input: child.stdout });
+    const { promise: readyPromise, resolve, reject } = Promise.withResolvers();
     let ready = false;
-    const readyPromise = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Antigravity sidecar did not become ready.')), SIDECAR_READY_MS);
-      const fail = (error) => {
-        clearTimeout(timer);
-        reject(error);
-      };
-      signal.addEventListener('abort', () => fail(abortError()), { once: true });
-      child.once('error', (error) => fail(error));
-      child.once('exit', () => {
-        if (!ready) fail(new Error('Antigravity sidecar stopped before it was ready.'));
-      });
-      lines.on('line', (line) => {
-        let message;
-        try { message = JSON.parse(line); } catch { return; }
-        if (!ready) {
-          if (message?.type !== 'harness_ready' || !Number.isInteger(message.port) || message.port <= 0 || message.port > 65535) {
-            fail(new Error('Antigravity sidecar returned an invalid ready message.'));
-            return;
-          }
-          ready = true;
-          clearTimeout(timer);
-          resolve(message.port);
+    let failure;
+    const fail = (error) => {
+      if (failure) return;
+      failure = error;
+      reject(error);
+      if (ready && this.leases.delete(lease.leaseId)) void destroyChild(child);
+    };
+    const onAbort = () => fail(abortError());
+    const onPipeError = () => fail(new Error('Antigravity sidecar input pipe closed.'));
+    const writeMessage = (message) => {
+      if (failure || child.exitCode !== null || child.signalCode) return;
+      try {
+        child.stdin.write(`${JSON.stringify(message)}\n`, (error) => { if (error) onPipeError(); });
+      } catch { onPipeError(); }
+    };
+    const timer = setTimeout(() => fail(new Error('Antigravity sidecar did not become ready.')), SIDECAR_READY_MS);
+    signal.addEventListener('abort', onAbort, { once: true });
+    child.stdin.on('error', onPipeError);
+    child.on('error', () => fail(new Error('Antigravity sidecar could not start or communicate.')));
+    child.once('exit', () => fail(new Error('Antigravity sidecar stopped.')));
+    lines.on('line', (line) => {
+      if (failure) return;
+      let message;
+      try { message = JSON.parse(line); } catch { return; }
+      if (!ready) {
+        if (message?.type !== 'harness_ready' || !Number.isInteger(message.port) || message.port <= 0 || message.port > 65535) {
+          fail(new Error('Antigravity sidecar returned an invalid ready message.'));
           return;
         }
-        if (message?.type === 'harness_refresh') {
-          void this.#issueBearer(lease, typeof message.rejected_bearer === 'string' ? message.rejected_bearer : '')
-            .then((bearer) => {
-              child.stdin.write(`${JSON.stringify({ type: 'harness_refresh_result', bearer })}\n`);
-            })
-            .catch((error) => {
-              const text = publicError(error, lease.redactions).message;
-              try { child.stdin.write(`${JSON.stringify({ type: 'harness_refresh_result', error: text })}\n`); } catch { /* closing */ }
-            });
-        }
-      });
+        ready = true;
+        resolve(message.port);
+        return;
+      }
+      if (message?.type === 'harness_refresh') {
+        void this.#issueBearer(lease, typeof message.rejected_bearer === 'string' ? message.rejected_bearer : '')
+          .then(
+            (bearer) => writeMessage({ type: 'harness_refresh_result', bearer }),
+            (error) => writeMessage({ type: 'harness_refresh_result', error: publicError(error, lease.redactions).message }),
+          );
+      }
     });
     const configure = {
       type: 'harness_configure',
@@ -486,14 +490,20 @@ export class MagpieAntigravityAccountService {
       model_ids: lease.modelIds,
       bearer: bearerFrom(lease.account),
     };
-    child.stdin.write(`${JSON.stringify(configure)}\n`);
+    if (signal.aborted) onAbort();
+    writeMessage(configure);
     try {
-      return await readyPromise;
+      const port = await readyPromise;
+      if (failure) throw failure;
+      return port;
     } catch (error) {
-      lease.stderr = stderr;
+      lines.close();
       await destroyChild(child);
       lease.child = undefined;
       throw error;
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
     }
   }
 
@@ -517,6 +527,7 @@ export class MagpieAntigravityAccountService {
       baseUrl: typeof settings.antigravityCodeAssistOrigin === 'string' ? settings.antigravityCodeAssistOrigin : undefined,
       env,
     });
+    const sidecarPath = this.#sidecarPath(settings, env);
     const tokenUrl = this.#tokenUrl(settings, env);
     const account = cloneAccount(selected, choice.proxyUrl);
     let child;
@@ -539,7 +550,7 @@ export class MagpieAntigravityAccountService {
         modelIds: session.modelIds,
         env,
         signal,
-        sidecarPath: this.#sidecarPath(settings, env),
+        sidecarPath,
         redactions: [...redactions, capability],
         refresh: Promise.resolve(),
       };

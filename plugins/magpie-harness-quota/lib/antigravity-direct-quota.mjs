@@ -1015,9 +1015,11 @@ export async function ensureFreshAccessToken(account, {
   ca,
   oauthClient = null,
 }) {
+  const cancelled = () => Object.assign(new Error('The OAuth refresh was cancelled.'), { code: 'ABORT_ERR' });
+  if (signal?.aborted) throw cancelled();
   const secrets = account._secrets;
-  const rtKey = refreshKeyOf(secrets.refreshToken);
-  const cached = tokenMemoryCache.get(rtKey);
+  const cacheKey = refreshKeyOf(`${secrets.refreshToken}\0${tokenUrl}`);
+  const cached = tokenMemoryCache.get(cacheKey);
   const candidateToken = cached?.accessToken || secrets.accessToken;
   const candidateExpiry = cached?.expiryMs || secrets.expiryMs || 0;
 
@@ -1031,60 +1033,83 @@ export async function ensureFreshAccessToken(account, {
     throw oauthClientMissingError(account.userHash);
   }
 
-  if (tokenRefreshInFlight.has(rtKey)) {
-    return tokenRefreshInFlight.get(rtKey);
+  const flightKey = refreshKeyOf(JSON.stringify([
+    cacheKey, secrets.proxyUrl, oauthClient.clientId, oauthClient.clientSecret, timeoutMs, ca,
+  ]));
+  let flight = tokenRefreshInFlight.get(flightKey);
+  if (!flight) {
+    const controller = new AbortController();
+    const promise = (async () => {
+      const form = new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: secrets.refreshToken,
+        client_id: oauthClient.clientId,
+        client_secret: oauthClient.clientSecret,
+      }).toString();
+      const tokRes = await requestFn(tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: form,
+        proxyUrl: secrets.proxyUrl,
+        timeoutMs,
+        signal: controller.signal,
+        ca,
+      });
+      if (controller.signal.aborted) throw cancelled();
+      if (tokRes.status !== 200) {
+        throw new Error(`OAuth token refresh failed for ${account.userHash} (HTTP ${tokRes.status})`);
+      }
+      let tokJson;
+      try {
+        tokJson = JSON.parse(tokRes.body);
+      } catch {
+        throw new Error(`OAuth token refresh returned unreadable JSON for ${account.userHash}`);
+      }
+      if (typeof tokJson.access_token !== 'string' || !tokJson.access_token) {
+        throw new Error(`OAuth token refresh returned empty access_token for ${account.userHash}`);
+      }
+      const expiryMs = typeof tokJson.expires_in === 'number' && tokJson.expires_in > 0
+        ? Date.now() + tokJson.expires_in * 1000
+        : Date.now() + 3600_000;
+      const token = { accessToken: tokJson.access_token, expiryMs };
+      tokenMemoryCache.set(cacheKey, token);
+      return token;
+    })();
+    flight = { controller, promise, waiters: 0 };
+    tokenRefreshInFlight.set(flightKey, flight);
+    const settled = () => {
+      if (tokenRefreshInFlight.get(flightKey) === flight) tokenRefreshInFlight.delete(flightKey);
+    };
+    void promise.then(settled, settled);
   }
 
-  const refreshPromise = (async () => {
-    const form = new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: secrets.refreshToken,
-      client_id: oauthClient.clientId,
-      client_secret: oauthClient.clientSecret,
-    }).toString();
-    const tokRes = await requestFn(tokenUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form,
-      proxyUrl: secrets.proxyUrl,
-      timeoutMs,
-      signal,
-      ca,
-    });
-    if (tokRes.status !== 200) {
-      throw new Error(`OAuth token refresh failed for ${account.userHash} (HTTP ${tokRes.status})`);
-    }
-    let tokJson;
-    try {
-      tokJson = JSON.parse(tokRes.body);
-    } catch {
-      throw new Error(`OAuth token refresh returned unreadable JSON for ${account.userHash}`);
-    }
-    if (typeof tokJson.access_token !== 'string' || !tokJson.access_token) {
-      throw new Error(`OAuth token refresh returned empty access_token for ${account.userHash}`);
-    }
-    const expiryMs = typeof tokJson.expires_in === 'number' && tokJson.expires_in > 0
-      ? Date.now() + tokJson.expires_in * 1000
-      : Date.now() + 3600_000;
-    secrets.accessToken = tokJson.access_token;
-    secrets.expiryMs = expiryMs;
-    tokenMemoryCache.set(rtKey, { accessToken: tokJson.access_token, expiryMs });
-    return tokJson.access_token;
-  })();
-
-  tokenRefreshInFlight.set(rtKey, refreshPromise);
+  flight.waiters++;
+  let onAbort;
   try {
-    return await refreshPromise;
+    const token = await (signal ? Promise.race([flight.promise, new Promise((_, reject) => {
+      onAbort = () => reject(cancelled());
+      if (signal.aborted) onAbort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    })]) : flight.promise);
+    if (signal?.aborted) throw cancelled();
+    secrets.accessToken = token.accessToken;
+    secrets.expiryMs = token.expiryMs;
+    return token.accessToken;
   } finally {
-    tokenRefreshInFlight.delete(rtKey);
+    if (onAbort) signal.removeEventListener('abort', onAbort);
+    if (--flight.waiters === 0 && tokenRefreshInFlight.get(flightKey) === flight) {
+      tokenRefreshInFlight.delete(flightKey);
+      flight.controller.abort();
+    }
   }
 }
 
 /** Drops one in-memory access token so the next read refreshes it. Does not write Magpie's files. */
-export function forgetAntigravityAccessToken(account) {
+export function forgetAntigravityAccessToken(account, tokenUrl = GOOGLE_TOKEN_URL) {
   const secrets = account?._secrets;
   if (!secrets || typeof secrets.refreshToken !== 'string' || !secrets.refreshToken) return;
-  tokenMemoryCache.delete(refreshKeyOf(secrets.refreshToken));
+  const key = refreshKeyOf(`${secrets.refreshToken}\0${tokenUrl}`);
+  if (tokenMemoryCache.get(key)?.accessToken === secrets.accessToken) tokenMemoryCache.delete(key);
   secrets.accessToken = '';
   secrets.expiryMs = 0;
 }
