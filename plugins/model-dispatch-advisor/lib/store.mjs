@@ -43,7 +43,6 @@ export function emptyState() {
     revision: 0,
     updatedAt: null,
     preferences: {},
-    customGroups: {},
   };
 }
 
@@ -62,42 +61,18 @@ function sanitizeStringList(value, maxItems = 64) {
   return out;
 }
 
-export function normalizeCandidateDefinition(raw, index = 0) {
-  if (!isRecord(raw) || typeof raw.id !== 'string' || !raw.id.trim()) {
-    throw advisorError('ADVISOR_INVALID_CANDIDATE', `Candidate at index ${index} requires a non-empty string id.`);
-  }
-  const id = raw.id.trim();
-  const kind = ['native-model', 'external-harness', 'profile'].includes(raw.kind)
-    ? raw.kind
-    : (raw.executorId ? 'external-harness' : (raw.profile && !raw.modelId ? 'profile' : 'native-model'));
-  return {
-    id,
-    label: typeof raw.label === 'string' && raw.label.trim() ? raw.label.trim() : id,
-    kind,
-    ...(typeof raw.profile === 'string' && raw.profile.trim() ? { profile: raw.profile.trim() } : {}),
-    ...(typeof raw.executorId === 'string' && raw.executorId.trim() ? { executorId: raw.executorId.trim() } : {}),
-    ...(typeof raw.modelId === 'string' && raw.modelId.trim() ? { modelId: raw.modelId.trim() } : {}),
-    ...(typeof raw.effort === 'string' && raw.effort.trim() ? { effort: raw.effort.trim() } : {}),
-    ...(typeof raw.family === 'string' && raw.family.trim() ? { family: raw.family.trim().toLowerCase() } : {}),
-    defaultRank: Number.isInteger(raw.defaultRank) && raw.defaultRank >= 0 ? raw.defaultRank : index * 10,
-    isRoleDefault: raw.isRoleDefault === true,
-    ...(typeof raw.available === 'boolean' ? { available: raw.available } : {}),
-    ...(Array.isArray(raw.allowedModels) ? { allowedModels: sanitizeStringList(raw.allowedModels, 128) } : {}),
-    ...(Array.isArray(raw.deniedModels) ? { deniedModels: sanitizeStringList(raw.deniedModels, 128) } : {}),
-  };
-}
-
 function sanitizeStoredState(parsed) {
   if (!isRecord(parsed)) return emptyState();
   const preferences = {};
   if (isRecord(parsed.preferences)) {
     for (const [group, entry] of Object.entries(parsed.preferences)) {
       if (!isRecord(entry) || !group.trim()) continue;
-      preferences[group.trim()] = {
-        group: group.trim(),
+      const key = group.trim();
+      preferences[key] = {
+        group: key,
         prefer: sanitizeStringList(entry.prefer, 32),
         avoid: sanitizeStringList(entry.avoid, 32),
-        authorizedRoles: sanitizeStringList(entry.authorizedRoles, 32),
+        ...(typeof entry.note === 'string' && entry.note.trim() ? { note: entry.note.trim() } : {}),
         source: {
           kind: 'explicit_user',
           userQuote: typeof entry.source?.userQuote === 'string' ? entry.source.userQuote : '',
@@ -109,31 +84,11 @@ function sanitizeStoredState(parsed) {
       };
     }
   }
-  const customGroups = {};
-  if (isRecord(parsed.customGroups)) {
-    for (const [group, entry] of Object.entries(parsed.customGroups)) {
-      if (!isRecord(entry) || !group.trim()) continue;
-      const candidates = Array.isArray(entry.candidates)
-        ? entry.candidates.map((item, idx) => normalizeCandidateDefinition(item, idx))
-        : [];
-      customGroups[group.trim()] = {
-        id: group.trim(),
-        label: typeof entry.label === 'string' && entry.label.trim() ? entry.label.trim() : group.trim(),
-        protectedRoleDefault: entry.protectedRoleDefault === true,
-        ...(typeof entry.defaultRole === 'string' && entry.defaultRole.trim()
-          ? { defaultRole: entry.defaultRole.trim() }
-          : {}),
-        candidates,
-        updatedAt: typeof entry.updatedAt === 'string' ? entry.updatedAt : null,
-      };
-    }
-  }
   return {
     schemaVersion: STORE_SCHEMA_VERSION,
     revision: Number.isInteger(parsed.revision) && parsed.revision >= 0 ? parsed.revision : 0,
     updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null,
     preferences,
-    customGroups,
   };
 }
 
@@ -210,7 +165,7 @@ export class PreferenceStore {
     group,
     prefer = [],
     avoid = [],
-    authorizedRoles = [],
+    note,
     userAuthorized,
     userQuote,
     sourceNote,
@@ -226,8 +181,8 @@ export class PreferenceStore {
       );
     }
     const quote = typeof userQuote === 'string' ? userQuote.trim() : '';
-    const note = typeof sourceNote === 'string' ? sourceNote.trim() : '';
-    if (!quote && !note) {
+    const provenanceNote = typeof sourceNote === 'string' ? sourceNote.trim() : '';
+    if (!quote && !provenanceNote) {
       throw advisorError(
         'ADVISOR_PROVENANCE_REQUIRED',
         'Provide userQuote or sourceNote recording the explicit user instruction behind this preference.',
@@ -235,13 +190,13 @@ export class PreferenceStore {
     }
     const cleanPrefer = sanitizeStringList(prefer, 32);
     const cleanAvoid = sanitizeStringList(avoid, 32);
-    if (cleanPrefer.length === 0 && cleanAvoid.length === 0) {
+    const cleanNote = typeof note === 'string' && note.trim() ? note.trim() : undefined;
+    if (cleanPrefer.length === 0 && cleanAvoid.length === 0 && !cleanNote) {
       throw advisorError(
         'ADVISOR_EMPTY_PREFERENCE',
-        'Specify at least one entry in prefer or avoid, or use action="clear" to remove a preference.',
+        'Specify at least one entry in prefer, avoid, or note, or use action="clear" to remove a preference.',
       );
     }
-    const cleanRoles = sanitizeStringList(authorizedRoles, 32);
 
     return enqueueFileMutation(this.filePath, async () => {
       const current = await this.read();
@@ -250,11 +205,11 @@ export class PreferenceStore {
         group: groupId,
         prefer: cleanPrefer,
         avoid: cleanAvoid,
-        authorizedRoles: cleanRoles,
+        ...(cleanNote ? { note: cleanNote } : {}),
         source: {
           kind: 'explicit_user',
-          userQuote: quote || note,
-          ...(note ? { sourceNote: note } : {}),
+          userQuote: quote || provenanceNote,
+          ...(provenanceNote ? { sourceNote: provenanceNote } : {}),
           updatedAt: timestamp,
         },
       };
@@ -271,7 +226,7 @@ export class PreferenceStore {
     });
   }
 
-  async clearPreference({ group, clearAll = false, includeCustomGroups = false } = {}) {
+  async clearPreference({ group, clearAll = false } = {}) {
     if (!clearAll && (typeof group !== 'string' || !group.trim())) {
       throw advisorError(
         'ADVISOR_INVALID_ARGUMENT',
@@ -282,14 +237,10 @@ export class PreferenceStore {
       const current = await this.read();
       const timestamp = this.now();
       let nextPreferences;
-      let nextCustomGroups = current.customGroups;
       let clearedGroups = [];
       if (clearAll) {
         clearedGroups = Object.keys(current.preferences);
         nextPreferences = {};
-        if (includeCustomGroups) {
-          nextCustomGroups = {};
-        }
       } else {
         const groupId = group.trim();
         nextPreferences = { ...current.preferences };
@@ -303,71 +254,9 @@ export class PreferenceStore {
         revision: current.revision + 1,
         updatedAt: timestamp,
         preferences: nextPreferences,
-        customGroups: nextCustomGroups,
       };
       await this.#writeAtomic(next);
       return { state: next, clearedGroups };
-    });
-  }
-
-  async defineCustomGroup({ group, groupLabel, protectedRoleDefault = false, candidates = [] }) {
-    const groupId = typeof group === 'string' ? group.trim() : '';
-    if (!groupId || groupId.length > 128) {
-      throw advisorError('ADVISOR_INVALID_ARGUMENT', 'Provide a valid non-empty group ID for define_group.');
-    }
-    if (!Array.isArray(candidates) || candidates.length === 0) {
-      throw advisorError('ADVISOR_INVALID_ARGUMENT', 'define_group requires a non-empty candidates array.');
-    }
-    const normalizedCandidates = candidates.map((item, idx) => normalizeCandidateDefinition(item, idx));
-    const seenIds = new Set();
-    for (const candidate of normalizedCandidates) {
-      if (seenIds.has(candidate.id)) {
-        throw advisorError('ADVISOR_INVALID_CANDIDATE', `Duplicate candidate id "${candidate.id}" in group "${groupId}".`);
-      }
-      seenIds.add(candidate.id);
-    }
-
-    return enqueueFileMutation(this.filePath, async () => {
-      const current = await this.read();
-      const timestamp = this.now();
-      const next = {
-        ...current,
-        revision: current.revision + 1,
-        updatedAt: timestamp,
-        customGroups: {
-          ...current.customGroups,
-          [groupId]: {
-            id: groupId,
-            label: typeof groupLabel === 'string' && groupLabel.trim() ? groupLabel.trim() : groupId,
-            protectedRoleDefault: protectedRoleDefault === true,
-            candidates: normalizedCandidates,
-            updatedAt: timestamp,
-          },
-        },
-      };
-      return this.#writeAtomic(next);
-    });
-  }
-
-  async removeCustomGroup({ group }) {
-    const groupId = typeof group === 'string' ? group.trim() : '';
-    if (!groupId) {
-      throw advisorError('ADVISOR_INVALID_ARGUMENT', 'Provide a non-empty group ID for remove_group.');
-    }
-    return enqueueFileMutation(this.filePath, async () => {
-      const current = await this.read();
-      const timestamp = this.now();
-      const nextCustomGroups = { ...current.customGroups };
-      const existed = Object.hasOwn(nextCustomGroups, groupId);
-      delete nextCustomGroups[groupId];
-      const next = {
-        ...current,
-        revision: current.revision + 1,
-        updatedAt: timestamp,
-        customGroups: nextCustomGroups,
-      };
-      await this.#writeAtomic(next);
-      return { state: next, removed: existed };
     });
   }
 }

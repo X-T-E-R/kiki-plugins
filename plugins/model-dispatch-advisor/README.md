@@ -1,27 +1,26 @@
 # Model Dispatch Advisor
 
-Advisory tools for reading shared model/harness quota snapshots and keeping explicit user selection preferences across equivalent functional candidate groups (`implementation`, `frontend`, `review`, `research`, `writing`, `thinking`, `director`, or custom groups).
+Information-only Kiki plugin that presents shared model/harness quota snapshots alongside explicit user selection preferences scoped by functional group.
 
-This plugin is strictly advisory: it never rewrites agent profiles, `config.toml`, credentials, or in-flight dispatches, and ships zero hardcoded private model aliases, efforts, or external harness assumptions.
+This plugin never computes a "winner" or ranked recommendation, never hardcodes protected roles or candidate profiles, and never rewrites agent profiles, default models, `config.toml`, credentials, or in-flight dispatches. The AI reads the returned quota readings, timestamps, and scoped user preferences, then makes its own dispatch decision through standard `AgentRun` / profile contracts.
 
 ## Tools
 
 | Tool | Model-visible name | Purpose |
 | --- | --- | --- |
-| `dispatch_advisor_recommend` | `plugin__model_dispatch_advisor__dispatch_advisor_recommend` | Read connected models via `context.models.list()`, shared cached quota readings, and saved user preferences for a functional group; return ranked candidates with quota status, provenance, and concise reasons. |
-| `dispatch_preference_update` | `plugin__model_dispatch_advisor__dispatch_preference_update` | Save (`set`), inspect (`get`), or clear (`clear`) explicit user selection preferences, or define/remove custom functional groups (`define_group`, `remove_group`). |
+| `dispatch_advisor_recommend` | `plugin__model_dispatch_advisor__dispatch_advisor_recommend` | Present cached quota readings (remaining quota, unit, source, `readAt`/`resetsAt`, and `unknown`/`exhausted` status) together with the user's latest saved preference for a requested functional `group` (optionally filtered by `targets`, `engineIds`, `accountIds`, or `includeModels: true`). |
+| `dispatch_preference_update` | `plugin__model_dispatch_advisor__dispatch_preference_update` | Save (`set`), inspect (`get`), or remove (`clear`) explicit user selection preferences keyed by functional `group`. |
 
-## Selection Rules
+## Contract Guarantees
 
-1. **Hard constraints first (including empty allowlists):** Profile or caller `allowedModels`, `deniedModels`, `allowedProfiles`, and `deniedProfiles` are never overridden. Explicitly empty allowlists (`allowedModels: []` or `allowedProfiles: []`) admit nothing.
-2. **Explicit turn target & protected role defaults never silently switch models:** Passing `explicitTarget` or evaluating a protected role (`writer`, `think`, `director`) preserves that target/default ahead of soft preferences and quota soft-sorting—even when no preferences are stored or when quota is `0%` (`exhausted`). Exhausted quota is surfaced honestly on `recommended.quota` instead of quietly swapping models.
-3. **Zero-configuration first run via `context.models.list()`:** With no custom group or caller `candidates`, connected chat models from `context.models.list()` are evaluated directly, and protected roles without an explicit `roleDefaultModel` preserve `profile:<role>` inheritance. External harnesses (`kind: "external-harness"`) require explicit `available: true` from caller/configuration because `models.list()` only proves native model connections, not profile or harness readiness.
-4. **Functional group isolation & explicit user provenance:** Saving an `implementation` preference (for example, `avoid: ["gpt"]`, `prefer: ["grok", "gemini"]`) applies only to `implementation`. Protected roles stay unchanged unless authorized in `authorizedRoles`. `action: "set"` requires `userAuthorized: true` and `userQuote`/`sourceNote`; model-inferred guesses are rejected.
-5. **Honest quota handling:** Unknown or incomparable quota units are reported as `unknown` / `incomparable_units` (`remaining: null`)—never fabricated as `0` or unlimited.
+1. **Pure information supply—no selection engine:** Returns raw quota readings and stored preferences (`informationOnly: true`). Contains zero hardcoded role lists, default model bindings, candidate injection, unit comparisons, or `recommended` winners.
+2. **Functional scope isolation:** Preferences are stored under the caller-supplied `group` key (for example `"implementation"`). Querying another scope returns `preference: null` without leaking rules across scopes or altering any profile defaults.
+3. **Explicit user provenance:** `dispatch_preference_update` with `action: "set"` requires `userAuthorized: true` and a `userQuote` or `sourceNote` recording what the user stated. Model-inferred guesses are rejected.
+4. **Honest quota states:** Unavailable, missing, unlimited, text-only, or failed/stale fallback readings (`asOf` / `error` / `lapsed`) are reported as `status: "unknown"` with `remaining: null` while preserving `readAt` / `asOf` timestamps—never fabricated as `0` or infinite. True `0` remaining is reported as `status: "exhausted"`.
 
 ## Storage & Lifecycle
 
-Preferences and custom groups are stored only under `$KIKI_HOME/plugin-data/model-dispatch-advisor/preferences.json` via serialized atomic rename writes, surviving process restarts and plugin reloads. Use `dispatch_preference_update` with `action: "clear"` (`group` or `clearAll: true`) to remove saved rules.
+Preferences are persisted exclusively in `$KIKI_HOME/plugin-data/model-dispatch-advisor/preferences.json` via serialized atomic rename writes, surviving process restarts and plugin reloads. Use `dispatch_preference_update` with `action: "clear"` (`group` or `clearAll: true`) to remove saved preferences.
 
 ```sh
 /plugins install --trust ./plugins/model-dispatch-advisor

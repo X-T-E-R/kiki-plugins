@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
@@ -8,19 +8,20 @@ import test from 'node:test';
 
 import manifest from '../kimi.plugin.json' with { type: 'json' };
 import { definitions, register } from '../entry.mjs';
-import { BUILTIN_GROUPS, createDispatchAdvisor } from '../lib/advisor.mjs';
+import * as advisorModule from '../lib/advisor.mjs';
+import { createDispatchAdvisor } from '../lib/advisor.mjs';
 import { getActiveWriteQueueCountForTesting, PreferenceStore, resolvePluginDataFile } from '../lib/store.mjs';
 import { MagpieQuotaService } from '../../magpie-harness-quota/lib/magpie.mjs';
 
 const SYNTHETIC_CATALOG = {
   models: [
     {
-      id: 'openai/gpt-chat',
-      provider_id: 'openai-conn',
-      remote_id: 'gpt-chat',
-      display_name: 'GPT Chat',
+      id: 'example/chat-model',
+      provider_id: 'example-conn',
+      remote_id: 'chat-model',
+      display_name: 'Example Chat',
       max_context_size: 200_000,
-      effective_protocol: 'openai_responses',
+      effective_protocol: 'openai',
     },
     {
       id: 'xai/grok-code',
@@ -30,53 +31,10 @@ const SYNTHETIC_CATALOG = {
       max_context_size: 262_144,
       effective_protocol: 'openai',
     },
-    {
-      id: 'google/gemini-argon',
-      provider_id: 'google-conn',
-      remote_id: 'gemini-argon',
-      display_name: 'Gemini Argon',
-      max_context_size: 1_048_576,
-      effective_protocol: 'google-genai',
-    },
-    {
-      id: 'deepseek/deepseek-chat',
-      provider_id: 'deepseek-conn',
-      remote_id: 'deepseek-chat',
-      display_name: 'DeepSeek Chat',
-      max_context_size: 131_072,
-      effective_protocol: 'openai',
-    },
   ],
   connections: [
-    { id: 'openai-conn', type: 'openai', status: 'connected', service: 'chat', authentication: 'api-key' },
+    { id: 'example-conn', type: 'openai', status: 'connected', service: 'chat', authentication: 'api-key' },
     { id: 'xai-conn', type: 'openai', status: 'connected', service: 'chat', authentication: 'api-key' },
-    { id: 'google-conn', type: 'google', status: 'connected', service: 'chat', authentication: 'api-key' },
-    { id: 'deepseek-conn', type: 'openai', status: 'connected', service: 'chat', authentication: 'api-key' },
-  ],
-};
-
-const ARGON_DS_CATALOG = {
-  models: [
-    {
-      id: 'provider/gemini-argon',
-      provider_id: 'conn-a',
-      remote_id: 'gemini-argon',
-      display_name: 'Argon',
-      max_context_size: 1_000_000,
-      effective_protocol: 'google-genai',
-    },
-    {
-      id: 'provider/deepseek-v4',
-      provider_id: 'conn-b',
-      remote_id: 'deepseek-v4',
-      display_name: 'DS',
-      max_context_size: 128_000,
-      effective_protocol: 'openai',
-    },
-  ],
-  connections: [
-    { id: 'conn-a', type: 'google', status: 'connected', service: 'chat', authentication: 'api-key' },
-    { id: 'conn-b', type: 'openai', status: 'connected', service: 'chat', authentication: 'api-key' },
   ],
 };
 
@@ -89,360 +47,230 @@ async function withIsolatedHome(fn) {
   }
 }
 
-test('manifest tools match lib/definitions.mjs field-for-field and BUILTIN_GROUPS ships zero hardcoded private model aliases', () => {
+test('manifest tools match lib/definitions.mjs and advisor exports no hardcoded roles, candidates, or winner selector', () => {
   assert.deepEqual(manifest['x-kiki'].tools, definitions);
   assert.equal(definitions.length, 2);
+  assert.equal(manifest['x-kiki'].settings, undefined);
+  assert.equal(advisorModule.PROTECTED_ROLES, undefined);
+  assert.equal(advisorModule.BUILTIN_GROUPS, undefined);
   for (const tool of definitions) {
     assert.equal(tool.schemaVersion, 1);
     assert.ok(tool.description.length > 0 && tool.description.length < 600);
     assert.equal(tool.disclosure, 'deferred');
   }
-  for (const group of Object.values(BUILTIN_GROUPS)) {
-    assert.equal(group.candidates, undefined);
-  }
 });
 
-test('counterexample 1: Argon (0% quota) vs DS (80% quota) with zero saved preferences preserves writer role default and never swaps explicitTarget Argon to DS', async () => {
+test('persists explicit implementation preference, isolates functional scopes (e.g. writer/think examples stay untouched), survives reopen, never mutates local profiles/config, and clears cleanly', async () => {
   await withIsolatedHome(async (kikiHome) => {
-    const context = {
-      kikiHome,
-      settings: {},
-      models: { list: async () => ARGON_DS_CATALOG },
-    };
-    const advisor = createDispatchAdvisor({
-      readQuotaSnapshot: async () => [
-        {
-          accountId: 'acct@example.test',
-          modelIds: ['provider/gemini-argon'],
-          unit: 'percent',
-          remaining: 0,
-          readAt: '2026-11-07T06:00:00Z',
-        },
-        {
-          accountId: 'acct@example.test',
-          modelIds: ['provider/deepseek-v4'],
-          unit: 'percent',
-          remaining: 80,
-          readAt: '2026-11-07T06:00:00Z',
-        },
-      ],
-    });
+    // Seed synthetic local agent profile and config.toml to verify the plugin never touches or rewrites them.
+    const agentsDir = path.join(kikiHome, 'agents');
+    await mkdir(agentsDir, { recursive: true });
+    const writerProfilePath = path.join(agentsDir, 'writer.md');
+    const thinkProfilePath = path.join(agentsDir, 'think.md');
+    const configTomlPath = path.join(kikiHome, 'config.toml');
+    const originalWriterProfile = '---\nmodel: example/writer-default\neffort: high\n---\nWriter profile.\n';
+    const originalThinkProfile = '---\nmodel: example/think-default\neffort: xhigh\n---\nThink profile.\n';
+    const originalConfig = 'default_model = "example/main-default"\n';
+    await writeFile(writerProfilePath, originalWriterProfile, 'utf8');
+    await writeFile(thinkProfilePath, originalThinkProfile, 'utf8');
+    await writeFile(configTomlPath, originalConfig, 'utf8');
 
-    // Case 1A: Zero preferences stored, `recommend({ role: 'writer' })` with only catalog models.
-    // Must preserve profile inheritance (`profile:writer`) rather than recommending DS!
-    const writerInherited = await advisor.recommend({ role: 'writer' }, context);
-    assert.equal(writerInherited.preference, null);
-    assert.equal(writerInherited.group.protectedRoleDefault, true);
-    assert.equal(writerInherited.group.protectedDefaultPreserved, true);
-    assert.equal(writerInherited.recommended.id, 'profile:writer');
-    assert.equal(writerInherited.recommended.kind, 'profile');
-    assert.equal(writerInherited.recommended.profile, 'writer');
-    assert.notEqual(writerInherited.recommended.modelId, 'provider/deepseek-v4');
-
-    // Case 1B: Zero preferences stored, caller supplies Argon as writer's roleDefaultModel (0% quota) vs DS (80% quota).
-    // Protected role default must stay Argon and surface `exhausted` honestly instead of silently switching to DS!
-    const writerArgonDefault = await advisor.recommend({
-      role: 'writer',
-      roleDefaultModel: 'provider/gemini-argon',
-    }, context);
-    assert.equal(writerArgonDefault.preference, null);
-    assert.equal(writerArgonDefault.group.protectedDefaultPreserved, true);
-    assert.equal(writerArgonDefault.recommended.modelId, 'provider/gemini-argon');
-    assert.equal(writerArgonDefault.recommended.quota.status, 'exhausted');
-    assert.equal(writerArgonDefault.recommended.quota.remaining, 0);
-
-    // Case 1C: Zero preferences stored, `recommend({ role: 'writer', explicitTarget: 'Argon' })` (or in implementation group).
-    // Both candidates[0] AND recommended MUST stay Argon with quota status `exhausted`—never silently swapped to DS!
-    const explicitArgonWriter = await advisor.recommend({
-      role: 'writer',
-      explicitTarget: 'Argon',
-    }, context);
-    assert.equal(explicitArgonWriter.candidates[0].modelId, 'provider/gemini-argon');
-    assert.equal(explicitArgonWriter.recommended.modelId, 'provider/gemini-argon');
-    assert.equal(explicitArgonWriter.recommended.quota.status, 'exhausted');
-    assert.equal(explicitArgonWriter.recommended.quota.remaining, 0);
-
-    const explicitArgonImpl = await advisor.recommend({
-      group: 'implementation',
-      explicitTarget: 'Argon',
-    }, context);
-    assert.equal(explicitArgonImpl.candidates[0].modelId, 'provider/gemini-argon');
-    assert.equal(explicitArgonImpl.recommended.modelId, 'provider/gemini-argon');
-    assert.equal(explicitArgonImpl.recommended.quota.status, 'exhausted');
-  });
-});
-
-test('counterexample 2: zero-config first use derives candidates from context.models.list(), while external harnesses require explicit readiness facts', async () => {
-  await withIsolatedHome(async (kikiHome) => {
-    const context = {
-      kikiHome,
-      settings: {},
-      models: { list: async () => SYNTHETIC_CATALOG },
-    };
-    const advisor = createDispatchAdvisor();
-
-    // First-run call with zero custom group and zero caller candidates: concise & ready out of the box from models.list().
-    const firstRun = await advisor.recommend({}, context);
-    assert.equal(firstRun.ok, true);
-    assert.equal(firstRun.group.id, 'implementation');
-    assert.equal(firstRun.candidates.length, 4);
-    assert.equal(firstRun.recommended.id, 'openai/gpt-chat');
-
-    // External harness supplied WITHOUT `available: true` cannot be proved ready by models.list() alone -> eligible: false.
-    const unverifiedHarness = await advisor.recommend({
-      group: 'implementation',
-      candidates: [
-        {
-          id: 'grok-build',
-          label: 'Grok Build',
-          kind: 'external-harness',
-          profile: 'implementer-grokbuild',
-          executorId: 'grok-acp',
-          modelId: 'grok-code',
-          family: 'grok',
-        },
-        {
-          id: 'native-argon',
-          modelId: 'google/gemini-argon',
-        },
-      ],
-    }, context);
-    const grokUnverified = unverifiedHarness.candidates.find((c) => c.id === 'grok-build');
-    assert.equal(grokUnverified.catalog.status, 'external_unverified_by_model_catalog');
-    assert.equal(grokUnverified.catalog.available, false);
-    assert.equal(grokUnverified.eligible, false);
-    assert.equal(unverifiedHarness.recommended.id, 'native-argon');
-
-    // Once caller or custom group confirms profile/harness readiness (`available: true`), external harness participates.
-    const verifiedHarness = await advisor.recommend({
-      group: 'implementation',
-      candidates: [
-        {
-          id: 'grok-build',
-          label: 'Grok Build',
-          kind: 'external-harness',
-          profile: 'implementer-grokbuild',
-          executorId: 'grok-acp',
-          modelId: 'grok-code',
-          family: 'grok',
-          available: true,
-        },
-        {
-          id: 'native-argon',
-          modelId: 'google/gemini-argon',
-        },
-      ],
-    }, context);
-    const grokVerified = verifiedHarness.candidates.find((c) => c.id === 'grok-build');
-    assert.equal(grokVerified.eligible, true);
-    assert.equal(verifiedHarness.recommended.id, 'grok-build');
-  });
-});
-
-test('counterexample 3: explicit empty allowlists (allowedProfiles: [] / allowedModels: []) block all candidates, and PreferenceStore cleans up writeQueues', async () => {
-  await withIsolatedHome(async (kikiHome) => {
-    const context = {
-      kikiHome,
-      settings: {},
-      models: { list: async () => SYNTHETIC_CATALOG },
-    };
-    const advisor = createDispatchAdvisor();
-
-    // Even with Grok Build marked available and preferred, `allowedProfiles: []` admits nothing!
-    await advisor.updatePreference({
-      action: 'define_group',
-      group: 'implementation',
-      candidates: [
-        {
-          id: 'grok-build',
-          kind: 'external-harness',
-          profile: 'implementer-grokbuild',
-          executorId: 'grok-acp',
-          available: true,
-        },
-        {
-          id: 'native-grok',
-          kind: 'native-model',
-          modelId: 'xai/grok-code',
-        },
-      ],
-    }, context);
-
-    const emptyProfiles = await advisor.recommend({
-      group: 'implementation',
-      constraints: { allowedProfiles: [] },
-    }, context);
-    assert.equal(emptyProfiles.recommended, null);
-    for (const c of emptyProfiles.candidates) {
-      assert.equal(c.eligible, false);
-      assert.equal(c.admittedByProfileConstraints, false);
-      assert.match(c.blockedReasons[0], /allowedProfiles.*empty/i);
-    }
-
-    const emptyModels = await advisor.recommend({
-      group: 'implementation',
-      constraints: { allowedModels: [] },
-    }, context);
-    assert.equal(emptyModels.recommended, null);
-    for (const c of emptyModels.candidates) {
-      assert.equal(c.eligible, false);
-      assert.equal(c.admittedByProfileConstraints, false);
-      assert.match(c.blockedReasons[0], /allowedModels.*empty/i);
-    }
-
-    // Verify concurrent mutations serialize atomically AND writeQueues has zero leaked entries once settled.
-    const store = new PreferenceStore({ kikiHome });
-    await Promise.all([
-      store.setPreference({
-        group: 'implementation',
-        avoid: ['gpt'],
-        userAuthorized: true,
-        userQuote: 'u1',
-      }),
-      store.setPreference({
-        group: 'frontend',
-        prefer: ['gemini'],
-        userAuthorized: true,
-        userQuote: 'u2',
-      }),
-      store.clearPreference({ group: 'frontend' }),
-    ]);
-    assert.equal(getActiveWriteQueueCountForTesting(), 0);
-    const finalState = await store.read();
-    assert.ok(finalState.revision >= 3);
-    assert.equal(finalState.preferences.frontend, undefined);
-    assert.deepEqual(finalState.preferences.implementation.avoid, ['gpt']);
-  });
-});
-
-test('persists explicit implementation preference ("现在GPT少用一点"), survives reopen, isolates groups, and supports clear', async () => {
-  await withIsolatedHome(async (kikiHome) => {
     const context = {
       kikiHome,
       settings: {},
       models: { list: async () => SYNTHETIC_CATALOG },
     };
 
+    // Save preference under `implementation` scope.
     const advisorA = createDispatchAdvisor({ now: () => '2026-11-07T10:00:00.000Z' });
     const saved = await advisorA.updatePreference({
       action: 'set',
       group: 'implementation',
-      prefer: ['grok', 'gemini', 'non-gpt'],
+      prefer: ['implementer-grokbuild', 'non-gpt'],
       avoid: ['gpt'],
+      note: '同功能实现任务优先 Grok Build 或非 GPT',
       userAuthorized: true,
-      userQuote: '现在GPT少用一点，实现优先用 Grok 或非 GPT',
+      userQuote: '现在GPT少用一点，用 Grok Build 或其他实现',
       sourceNote: 'session:main#t2121',
     }, context);
 
     assert.equal(saved.ok, true);
     assert.equal(saved.revision, 1);
+    assert.equal(saved.preference.group, 'implementation');
+    assert.deepEqual(saved.preference.prefer, ['implementer-grokbuild', 'non-gpt']);
+    assert.deepEqual(saved.preference.avoid, ['gpt']);
     assert.equal(saved.preference.source.kind, 'explicit_user');
     assert.match(saved.preference.source.userQuote, /现在GPT少用一点/);
     assert.equal(getActiveWriteQueueCountForTesting(), 0);
 
-    // Verify only plugin's own data folder was written (no agents/, config.toml, or credentials/ created).
-    const homeEntries = await readdir(kikiHome);
-    assert.deepEqual(homeEntries, ['plugin-data']);
-    const storeFile = resolvePluginDataFile({ kikiHome });
-    const rawDisk = JSON.parse(await readFile(storeFile, 'utf8'));
-    assert.equal(rawDisk.revision, 1);
-
-    // Fresh reopen ranks Grok / Argon ahead of GPT on zero-config catalog models.
+    // Reopen with a new advisor instance: `implementation` returns the saved preference, with NO `recommended` winner or candidate injection.
     const advisorB = createDispatchAdvisor();
-    const rec = await advisorB.recommend({ group: 'implementation' }, context);
-    assert.equal(rec.ok, true);
-    assert.equal(rec.advisoryOnly, true);
-    assert.equal(rec.preference.applied, true);
-    assert.equal(rec.recommended.id, 'xai/grok-code');
-    assert.equal(rec.candidates[0].id, 'xai/grok-code');
-    assert.equal(rec.candidates[1].id, 'google/gemini-argon');
+    const implView = await advisorB.recommend({ group: 'implementation' }, context);
+    assert.equal(implView.ok, true);
+    assert.equal(implView.informationOnly, true);
+    assert.equal(Object.hasOwn(implView, 'recommended'), false);
+    assert.equal(Object.hasOwn(implView, 'candidates'), false);
+    assert.equal(implView.scope.group, 'implementation');
+    assert.equal(implView.preference.source.sourceNote, 'session:main#t2121');
+    assert.deepEqual(implView.preference.prefer, ['implementer-grokbuild', 'non-gpt']);
 
-    const gptEntry = rec.candidates.find((c) => c.id === 'openai/gpt-chat');
-    assert.equal(gptEntry.preferenceEffect, 'avoided');
-    assert.equal(gptEntry.rank, 4);
+    // Querying other scopes (using 'writer' and 'think' purely as sample scope keys) shows `preference: null` —
+    // the implementation preference does NOT bleed into them, and no special role table is needed.
+    for (const sampleScope of ['writer', 'think', 'review']) {
+      const otherView = await advisorB.recommend({ group: sampleScope }, context);
+      assert.equal(otherView.scope.group, sampleScope);
+      assert.equal(otherView.preference, null);
+      assert.equal(Object.hasOwn(otherView, 'recommended'), false);
+    }
 
-    // Functional group isolation: review has NO preference applied, keeping catalog order.
-    const reviewRec = await advisorB.recommend({ group: 'review' }, context);
-    assert.equal(reviewRec.preference, null);
-    assert.equal(reviewRec.recommended.id, 'openai/gpt-chat');
-
-    // Clear removes the preference cleanly and restores baseline catalog ranking.
-    const cleared = await advisorB.updatePreference({
-      action: 'clear',
+    // Replacing `implementation` updates to the latest instruction and increments revision.
+    const updated = await advisorB.updatePreference({
+      action: 'set',
       group: 'implementation',
+      prefer: ['implementer-grokbuild'],
+      avoid: [],
+      userAuthorized: true,
+      userQuote: '实现先优先看 Grok Build',
     }, context);
-    assert.deepEqual(cleared.clearedGroups, ['implementation']);
+    assert.equal(updated.revision, 2);
+    const reread = await advisorB.recommend({ group: 'implementation' }, context);
+    assert.deepEqual(reread.preference.prefer, ['implementer-grokbuild']);
+    assert.deepEqual(reread.preference.avoid, []);
 
+    // Verify local agent profiles and config.toml were NEVER modified, and only `plugin-data` was added.
+    assert.equal(await readFile(writerProfilePath, 'utf8'), originalWriterProfile);
+    assert.equal(await readFile(thinkProfilePath, 'utf8'), originalThinkProfile);
+    assert.equal(await readFile(configTomlPath, 'utf8'), originalConfig);
+    const homeEntries = (await readdir(kikiHome)).sort();
+    assert.deepEqual(homeEntries, ['agents', 'config.toml', 'plugin-data']);
+    const storeRaw = JSON.parse(await readFile(resolvePluginDataFile({ kikiHome }), 'utf8'));
+    assert.equal(storeRaw.revision, 2);
+
+    // Clear removes the preference cleanly.
+    const cleared = await advisorB.updatePreference({ action: 'clear', group: 'implementation' }, context);
+    assert.deepEqual(cleared.clearedGroups, ['implementation']);
     const afterClear = await advisorB.recommend({ group: 'implementation' }, context);
     assert.equal(afterClear.preference, null);
-    assert.equal(afterClear.recommended.id, 'openai/gpt-chat');
   });
 });
 
-test('protects writer, think, and director role defaults unless the user explicitly authorizes changing that role', async () => {
+test('presents raw quota readings, sources, readAt/resetsAt, filters by identifier, and reports unavailable/unknown/stale states honestly without fabricating 0 or infinite', async () => {
   await withIsolatedHome(async (kikiHome) => {
     const context = {
       kikiHome,
       settings: {},
       models: { list: async () => SYNTHETIC_CATALOG },
     };
-    const advisor = createDispatchAdvisor();
 
-    await advisor.updatePreference({
-      action: 'set',
+    // 1. When no quota snapshot source is bound, status is honestly `unavailable` with empty readings,
+    //    and unapproved guessed context fields (`quotas` / `harnessQuotas`) are never probed.
+    const noQuotaAdvisor = createDispatchAdvisor();
+    const unavailableRes = await noQuotaAdvisor.recommend(
+      { group: 'implementation', includeModels: true, targets: ['grok-code'] },
+      {
+        ...context,
+        quotas: { list: async () => { throw new Error('must not probe guessed context.quotas'); } },
+        harnessQuotas: { list: async () => { throw new Error('must not probe guessed context.harnessQuotas'); } },
+      },
+    );
+    assert.equal(unavailableRes.quota.status, 'unavailable');
+    assert.deepEqual(unavailableRes.quota.readings, []);
+    assert.equal(unavailableRes.connectedModels.length, 1);
+    assert.equal(unavailableRes.connectedModels[0].id, 'xai/grok-code');
+    assert.equal(Object.hasOwn(unavailableRes, 'recommended'), false);
+
+    // 2. With Magpie batch output (including known remaining, true 0 exhausted, and stale `asOf`/`error` fallback),
+    //    readings preserve source, timestamps, and exact unknown vs exhausted states.
+    const magpie = new MagpieQuotaService({
+      execCommand: async () => ({
+        stdout: JSON.stringify([
+          {
+            agent: 'antigravity',
+            user: 'acct-active@example.test',
+            alias: 'AGY Active',
+            readAt: '2026-11-07T05:00:00Z',
+            windows: [
+              { name: 'Gemini 4 Argon · 7 days', pool: 'Gemini 4 Argon', remaining: 40, resetsAt: '2026-11-12T00:00:00Z' },
+              { name: 'Claude & GPT · 5 hours', pool: 'Claude & GPT', remaining: 0, resetsAt: '2026-11-07T09:00:00Z' },
+            ],
+          },
+          {
+            agent: 'antigravity',
+            user: 'acct-stale@example.test',
+            error: 'quota request failed',
+            readAt: '2026-11-06T00:00:00Z',
+            asOf: '2026-11-06T00:00:00Z',
+            windows: [
+              { name: 'Gemini 4 Argon · 7 days', pool: 'Gemini 4 Argon', remaining: 88, resetsAt: '2026-11-10T00:00:00Z' },
+            ],
+          },
+        ]),
+        stderr: '',
+      }),
+    });
+
+    const magpieSettings = {
+      modelWindows: JSON.stringify({
+        'gemini-4-argon-high': { pool: 'Gemini 4 Argon' },
+        'claude-opus-5-5-high': { pool: 'Claude & GPT' },
+      }),
+    };
+
+    const advisor = createDispatchAdvisor({
+      readQuotaSnapshot: async ({ signal }) => ({
+        sources: [
+          {
+            id: 'plugin:magpie-harness-quota/antigravity',
+            label: 'Magpie · Antigravity',
+            engineIds: ['agy-cli'],
+            readAt: '2026-11-07T05:00:00Z',
+            readings: await magpie.adapter.read({ signal, settings: magpieSettings }),
+          },
+        ],
+      }),
+    });
+
+    const fullQuota = await advisor.recommend({ group: 'implementation' }, context);
+    assert.equal(fullQuota.quota.status, 'ok');
+    assert.equal(fullQuota.quota.sources.length, 1);
+    assert.equal(fullQuota.quota.sources[0].id, 'plugin:magpie-harness-quota/antigravity');
+    assert.equal(fullQuota.quota.sources[0].readAt, '2026-11-07T05:00:00.000Z');
+    assert.equal(fullQuota.quota.readings.length, 3);
+
+    const activeArgon = fullQuota.quota.readings.find(
+      (r) => r.accountId === 'acct-active@example.test' && r.pool === 'Gemini 4 Argon',
+    );
+    assert.equal(activeArgon.status, 'known');
+    assert.equal(activeArgon.remaining, 40);
+    assert.equal(activeArgon.unit, 'percent');
+    assert.deepEqual(activeArgon.modelIds, ['gemini-4-argon-high']);
+
+    const exhaustedClaude = fullQuota.quota.readings.find(
+      (r) => r.accountId === 'acct-active@example.test' && r.pool === 'Claude & GPT',
+    );
+    assert.equal(exhaustedClaude.status, 'exhausted');
+    assert.equal(exhaustedClaude.remaining, 0);
+
+    const staleArgon = fullQuota.quota.readings.find(
+      (r) => r.accountId === 'acct-stale@example.test',
+    );
+    assert.equal(staleArgon.status, 'unknown');
+    assert.equal(staleArgon.remaining, null);
+    assert.equal(staleArgon.readAt, '2026-11-06T00:00:00.000Z');
+
+    // Filter by target model ID + account ID returns only matching readings.
+    const filtered = await advisor.recommend({
       group: 'implementation',
-      avoid: ['gpt'],
-      prefer: ['grok'],
-      userAuthorized: true,
-      userQuote: '现在GPT少用一点',
+      targets: ['gemini-4-argon-high'],
+      accountIds: ['acct-active@example.test'],
     }, context);
-
-    // Without roleDefaultModel, protected roles preserve profile:<role> inheritance.
-    const thinkRec = await advisor.recommend({ role: 'think' }, context);
-    assert.equal(thinkRec.group.id, 'thinking');
-    assert.equal(thinkRec.group.protectedDefaultPreserved, true);
-    assert.equal(thinkRec.recommended.id, 'profile:think');
-
-    // With caller-supplied roleDefaultModel ('openai/gpt-chat'), even a `thinking` preference lacking `authorizedRoles: ['think']` cannot displace it.
-    await advisor.updatePreference({
-      action: 'set',
-      group: 'thinking',
-      avoid: ['gpt'],
-      prefer: ['grok'],
-      userAuthorized: true,
-      userQuote: '省点GPT额度',
-    }, context);
-
-    const thinkStillProtected = await advisor.recommend({
-      role: 'think',
-      roleDefaultModel: 'openai/gpt-chat',
-    }, context);
-    assert.equal(thinkStillProtected.group.protectedDefaultPreserved, true);
-    assert.equal(thinkStillProtected.preference.applied, false);
-    assert.equal(thinkStillProtected.recommended.id, 'openai/gpt-chat');
-
-    // Only when the user explicitly authorizes `think` (`authorizedRoles: ['think']`) does it switch to Grok.
-    await advisor.updatePreference({
-      action: 'set',
-      group: 'thinking',
-      avoid: ['gpt'],
-      prefer: ['grok'],
-      authorizedRoles: ['think'],
-      userAuthorized: true,
-      userQuote: 'think 角色也改用 Grok，少用 GPT',
-    }, context);
-
-    const thinkAuthorized = await advisor.recommend({
-      role: 'think',
-      roleDefaultModel: 'openai/gpt-chat',
-    }, context);
-    assert.equal(thinkAuthorized.group.protectedDefaultPreserved, false);
-    assert.equal(thinkAuthorized.preference.applied, true);
-    assert.equal(thinkAuthorized.recommended.id, 'xai/grok-code');
+    assert.equal(filtered.quota.totalCachedReadings, 3);
+    assert.equal(filtered.quota.matchedReadingCount, 1);
+    assert.equal(filtered.quota.readings[0].remaining, 40);
   });
 });
 
-test('rejects model-inferred preferences lacking userAuthorized=true or provenance quote', async () => {
+test('rejects model-inferred preferences lacking userAuthorized=true or provenance, and cleans up writeQueues after concurrent writes', async () => {
   await withIsolatedHome(async (kikiHome) => {
     const store = new PreferenceStore({ kikiHome });
     const advisor = createDispatchAdvisor({ store });
@@ -467,104 +295,21 @@ test('rejects model-inferred preferences lacking userAuthorized=true or provenan
       }),
       { code: 'ADVISOR_PROVENANCE_REQUIRED' },
     );
+
+    await Promise.all([
+      store.setPreference({ group: 'implementation', avoid: ['gpt'], userAuthorized: true, userQuote: 'q1' }),
+      store.setPreference({ group: 'frontend', prefer: ['gemini'], userAuthorized: true, userQuote: 'q2' }),
+      store.clearPreference({ group: 'frontend' }),
+    ]);
+    assert.equal(getActiveWriteQueueCountForTesting(), 0);
+    const state = await store.read();
+    assert.equal(state.revision, 3);
+    assert.equal(state.preferences.frontend, undefined);
+    assert.deepEqual(state.preferences.implementation.avoid, ['gpt']);
   });
 });
 
-test('handles unknown quota without fabricating 0 or infinite and sorts comparable same-unit Magpie readings cleanly', async () => {
-  await withIsolatedHome(async (kikiHome) => {
-    const magpie = new MagpieQuotaService({
-      execCommand: async () => ({
-        stdout: JSON.stringify([
-          {
-            agent: 'antigravity',
-            user: 'acct-1@example.test',
-            alias: 'AGY 1',
-            readAt: '2026-11-07T05:00:00Z',
-            windows: [
-              { name: 'Gemini 4 Argon · 7 days', pool: 'Gemini 4 Argon', used: 60, remaining: 40, resetsAt: '2026-11-12T00:00:00Z' },
-              { name: 'Gemini · 5 hours', pool: 'Gemini', used: 15, remaining: 85, resetsAt: '2026-11-07T10:00:00Z' },
-            ],
-          },
-        ]),
-        stderr: '',
-      }),
-    });
-
-    const magpieSettings = {
-      modelWindows: JSON.stringify({
-        'gemini-4-argon-high': { pool: 'Gemini 4 Argon' },
-        'gemini-3.8-flash-high': { pool: 'Gemini', name: '5 hours' },
-      }),
-    };
-
-    const advisor = createDispatchAdvisor({
-      readQuotaSnapshot: ({ signal }) => magpie.adapter.read({ signal, settings: magpieSettings }),
-    });
-
-    const context = {
-      kikiHome,
-      settings: {},
-      models: { list: async () => SYNTHETIC_CATALOG },
-    };
-
-    await advisor.updatePreference({
-      action: 'define_group',
-      group: 'agy-frontend-pool',
-      groupLabel: 'AGY Frontend Candidates',
-      candidates: [
-        {
-          id: 'agy-argon',
-          label: 'AGY Argon High',
-          kind: 'external-harness',
-          executorId: 'agy-cli',
-          modelId: 'gemini-4-argon-high',
-          available: true,
-          defaultRank: 10,
-        },
-        {
-          id: 'agy-flash',
-          label: 'AGY 3.8 Flash High',
-          kind: 'external-harness',
-          executorId: 'agy-cli',
-          modelId: 'gemini-3.8-flash-high',
-          available: true,
-          defaultRank: 20,
-        },
-        {
-          id: 'native-unknown-quota',
-          label: 'Native Argon (No Quota Source)',
-          kind: 'native-model',
-          modelId: 'google/gemini-argon',
-          defaultRank: 30,
-        },
-      ],
-    }, context);
-
-    const rec = await advisor.recommend({ group: 'agy-frontend-pool' }, context);
-    assert.equal(rec.quotaSummary.status, 'ok');
-    assert.equal(rec.candidates[0].id, 'agy-flash');
-    assert.equal(rec.candidates[0].quota.remaining, 85);
-    assert.equal(rec.candidates[1].id, 'agy-argon');
-    assert.equal(rec.candidates[1].quota.remaining, 40);
-
-    const unknownEntry = rec.candidates.find((c) => c.id === 'native-unknown-quota');
-    assert.equal(unknownEntry.quota.status, 'unknown');
-    assert.equal(unknownEntry.quota.remaining, null);
-
-    // Without injected quota reader, context guesses are NOT probed; status reports 'unavailable' cleanly.
-    const uninjectedAdvisor = createDispatchAdvisor();
-    const uninjectedRec = await uninjectedAdvisor.recommend({
-      group: 'agy-frontend-pool',
-    }, {
-      ...context,
-      quotas: { list: async () => { throw new Error('must not probe unapproved guessed context fields'); } },
-      harnessQuotas: { list: async () => { throw new Error('must not probe unapproved guessed context fields'); } },
-    });
-    assert.equal(uninjectedRec.quotaSummary.status, 'unavailable');
-  });
-});
-
-test('entry.mjs registers exact tools and pinned Kiki hostRunner executes model-call + preference persistence end-to-end', { skip: !process.env.KIKI_HOST_RUNNER }, async () => {
+test('entry.mjs registers exact tools and pinned Kiki hostRunner executes preference persistence + information query end-to-end', { skip: !process.env.KIKI_HOST_RUNNER }, async () => {
   await withIsolatedHome(async (kikiHome) => {
     const pluginRoot = path.dirname(import.meta.dirname);
     const runner = path.resolve(process.env.KIKI_HOST_RUNNER);
@@ -593,7 +338,7 @@ test('entry.mjs registers exact tools and pinned Kiki hostRunner executes model-
                 args: {
                   action: 'set',
                   group: 'implementation',
-                  prefer: ['grok', 'gemini'],
+                  prefer: ['implementer-grokbuild', 'non-gpt'],
                   avoid: ['gpt'],
                   userAuthorized: true,
                   userQuote: '现在GPT少用一点',
@@ -608,7 +353,7 @@ test('entry.mjs registers exact tools and pinned Kiki hostRunner executes model-
                 name: 'dispatch_advisor_recommend',
                 kikiHome,
                 settings: {},
-                args: { group: 'implementation' },
+                args: { group: 'implementation', includeModels: true },
               },
             });
           } else if (message.method === 'model-call' && message.params?.action === 'list') {
@@ -632,8 +377,11 @@ test('entry.mjs registers exact tools and pinned Kiki hostRunner executes model-
       assert.deepEqual(registeredTools, definitions);
       assert.notEqual(result.result.isError, true);
       const body = JSON.parse(result.result.output);
-      assert.equal(body.recommended.id, 'xai/grok-code');
-      assert.equal(body.preference.applied, true);
+      assert.equal(body.informationOnly, true);
+      assert.equal(Object.hasOwn(body, 'recommended'), false);
+      assert.deepEqual(body.preference.prefer, ['implementer-grokbuild', 'non-gpt']);
+      assert.deepEqual(body.preference.avoid, ['gpt']);
+      assert.equal(body.connectedModels.length, 2);
     } finally {
       child.kill();
       incoming.close();
