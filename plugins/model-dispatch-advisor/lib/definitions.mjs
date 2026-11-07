@@ -3,7 +3,7 @@ export const PLUGIN_ID = 'model-dispatch-advisor';
 export const dispatchAdvisorRecommendTool = {
   schemaVersion: 1,
   name: 'dispatch_advisor_recommend',
-  description: 'Read available shared quota snapshots (remaining quota, source, readAt/resetsAt, and unknown states) alongside the user’s latest saved selection preference for a functional scope. Presents facts to the AI without computing a winner, ranking candidates, or mutating profiles and defaults.',
+  description: 'Read cached harness quota snapshots via context.harnessQuota.cached() (remaining quota, source, readAt/resetAt, and unknown states) alongside the user’s latest saved selection preference for a functional scope. Presents facts to the AI without computing a winner, ranking candidates, polling Magpie, or mutating profiles and defaults.',
   parameters: {
     type: 'object',
     additionalProperties: false,
@@ -22,23 +22,29 @@ export const dispatchAdvisorRecommendTool = {
         type: 'array',
         maxItems: 64,
         items: { type: 'string', minLength: 1, maxLength: 256 },
-        description: 'Optional exact identifiers (modelId, engineId, pool, window, or accountId) to filter quota readings and connected models.',
+        description: 'Optional exact identifiers (modelId, engineId, pool, window, or accountId) to filter cached quota readings.',
       },
       engineIds: {
         type: 'array',
         maxItems: 32,
         items: { type: 'string', minLength: 1, maxLength: 128 },
-        description: 'Optional exact harness engine IDs (for example "agy-cli" or "grok-acp") to filter quota readings.',
+        description: 'Optional exact harness engine IDs (for example "agy-cli" or "grok-acp") to filter cached quota sources and readings.',
       },
       accountIds: {
         type: 'array',
         maxItems: 32,
         items: { type: 'string', minLength: 1, maxLength: 256 },
-        description: 'Optional exact quota account IDs to filter quota readings.',
+        description: 'Optional exact quota account IDs to filter cached quota readings.',
+      },
+      modelCandidates: {
+        type: 'array',
+        maxItems: 128,
+        items: { type: 'string', minLength: 1, maxLength: 256 },
+        description: 'Optional exact model IDs or remote IDs passed to context.models.list({ candidates }) when includeModels=true.',
       },
       includeModels: {
         type: 'boolean',
-        description: 'When true, also include raw connected model entries from context.models.list() (filtered by targets when provided).',
+        description: 'When true, also include raw connected model entries from context.models.list({ candidates: modelCandidates }).',
       },
     },
   },

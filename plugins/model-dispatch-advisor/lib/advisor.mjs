@@ -20,77 +20,72 @@ function normalizeFilterTokens(list) {
   return out;
 }
 
+function normalizeCandidateIds(list) {
+  if (!Array.isArray(list)) return undefined;
+  return list
+    .filter((item) => typeof item === 'string' && item.trim().length > 0)
+    .map((item) => item.trim());
+}
+
 function normalizeIsoTimestamp(value) {
-  if (typeof value !== 'string' || !value.trim()) return null;
+  if (typeof value !== 'string' || !value.trim()) return undefined;
   const parsed = Date.parse(value.trim());
-  if (!Number.isFinite(parsed) || parsed <= Date.UTC(1970, 0, 1)) return null;
+  if (!Number.isFinite(parsed) || parsed <= Date.UTC(1970, 0, 1)) return undefined;
   return new Date(parsed).toISOString();
 }
 
 /**
- * Presents a raw quota reading without fabricating 0 or infinite values.
- * Stale/failed fallback indicators (`lapsed`, `error`, or `asOf` fallback without valid live `remaining`)
- * remain `status: "unknown"` with `remaining: null` while preserving `readAt` / `asOf` timestamps.
+ * Presents one `HarnessQuotaReading` from a `PluginHarnessQuotaSnapshot` without fabricating 0 or infinite values.
+ * Per `@kiki/plugin-sdk/harness-quota`, omitted `remaining` means unknown (`status: "unknown"`, `remaining: null`),
+ * while `0` is a known exhausted value (`status: "exhausted"`, `remaining: 0`).
  */
-function presentQuotaReading(raw, fallbackSource) {
+function presentQuotaReading(raw, snapshotReadAt) {
   const modelIds = Array.isArray(raw.modelIds)
     ? raw.modelIds.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
     : [];
-  const readAt = normalizeIsoTimestamp(raw.readAt) ?? normalizeIsoTimestamp(raw.asOf);
-  const asOf = normalizeIsoTimestamp(raw.asOf);
-  const resetsAt = normalizeIsoTimestamp(raw.resetsAt ?? raw.resetAt);
+  const readAt = normalizeIsoTimestamp(raw.readAt) ?? snapshotReadAt ?? null;
+  const resetAt = normalizeIsoTimestamp(raw.resetAt) ?? null;
 
-  const hasStaleOrErrorFlag = Boolean(
-    (typeof raw.lapsed === 'string' && raw.lapsed.trim())
-    || (typeof raw.error === 'string' && raw.error.trim())
-    || asOf !== null
-    || (raw.asOf !== undefined && raw.asOf !== null && String(raw.asOf).trim() !== '')
-    || raw.unlimited === true
-    || raw.text === true,
-  );
-
-  const hasValidNumber = !hasStaleOrErrorFlag && typeof raw.remaining === 'number' && Number.isFinite(raw.remaining);
-  const remaining = hasValidNumber ? Math.max(0, raw.remaining) : null;
+  const hasValidNumber = typeof raw.remaining === 'number' && Number.isFinite(raw.remaining) && raw.remaining >= 0;
+  const remaining = hasValidNumber ? raw.remaining : null;
   const status = hasValidNumber ? (remaining === 0 ? 'exhausted' : 'known') : 'unknown';
 
   return {
-    source: typeof raw.sourceId === 'string' && raw.sourceId.trim()
-      ? raw.sourceId.trim()
-      : (typeof raw.source === 'string' && raw.source.trim() ? raw.source.trim() : fallbackSource),
-    engineId: typeof raw.engineId === 'string' && raw.engineId.trim() ? raw.engineId.trim() : null,
     accountId: typeof raw.accountId === 'string' && raw.accountId.trim() ? raw.accountId.trim() : null,
     accountLabel: typeof raw.accountLabel === 'string' && raw.accountLabel.trim() ? raw.accountLabel.trim() : null,
-    pool: typeof raw.pool === 'string' && raw.pool.trim() ? raw.pool.trim() : null,
-    window: typeof raw.window === 'string' && raw.window.trim() ? raw.window.trim() : null,
     modelIds,
+    pool: typeof raw.pool === 'string' && raw.pool.trim() ? raw.pool.trim() : null,
+    unit: typeof raw.unit === 'string' && raw.unit.trim() ? raw.unit.trim() : null,
+    window: typeof raw.window === 'string' && raw.window.trim() ? raw.window.trim() : null,
     status,
-    unit: hasValidNumber && typeof raw.unit === 'string' && raw.unit.trim() ? raw.unit.trim() : (typeof raw.unit === 'string' && raw.unit.trim() ? raw.unit.trim() : null),
     remaining,
-    resetsAt,
+    resetAt,
     readAt,
-    ...(asOf ? { asOf } : {}),
   };
 }
 
-function readingMatchesFilters(item, { targetTokens, engineTokens, accountTokens }) {
-  if (engineTokens.length > 0) {
-    const engine = item.engineId?.toLowerCase() ?? '';
-    if (!engine || !engineTokens.includes(engine)) return false;
-  }
+function sourceMatchesEngineFilter(engineIds, engineTokens) {
+  if (engineTokens.length === 0) return true;
+  const lower = engineIds.map((id) => id.toLowerCase());
+  return engineTokens.some((token) => lower.includes(token));
+}
+
+function readingMatchesFilters(reading, sourceMeta, { targetTokens, accountTokens }) {
   if (accountTokens.length > 0) {
-    const acct = item.accountId?.toLowerCase() ?? '';
-    const label = item.accountLabel?.toLowerCase() ?? '';
+    const acct = reading.accountId?.toLowerCase() ?? '';
+    const label = reading.accountLabel?.toLowerCase() ?? '';
     if (!accountTokens.includes(acct) && !accountTokens.includes(label)) return false;
   }
   if (targetTokens.length > 0) {
     const haystacks = [
-      item.source,
-      item.engineId,
-      item.accountId,
-      item.accountLabel,
-      item.pool,
-      item.window,
-      ...item.modelIds,
+      sourceMeta.id,
+      sourceMeta.label,
+      ...sourceMeta.engineIds,
+      reading.accountId,
+      reading.accountLabel,
+      reading.pool,
+      reading.window,
+      ...reading.modelIds,
     ]
       .filter((v) => typeof v === 'string' && v.length > 0)
       .map((v) => v.toLowerCase());
@@ -104,86 +99,93 @@ function readingMatchesFilters(item, { targetTokens, engineTokens, accountTokens
 }
 
 /**
- * Reads quota snapshot from an explicitly injected `readQuotaSnapshot` adapter.
- * Host context quota wiring will be bound solely to the final `@kiki/plugin-sdk` read-only cache export once stabilized.
- * Never fabricates 0 or unlimited when quota is unavailable or unknown.
+ * Consumes the sole official read-only Host cache contract: `context.harnessQuota.cached()`.
+ * Returns `{ sources: [{ id, label, engineIds, minRefreshIntervalMs, readAt?, readings? }] }` with no top-level `readings`.
+ * Does NOT poll Magpie or any quota backend, and never probes rejected legacy context properties.
+ * When `readings` is omitted on a source (not yet cached, or latest read failed within interval), that source's
+ * status is `"unknown"` (`readings: null`), never fabricated as 0 or unlimited.
  */
-async function readSharedQuota(context, injectedReadQuota) {
-  if (typeof injectedReadQuota !== 'function') {
+async function readHostCachedQuota(context, filters) {
+  if (typeof context?.harnessQuota?.cached !== 'function') {
     return {
       status: 'unavailable',
       sources: [],
-      readings: [],
-      note: 'Shared host quota cache SDK is not yet bound in this environment; no quota readings available.',
+      note: 'Host context.harnessQuota.cached() is not available on this runtime; quota treated as unknown.',
     };
   }
 
+  let response;
   try {
-    const raw = await injectedReadQuota({ signal: context?.signal });
-    if (Array.isArray(raw)) {
-      const readings = raw.filter(isRecord).map((r) => presentQuotaReading(r, 'shared-quota-cache'));
-      return {
-        status: 'ok',
-        sources: [],
-        readings,
-      };
-    }
-    if (isRecord(raw) && Array.isArray(raw.sources)) {
-      const sources = [];
-      const readings = [];
-      for (const src of raw.sources) {
-        if (!isRecord(src)) continue;
-        const sourceId = typeof src.id === 'string' && src.id.trim() ? src.id.trim() : 'shared-quota-cache';
-        const sourceReadAt = normalizeIsoTimestamp(src.readAt);
-        const hasReadings = Array.isArray(src.readings);
-        sources.push({
-          id: sourceId,
-          label: typeof src.label === 'string' ? src.label : sourceId,
-          engineIds: Array.isArray(src.engineIds) ? src.engineIds : [],
-          readAt: sourceReadAt,
-          cached: hasReadings,
-        });
-        if (hasReadings) {
-          for (const item of src.readings) {
-            if (!isRecord(item)) continue;
-            readings.push(presentQuotaReading(
-              { ...item, readAt: item.readAt ?? sourceReadAt, sourceId: item.sourceId ?? sourceId },
-              sourceId,
-            ));
-          }
-        }
-      }
-      return {
-        status: 'ok',
-        sources,
-        readings,
-      };
-    }
-    if (isRecord(raw) && Array.isArray(raw.readings)) {
-      const sourceId = typeof raw.source === 'string' && raw.source.trim() ? raw.source.trim() : 'shared-quota-cache';
-      const sourceReadAt = normalizeIsoTimestamp(raw.readAt);
-      const readings = raw.readings
-        .filter(isRecord)
-        .map((r) => presentQuotaReading({ ...r, readAt: r.readAt ?? sourceReadAt }, sourceId));
-      return {
-        status: 'ok',
-        sources: [{ id: sourceId, label: sourceId, engineIds: [], readAt: sourceReadAt, cached: true }],
-        readings,
-      };
-    }
-    return {
-      status: 'ok',
-      sources: [],
-      readings: [],
-    };
+    response = await context.harnessQuota.cached();
   } catch (error) {
     return {
       status: 'error',
       sources: [],
-      readings: [],
-      note: `Quota read failed (${error instanceof Error ? error.message : String(error)}); quota treated as unknown.`,
+      note: `context.harnessQuota.cached() failed (${error instanceof Error ? error.message : String(error)}); quota treated as unknown.`,
     };
   }
+
+  if (!isRecord(response) || !Array.isArray(response.sources)) {
+    return {
+      status: 'error',
+      sources: [],
+      note: 'context.harnessQuota.cached() returned an unexpected payload (expected { sources: [...] }).',
+    };
+  }
+
+  const sources = [];
+  for (const rawSource of response.sources) {
+    if (!isRecord(rawSource) || typeof rawSource.id !== 'string' || !rawSource.id.trim()) continue;
+    const engineIds = Array.isArray(rawSource.engineIds)
+      ? rawSource.engineIds.filter((e) => typeof e === 'string' && e.trim()).map((e) => e.trim())
+      : [];
+    if (!sourceMatchesEngineFilter(engineIds, filters.engineTokens)) continue;
+
+    const id = rawSource.id.trim();
+    const label = typeof rawSource.label === 'string' && rawSource.label.trim() ? rawSource.label.trim() : id;
+    const minRefreshIntervalMs = typeof rawSource.minRefreshIntervalMs === 'number' && Number.isFinite(rawSource.minRefreshIntervalMs)
+      ? rawSource.minRefreshIntervalMs
+      : 300_000;
+    const readAt = normalizeIsoTimestamp(rawSource.readAt) ?? null;
+
+    if (!Array.isArray(rawSource.readings)) {
+      // Per contract: omitted `readings` means unknown (cache not yet populated or last read failed within interval).
+      sources.push({
+        id,
+        label,
+        engineIds,
+        minRefreshIntervalMs,
+        status: 'unknown',
+        cached: false,
+        readAt,
+        readings: null,
+      });
+      continue;
+    }
+
+    const sourceMeta = { id, label, engineIds };
+    const presentedReadings = rawSource.readings
+      .filter(isRecord)
+      .map((item) => presentQuotaReading(item, readAt ?? undefined))
+      .filter((item) => readingMatchesFilters(item, sourceMeta, filters));
+
+    sources.push({
+      id,
+      label,
+      engineIds,
+      minRefreshIntervalMs,
+      status: 'cached',
+      cached: true,
+      readAt,
+      totalCachedReadings: rawSource.readings.length,
+      readings: presentedReadings,
+    });
+  }
+
+  return {
+    status: 'ok',
+    sources,
+  };
 }
 
 function presentConnectedModels(catalog, targetTokens) {
@@ -227,8 +229,6 @@ export function createDispatchAdvisor({
   kikiHome,
   dataDir,
   now,
-  readQuotaSnapshot,
-  listModels,
 } = {}) {
   const resolveStore = (context) => {
     if (store) return store;
@@ -251,17 +251,18 @@ export function createDispatchAdvisor({
     const engineTokens = normalizeFilterTokens(args?.engineIds);
     const accountTokens = normalizeFilterTokens(args?.accountIds);
 
-    const quotaSnapshot = await readSharedQuota(context, readQuotaSnapshot);
-    const filteredReadings = quotaSnapshot.readings.filter((item) =>
-      readingMatchesFilters(item, { targetTokens, engineTokens, accountTokens }),
-    );
+    const quota = await readHostCachedQuota(context, {
+      targetTokens,
+      engineTokens,
+      accountTokens,
+    });
 
     let models;
     if (args?.includeModels === true) {
-      const modelLister = listModels ?? (typeof context?.models?.list === 'function' ? () => context.models.list() : undefined);
-      if (modelLister) {
-        const catalog = await modelLister();
-        models = presentConnectedModels(catalog, targetTokens);
+      if (typeof context?.models?.list === 'function') {
+        const candidates = normalizeCandidateIds(args?.modelCandidates);
+        const catalog = await context.models.list(candidates !== undefined ? { candidates } : undefined);
+        models = presentConnectedModels(catalog, candidates !== undefined ? [] : targetTokens);
       } else {
         models = [];
       }
@@ -283,14 +284,7 @@ export function createDispatchAdvisor({
       },
       preference: scopedPreference,
       ...(includeAll ? { preferencesByGroup: savedState.preferences } : {}),
-      quota: {
-        status: quotaSnapshot.status,
-        sources: quotaSnapshot.sources,
-        totalCachedReadings: quotaSnapshot.readings.length,
-        matchedReadingCount: filteredReadings.length,
-        ...(quotaSnapshot.note ? { note: quotaSnapshot.note } : {}),
-        readings: filteredReadings,
-      },
+      quota,
       ...(models !== undefined ? { connectedModels: models } : {}),
     };
   }

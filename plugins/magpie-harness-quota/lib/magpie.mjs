@@ -1,9 +1,9 @@
 import { execFile as nodeExecFile } from 'node:child_process';
 import path from 'node:path';
-import { ANTIGRAVITY_ENGINE_IDS } from './definitions.mjs';
 
 const MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 20_000;
+const ALLOWED_QUOTA_UNITS = new Set(['percent', 'money', 'tokens', 'requests', 'credits', 'count']);
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -46,6 +46,14 @@ function normalizeIsoTimestamp(value) {
   // Ignore Go zero-time sentinels such as 0001-01-01T00:00:00Z.
   if (parsed <= Date.UTC(1970, 0, 1)) return undefined;
   return new Date(parsed).toISOString();
+}
+
+function normalizeQuotaUnit(rawUnit, fallback = 'percent') {
+  if (typeof rawUnit === 'string') {
+    const lower = rawUnit.trim().toLowerCase();
+    if (ALLOWED_QUOTA_UNITS.has(lower)) return lower;
+  }
+  return fallback;
 }
 
 export function resolveMagpieExecutable(settings) {
@@ -131,8 +139,17 @@ export function normalizeWindowLabel(rawName, rawPool) {
 function matchesSelector(selector, span, shortWindow) {
   const rawPool = typeof span.pool === 'string' && span.pool.trim() ? span.pool.trim() : undefined;
   const rawName = typeof span.name === 'string' && span.name.trim() ? span.name.trim() : undefined;
+  // Exact pool equality keeps "Gemini" weekly/hourly pools strictly distinct from "Gemini 4 Argon".
   if (selector.pool !== undefined && rawPool !== selector.pool) return false;
-  if (selector.name !== undefined && rawName !== selector.name && shortWindow !== selector.name) return false;
+  // When only `name` is given without `pool`, match against full rawName (or unpooled shortWindow) so a bare
+  // window label like "7 days" on "Gemini · 7 days" never accidentally claims "Gemini 4 Argon · 7 days".
+  if (selector.name !== undefined) {
+    if (selector.pool !== undefined) {
+      if (rawName !== selector.name && shortWindow !== selector.name) return false;
+    } else if (rawName !== selector.name) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -147,16 +164,16 @@ function resolveMappedModelIds(span, shortWindow, modelWindows) {
 }
 
 function extractWindowMetrics(span) {
-  if (!isRecord(span)) return {};
+  if (!isRecord(span)) return { unit: 'percent', remaining: undefined };
   if (span.unlimited === true || span.text === true) {
     return {
-      unit: typeof span.unit === 'string' && span.unit.trim() ? span.unit.trim() : undefined,
+      unit: normalizeQuotaUnit(span.unit, 'percent'),
       remaining: undefined,
     };
   }
   if (typeof span.balance === 'number' && Number.isFinite(span.balance)) {
     return {
-      unit: typeof span.unit === 'string' && span.unit.trim() ? span.unit.trim() : 'credits',
+      unit: normalizeQuotaUnit(span.unit, 'credits'),
       remaining: Math.max(0, span.balance),
     };
   }
@@ -165,25 +182,25 @@ function extractWindowMetrics(span) {
     const hasPercent = typeof span.remaining === 'number' && Number.isFinite(span.remaining);
     if (!hasPercent) {
       return {
-        unit: typeof span.unit === 'string' && span.unit.trim() ? span.unit.trim() : 'credits',
+        unit: normalizeQuotaUnit(span.unit, 'credits'),
         remaining: Math.max(0, span.limit - span.amount),
       };
     }
   }
   if (typeof span.remaining === 'number' && Number.isFinite(span.remaining)) {
     return {
-      unit: typeof span.unit === 'string' && span.unit.trim() ? span.unit.trim() : 'percent',
+      unit: normalizeQuotaUnit(span.unit, 'percent'),
       remaining: Math.max(0, Math.min(100, span.remaining)),
     };
   }
   if (typeof span.used === 'number' && Number.isFinite(span.used)) {
     return {
-      unit: typeof span.unit === 'string' && span.unit.trim() ? span.unit.trim() : 'percent',
+      unit: normalizeQuotaUnit(span.unit, 'percent'),
       remaining: Math.max(0, Math.min(100, 100 - span.used)),
     };
   }
   return {
-    unit: typeof span.unit === 'string' && span.unit.trim() ? span.unit.trim() : undefined,
+    unit: normalizeQuotaUnit(span.unit, 'percent'),
     remaining: undefined,
   };
 }
@@ -197,17 +214,18 @@ function accountLabelOf(row) {
 }
 
 /**
- * Projects Magpie `accounts antigravity --json` rows into Kiki HarnessQuotaReading items.
+ * Projects Magpie `accounts antigravity --json` rows into Kiki `HarnessQuotaReading` items
+ * conforming strictly to `@kiki/plugin-sdk/harness-quota` (`harnessQuotaReadingSchema`).
  *
  * Rules:
  * - Binds `accountId` to the exact CLI `user`.
- * - Preserves `remaining`, `resetsAt`, `readAt` (falling back to `asOf`), and retains `undefined` (unknown)
- *   whenever Magpie marks the reading as failed or held from before (`lapsed`, `error`, or `asOf != nil` per
- *   `internal/provider/login_usage.go:43-55`), or when a window is `text` or `unlimited`.
+ * - Emits `unit` (`percent | money | tokens | requests | credits | count`), `resetAt`, `readAt` (falling back to `asOf`),
+ *   and omits `remaining` (unknown) whenever Magpie marks the reading as failed or held from before (`lapsed`, `error`, or
+ *   `asOf != nil` per `internal/provider/login_usage.go:43-55`), or when a window is `text` or `unlimited`.
  * - Uses `modelWindows` to map exact native model IDs onto pooled/named windows; omits `modelIds` on a pooled reading
- *   when unmapped so it can be displayed without routing misattribution.
+ *   when unmapped (for example ordinary `Gemini` 5h / 7d windows) so it never masquerades as `Gemini 4 Argon`.
  */
-export function mapMagpieAccountRows(rows, { engineId = 'agy-cli', agent = 'antigravity', modelWindows = new Map() } = {}) {
+export function mapMagpieAccountRows(rows, { agent = 'antigravity', modelWindows = new Map() } = {}) {
   if (!Array.isArray(rows)) {
     throw new Error('Magpie CLI returned a non-array JSON payload for accounts.');
   }
@@ -222,7 +240,7 @@ export function mapMagpieAccountRows(rows, { engineId = 'agy-cli', agent = 'anti
     if (typeof row.user !== 'string' || row.user.trim().length === 0) {
       continue;
     }
-    const accountId = row.user.trim();
+    const accountId = cleanIdentifier(row.user, 'account user');
     const accountLabel = accountLabelOf(row);
     const asOf = normalizeIsoTimestamp(row.asOf);
     const readAt = normalizeIsoTimestamp(row.readAt) ?? asOf;
@@ -235,13 +253,12 @@ export function mapMagpieAccountRows(rows, { engineId = 'agy-cli', agent = 'anti
     const isUnusableAccountReading = hasLapsed || hasError || hasAsOfFallback;
 
     if (windows.length === 0) {
-      const reading = {
-        engineId,
+      readings.push({
         accountId,
         ...(accountLabel ? { accountLabel } : {}),
+        unit: 'percent',
         ...(readAt ? { readAt } : {}),
-      };
-      readings.push(reading);
+      });
       continue;
     }
 
@@ -249,8 +266,11 @@ export function mapMagpieAccountRows(rows, { engineId = 'agy-cli', agent = 'anti
       if (!isRecord(span)) continue;
       const pool = cleanSingleLine(span.pool, 'window.pool');
       const windowLabel = normalizeWindowLabel(span.name, pool);
-      const resetsAt = normalizeIsoTimestamp(span.resetsAt) ?? normalizeIsoTimestamp(span.runsOutAt);
-      const metrics = isUnusableAccountReading ? { unit: undefined, remaining: undefined } : extractWindowMetrics(span);
+      const resetAt = normalizeIsoTimestamp(span.resetsAt ?? span.resetAt) ?? normalizeIsoTimestamp(span.runsOutAt);
+      const rawMetrics = extractWindowMetrics(span);
+      const metrics = isUnusableAccountReading
+        ? { unit: rawMetrics.unit, remaining: undefined }
+        : rawMetrics;
       const mappedIds = resolveMappedModelIds(span, windowLabel, map);
 
       let modelIds;
@@ -261,35 +281,21 @@ export function mapMagpieAccountRows(rows, { engineId = 'agy-cli', agent = 'anti
         modelIds = [span.name.trim()];
       }
 
-      const reading = {
-        engineId,
+      readings.push({
         accountId,
         ...(accountLabel ? { accountLabel } : {}),
-        ...(pool ? { pool } : {}),
         ...(modelIds ? { modelIds } : {}),
-        ...(metrics.unit ? { unit: metrics.unit } : {}),
+        ...(pool ? { pool } : {}),
+        unit: metrics.unit,
         ...(windowLabel ? { window: windowLabel } : {}),
         ...(metrics.remaining !== undefined ? { remaining: metrics.remaining } : {}),
-        ...(resetsAt ? { resetsAt } : {}),
+        ...(resetAt ? { resetAt } : {}),
         ...(readAt ? { readAt } : {}),
-      };
-      readings.push(reading);
+      });
     }
   }
 
   return readings;
-}
-
-function buildCliEnvironment(osHome, baseEnv = process.env) {
-  const env = { ...baseEnv };
-  if (typeof osHome === 'string' && osHome.trim().length > 0) {
-    const home = osHome.trim();
-    env.HOME = home;
-    if (process.platform === 'win32') {
-      env.USERPROFILE = home;
-    }
-  }
-  return env;
 }
 
 function defaultExecCommand(executable, args, options) {
@@ -300,6 +306,7 @@ function defaultExecCommand(executable, args, options) {
       timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       signal: options.signal,
       env: options.env,
+      ...(options.cwd ? { cwd: options.cwd } : {}),
       windowsHide: true,
     }, (error, stdout, stderr) => {
       if (error) {
@@ -320,6 +327,7 @@ function defaultExecCommand(executable, args, options) {
 
 /**
  * Single-shot batch reader for Magpie `accounts antigravity --json`.
+ * Conforms to `HarnessQuotaAdapter.read({ signal, settings, kikiHome }) -> { readings }`.
  * Refresh throttling and single-flight caching are owned by the Kiki Host.
  */
 export class MagpieQuotaService {
@@ -337,13 +345,12 @@ export class MagpieQuotaService {
     const settings = isRecord(context?.settings) ? context.settings : {};
     const executable = resolveMagpieExecutable(settings);
     const modelWindows = parseModelWindows(settings.modelWindows);
-    const osHome = cleanSingleLine(context?.osHome, 'osHome', { maxLength: 16_384 });
-    const env = buildCliEnvironment(osHome);
+    const kikiHome = cleanSingleLine(context?.kikiHome, 'kikiHome', { maxLength: 16_384 });
 
     const { stdout } = await this.execCommand(
       executable,
       ['accounts', 'antigravity', '--json'],
-      { signal, env, timeoutMs: DEFAULT_TIMEOUT_MS },
+      { signal, env: { ...process.env }, ...(kikiHome ? { cwd: kikiHome } : {}), timeoutMs: DEFAULT_TIMEOUT_MS },
     );
     if (signal?.aborted) throw abortError();
 
@@ -353,10 +360,10 @@ export class MagpieQuotaService {
     } catch {
       throw new Error('Magpie CLI returned invalid JSON for `accounts antigravity --json`.');
     }
-    return mapMagpieAccountRows(parsed, {
-      engineId: ANTIGRAVITY_ENGINE_IDS[0],
+    const readings = mapMagpieAccountRows(parsed, {
       agent: 'antigravity',
       modelWindows,
     });
+    return { readings };
   }
 }
