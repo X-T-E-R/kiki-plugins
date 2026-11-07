@@ -336,6 +336,11 @@ export async function loadMagpieAntigravityAccounts({
     // `ProxyOfLogin("antigravity", user)` (`proxy.go:66-75`): account's own choice (even if `"direct"`), else provider's `proxy`.
     const chosenRawProxy = rawAccountProxies.get(lowerUser) ?? providerRawProxy;
     const proxyUrl = normalizeProxyAddress(chosenRawProxy);
+    const boundProxyKind = proxyUrl
+      ? 'url'
+      : String(chosenRawProxy ?? '').trim().toLowerCase() === 'direct'
+        ? 'direct'
+        : 'missing';
     if (requireProxy && !proxyUrl) {
       const why = chosenRawProxy.toLowerCase() === 'direct' ? 'explicitly set to direct' : 'missing bound proxy';
       throw new Error(`Antigravity account ${redactEmailHash(lowerUser)} cannot be queried without a bound proxy (${why} in Magpie providers.json).`);
@@ -364,6 +369,7 @@ export async function loadMagpieAntigravityAccounts({
       ...(lapsed ? { lapsed } : {}),
       plan: typeof entry.plan === 'string' ? entry.plan : '',
       project,
+      boundProxyKind,
       proxyEndpoint: redactProxyEndpoint(proxyUrl),
     };
     Object.defineProperty(descriptor, '_secrets', {
@@ -1001,7 +1007,7 @@ function resolveCandidateEntitlements(loadResp, rtKey, projectId) {
   return candidates;
 }
 
-async function ensureFreshAccessToken(account, {
+export async function ensureFreshAccessToken(account, {
   tokenUrl = GOOGLE_TOKEN_URL,
   requestFn = requestViaProxy,
   timeoutMs = 15_000,
@@ -1072,6 +1078,37 @@ async function ensureFreshAccessToken(account, {
   } finally {
     tokenRefreshInFlight.delete(rtKey);
   }
+}
+
+/** Drops one in-memory access token so the next read refreshes it. Does not write Magpie's files. */
+export function forgetAntigravityAccessToken(account) {
+  const secrets = account?._secrets;
+  if (!secrets || typeof secrets.refreshToken !== 'string' || !secrets.refreshToken) return;
+  tokenMemoryCache.delete(refreshKeyOf(secrets.refreshToken));
+  secrets.accessToken = '';
+  secrets.expiryMs = 0;
+}
+
+export function antigravityEntitlementCandidates(loadResp, refreshToken, projectId) {
+  return resolveCandidateEntitlements(loadResp, refreshKeyOf(refreshToken), projectId || '');
+}
+
+/**
+ * Model ids from `fetchAvailableModels`, using the same hidden/disabled filter as quota readings.
+ * Ids the harness connection schema rejects are omitted here and stay in quota readings.
+ */
+export function antigravityCatalogModelIds(modelsResp) {
+  const rawModels = isRecord(modelsResp?.models) ? modelsResp.models : {};
+  const ids = [];
+  for (const [id, info] of Object.entries(rawModels)) {
+    if (!isRecord(info)) continue;
+    if (ANTIGRAVITY_HIDDEN_MODELS.has(id) || id.startsWith('chat_') || id.startsWith('tab_')) continue;
+    if (info.disabled === true) continue;
+    if (id === 'engine-default' || /[\s\u0000]/u.test(id)) continue;
+    ids.push(id);
+  }
+  ids.sort((left, right) => left.localeCompare(right));
+  return ids;
 }
 
 /**

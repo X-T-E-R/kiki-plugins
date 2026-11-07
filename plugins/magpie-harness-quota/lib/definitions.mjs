@@ -113,6 +113,17 @@ export const MAGPIE_CLI_AGENT_BY_SOURCE_ID = Object.freeze({
  */
 export const UNPOOLED_MODEL_ID_FALLBACK_SOURCES = new Set(['antigravity', 'gemini']);
 
+export const antigravityAccountSourceDefinition = {
+  schemaVersion: 1,
+  id: 'antigravity',
+  label: 'Magpie · Antigravity',
+  engineIds: ['agy-cli'],
+};
+
+export const harnessAccountSourceDefinitions = [
+  antigravityAccountSourceDefinition,
+];
+
 export const harnessQuotaSourceDefinitions = [
   antigravityQuotaSourceDefinition,
   grokQuotaSourceDefinition,

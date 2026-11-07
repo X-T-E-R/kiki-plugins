@@ -1,7 +1,7 @@
 {
   "name": "magpie-harness-quota",
-  "version": "0.1.1",
-  "description": "Optional Magpie quota sources for external harness instances (Antigravity direct collector plus Grok Build, Codex, Claude Code, Gemini CLI, Cursor, Qoder, and WorkBuddy via Magpie CLI).",
+  "version": "0.1.2",
+  "description": "Optional Magpie quota sources for external harness instances, plus an agy-cli account source that binds Magpie Antigravity accounts to named instances (Antigravity direct collector plus Grok Build, Codex, Claude Code, Gemini CLI, Cursor, Qoder, and WorkBuddy via Magpie CLI).",
   "license": "MIT",
   "interface": {
     "displayName": "Magpie Harness Quota",
@@ -19,7 +19,10 @@
       ],
       "exec": [
         "magpie",
-        "magpie.exe"
+        "magpie.exe",
+        "cockpit-cliproxy",
+        "cockpit-cliproxy.exe",
+        "cockpit-cliproxy-x86_64-pc-windows-msvc.exe"
       ],
       "secrets": true
     },
@@ -36,6 +39,17 @@
               "zh": {
                 "title": "Magpie 可执行文件",
                 "description": "可选的官方 magpie[.exe] 绝对路径；留空时从 PATH 查找。"
+              }
+            }
+          },
+          "antigravitySidecarPath": {
+            "type": "string",
+            "title": "Antigravity scoped sidecar",
+            "description": "Absolute path to the MIT cockpit-cliproxy binary. Prepare starts it with --harness-scoped and --parent-pid. Leave empty until an agy-cli instance selects a Magpie Antigravity account. List does not start it.",
+            "localizations": {
+              "zh": {
+                "title": "Antigravity 单账号 sidecar",
+                "description": "MIT cockpit-cliproxy 二进制的绝对路径。准备账号时以 --harness-scoped 和 --parent-pid 启动。在 agy-cli 实例选中 Magpie Antigravity 账号之前可以留空。列出账号不会启动它。"
               }
             }
           },
@@ -180,6 +194,16 @@
           "codebuddy-acp"
         ],
         "minRefreshIntervalMs": 300000
+      }
+    ],
+    "harnessAccountSources": [
+      {
+        "schemaVersion": 1,
+        "id": "antigravity",
+        "label": "Magpie · Antigravity",
+        "engineIds": [
+          "agy-cli"
+        ]
       }
     ],
     "tools": [

@@ -34,7 +34,8 @@ async function isDedicatedCompatStageDir(targetDir) {
 
 /**
  * Stages a zero-duplicate, single-source compatible plugin directory for Kiki 0.4.3 hosts
- * whose `parsePluginExtension` has not yet merged `x-kiki.harnessQuotaSources`.
+ * whose `parsePluginExtension` has not yet merged `x-kiki.harnessQuotaSources`
+ * or `x-kiki.harnessAccountSources`.
  *
  * Recycle contract:
  * - A missing directory, or an empty directory, is created and filled.
@@ -79,7 +80,11 @@ export async function stageLiveCompatPlugin({ outputDir, compatStageDir } = {}) 
   await mkdir(targetDir, { recursive: true });
 
   const manifestRaw = JSON.parse(await readFile(path.join(pluginRoot, 'kimi.plugin.json'), 'utf8'));
-  const { harnessQuotaSources: _omittedQuotaSources, ...compatXKiki } = manifestRaw['x-kiki'] ?? {};
+  const {
+    harnessQuotaSources: _omittedQuotaSources,
+    harnessAccountSources: _omittedAccountSources,
+    ...compatXKiki
+  } = manifestRaw['x-kiki'] ?? {};
   const compatManifest = {
     ...manifestRaw,
     'x-kiki': compatXKiki,

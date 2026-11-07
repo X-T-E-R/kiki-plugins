@@ -11,9 +11,11 @@ import { z } from 'zod';
 
 import manifest from '../kimi.plugin.json' with { type: 'json' };
 import {
+  antigravityAccountSourceDefinition,
   antigravityDirectQuotaService,
   antigravityQuotaSourceDefinition,
   grokQuotaSourceDefinition,
+  harnessAccountSourceDefinitions,
   harnessQuotaSourceDefinitions,
   MAGPIE_CLI_AGENT_BY_SOURCE_ID,
   magpieQuotaService,
@@ -30,6 +32,7 @@ import {
 } from '../lib/magpie.mjs';
 
 const declaredSources = manifest['x-kiki'].harnessQuotaSources;
+const declaredAccountSources = manifest['x-kiki'].harnessAccountSources;
 
 // Exact contract schemas from packages/plugin-sdk/src/harness-quota.ts
 const identifier = z.string().min(1).max(1024).regex(/^[^\s\u0000]+$/);
@@ -384,7 +387,14 @@ const FIXTURE_MAGPIE_OTHER_SOURCES = {
 };
 
 test('manifest and entry registration declare verified 1:1 Magpie harness quota sources without speculative catch-all engine bindings or reading quota on register', () => {
-  assert.equal(manifest.version, '0.1.1');
+  assert.equal(manifest.version, '0.1.2');
+  assert.deepEqual(declaredAccountSources, harnessAccountSourceDefinitions);
+  assert.deepEqual(antigravityAccountSourceDefinition, {
+    schemaVersion: 1,
+    id: 'antigravity',
+    label: 'Magpie · Antigravity',
+    engineIds: ['agy-cli'],
+  });
   assert.equal(declaredSources.length, harnessQuotaSourceDefinitions.length);
   assert.deepEqual(declaredSources, harnessQuotaSourceDefinitions);
 
@@ -436,6 +446,7 @@ test('manifest and entry registration declare verified 1:1 Magpie harness quota 
   });
 
   const registered = [];
+  const registeredAccounts = [];
   const registeredTools = [];
   register({
     registerTool(definition, handler) {
@@ -443,6 +454,9 @@ test('manifest and entry registration declare verified 1:1 Magpie harness quota 
     },
     registerHarnessQuotaSource(definition, adapter) {
       registered.push({ definition, adapter });
+    },
+    registerHarnessAccountSource(definition, adapter) {
+      registeredAccounts.push({ definition, adapter });
     },
   });
   assert.equal(registeredTools.length, 1);
@@ -453,6 +467,8 @@ test('manifest and entry registration declare verified 1:1 Magpie harness quota 
   for (const item of registered) {
     assert.equal(typeof item.adapter.read, 'function');
   }
+  assert.deepEqual(registeredAccounts.map((item) => item.definition), declaredAccountSources);
+  assert.deepEqual(Object.keys(registeredAccounts[0].adapter).sort(), ['list', 'prepare', 'release']);
 });
 
 test('maps pooled Antigravity windows strictly to harnessQuotaReadingSchema, never confuses ordinary Gemini weekly window with Argon, and keeps stale/failed readings unknown', () => {

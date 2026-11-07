@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import {
+  harnessAccountSourceDefinitions,
   harnessQuotaSourceDefinitions,
   magpieToolDefinitions,
 } from '../lib/definitions.mjs';
@@ -9,11 +10,9 @@ const check = process.argv.includes('--check');
 const raw = await readFile(path, 'utf8');
 const manifest = JSON.parse(raw);
 
-manifest['x-kiki'] = {
-  ...manifest['x-kiki'],
-  tools: magpieToolDefinitions,
-  harnessQuotaSources: harnessQuotaSourceDefinitions,
-};
+manifest['x-kiki'].tools = magpieToolDefinitions;
+manifest['x-kiki'].harnessQuotaSources = harnessQuotaSourceDefinitions;
+manifest['x-kiki'].harnessAccountSources = harnessAccountSourceDefinitions;
 const expected = `${JSON.stringify(manifest, null, 2)}\n`;
 
 if (check) {

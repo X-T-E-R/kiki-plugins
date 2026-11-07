@@ -1,4 +1,4 @@
-# Magpie Harness Quota (`magpie-harness-quota` `0.1.1`)
+# Magpie Harness Quota (`magpie-harness-quota` `0.1.2`)
 
 Unified Magpie quota & structured management plugin for Kiki:
 
@@ -39,6 +39,14 @@ quota_source = "plugin:magpie-harness-quota/antigravity"
 ```
 
 Bind each named `agent_executor_instances` entry's `quota_account_id` to the exact Magpie `user` identifier (`email` or seat ID).
+
+## Antigravity account source (`x-kiki.harnessAccountSources`)
+
+`antigravity` is a separate account source for `agy-cli` (`plugin:magpie-harness-quota/antigravity`). It does not read quota and it does not start Magpie's gateway. `list` reads `logins.json` / `providers.json` only. Account `id` is the same Magpie `user` string the direct quota collector puts in `accountId` (`includeEmailInReadings`). Display names in `accountNames` are labels, never lookup keys.
+
+`prepare` selects that id, then opens one MIT `cockpit-cliproxy --harness-scoped --parent-pid <plugin pid>` process. Set `antigravitySidecarPath` to the absolute path of that binary. When the setting is empty, `ANTIGRAVITY_SIDECAR_PATH` or `MAGPIE_AGY_SIDECAR_PATH` names the same binary. The lease returns a loopback `gemini-v1beta` root, a short-lived local capability, and the model ids from one `fetchAvailableModels` call. OAuth tokens stay in the plugin and the sidecar's private pipe. `release` closes that process. A later bearer refresh uses the lease already in memory and does not read the catalog or the Magpie directory again.
+
+Proxy choice is per lease. An instance proxy of `direct` or `custom` wins, including an explicit direct. `system` follows that account's Magpie binding (`accountProxies`, otherwise the Antigravity provider proxy), and an explicit Magpie `direct` stays direct. The same proxy is used for token refresh, `loadCodeAssist`, the model catalog, and the sidecar's upstream calls. This does not change Magpie's global proxy or the machine proxy. A still-valid access token is used without an OAuth client. An expired token with no client fails that account with `OAUTH_CLIENT_UNCONFIGURED`. Refreshed tokens are not written back to Magpie.
 
 ## Structured Management Tool (`magpie_manage`)
 
@@ -82,7 +90,7 @@ On a Kiki Host build with `@kiki/plugin-sdk/harness-quota` (`x-kiki.harnessQuota
 /plugins enable magpie-harness-quota
 ```
 
-On a current Kiki `0.4.3` Host before `x-kiki.harnessQuotaSources` is promoted, stage the zero-duplicate single-source compatible slice into `.tmp/magpie-harness-quota-compat`. Run it again to refresh that directory: a non-empty directory is replaced only when it already contains this plugin's `.kiki-live-compat-stage.json` marker. Any other non-empty directory, including the default path without that marker, is left unchanged.
+On a current Kiki `0.4.3` Host before `x-kiki.harnessQuotaSources` and `x-kiki.harnessAccountSources` are promoted, stage the zero-duplicate single-source compatible slice into `.tmp/magpie-harness-quota-compat`. That slice omits both fields. Run it again to refresh that directory: a non-empty directory is replaced only when it already contains this plugin's `.kiki-live-compat-stage.json` marker. Any other non-empty directory, including the default path without that marker, is left unchanged.
 
 ```sh
 node ./plugins/magpie-harness-quota/scripts/stage-live-compat.mjs

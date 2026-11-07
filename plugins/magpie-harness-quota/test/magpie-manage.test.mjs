@@ -804,7 +804,7 @@ test('stageLiveCompatPlugin refuses to overwrite existing non-empty custom direc
     const compatOutDir = path.join(dir, 'magpie-harness-quota-compat');
     const staged = await stageLiveCompatPlugin({ outputDir: compatOutDir });
     assert.equal(staged.pluginId, 'magpie-harness-quota');
-    assert.equal(staged.version, '0.1.1');
+    assert.equal(staged.version, '0.1.2');
 
     const magpieConfigDir = path.join(dir, 'magpie-cfg');
     const nativeGrokHome = path.join(dir, 'dot-grok');
@@ -1082,6 +1082,7 @@ test('stageLiveCompatPlugin recycles only directories that already carry its mar
     await assert.rejects(() => readFile(staleDefault, 'utf8'));
     const compatManifest = JSON.parse(await readFile(path.join(markedDefault, 'kimi.plugin.json'), 'utf8'));
     assert.equal(compatManifest['x-kiki'].harnessQuotaSources, undefined);
+    assert.equal(compatManifest['x-kiki'].harnessAccountSources, undefined);
     assert.equal(compatManifest['x-kiki'].permissions.secrets, true);
     assert.equal(compatManifest['x-kiki'].settings.schema.properties.antigravityOAuthClientSecret.secret, true);
   } finally {

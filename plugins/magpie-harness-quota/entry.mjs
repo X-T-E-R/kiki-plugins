@@ -1,9 +1,12 @@
 import manifest from './kimi.plugin.json' with { type: 'json' };
+import { MagpieAntigravityAccountService } from './lib/antigravity-account-source.mjs';
 import {
   MagpieAntigravityDirectQuotaService,
 } from './lib/antigravity-direct-quota.mjs';
 import {
+  antigravityAccountSourceDefinition,
   antigravityQuotaSourceDefinition,
+  harnessAccountSourceDefinitions,
   claudeQuotaSourceDefinition,
   codexQuotaSourceDefinition,
   cursorQuotaSourceDefinition,
@@ -22,6 +25,7 @@ import { MagpieQuotaService } from './lib/magpie.mjs';
 import { MagpieManagementService, sanitizeDiagnosticText } from './lib/manage.mjs';
 
 const antigravityDirectQuotaService = new MagpieAntigravityDirectQuotaService();
+const antigravityAccountService = new MagpieAntigravityAccountService();
 const service = new MagpieQuotaService({
   sourceOverrides: {
     antigravity: antigravityDirectQuotaService,
@@ -41,11 +45,17 @@ function formatToolFailure(error) {
   };
 }
 
-export function createRegister({ declaredManifest = manifest, quotaService = service, manager = managementService } = {}) {
+export function createRegister({
+  declaredManifest = manifest,
+  quotaService = service,
+  manager = managementService,
+  accountService = antigravityAccountService,
+} = {}) {
   return function register(api) {
     const extension = declaredManifest?.['x-kiki'] ?? {};
     const declaresTools = Array.isArray(extension.tools) && extension.tools.length > 0;
     const declaresQuotaSources = Array.isArray(extension.harnessQuotaSources) && extension.harnessQuotaSources.length > 0;
+    const declaresAccountSources = Array.isArray(extension.harnessAccountSources) && extension.harnessAccountSources.length > 0;
 
     if (declaresTools) {
       if (typeof api?.registerTool !== 'function') {
@@ -69,14 +79,26 @@ export function createRegister({ declaredManifest = manifest, quotaService = ser
         api.registerHarnessQuotaSource(definition, quotaService.adapterFor(definition.id));
       }
     }
+
+    if (declaresAccountSources) {
+      if (typeof api?.registerHarnessAccountSource !== 'function') {
+        throw new Error('This plugin requires a Kiki host with harness account source support.');
+      }
+      for (const definition of harnessAccountSourceDefinitions) {
+        api.registerHarnessAccountSource(definition, accountService.adapterFor(definition.id));
+      }
+    }
   };
 }
 
 export const register = createRegister();
 
 export {
+  antigravityAccountService,
+  antigravityAccountSourceDefinition,
   antigravityDirectQuotaService,
   antigravityQuotaSourceDefinition,
+  harnessAccountSourceDefinitions,
   claudeQuotaSourceDefinition,
   codexQuotaSourceDefinition,
   cursorQuotaSourceDefinition,
