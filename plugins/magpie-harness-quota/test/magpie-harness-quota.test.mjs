@@ -387,7 +387,7 @@ const FIXTURE_MAGPIE_OTHER_SOURCES = {
 };
 
 test('manifest and entry registration declare verified 1:1 Magpie harness quota sources without speculative catch-all engine bindings or reading quota on register', () => {
-  assert.equal(manifest.version, '0.1.2');
+  assert.equal(manifest.version, '0.1.3');
   assert.deepEqual(declaredAccountSources, harnessAccountSourceDefinitions);
   assert.deepEqual(antigravityAccountSourceDefinition, {
     schemaVersion: 1,

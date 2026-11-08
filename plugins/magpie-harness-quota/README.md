@@ -1,4 +1,4 @@
-# Magpie Harness Quota (`magpie-harness-quota` `0.1.2`)
+# Magpie Harness Quota (`magpie-harness-quota` `0.1.3`)
 
 Unified Magpie quota & structured management plugin for Kiki:
 

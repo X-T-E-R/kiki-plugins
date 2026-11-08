@@ -73,7 +73,7 @@ function startUpstream({ holdProjectC = false } = {}) {
     const url = new URL(req.url, 'http://127.0.0.1');
     const body = await readBody(req);
     const proxy = req.headers['x-fixture-proxy'] || 'direct';
-    const hit = { proxy, path: url.pathname, authorization: req.headers.authorization ?? '', body };
+    const hit = { proxy, path: url.pathname, authorization: req.headers.authorization ?? '', userAgent: req.headers['user-agent'], body };
     hits.push(hit);
     const send = (status, payload, type = 'application/json') => {
       const encoded = typeof payload === 'string' ? payload : JSON.stringify(payload);
@@ -374,6 +374,7 @@ exclusive('explicit instance proxy wins and cancel or release stays on that leas
     assert.equal(fake.calls[0].options.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET, undefined);
     assert.equal(fake.calls[0].messages[0].proxy_url, proxyA.url);
     assert.equal(fake.calls[1].messages[0].proxy_url, proxyB.url);
+    assert.match(fake.calls[0].messages[0].user_agent, /^antigravity\/hub\//);
     assert.equal(fake.calls[0].messages[0].bearer.refresh_token, undefined);
     assert.equal(fake.calls[0].messages[0].model_ids[0], 'claude-opus-5-5-high');
     assert.deepEqual(preparedB.connection.modelIds, ['gemini-3.1-flash-lite-preview']);
@@ -573,6 +574,7 @@ exclusive('real sidecar and HostRunner keep A and B on their own proxies', async
     await assert.rejects(generate(preparedA.connection, 'claude-opus-5-5-high'));
     const stillB = await generate(preparedB.connection, 'gemini-3.1-flash-lite-preview');
     assert.equal(stillB.status, 200);
+    assert.ok(upstream.hits.filter((hit) => hit.path === '/v1internal:streamGenerateContent').every((hit) => /^antigravity\/hub\//.test(hit.userAgent)));
     await call('release', { prepareId: preparedB.prepareId });
     await call('release', { prepareId: preparedA.prepareId });
     assert.equal(await readFile(path.join(store, 'logins.json'), 'utf8'), files.logins);

@@ -804,7 +804,7 @@ test('stageLiveCompatPlugin refuses to overwrite existing non-empty custom direc
     const compatOutDir = path.join(dir, 'magpie-harness-quota-compat');
     const staged = await stageLiveCompatPlugin({ outputDir: compatOutDir });
     assert.equal(staged.pluginId, 'magpie-harness-quota');
-    assert.equal(staged.version, '0.1.2');
+    assert.equal(staged.version, '0.1.3');
 
     const magpieConfigDir = path.join(dir, 'magpie-cfg');
     const nativeGrokHome = path.join(dir, 'dot-grok');

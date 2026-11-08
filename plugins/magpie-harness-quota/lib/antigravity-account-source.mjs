@@ -487,6 +487,7 @@ export class MagpieAntigravityAccountService {
       capability: lease.capability,
       proxy_url: lease.sidecarProxy,
       base_url: lease.origin,
+      user_agent: DEFAULT_HUB_USER_AGENT,
       model_ids: lease.modelIds,
       bearer: bearerFrom(lease.account),
     };
