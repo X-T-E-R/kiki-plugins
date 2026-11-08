@@ -20,5 +20,6 @@ export const definition = {
     required: ['root'], additionalProperties: false,
   },
   accesses: [{ kind: 'file', operation: 'search', path: '$.root', recursive: true }],
+  concurrencySafe: true,
   disclosure: 'deferred',
 };

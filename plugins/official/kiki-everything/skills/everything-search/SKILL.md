@@ -18,7 +18,7 @@ Use `plugin__kiki_everything__search` for indexed file/directory discovery on th
 
 ## Query and scope
 
-`root` is required. It accepts a workspace-relative directory or an absolute directory/volume. Kiki admits that root before execution; results stay beneath its canonical target. To search multiple drives, call once per drive. Do not add broad permanent permissions to make a query succeed.
+`root` is required. It accepts a workspace-relative directory or an absolute directory/volume. Kiki admits that root before execution; results stay beneath its canonical target. To search multiple drives, call once per drive; independent searches can run in parallel. The plugin runs up to four ES processes per host and queues additional calls without returning `ES_BUSY`. Do not add broad permanent permissions to make a query succeed.
 
 Spaces between terms mean AND. Quote a phrase (`"annual report"`) or the path part of an expression (`path:"C:\\My Documents"`). Supported functions include name, path, ext, size and dm; size examples: `size:>100mb`, `size:1gb..5gb`; dates: `dm:today`, `dm:2026-10-01..2026-10-31`. Filters and sorting use the Everything index. Returned size/time metadata is read from admitted local paths and can differ from a changing index.
 
@@ -32,4 +32,4 @@ An empty result only means this index query yielded no visible paths: excluded, 
 
 - `ES_NOT_FOUND`: install `winget install --id voidtools.Everything.Cli -e`, or set the plugin's `esPath` to the official ES executable's absolute path. Discovery order is setting, PATH, current-user WinGet packages.
 - Connection error: start the Everything **desktop client**, not just its service. Leave `instance` empty unless a named instance is actually used; the plugin never switches indexes automatically.
-- Timeout/cancellation: waiting stopped, but Everything may continue the query. Busy calls fail promptly until ES exits. Wait, narrow the query and retry. If it stays busy, ask the user to restart Everything; never restart it without permission.
+- Timeout: queue time counts toward the wait limit. If the search itself timed out, narrow the root, name or extension and retry. Cancellation and timeout stop only that call's ES process; other searches continue. Everything may still finish the abandoned query internally.

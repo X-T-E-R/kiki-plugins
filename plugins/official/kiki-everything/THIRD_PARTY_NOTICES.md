@@ -1,10 +1,10 @@
 # Third-party notices
 
-The ES query parser, switch isolation, Windows command-line construction, UTF-8 buffer decoding and timeout/cancellation drain-and-busy behavior in `lib/es.mjs`, and their regression cases, are adapted to JavaScript from `elis132/everything-mcp` 1.0.9, commit `22a60bd37b60de722db781c546383bc6d7bc8a66`: `src/everything_mcp/backend.py`, `src/everything_mcp/config.py`, and `tests/test_backend.py` / `tests/test_config.py`.
+The ES query parser, switch isolation, Windows command-line construction, UTF-8 buffer decoding and their regression cases are adapted to JavaScript from `elis132/everything-mcp` 1.0.9, commit `22a60bd37b60de722db781c546383bc6d7bc8a66`: `src/everything_mcp/backend.py`, `src/everything_mcp/config.py`, and `tests/test_backend.py` / `tests/test_config.py`.
 
 Source: https://github.com/elis132/everything-mcp/tree/22a60bd37b60de722db781c546383bc6d7bc8a66
 
-The integration uses a single indexed-search tool, static Kiki root admission, canonical-path filtering, and an OS-owned named-pipe query lease rather than importing the MCP server or Python runtime. It requires Everything 1.5 and ES >=1.1.0.37, pins ES default argument mode, rejects disk-reading query functions, and fails on invalid UTF-8 rather than guessing an encoding. App activation retains the small JavaScript query owner while enabled so Kiki's ordinary 90-second tool-host idle recycling does not erase pending-query/busy state. The query lease coordinates this plugin's processes, not the Everything GUI or unrelated ES clients. Neither Everything nor ES binaries are redistributed in this package.
+The plugin uses Everything 1.5 and ES >=1.1.0.37 without importing the MCP server or Python runtime. It uses Kiki root admission, filters canonical paths, pins ES default argument mode, rejects disk-reading query functions, and decodes output as UTF-8. Each search uses a separate official ES client process. Neither Everything nor ES binaries are redistributed in this package.
 
 ## everything-mcp — MIT License
 

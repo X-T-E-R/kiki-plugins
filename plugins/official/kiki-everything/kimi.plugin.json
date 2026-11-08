@@ -1,6 +1,6 @@
 {
   "name": "kiki-everything",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Find local files and folders through the Everything index by name, path, extension, size and modification time.",
   "license": "MIT",
   "skills": "./skills/",
@@ -13,12 +13,10 @@
       "kiki": "^0.4.0"
     },
     "entry": "./entry.mjs",
-    "activation": "app",
     "permissions": {
       "fs": "outside",
       "exec": [
-        "es.exe",
-        "powershell.exe"
+        "es.exe"
       ]
     },
     "settings": {
@@ -40,7 +38,7 @@
             "type": "number",
             "default": 30000,
             "title": "Search wait limit (milliseconds)",
-            "description": "Integer 100–120000, default 30000. Cancellation/timeout stops waiting, not Everything's query. Calls report busy until ES exits."
+            "description": "Integer 100–120000, default 30000, including process-slot queue time. Cancellation or timeout stops only this call's ES process; other searches continue. Everything may finish its internal query after ES closes."
           }
         }
       }
@@ -126,6 +124,7 @@
             "recursive": true
           }
         ],
+        "concurrencySafe": true,
         "disclosure": "deferred"
       }
     ]

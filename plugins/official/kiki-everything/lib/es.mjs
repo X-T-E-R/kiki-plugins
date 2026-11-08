@@ -1,8 +1,7 @@
 import { spawn } from 'node:child_process';
-import { access, readdir } from 'node:fs/promises';
+import { access, readdir, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { acquireLease, clientIdentity } from './lease.mjs';
 
 // Adapted from elis132/everything-mcp@22a60bd backend.py/config.py (MIT).
 export class EverythingError extends Error {
@@ -53,80 +52,100 @@ export async function resolveEsPath(settings = {}, env = process.env) {
   throw new EverythingError('ES_NOT_FOUND', 'Official voidtools es.exe was not found. Install with winget install --id voidtools.Everything.Cli -e, or set this plugin\'s esPath to its absolute path. Everything must also be running.');
 }
 export class EsRunner {
-  constructor({ spawnProcess = spawn, lock = acquireLease, identity = clientIdentity, watchMs = 2000 } = {}) {
-    this.spawnProcess = spawnProcess; this.lock = lock; this.identity = identity; this.watchMs = watchMs; this.pending = false;
+  #active = 0;
+  #queue = [];
+
+  // Each ES process owns its IPC reply endpoint. Bound the number of clients per plugin host.
+  constructor({ spawnProcess = spawn, concurrency = 4 } = {}) {
+    this.spawnProcess = spawnProcess;
+    this.concurrency = concurrency;
   }
+
+  #drain() {
+    while (this.#active < this.concurrency && this.#queue.length) this.#queue.shift()();
+  }
+
   async run(executable, args, { signal, timeoutMs = 30000 } = {}) {
     if (signal?.aborted) throw new EverythingError('CANCELLED', 'Search cancelled before ES started.');
-    if (this.pending) throw new EverythingError('ES_BUSY', 'Everything is still running an earlier query. Wait and retry; cancellation stops waiting, not the indexed query.');
-    this.pending = true;
-    let lease;
-    try { lease = await this.lock(); }
-    catch (error) { this.pending = false; throw error; }
-    if (signal?.aborted) { await lease.release(); this.pending = false; throw new EverythingError('CANCELLED', 'Search cancelled before ES started.'); }
-    const instanceIndex = args.indexOf('-instance');
-    const instance = instanceIndex < 0 ? '' : args[instanceIndex + 1].replaceAll('"', '');
-    const identity = args.includes('-version') ? null : await this.identity(instance).catch(() => null);
-    if (signal?.aborted) { await lease.release(); this.pending = false; throw new EverythingError('CANCELLED', 'Search cancelled before ES started.'); }
-    let child;
-    try {
-      child = this.spawnProcess(executable, process.platform === 'win32' ? args.map(commandArg) : args, {
-        windowsHide: true, windowsVerbatimArguments: process.platform === 'win32', shell: false, stdio: ['ignore', 'pipe', 'pipe'],
-      });
-    } catch (error) { await lease.release(); this.pending = false; throw error; }
     return new Promise((resolve, reject) => {
-      const chunks = [], errors = [];
-      let bytes = 0, overflow = false, settled = false, closed = false, watcher;
-      const watch = () => {
-        if (!identity || watcher || closed) return;
-        const tick = async () => {
-          if (closed) return;
-          const current = await this.identity(instance).catch(() => null);
-          if (closed) return;
-          if (current !== identity && current !== null) { child.kill(); return; }
-          watcher = setTimeout(tick, this.watchMs);
-        };
-        watcher = setTimeout(tick, this.watchMs);
-      };
+      let child, settled = false;
       const finish = (error, result) => {
         if (settled) return;
-        settled = true; clearTimeout(timer); signal?.removeEventListener('abort', abort);
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', abort);
         if (error) reject(error); else resolve(result);
       };
-      const abort = () => { watch(); finish(new EverythingError('CANCELLED', 'Stopped waiting for ES. Everything may still be running the query; further calls report busy until ES exits.')); };
-      const timer = setTimeout(() => { watch(); finish(new EverythingError('ES_TIMEOUT', `Search timed out after ${timeoutMs} ms. Everything may still be running the query; calls report busy until ES exits. Narrow by root, name or extension; ask the user to restart Everything if it stays busy.`)); }, timeoutMs);
-      signal?.addEventListener('abort', abort, { once: true });
-      if (signal?.aborted) abort();
-      child.stdout.on('data', data => { bytes += data.length; if (bytes <= 16 * 1024 * 1024) chunks.push(data); else overflow = true; });
-      child.stderr.on('data', data => { if (errors.reduce((n, b) => n + b.length, 0) < 65536) errors.push(data); });
-      child.once('error', error => finish(new EverythingError('ES_START_FAILED', `Could not start official ES: ${error.message}. Check esPath and executable permissions.`)));
-      child.once('close', async (code, terminationSignal) => {
-        closed = true; clearTimeout(watcher);
+      const stop = error => {
+        finish(error);
+        if (child) child.kill();
+        else this.#queue.splice(this.#queue.indexOf(start), 1);
+      };
+      const abort = () => stop(new EverythingError('CANCELLED', child ? 'Search cancelled. The local ES process was stopped; Everything may still finish the query internally.' : 'Search cancelled before ES started.'));
+      const timer = setTimeout(() => stop(new EverythingError('ES_TIMEOUT', child
+        ? `Search timed out after ${timeoutMs} ms. Narrow by root, name or extension.`
+        : `Search timed out after ${timeoutMs} ms waiting for an ES process slot.`)), timeoutMs);
+      const startFailed = error => finish(new EverythingError('ES_START_FAILED', `Could not start official ES: ${error.message}. Check esPath and executable permissions.`));
+      const start = () => {
         try {
-          await lease.release();
-          this.pending = false;
-          if (overflow) return finish(new EverythingError('ES_OUTPUT_LIMIT', 'ES output exceeded 16 MiB. Narrow the query or lower limit.'));
-          const stdout = decodeOutput(Buffer.concat(chunks)), stderr = decodeOutput(Buffer.concat(errors));
-          if (code !== 0 && code !== 9) {
-            const hint = code === 8 ? 'Start the Everything desktop client (the service alone is insufficient), or correct the plugin instance setting.' : 'Check that Everything is running and the instance setting matches it.';
-            return finish(new EverythingError('ES_FAILED', `ES failed (exit ${code ?? terminationSignal}): ${stderr.trim() || stdout.trim() || 'No diagnostic output'}. ${hint}`));
-          }
-          finish(null, { stdout: code === 9 ? '' : stdout, stderr, code });
-        } catch (error) { this.pending = false; finish(error); }
-      });
+          child = this.spawnProcess(executable, process.platform === 'win32' ? args.map(commandArg) : args, {
+            windowsHide: true, windowsVerbatimArguments: process.platform === 'win32', shell: false, stdio: ['ignore', 'pipe', 'pipe'],
+          });
+        } catch (error) { startFailed(error); return; }
+        this.#active++;
+        const chunks = [];
+        let bytes = 0;
+        child.stdout.on('data', data => {
+          if (settled) return;
+          bytes += data.length;
+          if (bytes > 16 * 1024 * 1024) stop(new EverythingError('ES_OUTPUT_LIMIT', 'ES output exceeded 16 MiB. Narrow the query or lower limit.'));
+          else chunks.push(data);
+        });
+        // Never return raw diagnostics: they can contain paths that have not been filtered.
+        child.stderr.resume();
+        child.on('error', startFailed);
+        child.once('close', (code, terminationSignal) => {
+          // Keep the slot until the child closes, even when cancellation has already returned.
+          this.#active--;
+          try {
+            if (settled) return;
+            if (code !== 0 && code !== 9) {
+              const hint = code === 8 ? 'Start the Everything desktop client (the service alone is insufficient), or correct the plugin instance setting.' : 'Check that Everything is running and the instance setting matches it.';
+              return finish(new EverythingError('ES_FAILED', `ES failed (exit ${code ?? terminationSignal}). ${hint}`));
+            }
+            finish(null, { stdout: code === 9 ? '' : decodeOutput(Buffer.concat(chunks)), code });
+          } catch (error) { finish(error); }
+          finally { this.#drain(); }
+        });
+      };
+      signal?.addEventListener('abort', abort, { once: true });
+      this.#queue.push(start);
+      this.#drain();
     });
   }
 }
 export const runner = new EsRunner();
 export const baseArgs = settings => ['-default-argv', ...(settings.instance ? ['-instance', `"${settings.instance}"`] : [])];
-export async function checkEs(executable, settings, context, executor = runner) {
-  const options = { signal: context.signal, timeoutMs: Math.min(settings.timeoutMs ?? 30000, 4000) };
-  const es = (await executor.run(executable, ['-version'], options)).stdout.trim();
-  const parts = es.split('.').map(Number);
-  if (!/^\d+\.\d+\.\d+\.\d+$/.test(es) || parts[0] !== 1 || parts[1] < 1 || (parts[1] === 1 && parts[2] === 0 && parts[3] < 37)) {
-    throw new EverythingError('ES_VERSION', `ES >=1.1.0.37 is required to pin its argument parser; found ${es || 'an unrecognized executable'}. Install the official voidtools CLI.`);
-  }
-  const everything = (await executor.run(executable, [...baseArgs(settings), '-get-everything-version'], options)).stdout.trim();
-  if (!/^1\.5\./.test(everything)) throw new EverythingError('EVERYTHING_VERSION', `Everything 1.5 is required for this indexed-search plugin; received ${everything || 'no version'}. Start Everything 1.5 and check the instance setting.`);
-  return { es, everything };
+export function createEsProbe(executor = runner) {
+  let checked;
+  return async (executable, settings, context) => {
+    const options = { signal: context.signal, timeoutMs: settings.timeoutMs ?? 30000 };
+    const info = await stat(executable, { bigint: true });
+    const identity = `${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`;
+    let es;
+    if (checked?.executable === executable && checked.identity === identity) {
+      es = checked.es;
+    } else {
+      es = (await executor.run(executable, ['-version'], options)).stdout.trim();
+      const parts = es.split('.').map(Number);
+      if (!/^\d+\.\d+\.\d+\.\d+$/.test(es) || parts[0] !== 1 || parts[1] < 1 || (parts[1] === 1 && parts[2] === 0 && parts[3] < 37)) {
+        throw new EverythingError('ES_VERSION', 'ES >=1.1.0.37 is required to pin its argument parser. Install the official voidtools CLI.');
+      }
+      checked = { executable, identity, es };
+    }
+    // The running instance can change independently of ES, and ES also works with Everything 1.4.
+    const everything = (await executor.run(executable, [...baseArgs(settings), '-get-everything-version'], options)).stdout.trim();
+    if (!/^1\.5\.\d+\.\d+$/.test(everything)) throw new EverythingError('EVERYTHING_VERSION', 'Everything 1.5 is required for this indexed-search plugin. Start Everything 1.5 and check the instance setting.');
+    return { es, everything };
+  };
 }

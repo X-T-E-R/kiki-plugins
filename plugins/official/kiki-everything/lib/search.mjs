@@ -1,4 +1,4 @@
-import { EverythingError, baseArgs, checkEs, notASwitch, resolveEsPath, runner, splitQueryTerms } from './es.mjs';
+import { EverythingError, baseArgs, createEsProbe, notASwitch, resolveEsPath, runner, splitQueryTerms } from './es.mjs';
 import { admitRoot, enrichCandidate } from './paths.mjs';
 
 export const sorts = ['name', 'name-descending', 'path', 'path-descending', 'extension', 'size', 'size-descending', 'date-modified', 'date-modified-descending'];
@@ -27,7 +27,7 @@ export function searchArgs(args, root, settings) {
   if (args.match_whole_word) flags.push('-w');
   return [...baseArgs(settings), ...output, '-n', String(args.limit + 1), '-o', String(args.offset), '-sort', args.sort, '-path', `"${root}"`, ...(args.type === 'directory' ? ['/ad'] : args.type === 'file' ? ['/a-d'] : []), ...flags, ...splitQueryTerms(args.query).map(notASwitch)];
 }
-export function createSearch({ executor = runner, findEs = resolveEsPath, probe = checkEs, admit = admitRoot, enrich = enrichCandidate } = {}) {
+export function createSearch({ executor = runner, findEs = resolveEsPath, probe = createEsProbe(executor), admit = admitRoot, enrich = enrichCandidate } = {}) {
   return async (input, context = {}) => {
     try {
       const settings = context.settings ?? {};
@@ -36,7 +36,7 @@ export function createSearch({ executor = runner, findEs = resolveEsPath, probe 
       if (process.platform !== 'win32') throw new EverythingError('WINDOWS_REQUIRED', 'Everything ES indexed search runs on the local Windows host. Keep Glob/Grep for remote or non-Windows workspaces.');
       const executable = await findEs(settings);
       context.progress?.({ kind: 'status', text: 'Querying the local Everything index' });
-      const versions = await probe(executable, settings, context, executor);
+      const versions = await probe(executable, settings, context);
       const { stdout } = await executor.run(executable, searchArgs(args, root, settings), { signal: context.signal, timeoutMs: settings.timeoutMs ?? 30000 });
       const paths = stdout.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.length > 0);
       if (paths.some(line => !/^(?:[A-Za-z]:[\\/]|\\\\)/.test(line))) throw new EverythingError('ES_OUTPUT_FORMAT', 'ES returned unexpected non-path output. Check esPath is official voidtools ES and reset custom display settings.');
@@ -47,6 +47,7 @@ export function createSearch({ executor = runner, findEs = resolveEsPath, probe 
         const item = await enrich(file, root);
         if (item && (args.type === 'both' || item.type === args.type || item.type === 'unknown')) results.push(item);
       }
+      if (context.signal?.aborted) throw new EverythingError('CANCELLED', 'Search cancelled while filtering results.');
       return { output: JSON.stringify({ source: 'Everything index', root, query: args.query, sort: args.sort, versions, results, returned: results.length, pagination: { stage: 'index-before-path-and-sensitive-filtering', offset: args.offset, limit: args.limit, scanned: page.length, filtered: page.length - results.length, has_more: hasMore, next_offset: hasMore ? args.offset + page.length : null, total: null }, note: 'Only Kiki-admitted, canonical paths under root are returned. Sensitive and VCS paths are excluded. Index coverage/freshness depends on Everything; pages are live queries, not a snapshot. An empty filtered page can still have next_offset.' }, null, 2) };
     } catch (error) {
       return { isError: true, output: JSON.stringify({ code: error.code ?? 'EVERYTHING_ERROR', message: error.message }) };
