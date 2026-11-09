@@ -19,7 +19,10 @@ export function archiveClient(account, credential = {}, { signal, fetch: send = 
     try {
       const response = await send(url, { headers, method: body === undefined ? 'GET' : 'POST', body: body === undefined ? undefined : JSON.stringify(body), signal: combined, redirect: 'error' });
       if (!response.ok) {
-        await response.body?.cancel();
+        if (response.status === 400 && route === 'ingestion-sources' && body?.provider === 'generic_imap' && response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() === 'application/json') {
+          const failure = await response.json().catch((error) => { if (combined.aborted) throw error; });
+          if (isImapCreateRollback(failure)) throw coded('archive_create_rolled_back', 'Open Archiver rejected the IMAP connection and rolled back source creation.');
+        } else await response.body?.cancel();
         const code = response.status === 401 ? 'auth_failed' : response.status === 403 ? 'forbidden' : response.status === 404 ? 'not_found' : 'archive_http';
         throw coded(code, `Open Archiver returned HTTP ${response.status}${response.status === 401 ? ': check the API key' : response.status === 403 ? ': this key lacks permission' : ''}.`);
       }
@@ -29,10 +32,20 @@ export function archiveClient(account, credential = {}, { signal, fetch: send = 
     } catch (error) {
       if (signal?.aborted) throw coded('cancelled', 'The Open Archiver request was cancelled.');
       if (timeout.aborted) throw coded('timeout', 'The Open Archiver request timed out.');
-      if (error.code && ['auth_missing', 'auth_failed', 'forbidden', 'not_found', 'archive_http', 'archive_protocol'].includes(error.code)) throw error;
+      if (error.code && ['auth_missing', 'auth_failed', 'forbidden', 'not_found', 'archive_http', 'archive_protocol', 'archive_create_rolled_back'].includes(error.code)) throw error;
       throw coded('disconnected', 'Open Archiver could not be reached. Check the service URL and TLS connection.');
     }
   };
+}
+
+function isImapCreateRollback(failure) {
+  // OA v0.6.2 rethrows testConnection's error only after deleting the new source.
+  const message = failure?.message;
+  return typeof message === 'string' && Object.keys(failure).length === 1 && (
+    message === 'Ingestion authentication failed.'
+    || /^IMAP Connection Error: ./.test(message)
+    || message.startsWith('The mail server accepted the sign-in and then refused to open the mailbox.')
+  );
 }
 
 export async function archiveSearch(account, request, args = {}) {

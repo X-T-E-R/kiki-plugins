@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { archiveBaseUrl, coded, isArchive } from './accounts.mjs';
 import { archiveClient, archiveMessage, archiveSources, sourceMetadata } from './open-archiver.mjs';
@@ -25,30 +25,15 @@ export async function migrateArchiveSource(state, directory, args, options) {
 
   const request = archiveClient({ ...target, timeoutMs: 90_000 }, { apiKey: args.adminApiKey }, options);
   const name = `Kiki Mail: ${direct.user}`;
-  const sources = await archiveSources(request);
   const identity = direct.user.toLowerCase();
-  const matches = [];
-  for (const source of sources) {
-    if (!['generic_imap', 'oauth_mailbox'].includes(source.provider)) {
-      if (source.name === name) throw coded('migration_conflict', 'An Open Archiver source already uses this name with a different provider.');
-      continue;
-    }
-    const stats = await request(`ingestion-sources/${encodeURIComponent(source.id)}/stats`);
-    const owners = (stats.mailboxes || []).map((mailbox) => mailbox.userEmail?.toLowerCase()).filter(Boolean);
-    const sameMailbox = owners.includes(identity);
-    const mapped = plan.sources?.[direct.id]?.sourceId === source.id;
-    if ((source.name === name || mapped) && !sameMailbox && (owners.length || !mapped)) {
-      throw coded('migration_reconcile', 'The Open Archiver source name or previous mapping does not yet match this mailbox. Check the source before continuing.');
-    }
-    if (sameMailbox || mapped) matches.push(source);
-  }
-  if (matches.length > 1) throw coded('migration_conflict', 'More than one Open Archiver source matches this mailbox. Resolve the overlap before migration.');
-  if (matches.length === 1) {
+  const mappedId = plan.sources?.[direct.id]?.sourceId;
+  const existing = await findMigrationSource(request, name, identity, mappedId);
+  if (existing) {
     if (args.sync === true) {
-      await request(`ingestion-sources/${encodeURIComponent(matches[0].id)}/sync`, { body: {} });
-      return { ok: true, outcome: 'sync_requested', source: matches[0] };
+      await request(`ingestion-sources/${encodeURIComponent(existing.id)}/sync`, { body: {} });
+      return { ok: true, outcome: 'sync_requested', source: existing };
     }
-    return { ok: true, outcome: 'existing', source: matches[0] };
+    return { ok: true, outcome: 'existing', source: existing };
   }
   if (args.sync === true) throw coded('migration_mismatch', 'Create or reconcile this source before requesting a reconnect.');
 
@@ -61,12 +46,46 @@ export async function migrateArchiveSource(state, directory, args, options) {
     if (error.code === 'EEXIST') throw coded('migration_reconcile', 'A previous create attempt has no matching source yet. Check Open Archiver before retrying.');
     throw coded('migration_permit', 'Could not record the migration attempt locally.');
   }
-  const source = sourceMetadata(await request('ingestion-sources', { body: {
-    name, provider: 'generic_imap', preserveOriginalFile: true,
-    providerConfig: { type: 'generic_imap', host: direct.imapHost, port: direct.imapPort, secure: true, allowInsecureCert: false, username: direct.user, password },
-  } }));
+  let created;
+  try {
+    created = await request('ingestion-sources', { body: {
+      name, provider: 'generic_imap', preserveOriginalFile: true,
+      providerConfig: { type: 'generic_imap', host: direct.imapHost, port: direct.imapPort, secure: true, allowInsecureCert: false, username: direct.user, password },
+    } });
+  } catch (error) {
+    if (error.code !== 'archive_create_rolled_back') throw error;
+    try {
+      const reconciled = await findMigrationSource(request, name, identity, mappedId);
+      if (reconciled) return { ok: true, outcome: 'existing', source: reconciled };
+      await rm(record);
+    } catch {
+      throw coded('migration_reconcile', 'Could not reconcile the failed create. Check the source in Open Archiver before retrying.');
+    }
+    throw coded('migration_source_rejected', 'Open Archiver rejected the IMAP connection and no source was created. Check the mailbox authorization or server connection, then rerun migrate.');
+  }
+  const source = sourceMetadata(created);
   await writeFile(record, JSON.stringify({ accountId: direct.id, sourceId: source.id, recordedAt: new Date().toISOString() }), { mode: 0o600 });
   return { ok: true, outcome: 'created', source };
+}
+
+async function findMigrationSource(request, name, identity, mappedId) {
+  const matches = [];
+  for (const source of await archiveSources(request)) {
+    if (!['generic_imap', 'oauth_mailbox'].includes(source.provider)) {
+      if (source.name === name) throw coded('migration_conflict', 'An Open Archiver source already uses this name with a different provider.');
+      continue;
+    }
+    const stats = await request(`ingestion-sources/${encodeURIComponent(source.id)}/stats`);
+    const owners = (stats.mailboxes || []).map((mailbox) => mailbox.userEmail?.toLowerCase()).filter(Boolean);
+    const sameMailbox = owners.includes(identity);
+    const mapped = mappedId === source.id;
+    if ((source.name === name || mapped) && !sameMailbox && (owners.length || !mapped)) {
+      throw coded('migration_reconcile', 'The Open Archiver source name or previous mapping does not yet match this mailbox. Check the source before continuing.');
+    }
+    if (sameMailbox || mapped) matches.push(source);
+  }
+  if (matches.length > 1) throw coded('migration_conflict', 'More than one Open Archiver source matches this mailbox. Resolve the overlap before migration.');
+  return matches[0];
 }
 
 export async function verifyArchiveSample(state, directory, args, options, authorize) {
@@ -83,7 +102,7 @@ export async function verifyArchiveSample(state, directory, args, options, autho
   for (const part of parsed.attachments) if (part.storagePath) part.content = await request('storage/download', { query: { path: part.storagePath }, binary: true });
   const auth = await authorize(direct);
   let found = false;
-  const matched = await withImap(direct, auth, options, async (client) => {
+  const attachmentCount = await withImap(direct, auth, options, async (client) => {
     for (const folder of await listMailboxes(client)) {
       await client.mailboxOpen(folder.path, { readOnly: true });
       const uids = await client.search({ header: { 'Message-ID': parsed.messageId } }, { uid: true });
@@ -93,17 +112,30 @@ export async function verifyArchiveSample(state, directory, args, options, autho
         if (original.messageId !== parsed.messageId) continue;
         found = true;
         const bodyMatches = original.text === parsed.text && original.html === parsed.html && original.date === parsed.date;
-        const mimeParts = parsed.attachments.filter((part) => !part.storagePath);
-        const samePart = (part, other) => part.filename === other.filename && part.mimeType === other.mimeType && part.content.equals(other.content);
-        const attachmentsMatch = original.attachments.length === mimeParts.length && original.attachments.every((part, index) => samePart(part, mimeParts[index]))
-          && parsed.attachments.filter((part) => part.storagePath).every((part) => original.attachments.some((other) => samePart(part, other)));
-        if (bodyMatches && attachmentsMatch) return true;
+        if (bodyMatches && attachmentsMatch(original.attachments, parsed.attachments)) return original.attachments.length;
       }
     }
-    return false;
   });
-  if (!matched) throw coded('migration_mismatch', found ? 'The archived sample differs in date, body, HTML or attachment bytes.' : 'The archived sample Message-ID was not found in the direct mailbox.');
-  return { ok: true, verified: true, accountId: direct.id, sourceId, attachmentCount: parsed.attachments.filter((part) => !part.storagePath).length };
+  if (attachmentCount === undefined) throw coded('migration_mismatch', found ? 'The archived sample differs in date, body, HTML or attachments (names, types, counts or bytes).' : 'The archived sample Message-ID was not found in the direct mailbox.');
+  return { ok: true, verified: true, accountId: direct.id, sourceId, attachmentCount };
+}
+
+function attachmentsMatch(original, archived) {
+  const stored = archived.filter((part) => part.storagePath);
+  const mime = archived.filter((part) => !part.storagePath);
+  // Default OA mode stores every attachment, retaining inline MIME copies too.
+  return stored.length ? sameParts(original, stored) && sameParts(original, mime, false) : sameParts(original, mime);
+}
+
+function sameParts(original, archived, complete = true) {
+  if (complete && original.length !== archived.length) return false;
+  const remaining = [...original];
+  for (const part of archived) {
+    const index = remaining.findIndex((other) => part.filename === other.filename && part.mimeType === other.mimeType && part.content.equals(other.content));
+    if (index < 0) return false;
+    remaining.splice(index, 1);
+  }
+  return true;
 }
 
 export function migrationStatus(account, mapped, stats) {
