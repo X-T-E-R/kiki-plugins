@@ -581,15 +581,15 @@ pre {
       <div class="fold-body">
         <div id="providerStep" class="grid">
           <label class="wide"><span data-i18n="presetLabel">Preset</span> <select id="preset">
-            <option value="custom">Custom</option><option value="gmail">Gmail</option><option value="outlook">Outlook / Microsoft 365</option><option value="qq">QQ Mail</option><option value="163">NetEase 163</option><option value="icloud">iCloud</option><option value="fastmail">Fastmail</option><option value="proton-bridge">Proton Bridge (local)</option>
+            <option value="custom">Custom</option><option value="open-archiver">Open Archiver</option><option value="gmail">Gmail</option><option value="outlook">Outlook / Microsoft 365</option><option value="qq">QQ Mail</option><option value="163">NetEase 163</option><option value="icloud">iCloud</option><option value="fastmail">Fastmail</option><option value="proton-bridge">Proton Bridge (local)</option>
           </select></label>
         </div>
         <div id="identityStep" class="grid">
-          <label><span data-i18n="userLabel">Email or username</span> <input id="user" autocomplete="off" spellcheck="false" placeholder="ada@example.com"></label>
+          <label id="userField"><span data-i18n="userLabel">Email or username</span> <input id="user" autocomplete="off" spellcheck="false" placeholder="ada@example.com"></label>
           <label><span data-i18n="labelField">Display label</span> <input id="label" maxlength="120" autocomplete="off" placeholder="Work / Personal"></label>
           <label class="wide"><span data-i18n="noteLabel">Note</span> <input id="note" maxlength="200" autocomplete="off" placeholder="Project, team or purpose"></label>
           <label><span data-i18n="idLabel">Account ID</span> <input id="id" autocomplete="off" spellcheck="false" placeholder="ada"></label>
-          <label><span data-i18n="fromLabel">From header (optional)</span> <input id="from" autocomplete="off" spellcheck="false" placeholder="Ada <ada@example.com>"></label>
+          <label id="fromField"><span data-i18n="fromLabel">From header (optional)</span> <input id="from" autocomplete="off" spellcheck="false" placeholder="Ada <ada@example.com>"></label>
         </div>
         <div id="authStep" class="grid">
           <label class="wide"><span data-i18n="authLabel">Auth</span> <select id="auth"><option value="password" data-i18n="authPassword">Password or app password</option><option value="oauth2" data-i18n="authOauth">OAuth2</option></select></label>
@@ -612,6 +612,10 @@ pre {
           </div>
         </div>
 
+        <div id="archiveGroup" class="grid" style="margin-top:8px" hidden>
+          <label class="wide"><span data-i18n="archiveUrl">Service URL</span><input id="baseUrl" type="url" placeholder="https://archive.example.com" autocomplete="off" spellcheck="false"></label>
+          <label class="wide"><span data-i18n="archiveKey">Read-only API key</span><input id="archiveKey" type="password" autocomplete="new-password"></label>
+        </div>
         <div id="passwordGroup" class="grid" style="margin-top:8px">
           <label class="wide"><span data-i18n="passwordLabel">Password or app password</span> <input id="password" type="password" autocomplete="new-password" placeholder="Write-only; leave blank to keep stored secret"></label>
         </div>
@@ -667,6 +671,7 @@ pre {
           </div>
         </details>
 
+        <div id="sendOnlyGroup" class="checks"><label><input id="sendOnly" type="checkbox"><span data-i18n="sendOnly">Send-only · suspend direct reading and inbox watch</span></label></div>
         <details id="watchDetails">
           <summary><span data-i18n="watchSummaryTitle">Inbox watch &amp; IM notifications</span></summary>
           <div class="fold-body">
@@ -728,8 +733,14 @@ pre {
 
     <div id="folderList" class="folder-strip"></div>
 
+    <p id="readCapabilities" class="note" hidden></p>
+    <input id="archiveId" type="hidden"><input id="attachmentId" type="hidden">
+    <div id="archiveFilters" class="grid" hidden>
+      <label><span data-i18n="sourceFilter">Source IDs (comma-separated, blank for all)</span><input id="sourceIds" spellcheck="false"></label>
+      <label><span data-i18n="mailboxOwners">Mailbox owners (comma-separated, blank for all)</span><input id="mailboxOwners" spellcheck="false"></label>
+    </div>
     <div class="grid-3">
-      <label><span data-i18n="folderLabel">Folder</span> <input id="mailbox" value="INBOX" spellcheck="false"></label>
+      <label id="mailboxField"><span data-i18n="folderLabel">Folder</span> <input id="mailbox" value="INBOX" spellcheck="false"></label>
       <label><span data-i18n="queryLabel">Search text</span> <input id="query" spellcheck="false" placeholder="Keyword in message"></label>
       <label><span data-i18n="fromFilterLabel">From sender</span> <input id="fromQuery" spellcheck="false" placeholder="sender@example.com"></label>
       <label><span data-i18n="sinceLabel">Since date</span> <input id="since" placeholder="YYYY-MM-DD" spellcheck="false"></label>
@@ -1235,6 +1246,20 @@ pre {
     oauth_reauthorize: '需要重新授权',
     oauth_app_required: '尚未配置项目 OAuth 应用',
   });
+  Object.assign(COPY.en, {
+    archiveUrl: 'Service URL', archiveKey: 'Read-only API key', archiveTesting: 'Testing archive access…', archiveTestPassed: 'Archive access confirmed. Ready to save.',
+    archiveOnly: 'Read-only archive · no sending, unread status or inbox watch', sendOnly: 'Send-only · suspend direct reading and inbox watch', sendOnlyShort: 'Send-only',
+    sourceFilter: 'Source IDs (comma-separated, blank for all)', mailboxOwners: 'Mailbox owners (comma-separated, blank for all)', sourcesBtn: 'Sources', sourcesCount: 'source(s)',
+    defaultReader: 'Default reader', makeDefaultReader: 'Make default reader', archiveKeySaved: 'API key saved', archiveStage: 'Connect Open Archiver',
+    archiveEmpty: 'No archived messages match.', openCompose: 'Compose', allSources: 'All sources', archiveSearchLoading: 'Searching the archive…',
+  });
+  Object.assign(COPY.zh, {
+    archiveUrl: '服务地址', archiveKey: '只读 API 密钥', archiveTesting: '正在测试归档连接…', archiveTestPassed: '归档连接测试通过，可以保存。',
+    archiveOnly: '只读归档 · 不发信、不显示源未读状态、不监听收件箱', sendOnly: '仅发信 · 停止直接读取和收件箱监听', sendOnlyShort: '仅发信',
+    sourceFilter: '来源 ID（逗号分隔，留空选全部）', mailboxOwners: '邮箱地址（逗号分隔，留空选全部）', sourcesBtn: '来源', sourcesCount: '个来源',
+    defaultReader: '默认阅读账号', makeDefaultReader: '设为默认阅读账号', archiveKeySaved: '已保存 API 密钥', archiveStage: '连接 Open Archiver',
+    archiveEmpty: '没有匹配的归档邮件。', openCompose: '写邮件', allSources: '全部来源', archiveSearchLoading: '正在搜索归档…',
+  });
   const SETUP_STEPS = {
     gmail: { steps: ['setupGmail1', 'setupGmail2', 'setupGmail3'], primary: 'openAppPasswords', secondary: 'openGoogleSecurity' },
     qq: { steps: ['setupQQ1', 'setupQQ2'], primary: 'openProviderPage' },
@@ -1285,6 +1310,25 @@ pre {
     el('test').hidden = value;
     if (el('accountSelect').parentElement) el('accountSelect').parentElement.hidden = value;
     el('newAccount').className = value ? '' : 'quiet';
+    syncReadCapabilities();
+  }
+  const archiveForm = () => text('preset') === 'open-archiver';
+  const selectedAccount = () => (lastState.accounts || []).find((account) => account.id === activeAccount);
+  const archiveView = () => selectedAccount()?.preset === 'open-archiver';
+  function syncReadCapabilities() {
+    const archive = archiveView();
+    const sendOnly = selectedAccount()?.sendOnly === true;
+    el('sendSection').hidden = managing || archive;
+    el('mailboxSection').hidden = managing || sendOnly;
+    el('archiveFilters').hidden = !archive;
+    el('mailboxField').hidden = archive;
+    el('unseen').disabled = archive;
+    if (el('unseen').parentElement) el('unseen').parentElement.hidden = archive;
+    el('protocolDetails').hidden = archive;
+    el('folders').textContent = tr(archive ? 'sourcesBtn' : 'foldersBtn');
+    el('readCapabilities').hidden = !archive;
+    el('readCapabilities').textContent = archive ? tr('archiveOnly') : '';
+    el('replyFromRead').hidden = archive;
   }
   function renderAccountCards() {
     if (!canDom()) return;
@@ -1308,7 +1352,10 @@ pre {
         const content = node('div', '');
         const title = node('h3', account.label);
         if (account.isDefault || account.id === lastState.defaultAccountId) title.append(node('span', tr('defaultLabel'), 'badge'));
-        content.append(title, node('p', account.user), node('p', account.note || '', 'note'));
+        if (account.isDefaultRead) title.append(node('span', tr('defaultReader'), 'badge'));
+        content.append(title, node('p', account.baseUrl || account.user));
+        if (account.note) content.append(node('p', account.note, 'note'));
+        if (account.preset === 'open-archiver' || account.sendOnly) content.append(node('p', tr(account.sendOnly ? 'sendOnlyShort' : 'archiveOnly'), 'note'));
         const test = account.lastTest;
         const status = node('p', test ? `${tr(test.ok ? 'testOk' : 'testError')} · ${new Date(test.at).toLocaleString()}${!test.ok ? ` · ${test.message}` : ''}` : tr('neverTested'), 'note');
         if (status.dataset) status.dataset.tone = test ? test.ok ? 'ok' : 'danger' : '';
@@ -1322,8 +1369,12 @@ pre {
         }
         if (account.from && account.from !== account.user) content.append(node('p', account.from, 'note'));
         const actions = node('div', '', 'row');
-        actions.append(actionButton('openMailbox', () => { selectAccountById(account.id); setManagement(false); }), actionButton('testBtn', async () => { selectAccountById(account.id); await el('test').onclick(); }), actionButton('edit', () => { selectAccountById(account.id); editingId = account.id; wizardStage = null; openEditor(); }), actionButton('deleteBtn', async () => { selectAccountById(account.id); await el('remove').onclick(); }));
-        if (!(account.isDefault || account.id === lastState.defaultAccountId)) actions.append(actionButton('makeDefault', async () => { const result = await call('default', { accountId: account.id }); if (result.ok) render(result); else setStatus(result.message, 'danger'); }));
+        actions.append(actionButton(account.sendOnly ? 'openCompose' : 'openMailbox', async () => {
+          selectAccountById(account.id); setManagement(false);
+          if (archiveView()) await el('search').onclick();
+        }), actionButton('testBtn', async () => { selectAccountById(account.id); await el('test').onclick(); }), actionButton('edit', () => { selectAccountById(account.id); editingId = account.id; wizardStage = null; openEditor(); }), actionButton('deleteBtn', async () => { selectAccountById(account.id); await el('remove').onclick(); }));
+        if (account.capabilities?.send !== false && !(account.isDefault || account.id === lastState.defaultAccountId)) actions.append(actionButton('makeDefault', async () => { const result = await call('default', { accountId: account.id }); if (result.ok) render(result); else setStatus(result.message, 'danger'); }));
+        if (account.capabilities?.read && !account.isDefaultRead) actions.append(actionButton('makeDefaultReader', async () => { const result = await call('defaultRead', { accountId: account.id }); if (result.ok) render(result); else setStatus(result.message, 'danger'); }));
         entry.append(content, actions); target.append(entry);
       }
     }
@@ -1361,7 +1412,7 @@ pre {
     for (const item of document.querySelectorAll?.('[aria-invalid]') || []) item.removeAttribute?.('aria-invalid');
   }
   function validateIdentity() {
-    if (!text('user')) return fieldIssue('user', tr('requiredField'));
+    if (!archiveForm() && !text('user')) return fieldIssue('user', tr('requiredField'));
     if (text('note').length > 200) return fieldIssue('note', tr('noteTooLong'));
     const id = deriveAccountId();
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(id)) return fieldIssue('id', tr('requiredField'));
@@ -1380,6 +1431,11 @@ pre {
   function validateAccountForm() {
     clearIssue();
     if (!validateIdentity()) return false;
+    if (archiveForm()) {
+      if (!text('baseUrl')) return fieldIssue('baseUrl', tr('requiredField'));
+      if (!text('archiveKey') && !selectedAccount()?.hasApiKey && !testedDraftId) return fieldIssue('archiveKey', tr('requiredField'));
+      return true;
+    }
     for (const id of ['imapHost', 'smtpHost']) if (!text(id)) return fieldIssue(id, tr('requiredField'));
     for (const id of ['imapPort', 'smtpPort']) if (!Number.isInteger(num(id)) || num(id) < 1 || num(id) > 65535) return fieldIssue(id, tr('invalidPort'));
     try { parseHeaders(); } catch { return false; }
@@ -1392,6 +1448,7 @@ pre {
   function openEditor() {
     setManagement(true);
     el('accountOverview').hidden = true;
+    el('projectSettings').open = false;
     el('accountSheet').hidden = false;
     el('accountSheet').open = true;
     clearIssue(); syncWizard();
@@ -1400,10 +1457,9 @@ pre {
     const wizard = wizardStage !== null;
     const final = wizardStage === 4;
     for (const [id, stage] of [['providerStep', 0], ['identityStep', 1], ['authStep', 2]]) el(id).hidden = wizard && wizardStage !== stage;
+    syncAuthVisibility();
     const credentials = !wizard || wizardStage === 3;
-    for (const id of ['passwordGroup', 'setupGuide', 'oauthGroup', 'secretStatus', 'serverDetails', 'watchDetails', 'customDetails']) el(id).hidden = !credentials;
-    if (credentials) syncAuthVisibility();
-    el('wizardProgress').textContent = wizard ? tr(['providerStage', 'identityStage', 'authStage', 'credentialStage', 'saveStage'][wizardStage]) : '';
+    el('wizardProgress').textContent = wizard ? tr(['providerStage', 'identityStage', 'authStage', archiveForm() ? 'archiveStage' : 'credentialStage', 'saveStage'][wizardStage]) : '';
     el('wizardBack').hidden = !wizard || wizardStage === 0;
     el('wizardNext').hidden = !wizard || wizardStage >= 3;
     el('testDraft').hidden = !credentials;
@@ -1462,9 +1518,11 @@ pre {
     }
   }
 
+  let parentOrigin;
   function call(action, args) {
+    if (!parentOrigin) return Promise.reject(new Error(tr('requestFailed')));
     const id = ++seq;
-    parent.postMessage({ channel, kind: 'request', id, method: 'plugin.call', action, args });
+    parent.postMessage({ channel, kind: 'request', id, method: 'plugin.call', action, args }, parentOrigin === 'null' ? '*' : parentOrigin);
     return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
   }
 
@@ -1476,7 +1534,7 @@ pre {
     return {
       args,
       current: () => epoch === viewEpoch && generations.get(action) === generation
-        && keys.every((key) => mailboxArgs()[key] === args[key]),
+        && keys.every((key) => JSON.stringify(mailboxArgs()[key]) === JSON.stringify(args[key])),
     };
   }
 
@@ -1512,14 +1570,22 @@ pre {
   }
 
   function secretLine(account) {
+    if (account.hasApiKey) return tr('archiveKeySaved');
     if (account.hasPassword) return tr('secretPasswordSaved');
     if (account.hasAccessToken || account.hasRefreshToken) return tr('secretTokenSaved');
     return tr('secretNoSecret');
   }
 
   function syncAuthVisibility() {
-    const isOauth = text('auth') === 'oauth2';
-    const identity = [text('user'), text('label')].filter(Boolean).join(' · ');
+    const archive = archiveForm();
+    const editingCredentials = wizardStage === null || wizardStage === 3;
+    const isOauth = !archive && text('auth') === 'oauth2';
+    for (const id of ['userField', 'fromField']) el(id).hidden = archive;
+    if (archive) el('authStep').hidden = true;
+    for (const id of ['serverDetails', 'customDetails', 'sendOnlyGroup']) el(id).hidden = archive || !editingCredentials;
+    el('watchDetails').hidden = archive || !editingCredentials || checked('sendOnly');
+    el('archiveGroup').hidden = !archive || !editingCredentials;
+    const identity = [archive ? '' : text('user'), text('label')].filter(Boolean).join(' · ');
     if (el('credentialSummary')) {
       el('credentialSummary').hidden = !identity;
       el('credentialSummary').textContent = identity;
@@ -1527,8 +1593,8 @@ pre {
     if (el('presetNote')) el('presetNote').hidden = isOauth;
     if (el('password')) el('password').placeholder = editingId ? tr('secretPlaceholder') : tr('passwordNewPlaceholder');
     if (el('clientSecret')) el('clientSecret').placeholder = editingId ? tr('secretPlaceholder') : tr('clientSecretPlaceholder');
-    if (el('passwordGroup')) el('passwordGroup').hidden = isOauth;
-    if (el('oauthGroup')) el('oauthGroup').hidden = !isOauth;
+    if (el('passwordGroup')) el('passwordGroup').hidden = archive || isOauth || !editingCredentials;
+    if (el('oauthGroup')) el('oauthGroup').hidden = !isOauth || !editingCredentials;
     const tokenMode = text('oauthMethod') === 'token' || text('preset') === 'custom';
     el('authorizationGroup').hidden = tokenMode;
     el('accessTokenField').hidden = !tokenMode;
@@ -1675,7 +1741,7 @@ pre {
     clearReader();
     requestId = '';
     lastDraftSig = '';
-    for (const id of ['cursor', 'uidValidity', 'uid', 'partId']) if (el(id)) el(id).value = '';
+    for (const id of ['cursor', 'uidValidity', 'uid', 'partId', 'archiveId', 'attachmentId', 'sourceIds', 'mailboxOwners']) el(id).value = '';
     if (el('mailbox')) el('mailbox').value = 'INBOX';
     if (el('sendAgain')) el('sendAgain').hidden = true;
     if (el('sendNote')) el('sendNote').textContent = '';
@@ -1715,7 +1781,7 @@ pre {
       for (const acc of accounts) {
         const opt = document.createElement('option');
         opt.value = acc.id;
-        opt.textContent = `${acc.label} (${acc.user})`;
+        opt.textContent = `${acc.label}${acc.user ? ` (${acc.user})` : ''}${acc.sendOnly ? ` · ${tr('sendOnlyShort')}` : ''}`;
         select.append(opt);
       }
       select.value = activeAccount;
@@ -1724,7 +1790,8 @@ pre {
       const active = accounts.find((item) => item.id === activeAccount);
       el('accountSummary').textContent = active ? secretLine(active) : '';
     }
-    el('accounts').textContent = accounts.map((account) => `${account.label} · ${account.user} · ${account.note || ''} · ${secretLine(account)}`).join('\n');
+    el('accounts').textContent = accounts.map((account) => [account.label, account.baseUrl || account.user, account.note, secretLine(account)].filter(Boolean).join(' · ')).join('\n');
+    syncReadCapabilities();
     renderAccountCards();
   }
 
@@ -1734,7 +1801,8 @@ pre {
     el('im').textContent = imSentence(lastState.imBridge);
     el('watchEnabled').checked = lastState.watchEnabled === true;
     if (accounts.length > 0 && !activeAccount) {
-      const initial = accounts.find((account) => account.id === lastState.defaultAccountId || account.isDefault) || accounts[0];
+      const initial = accounts.find((account) => account.id === lastState.defaultReadAccountId)
+        || accounts.find((account) => account.id === lastState.defaultAccountId || account.isDefault) || accounts[0];
       activeAccount = initial.id;
       fill(initial);
       if (el('accountSheet')) el('accountSheet').open = false;
@@ -1778,10 +1846,10 @@ pre {
     el('imChannel').value = account.imChannelId || '';
     el('imRouteRevision').value = account.imRouteRevision || '';
     el('timeoutMs').value = account.timeoutMs == null ? '' : String(account.timeoutMs);
-    el('password').value = '';
-    el('clientSecret').value = '';
-    el('refreshToken').value = '';
-    el('accessToken').value = '';
+    el('sendOnly').checked = account.sendOnly === true;
+    el('baseUrl').value = account.baseUrl || '';
+    el('baseUrl').readOnly = Boolean(account.baseUrl);
+    clearSecrets();
     const preset = presets.find((item) => item.id === el('preset').value);
     el('presetNote').textContent = preset?.note || '';
     el('oauthMethod').value = account.hasAccessToken || account.hasRefreshToken || account.preset === 'custom' ? 'token' : 'link';
@@ -1793,7 +1861,8 @@ pre {
   function deriveAccountId() {
     const existing = text('id');
     if (existing) return existing;
-    const base = (text('label') || text('user').split('@')[0] || '').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+    const labelBase = (text('label') || (archiveForm() ? '' : text('user').split('@')[0])).replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+    const base = labelBase || (archiveForm() ? 'archive' : '');
     if (base && /^[A-Za-z0-9]/.test(base)) {
       let candidate = base.slice(0, 60);
       let suffix = 1;
@@ -1806,7 +1875,9 @@ pre {
 
   function accountBody() {
     const id = deriveAccountId();
+    if (archiveForm()) return { id, label: text('label') || id, note: text('note'), preset: 'open-archiver', baseUrl: text('baseUrl'), ...(text('timeoutMs') ? { timeoutMs: num('timeoutMs') } : {}) };
     return {
+      ...(checked('sendOnly') ? { sendOnly: true } : {}),
       id,
       label: text('label') || id,
       note: text('note'),
@@ -1839,6 +1910,7 @@ pre {
 
   function credentialBody() {
     const credential = {};
+    if (archiveForm()) return text('archiveKey') ? { apiKey: text('archiveKey') } : undefined;
     if (text('password')) credential.password = text('password');
     if (text('clientSecret')) credential.clientSecret = text('clientSecret');
     if (text('refreshToken')) credential.refreshToken = text('refreshToken');
@@ -1847,10 +1919,7 @@ pre {
   }
 
   function clearSecrets() {
-    el('password').value = '';
-    el('clientSecret').value = '';
-    el('refreshToken').value = '';
-    el('accessToken').value = '';
+    for (const id of ['password', 'clientSecret', 'refreshToken', 'accessToken', 'archiveKey']) el(id).value = '';
   }
 
   function applyPreset() {
@@ -1884,19 +1953,9 @@ pre {
   }
 
   function mailboxArgs() {
-    return {
-      accountId: activeAccountId(),
-      mailbox: text('mailbox') || 'INBOX',
-      query: text('query'),
-      from: text('fromQuery'),
-      since: text('since'),
-      unseen: checked('unseen'),
-      limit: num('limit'),
-      cursor: text('cursor'),
-      uidValidity: text('uidValidity'),
-      uid: text('uid'),
-      partId: text('partId'),
-    };
+    const common = { accountId: activeAccountId(), query: text('query'), from: text('fromQuery'), since: text('since'), limit: num('limit'), cursor: text('cursor') };
+    if (archiveView()) return { ...common, sourceIds: text('sourceIds').split(',').map((value) => value.trim()).filter(Boolean), mailboxes: text('mailboxOwners').split(',').map((value) => value.trim()).filter(Boolean), archiveId: text('archiveId'), attachmentId: text('attachmentId') };
+    return { ...common, mailbox: text('mailbox') || 'INBOX', unseen: checked('unseen'), uidValidity: text('uidValidity'), uid: text('uid'), partId: text('partId') };
   }
 
   function attachmentPathsList() {
@@ -1976,8 +2035,8 @@ pre {
   function syncMailboxSummary() {
     if (!el('mailboxSummary')) return;
     el('mailboxSummary').textContent = mailboxSummaryKind === 'folders'
-      ? `${currentFolders.length} ${tr('foldersCount')}`
-      : mailboxSummaryKind === 'messages' ? `${text('mailbox') || 'INBOX'} · ${currentMessages.length} ${tr('itemsCount')}` : '';
+      ? `${currentFolders.length} ${tr(archiveView() ? 'sourcesCount' : 'foldersCount')}`
+      : mailboxSummaryKind === 'messages' ? `${archiveView() ? '' : `${text('mailbox') || 'INBOX'} · `}${currentMessages.length} ${tr('itemsCount')}` : '';
   }
 
   function changeMailbox() {
@@ -1985,7 +2044,7 @@ pre {
     cursorStack = [];
     currentMessages = [];
     clearReader();
-    for (const id of ['cursor', 'uidValidity', 'uid', 'partId']) el(id).value = '';
+    for (const id of ['cursor', 'uidValidity', 'uid', 'partId', 'archiveId', 'attachmentId']) el(id).value = '';
     mailboxSummaryKind = '';
     syncMailboxSummary();
     renderFolders();
@@ -2002,16 +2061,19 @@ pre {
       return;
     }
     host.replaceChildren();
-    const activeBox = text('mailbox') || 'INBOX';
-    for (const box of currentFolders) {
+    const archive = archiveView();
+    const activeBox = archive ? text('sourceIds') : text('mailbox') || 'INBOX';
+    const boxes = archive && currentFolders.length ? [{ path: '', name: tr('allSources') }, ...currentFolders] : currentFolders;
+    for (const box of boxes) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'pill';
       if (box.path === activeBox) btn.setAttribute('aria-current', 'true');
-      btn.textContent = box.name && box.name !== box.path ? `${box.name} (${box.path})` : box.path;
+      btn.textContent = archive ? box.name : box.name && box.name !== box.path ? `${box.name} (${box.path})` : box.path;
+      if (archive) btn.title = box.path;
       btn.onclick = async () => {
         if (epoch !== viewEpoch) return;
-        el('mailbox').value = box.path;
+        el(archive ? 'sourceIds' : 'mailbox').value = box.path;
         changeMailbox();
         await el('search').onclick();
       };
@@ -2027,14 +2089,20 @@ pre {
     return `${(n / (1024 * 1024)).toFixed(1)} MB`;
   }
 
+  function archiveOrigin(item) {
+    const source = item.sourceName || currentFolders.find((entry) => entry.path === item.sourceId)?.name;
+    return [...new Set([source || (!item.mailboxOwner ? item.sourceId : ''), item.mailboxOwner].filter(Boolean))].join(' · ');
+  }
+
   function renderMessages(nextCursor) {
+    const archive = archiveView();
     const epoch = viewEpoch;
     const host = el('messageList');
     if (el('prevPage')) el('prevPage').disabled = cursorStack.length === 0;
     if (el('nextPage')) el('nextPage').disabled = !nextCursor;
     if (el('pageStatus')) {
       el('pageStatus').textContent = currentMessages.length
-        ? `${text('mailbox') || 'INBOX'} · ${currentMessages.length} ${tr('itemsCount')}${nextCursor ? tr('moreAvailable') : ''}` : '';
+        ? `${archive ? '' : `${text('mailbox') || 'INBOX'} · `}${currentMessages.length} ${tr('itemsCount')}${nextCursor ? tr('moreAvailable') : ''}` : '';
     }
     if (!host) return;
     if (!canDom() || typeof host.replaceChildren !== 'function') {
@@ -2045,14 +2113,14 @@ pre {
     if (currentMessages.length === 0) {
       const empty = document.createElement('p');
       empty.className = 'note';
-      empty.textContent = tr('emptyMessages');
+      empty.textContent = archive ? (mailboxSummaryKind === 'messages' ? tr('archiveEmpty') : '') : tr('emptyMessages');
       host.append(empty);
       return;
     }
     for (const item of currentMessages) {
       const row = document.createElement('div');
       row.className = 'msg-row';
-      if (text('uid') === String(item.uid) && text('uidValidity') === String(item.uidValidity)) row.setAttribute('data-selected', 'true');
+      if (archive ? text('archiveId') === item.archiveId : text('uid') === String(item.uid) && text('uidValidity') === String(item.uidValidity)) row.setAttribute('data-selected', 'true');
       const left = document.createElement('div');
       const title = document.createElement('div');
       title.className = 'msg-title';
@@ -2060,7 +2128,7 @@ pre {
       title.textContent = `${unseen ? '[' + tr('unreadBadge') + '] ' : ''}${item.subject || tr('noSubject')}`;
       const sub = document.createElement('div');
       sub.className = 'msg-sub';
-      sub.textContent = [item.from || tr('unknownSender'), item.date ? item.date.slice(0, 16).replace('T', ' ') : '', formatBytes(item.size)].filter(Boolean).join(' · ');
+      sub.textContent = [archive ? archiveOrigin(item) : '', item.from || tr('unknownSender'), item.date ? item.date.slice(0, 16).replace('T', ' ') : '', formatBytes(item.size)].filter(Boolean).join(' · ');
       left.append(title, sub);
 
       const acts = document.createElement('div');
@@ -2081,7 +2149,8 @@ pre {
         ev?.stopPropagation?.();
         if (epoch === viewEpoch) bindMessageForReply(item);
       };
-      acts.append(readBtn, replyBtn);
+      acts.append(readBtn);
+      if (!archive) acts.append(replyBtn);
       row.onclick = () => epoch === viewEpoch ? selectAndReadMessage(item) : undefined;
       row.append(left, acts);
       host.append(row);
@@ -2090,6 +2159,12 @@ pre {
 
   async function selectAndReadMessage(item) {
     if (item.accountId && item.accountId !== activeAccountId()) return;
+    if (archiveView()) {
+      el('archiveId').value = item.archiveId;
+      el('attachmentId').value = '';
+      await el('read').onclick();
+      return;
+    }
     el('mailbox').value = item.mailbox || text('mailbox') || 'INBOX';
     el('uidValidity').value = String(item.uidValidity || '');
     el('uid').value = String(item.uid || '');
@@ -2130,7 +2205,7 @@ pre {
         result.to ? `${tr('toLabel')}: ${result.to}` : '',
         result.cc ? `${tr('ccLabel')}: ${result.cc}` : '',
         result.date ? `${tr('dateLabel')}: ${result.date}` : '',
-        result.identity?.mailbox || '',
+        result.identity?.provider === 'open-archiver' ? archiveOrigin(result) : result.identity?.mailbox || '',
       ].filter(Boolean);
       el('readMeta').textContent = metaParts.join(' · ');
     }
@@ -2172,10 +2247,14 @@ pre {
           const epoch = viewEpoch;
           btn.onclick = async () => {
             const identity = result.identity;
-            if (epoch !== viewEpoch || currentRead !== result || !identity
-              || identity.accountId !== activeAccountId() || identity.mailbox !== (text('mailbox') || 'INBOX')
-              || String(identity.uid) !== text('uid') || String(identity.uidValidity) !== text('uidValidity')) return;
-            el('partId').value = String(att.partId);
+            if (epoch !== viewEpoch || currentRead !== result || !identity || identity.accountId !== activeAccountId()) return;
+            if (archiveView()) {
+              if (identity.archiveId !== text('archiveId')) return;
+              el('attachmentId').value = att.attachmentId;
+            } else {
+              if (identity.mailbox !== (text('mailbox') || 'INBOX') || String(identity.uid) !== text('uid') || String(identity.uidValidity) !== text('uidValidity')) return;
+              el('partId').value = String(att.partId);
+            }
             await el('attachment').onclick();
           };
           row.append(info, btn);
@@ -2256,9 +2335,11 @@ pre {
   el('wizardNext').onclick = () => {
     clearIssue();
     if (wizardStage === 1 && !validateIdentity()) return;
-    wizardStage = Math.min(3, (wizardStage ?? 0) + 1); syncWizard();
+    wizardStage = Math.min(3, (wizardStage ?? 0) + 1);
+    if (archiveForm() && wizardStage === 2) wizardStage = 3;
+    syncWizard();
   };
-  el('wizardBack').onclick = () => { wizardStage = Math.max(0, (wizardStage ?? 1) - 1); syncWizard(); };
+  el('wizardBack').onclick = () => { wizardStage = Math.max(0, (wizardStage ?? 1) - 1); if (archiveForm() && wizardStage === 2) wizardStage = 1; syncWizard(); };
   el('addHook').onclick = () => {
     const timeout = text('hookAction') !== 'event';
     const value = timeout ? Number(text('hookValue')) : text('hookValue');
@@ -2273,14 +2354,15 @@ pre {
     const args = { account, credential: credentialBody(), draftId: oauthDraftId || testedDraftId || undefined, editingId };
     const epoch = viewEpoch;
     accountBusy = true; el('testDraft').disabled = true;
-    el('draftTestResult').hidden = false; el('draftTestResult').textContent = tr('testing');
+    el('draftTestResult').hidden = false; el('draftTestResult').textContent = tr(archiveForm() ? 'archiveTesting' : 'testing');
     try {
       const result = await call('testDraft', args);
       if (epoch !== viewEpoch || JSON.stringify(accountBody()) !== signature) return;
       if (!result.ok) {
         const preset = text('preset');
         const projectField = preset === 'outlook' ? 'appOutlookClientId' : 'appGmailClientId';
-        const field = result.code === 'app_required' || result.code === 'app_changed' ? projectField
+        const field = archiveForm() ? (['auth_missing', 'auth_failed', 'forbidden'].includes(result.code) ? 'archiveKey' : 'baseUrl')
+          : result.code === 'app_required' || result.code === 'app_changed' ? projectField
           : result.code?.startsWith('oauth') ? (text('oauthClientId') ? 'oauthClientId' : projectField)
           : 'password';
         if ((result.code === 'app_required' || result.code === 'app_changed') && el('projectSettings')) el('projectSettings').open = true;
@@ -2288,7 +2370,7 @@ pre {
         return;
       }
       clearSecrets(); testedDraftId = result.draftId; testedSignature = signature;
-      el('draftTestResult').textContent = tr('testPassed');
+      el('draftTestResult').textContent = tr(archiveForm() ? 'archiveTestPassed' : 'testPassed');
       if (el('draftTestResult').dataset) el('draftTestResult').dataset.tone = 'ok';
       if (wizardStage !== null) wizardStage = 4;
       syncWizard();
@@ -2473,7 +2555,7 @@ pre {
     try {
       const result = await call('save', {
         account: accountBody(),
-        credential: { password: null, clientSecret: null, refreshToken: null, accessToken: null, tokenClientId: null },
+        credential: archiveForm() ? { apiKey: null } : { password: null, clientSecret: null, refreshToken: null, accessToken: null, tokenClientId: null },
         watchEnabled: checked('watchEnabled'),
         editingId,
       });
@@ -2485,7 +2567,9 @@ pre {
       setStatusKey('credentialsCleared', 'ok');
     } finally { accountBusy = false; }
   };
-  for (const id of ['user', 'label', 'note', 'from', 'imapIdName', 'imapIdVersion', 'folderSent', 'folderDrafts', 'folderTrash', 'folderArchive', 'customHeaders', 'oauthClientId', 'oauthTokenUrl', 'oauthScope', 'password', 'refreshToken', 'accessToken', 'clientSecret', 'timeoutMs']) el(id).oninput = () => invalidateDraft();
+  for (const id of ['user', 'label', 'note', 'from', 'imapIdName', 'imapIdVersion', 'folderSent', 'folderDrafts', 'folderTrash', 'folderArchive', 'customHeaders', 'oauthClientId', 'oauthTokenUrl', 'oauthScope', 'password', 'refreshToken', 'accessToken', 'clientSecret', 'timeoutMs', 'baseUrl', 'archiveKey']) el(id).oninput = () => invalidateDraft();
+  el('sendOnly').onchange = () => { invalidateDraft(); syncAuthVisibility(); };
+  for (const id of ['sourceIds', 'mailboxOwners']) el(id).onchange = () => changeMailbox();
   if (el('id')) el('id').oninput = () => syncAuthVisibility();
   for (const srvKey of ['imapHost', 'imapPort', 'smtpHost', 'smtpPort', 'imapSecure', 'smtpSecure', 'allowInsecure']) {
     if (el(srvKey)) el(srvKey).onchange = () => syncServerSummary();
@@ -2531,9 +2615,10 @@ pre {
       if (result.account) fill(result.account);
       render(state);
       closeEditor();
-      setStatusKey(result.account?.lastTest?.ok ? 'testPassed' : 'savedNotTested', 'ok');
+      setStatusKey(result.account?.lastTest?.ok ? 'testOk' : 'savedNotTested', 'ok');
       feedbackKey = 'accountSavedFeedback';
       if (el('accountFeedback')) el('accountFeedback').textContent = tr(feedbackKey);
+      if (archiveView()) { setManagement(false); await el('search').onclick(); }
     } else {
       if (result.message) setStatus(result.message, 'danger');
       else setStatusKey('saveFailed', 'danger');
@@ -2588,10 +2673,10 @@ pre {
   };
   el('folders').onclick = async () => {
     const guard = requestGuard('folders');
-    const result = await scopedCall('folders', guard);
+    const result = await scopedCall(archiveView() ? 'sources' : 'folders', guard);
     if (!result) return;
-    if (result.ok && Array.isArray(result.mailboxes)) {
-      currentFolders = result.mailboxes;
+    if (result.ok && (Array.isArray(result.mailboxes) || Array.isArray(result.sources))) {
+      currentFolders = result.sources ? result.sources.map((source) => ({ path: source.id, name: source.name })) : result.mailboxes;
       renderFolders();
       mailboxSummaryKind = 'folders';
       syncMailboxSummary();
@@ -2601,7 +2686,7 @@ pre {
     show(result);
   };
   el('search').onclick = async () => {
-    const guard = requestGuard('search', ['accountId', 'mailbox', 'query', 'from', 'since', 'unseen', 'limit', 'cursor']);
+    const guard = requestGuard('search', ['accountId', 'mailbox', 'sourceIds', 'mailboxes', 'query', 'from', 'since', 'unseen', 'limit', 'cursor']);
     const result = await scopedCall('search', guard);
     if (!result) return;
     if (result.ok && Array.isArray(result.messages)) {
@@ -2619,10 +2704,10 @@ pre {
       }
       const resolvedMailbox = result.mailbox || guard.args.mailbox;
       if (resolvedMailbox !== guard.args.mailbox) el('mailbox').value = resolvedMailbox;
-      currentMessages = result.messages.map((item) => ({ ...item, accountId: guard.args.accountId, mailbox: resolvedMailbox }));
+      currentMessages = archiveView() ? result.messages : result.messages.map((item) => ({ ...item, accountId: guard.args.accountId, mailbox: resolvedMailbox }));
       currentMessages.nextCursor = result.nextCursor || null;
-      renderMessages(result.nextCursor);
       mailboxSummaryKind = 'messages';
+      renderMessages(result.nextCursor);
       syncMailboxSummary();
     } else if (result.message) {
       setStatus(result.message, 'danger');
@@ -2647,11 +2732,12 @@ pre {
     };
   }
   el('read').onclick = async () => {
-    const guard = requestGuard('read', ['accountId', 'mailbox', 'uidValidity', 'uid']);
+    const keys = archiveView() ? ['accountId', 'archiveId'] : ['accountId', 'mailbox', 'uidValidity', 'uid'];
+    const guard = requestGuard('read', keys);
     clearReader();
     const result = await scopedCall('read', guard);
     if (!result) return;
-    if (result.ok && result.identity && ['accountId', 'mailbox', 'uidValidity', 'uid'].every((key) => String(result.identity[key]) === String(guard.args[key]))) {
+    if (result.ok && result.identity && keys.every((key) => String(result.identity[key]) === String(guard.args[key]))) {
       renderReadMessage(result);
       renderMessages(currentMessages.nextCursor);
     } else if (result.message) {
@@ -2660,7 +2746,7 @@ pre {
     show(result);
   };
   el('attachment').onclick = async () => {
-    const guard = requestGuard('attachment', ['accountId', 'mailbox', 'uidValidity', 'uid', 'partId']);
+    const guard = requestGuard('attachment', archiveView() ? ['accountId', 'archiveId', 'attachmentId'] : ['accountId', 'mailbox', 'uidValidity', 'uid', 'partId']);
     const reader = currentRead;
     const result = await scopedCall('attachment', guard);
     if (!result || currentRead !== reader) return;
@@ -2686,12 +2772,13 @@ pre {
   el('sendAgain').hidden = true;
 
   window.addEventListener('message', (event) => {
-    if (event.source !== parent || !event.data || event.data.channel !== channel) return;
+    if (event.source !== parent || !event.data || event.data.channel !== channel || (parentOrigin && event.origin !== parentOrigin)) return;
     if (event.data.kind === 'presentation') {
       applyPresentation(event.data.presentation);
       return;
     }
     if (event.data.kind === 'init') {
+      parentOrigin = event.origin;
       applyPresentation(event.data.presentation);
       boot().catch((error) => { setStatus(error.message || tr('requestFailed'), 'danger'); });
       return;
@@ -2709,10 +2796,11 @@ pre {
     const [state, presetResult, routeView] = await Promise.all([call('state', {}), call('presets', {}), call('routes', {})]);
     presets = presetResult.presets || [];
     render(state);
-    setManagement(true);
+    setManagement(!archiveView());
     fillChannelSelect(routeView);
     if ((state.accounts || []).length === 0) applyPreset();
     setStatusKey('notTestedStatus');
+    if (archiveView()) await el('search').onclick();
   }
 })();
 </script>

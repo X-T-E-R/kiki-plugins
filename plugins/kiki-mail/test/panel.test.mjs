@@ -50,7 +50,7 @@ test('mail panel saves, tests, and does not resend an uncertain message', { time
       requests.push(request);
       queueMicrotask(async () => {
         const result = await service.panel(request.action, request.args, context);
-        receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: true, result } });
+        receive({ source: parent, origin: 'https://kiki.example.test', data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: true, result } });
       });
     },
   };
@@ -61,7 +61,7 @@ test('mail panel saves, tests, and does not resend an uncertain message', { time
       parent,
       crypto: { randomUUID: () => 'panel-request-1' },
     });
-    receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'init' } });
+    receive({ source: parent, origin: 'https://kiki.example.test', data: { channel: 'kiki.panel.v1', kind: 'init' } });
     await new Promise((resolve) => setImmediate(resolve));
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(get('status').textContent, 'Not tested');
@@ -280,11 +280,11 @@ test('mail panel supports humanized multi-account switching, presets, folder/mes
             message: 'SMTP recipient rejected before DATA (550). Safe to retry after fixing recipient.',
             requestId: request.args.requestId,
           };
-          receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: true, result } });
+          receive({ source: parent, origin: 'https://kiki.example.test', data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: true, result } });
           return;
         }
         const result = await service.panel(request.action, request.args, context);
-        const deliver = () => receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: true, result } });
+        const deliver = () => receive({ source: parent, origin: 'https://kiki.example.test', data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: true, result } });
         if ((request.action === 'send' || request.action === 'reply') && holdSendResponse) {
           holdSendResponse(deliver);
           holdSendResponse = null;
@@ -309,7 +309,7 @@ test('mail panel supports humanized multi-account switching, presets, folder/mes
     });
 
     receive({
-      source: parent,
+      source: parent, origin: 'https://kiki.example.test',
       data: {
         channel: 'kiki.panel.v1',
         kind: 'init',
@@ -539,12 +539,12 @@ test('account wizard tests before save, keeps notes and removable declarations, 
   const parent = { postMessage(request) {
     requests.push(request);
     assert.equal(request.method, 'plugin.call');
-    queueMicrotask(async () => receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: true, result: await service.panel(request.action, request.args, context) } }));
+    queueMicrotask(async () => receive({ source: parent, origin: 'https://kiki.example.test', data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: true, result: await service.panel(request.action, request.args, context) } }));
   } };
   const flush = async () => { for (let n = 0; n < 4; n++) await new Promise(setImmediate); };
   try {
     runInNewContext(script, { document, window: { addEventListener(_, fn) { receive = fn; } }, parent, URL, navigator: { language: 'en', clipboard: { async writeText(value) { copied = value; } } }, crypto: { randomUUID: () => 'unused' } });
-    receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'init' } }); await flush();
+    receive({ source: parent, origin: 'https://kiki.example.test', data: { channel: 'kiki.panel.v1', kind: 'init' } }); await flush();
     get('newAccount').onclick();
     assert.equal(get('providerStep').hidden, false);
     assert.equal(get('identityStep').hidden, true);

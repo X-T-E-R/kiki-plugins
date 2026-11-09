@@ -12,14 +12,14 @@ function harness(script) {
   const requests = [];
   const parent = { postMessage(request) { requests.push(request); } };
   runInNewContext(script, { document: { getElementById: get, createElement: node, querySelectorAll: () => [] }, window: { addEventListener(_, fn) { receive = fn; } }, parent, crypto: { randomUUID: () => `request-${++uuid}` } });
-  const reply = (request, result, ok = true) => receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok, result, error: ok ? undefined : result } });
+  const reply = (request, result, ok = true) => receive({ source: parent, origin: 'https://kiki.example.test', data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok, result, error: ok ? undefined : result } });
   const last = () => requests.at(-1);
   const switchTo = (id) => { get('accountSelect').value = id; get('accountSelect').onchange(); };
   const read = (uid) => { get('uid').value = uid; get('uidValidity').value = '7'; return get('read').onclick(); };
   const message = (accountId, uid, subject = uid) => ({ ok: true, identity: { accountId, mailbox: 'INBOX', uidValidity: '7', uid }, subject, text: subject, attachments: [{ partId: '2', filename: 'note.txt' }] });
-  const present = (locale) => receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'presentation', presentation: { locale } } });
+  const present = (locale) => receive({ source: parent, origin: 'https://kiki.example.test', data: { channel: 'kiki.panel.v1', kind: 'presentation', presentation: { locale } } });
   return { get, requests, reply, last, switchTo, read, message, present, init: async (routeView = { supported: false }) => {
-    receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'init' } });
+    receive({ source: parent, origin: 'https://kiki.example.test', data: { channel: 'kiki.panel.v1', kind: 'init' } });
     for (const req of requests.slice()) reply(req, req.action === 'state' ? { accounts: ['a', 'b'].map((id) => ({ id, label: id, user: `${id}@example.test`, credentialStored: true, hasPassword: true })) } : req.action === 'routes' ? routeView : { presets: [] });
     await new Promise(setImmediate);
     get('mailbox').value = 'INBOX';

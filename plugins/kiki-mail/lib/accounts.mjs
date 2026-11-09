@@ -26,13 +26,36 @@ export function loadState(settings = {}) {
   if (!Array.isArray(accounts)) throw coded('settings_invalid', 'Accounts must be a JSON array.');
   if (!credentials || typeof credentials !== 'object' || Array.isArray(credentials)) throw coded('settings_invalid', 'Credentials must be a JSON object.');
   const oauthDefaults = parseJson(typeof settings.oauthDefaults === 'string' ? settings.oauthDefaults : '', {});
+  const normalized = accounts.map((account) => normalizeAccount(account));
+  const senders = normalized.filter((account) => !isArchive(account));
+  const readers = normalized.filter((account) => !account.sendOnly);
+  const defaultAccountId = senders.find((account) => account.id === settings.defaultAccountId)?.id ?? senders[0]?.id ?? '';
   return {
     watchEnabled: settings.watchEnabled === true,
-    defaultAccountId: accounts.some((account) => account.id === settings.defaultAccountId) ? settings.defaultAccountId : accounts[0]?.id || '',
+    defaultAccountId,
+    defaultReadAccountId: readers.find((account) => account.id === settings.defaultReadAccountId)?.id
+      ?? readers.find((account) => account.id === defaultAccountId)?.id ?? readers[0]?.id ?? '',
     accountStatus: parseJson(settings.accountStatus, {}),
     oauthDefaults: oauthDefaults && typeof oauthDefaults === 'object' && !Array.isArray(oauthDefaults) ? oauthDefaults : {},
-    accounts: accounts.map((account) => normalizeAccount(account)),
+    accounts: normalized,
     credentials,
+  };
+}
+
+export function isArchive(account) {
+  return account.preset === 'open-archiver';
+}
+
+export function accountCapabilities(account) {
+  const archive = isArchive(account);
+  return {
+    read: !account.sendOnly,
+    send: !archive,
+    reply: !archive && !account.sendOnly,
+    folders: !archive && !account.sendOnly,
+    sources: archive,
+    unseen: !archive && !account.sendOnly,
+    watch: !archive && !account.sendOnly,
   };
 }
 
@@ -110,7 +133,9 @@ export function publicAccount(account, credentials) {
   const secret = credentials?.[account.id] ?? {};
   return {
     ...account,
-    credentialStored: Boolean(secret.password || secret.accessToken || secret.refreshToken),
+    capabilities: accountCapabilities(account),
+    credentialStored: isArchive(account) ? Boolean(secret.apiKey) : Boolean(secret.password || secret.accessToken || secret.refreshToken),
+    ...(isArchive(account) ? { hasApiKey: Boolean(secret.apiKey) } : {}),
     hasPassword: Boolean(secret.password),
     hasAccessToken: Boolean(secret.accessToken),
     hasRefreshToken: Boolean(secret.refreshToken),
@@ -121,9 +146,15 @@ export function publicAccount(account, credentials) {
 export function normalizeAccount(input, { allowSecrets = false } = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw coded('account_invalid', 'Account must be an object.');
   if (allowSecrets !== true) {
-    for (const key of ['password', 'clientSecret', 'refreshToken', 'accessToken', 'accessTokenExpiresAt']) {
-      if (input[key] != null && input[key] !== '') throw coded('credential_in_tool', 'Passwords and tokens stay in the mail panel. They are not accepted as tool arguments.');
+    for (const key of ['password', 'clientSecret', 'refreshToken', 'accessToken', 'accessTokenExpiresAt', 'apiKey', 'adminApiKey']) {
+      if (input[key] != null && input[key] !== '') throw coded('credential_in_tool', 'Credentials stay in the Mail panel. They are not accepted as tool arguments.');
     }
+  }
+  if (isArchive(input)) {
+    const id = requiredText(input.id, 'id', 64);
+    if (!ID_RE.test(id)) throw coded('account_invalid', 'Account id must use letters, digits, _ or -.');
+    return { id, label: optionalText(input.label, 'label', 120) || id, note: optionalText(input.note, 'note', 200),
+      preset: 'open-archiver', auth: 'apiKey', baseUrl: archiveBaseUrl(input.baseUrl), timeoutMs: timeoutValue(input.timeoutMs) };
   }
   const preset = presetById(typeof input.preset === 'string' ? input.preset : 'custom');
   const account = {
@@ -141,6 +172,7 @@ export function normalizeAccount(input, { allowSecrets = false } = {}) {
     smtpPort: portValue(input.smtpPort ?? preset.smtpPort, 'smtpPort'),
     smtpSecure: booleanValue(input.smtpSecure, preset.smtpSecure === true),
     allowInsecureAuth: input.allowInsecureAuth === true || preset.allowInsecureAuth === true,
+    ...(input.sendOnly === true ? { sendOnly: true } : {}),
     watch: input.watch === true,
     imEnabled: input.imEnabled === true,
     imChannelId: optionalText(input.imChannelId, 'imChannelId', 120),
@@ -172,7 +204,7 @@ export function normalizeAccount(input, { allowSecrets = false } = {}) {
 
 export function mergeCredential(current, patch) {
   const next = { ...(current ?? {}) };
-  for (const key of ['password', 'clientSecret', 'refreshToken', 'accessToken']) {
+  for (const key of ['password', 'clientSecret', 'refreshToken', 'accessToken', 'apiKey']) {
     if (patch?.[key] === null) delete next[key];
     else if (typeof patch?.[key] === 'string' && patch[key] !== '') next[key] = patch[key];
   }
@@ -187,6 +219,15 @@ export function mergeCredential(current, patch) {
 
 export function isLoopbackAccount(account) {
   return LOOPBACK.has(account.imapHost) && LOOPBACK.has(account.smtpHost);
+}
+
+export function archiveBaseUrl(value) {
+  let url;
+  try { url = new URL(requiredText(value, 'baseUrl', 2000)); }
+  catch { throw coded('account_invalid', 'Enter an Open Archiver service URL.'); }
+  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw coded('account_invalid', 'Service URL must be HTTP(S) without credentials, query or fragment.');
+  if (url.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) throw coded('tls_required', 'Open Archiver requires HTTPS outside loopback.');
+  return url.href.replace(/\/+$/, '').replace(/\/api\/v1$/, '');
 }
 
 function requiredText(value, name, max) {

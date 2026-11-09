@@ -1,30 +1,37 @@
 ---
 name: kiki-mail
-description: Read, search, and send mail through accounts configured in Kiki Mail. Use when the user asks to check a mailbox, find a message, read a body or attachment, reply, or send mail. Not for documents, chat, or calendar.
+description: Read archived or direct mail, search a configured mailbox, save an attachment, send, or reply through Kiki Mail. Use when the user asks to check, find, read, save, send, or reply to mail. Not for documents, chat, or calendar.
 ---
 
 # Kiki Mail
 
-Use the configured accounts. Passwords and tokens stay in the Mail panel. Do not ask the user to paste them into the chat, and do not put them in tool arguments. Gmail and Outlook OAuth clients are entered once in the Mail project, then reused by mailboxes that do not already have their own client. Do not ask for a client ID or client secret in chat.
+Use the configured Mail accounts. Passwords, OAuth tokens, and Open Archiver API keys stay in the Mail panel; never ask the user to paste them into chat or put them in tool arguments. The tools are `plugin__kiki_mail__MailAccount`, `plugin__kiki_mail__Mailbox`, and `plugin__kiki_mail__MailSend`.
 
-The tools are `plugin__kiki_mail__MailAccount`, `plugin__kiki_mail__Mailbox`, and `plugin__kiki_mail__MailSend`.
+## Choose the account
 
-## What the user asked for
+- Use `MailAccount` `list` to see configured accounts and capabilities. `Mailbox` without `accountId` uses `defaultReadAccountId`, independent of `defaultAccountId`, the default direct SMTP sender.
+- Direct accounts use IMAP for folders/search/read and SMTP for send/reply. A direct account marked `sendOnly` keeps SMTP credentials but suspends direct reading and inbox watch.
+- The Mail `open-archiver` preset is one aggregate account across sources, used for reading. In the Mail panel, enter its service URL and read-only API key, test, and save. The key is write-only and requests use `X-API-KEY`, never Basic authentication.
 
-- Accounts, presets, or a connection test: `MailAccount`. `presets` names requirements and is not a completed sign-in. `test` reports that attempt only. `save` rejects passwords and tokens.
-- Folders, a page of messages, one body, or one attachment: `Mailbox`. Keep `accountId` on every call. A page size is 1 to 100 and is not a mailbox cap. Use `cursor` for the next page.
-- A new message or a reply: `MailSend` with `send` or `reply`. Send only when the user asked to send or reply. Do not forward or auto-reply on your own.
+## Open Archiver flow
 
-Identify a message by account, folder, UIDVALIDITY, and UID together. A changed UIDVALIDITY means the old identity is a different message. Do not reuse another account's identity.
+1. Use `Mailbox` `sources` to list ingestion sources when the user needs to choose one.
+2. Use `search` across the archive. Pass `sourceIds` and/or `mailboxes` as arrays; `mailboxes` are archived mailbox-owner addresses, not IMAP folders. Reuse `nextCursor` as `cursor` with the same account, page size, and filters.
+3. Read a search hit with its `accountId` and `archiveId`. Save an attachment with the same IDs and the `attachmentId` returned by `read`: `eml:<partId>` identifies a parsed EML part and `stored:<recordId>` identifies an Open Archiver stored record.
+4. If `textComplete` or `htmlComplete` is false, use `textPath` or `htmlPath` for the complete body. Use attachment `path` for complete saved bytes.
 
-## Read the result
+The Open Archiver account in Mail has no `folders`, `unseen`, `watch`, `send`, or `reply` action. Do not substitute IMAP or SMTP when one of these archive operations is unsupported or fails; select a direct account when the user wants that capability. Never pass IMAP `uid`, `uidValidity`, or `partId` for an Open Archiver identity.
 
-`accepted` means the SMTP server accepted the named recipients. It is not proof the message was delivered. `finalDelivery` stays false.
+## Direct Mail flow
 
-If the outcome is `uncertain`, or the code is `uncertain_send`, `uncertain_not_resent`, or `already_accepted`, stop. The same account and `requestId` is not sent again, including with `confirmResend`. Retry only when the earlier attempt is a definite failure before the message data was submitted, such as authentication failure or rejection. Do not invent a second send after a timeout or cancellation once the data was written.
+- `Mailbox` `folders`, `search`, `read`, and `attachment` use direct IMAP. Search returns one page of 1–100 messages; use its cursor for the next page. Identify a message by `accountId`, folder, `uidValidity`, and `uid` together. A changed UIDVALIDITY makes the old identity unusable.
+- Inline body fields may be previews. Use `textPath`, `htmlPath`, or returned attachment `path` for complete content.
+- `MailSend` `send` or `reply` submits one SMTP transaction. Send only when the user asked. `accepted` means SMTP accepted the listed recipients, not that delivery is complete.
 
-Inline `text` or `html` can be a preview (`textComplete` or `htmlComplete` is false). Use `textPath`, `htmlPath`, or the attachment `path` for the complete bytes. Do not describe a preview as the whole message.
+If a send is cancelled or loses connection after message data was written, stop with the uncertain result. Keep the same account and `requestId`; do not send again, including with `confirmResend`. Retry only a definite failure before submission. A receipt failure after SMTP acceptance is still accepted and is not resent. An Open Archiver hit is not a direct IMAP reply identity.
 
-New-mail forwarding uses the host bridge on the app activate context: `capabilities`, `listRoutes`, and `send` with `channelId`, `routeRevision`, `idempotencyKey`, `accountRef`, and `text`. Do not add `pluginId`. `text` is counted in UTF-8 bytes, from 1 through 16384. The plugin does not truncate it. Empty or control-bearing text is `bad_format`. A longer digest is `too_long`, is not sent, and is not stored, so a shorter digest may use the same key. It is off until the user enables it and chooses a listed channel. The target is that channel, not a Kiki session. Do not substitute the current chat, `focusSession`, `session.sendMessage`, or a webhook, and do not copy IM credentials into mail settings. `im_unsupported` means this host has no bridge; mail still works. `outbound-unavailable` means the process cannot send yet, so probe again before the next send. `accepted` and `unknown` keep the same idempotency key and are not forwarded again. `route_changed` means refresh the route list and wait for the user to choose again.
+## Notifications
 
-Provider presets for Gmail, Outlook, QQ, 163, iCloud, Fastmail, and Proton Bridge are unverified against those services. Say which requirement is still missing instead of claiming the account is signed in. This plugin does not open an OAuth consent screen.
+New-mail forwarding is off unless the user enabled it for that direct mailbox and chose a listed notification channel. It targets that channel, not this chat/session or a webhook. Do not forward autonomously or copy notification credentials into Mail. Reuse the same idempotency key after an accepted or unknown result; never retry under a new key. If the route changes, refresh the list and ask the user to choose again. If notifications are unsupported or unavailable, report that; it does not change the mail operation.
+
+Do not claim an account is connected from a preset or an unrun test. Report the actual result and the next user action when setup, authentication, a route, or a complete body/attachment path is missing.

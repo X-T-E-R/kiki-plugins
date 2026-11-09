@@ -1,7 +1,9 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { appConfigView, coded, credentialForStorage, loadState, mailboxAuth, mergeCredential, normalizeAccount, publicAccount } from './accounts.mjs';
+import { accountCapabilities, appConfigView, coded, credentialForStorage, isArchive, loadState, mailboxAuth, mergeCredential, normalizeAccount, publicAccount } from './accounts.mjs';
+import { archiveClient, archiveMessage, archiveSearch, archiveSources } from './open-archiver.mjs';
+import { migrateArchiveSource, verifyArchiveSample } from './archive-migration.mjs';
 import { idempotencyKey, messageIdentity, normalizeId } from './identity.mjs';
 import { listMailboxes, readSource, searchPage, withImap } from './imap.mjs';
 import { bridgeFrom, forwardMailDigest, idleBridgeView, inspectIm, summaryText } from './im.mjs';
@@ -70,12 +72,15 @@ class MailService {
   }
 
   async panel(action, args, context) {
-    const secrets = this.secrets(context);
+    const secrets = [...this.secrets(context), ...secretValues(args?.credential)];
+    if (action === 'archiveMigrate') secrets.push(args?.adminApiKey);
     try {
-      const result = action === 'state' ? await this.publicState(this.stateOf(context), { list: true })
+      const result = action === 'archiveMigrate' ? await migrateArchiveSource(this.stateOf(context), this.context?.dataDir, args ?? {}, { signal: this.context?.signal, fetch: this.deps.archiveFetch })
+        : action === 'archiveVerify' ? await verifyArchiveSample(this.stateOf(context), this.context?.dataDir, args ?? {}, { signal: this.context?.signal, fetch: this.deps.archiveFetch }, (account) => this.auth(account, this.stateOf(context).credentials[account.id], context))
+        : action === 'state' ? await this.publicState(this.stateOf(context), { list: true })
         : action === 'routes' ? await this.routeState(context)
         : action === 'presets' ? { ok: true, presets: publicPresets() }
-        : ['testDraft', 'discardDraft', 'oauthStart', 'oauthStatus', 'oauthComplete', 'oauthCancel', 'default', 'appConfig'].includes(action) ? await this.managementAction(action, args ?? {}, context ?? {})
+        : ['testDraft', 'discardDraft', 'oauthStart', 'oauthStatus', 'oauthComplete', 'oauthCancel', 'default', 'defaultRead', 'appConfig'].includes(action) ? await this.managementAction(action, args ?? {}, context ?? {})
         : await this.dispatch(this.panelTool(action), { ...(args ?? {}), action: this.panelAction(action) }, context ?? {}, true);
       return JSON.parse(redactJson(result, secrets));
     } catch (error) {
@@ -85,7 +90,7 @@ class MailService {
 
   panelTool(action) {
     if (['save', 'delete', 'test', 'presets'].includes(action)) return 'MailAccount';
-    if (['folders', 'search', 'read', 'attachment'].includes(action)) return 'Mailbox';
+    if (['folders', 'sources', 'search', 'read', 'attachment'].includes(action)) return 'Mailbox';
     if (['send', 'reply'].includes(action)) return 'MailSend';
     throw coded('unknown_action', 'Unknown mail panel action.');
   }
@@ -128,9 +133,9 @@ class MailService {
     return {
       ...publicAccount(account, state.credentials),
       isDefault: state.defaultAccountId === account.id,
+      isDefaultRead: state.defaultReadAccountId === account.id,
       lastTest: state.accountStatus[account.id] || null,
-      oauthStatus: status,
-      oauthInherited: use.inherited,
+      ...(isArchive(account) ? {} : { oauthStatus: status, oauthInherited: use.inherited }),
     };
   }
 
@@ -141,7 +146,8 @@ class MailService {
       ok: true,
       watchEnabled: state.watchEnabled,
       defaultAccountId: state.defaultAccountId,
-      summary: { accountCount: accounts.length, defaultAccountId: state.defaultAccountId, watchEnabled: state.watchEnabled, watchedCount: state.watchEnabled ? accounts.filter((account) => account.watch).length : 0, lastTest },
+      defaultReadAccountId: state.defaultReadAccountId,
+      summary: { accountCount: accounts.length, defaultAccountId: state.defaultAccountId, defaultReadAccountId: state.defaultReadAccountId, watchEnabled: state.watchEnabled, watchedCount: state.watchEnabled ? accounts.filter((account) => account.watch && account.capabilities.watch).length : 0, lastTest },
       imBridge: options.probe === false ? idleBridgeView(this.im) : await inspectIm(this.im ?? bridgeFrom(this.context), this.context?.signal, { list: options.list === true }),
       accounts,
       apps: appConfigView(state.oauthDefaults),
@@ -151,9 +157,11 @@ class MailService {
   async managementAction(action, args, context) {
     const state = this.stateOf(context);
     if (action === 'appConfig') return this.saveAppConfig(args, context);
-    if (action === 'default') {
+    if (action === 'default' || action === 'defaultRead') {
       const account = requireAccount(state, args.accountId);
-      await this.updateSettings(context, { defaultAccountId: account.id });
+      const read = action === 'defaultRead';
+      if (!accountCapabilities(account)[read ? 'read' : 'send']) throw coded('unsupported', read ? 'This account cannot read mail.' : 'Open Archiver cannot send mail.');
+      await this.updateSettings(context, { [read ? 'defaultReadAccountId' : 'defaultAccountId']: account.id });
       return this.publicState(this.stateOf(context));
     }
     const flowId = clean(args.flowId, 80);
@@ -172,11 +180,13 @@ class MailService {
     const account = normalizeAccount(args.account, { allowSecrets: true });
     const existing = state.accounts.find((item) => item.id === account.id);
     if (existing && args.editingId !== account.id) throw coded('account_exists', 'This account ID is already in use. Choose another ID.');
+    assertAccountKind(existing, account);
+    if (isArchive(account) && action !== 'testDraft') throw coded('unsupported', 'Open Archiver uses an API key, not mailbox OAuth.');
     let credential = mergeCredential(state.credentials[account.id], args.credential);
     const draft = this.draftCredentials.get(args.draftId);
     if (draft) {
       const original = JSON.parse(draft.account);
-      if (draft.expiresAt < Date.now() || ['id', 'user', 'auth', 'oauthClientId', 'oauthTokenUrl'].some((key) => original[key] !== account[key])) throw coded('draft_expired', 'The authorization details changed or expired. Enter credentials or authorize again.');
+      if (draft.expiresAt < Date.now() || ['id', 'user', 'auth', 'oauthClientId', 'oauthTokenUrl', 'baseUrl'].some((key) => original[key] !== account[key])) throw coded('draft_expired', 'The authorization details changed or expired. Enter credentials or authorize again.');
       this.assertAppStamp(account, draft.stamp, state.oauthDefaults);
       credential = mergeCredential(credential, draft.credential);
     }
@@ -189,7 +199,7 @@ class MailService {
         credential = mergeCredential(credential, { ...patch, ...(use.clientId ? { tokenClientId: use.clientId } : {}) });
       });
       const draftId = randomUUID();
-      this.storeDraft(draftId, { accountId: account.id, account: JSON.stringify(account), credential: credentialForStorage(account, credential), stamp: use.stamp, tested: true, expiresAt: Date.now() + 600000 });
+      this.storeDraft(draftId, { accountId: account.id, account: JSON.stringify(account), credential: credentialForStorage(account, credential), stamp: use.stamp, tested: true, testMessage: result.message, expiresAt: Date.now() + 600000 });
       this.draftCredentials.delete(args.draftId);
       this.pruneDrafts();
       return { ...result, draftId };
@@ -340,8 +350,9 @@ class MailService {
   async saveAccount(args, context, allowSecrets) {
     const state = this.stateOf(context);
     const body = args.account ?? args;
-    const normalized = normalizeAccount(body, { allowSecrets });
-    const account = normalized;
+    const account = normalizeAccount(body, { allowSecrets });
+    const prior = state.accounts.find((item) => item.id === account.id);
+    assertAccountKind(prior, account);
     const accounts = state.accounts.filter((item) => item.id !== account.id);
     accounts.push(account);
     const credentials = { ...state.credentials };
@@ -362,10 +373,9 @@ class MailService {
     }
     const watchEnabled = typeof args.watchEnabled === 'boolean' ? args.watchEnabled : state.watchEnabled;
     await this.persist(context, accounts, credentials, watchEnabled);
-    if (draft?.tested && !credential) await this.updateSettings(context, { accountStatus: JSON.stringify({ ...this.stateOf(context).accountStatus, [account.id]: { ok: true, at: Date.now(), message: 'IMAP and SMTP accepted the credentials.' } }) });
+    if (draft?.tested && !credential) await this.updateSettings(context, { accountStatus: JSON.stringify({ ...this.stateOf(context).accountStatus, [account.id]: { ok: true, at: Date.now(), message: draft.testMessage } }) });
     else {
-      const prior = state.accounts.find((item) => item.id === account.id);
-      const connection = (item) => item && JSON.stringify(['user', 'from', 'auth', 'imapHost', 'imapPort', 'imapSecure', 'smtpHost', 'smtpPort', 'smtpSecure', 'allowInsecureAuth', 'oauthClientId', 'oauthTokenUrl', 'oauthScope', 'timeoutMs', 'imapId'].map((key) => item[key]));
+      const connection = (item) => item && JSON.stringify(['user', 'from', 'auth', 'imapHost', 'imapPort', 'imapSecure', 'smtpHost', 'smtpPort', 'smtpSecure', 'allowInsecureAuth', 'oauthClientId', 'oauthTokenUrl', 'oauthScope', 'timeoutMs', 'imapId', 'sendOnly', 'baseUrl'].map((key) => item[key]));
       if (credential || draft || connection(prior) !== connection(account)) await this.invalidateTest(context, account.id);
     }
     if (args.draftId) this.draftCredentials.delete(args.draftId);
@@ -404,8 +414,20 @@ class MailService {
     }
   }
 
+  archiveRequest(account, credential, context) {
+    return archiveClient(account, credential, { signal: context.signal, fetch: this.deps.archiveFetch });
+  }
+
   async checkConnection(account, credential, context, persist) {
+    if (isArchive(account)) {
+      await archiveSearch(account, this.archiveRequest(account, credential, context), { limit: 1 });
+      return { ok: true, accountId: account.id, authenticated: true, auth: 'apiKey', capabilities: accountCapabilities(account), message: 'Open Archiver accepted the key and archive search. Read-only: no SMTP, unread flags or inbox watch.' };
+    }
     const auth = await this.auth(account, credential, context, persist);
+    if (account.sendOnly) {
+      await verifySmtp(connectionAccount(account), auth, context.signal);
+      return { ok: true, accountId: account.id, authenticated: true, auth: account.auth, capabilities: accountCapabilities(account), message: 'SMTP accepted the credentials. This account is send-only.' };
+    }
     const mailboxes = await withImap(account, auth, { signal: context.signal }, (client) => listMailboxes(client));
     await verifySmtp(connectionAccount(account), auth, context.signal);
     return {
@@ -422,9 +444,40 @@ class MailService {
     };
   }
 
+  async archiveAction(account, credential, args, context) {
+    const request = this.archiveRequest(account, credential, context);
+    if (args.action === 'sources') return { ok: true, accountId: account.id, sources: await archiveSources(request) };
+    if (args.action === 'search') return archiveSearch(account, request, args);
+    if (!['read', 'attachment'].includes(args.action)) throw coded('unsupported', 'Open Archiver supports sources, search, read and attachment. It has no source folder or unread operations.');
+    if (args.identity?.accountId && args.identity.accountId !== account.id) throw coded('account_mismatch', 'That archive identity belongs to a different account.');
+    const { identity, parsed, sourceId, mailboxOwner } = await archiveMessage(account, request, args.identity ?? args);
+    const directory = this.directory(context);
+    const scope = ['open-archiver', account.id, storageKey(identity.archiveId, 'archive')];
+    if (args.action === 'attachment') {
+      if (!directory) throw coded('lifecycle_required', 'Saving an attachment needs the plugin data directory.');
+      const part = parsed.attachments.find((item) => item.attachmentId === args.attachmentId);
+      if (!part) throw coded('not_found', 'That attachmentId is not on this archived message.');
+      const bytes = part.storagePath ? await request('storage/download', { query: { path: part.storagePath }, binary: true }) : part.content;
+      if (part.size != null && bytes.length !== part.size) throw coded('archive_protocol', 'Open Archiver returned an incomplete attachment.');
+      if (context.signal?.aborted) throw coded('cancelled', 'The Open Archiver request was cancelled.');
+      const saved = await writeInside(directory, ['attachments', ...scope, storageKey(part.attachmentId, 'part'), storageKey(part.filename, 'file')], bytes);
+      return { ok: true, identity, attachmentId: part.attachmentId, filename: part.filename, mimeType: part.mimeType, size: bytes.length, path: saved };
+    }
+    const textPath = !parsed.textComplete && directory ? await writeInside(directory, ['bodies', ...scope, 'body.txt'], Buffer.from(parsed.text)) : undefined;
+    const htmlPath = !parsed.htmlComplete && directory ? await writeInside(directory, ['bodies', ...scope, 'body.html'], Buffer.from(parsed.html)) : undefined;
+    if ((!parsed.textComplete || !parsed.htmlComplete) && !directory) throw coded('lifecycle_required', 'Reading this complete body needs the plugin data directory.');
+    return { ok: true, identity, sourceId, mailboxOwner, subject: parsed.subject, from: parsed.from, to: parsed.to, cc: parsed.cc, replyTo: parsed.replyTo,
+      date: parsed.date, messageId: parsed.messageId, inReplyTo: parsed.inReplyTo, references: parsed.references,
+      text: parsed.textInline, html: parsed.htmlInline, textComplete: parsed.textComplete, htmlComplete: parsed.htmlComplete, textPath, htmlPath,
+      attachments: parsed.attachments.map(({ content: _content, partId: _part, storagePath: _storage, ...item }) => item) };
+  }
+
   async boxAction(args, context) {
     const state = this.stateOf(context);
-    const account = requireAccount(state, args.accountId);
+    const account = requireAccount(state, args.accountId || state.defaultReadAccountId);
+    if (account.sendOnly) throw coded('unsupported', 'This direct account is send-only. Select the archive account to read mail.');
+    if (isArchive(account)) return this.archiveAction(account, state.credentials[account.id], args, context);
+    if (args.archiveId || args.attachmentId || args.sourceIds || args.mailboxes) throw coded('identity_invalid', 'Archive identifiers and filters require an Open Archiver account.');
     const auth = await this.auth(account, state.credentials[account.id], context);
     if (args.action === 'folders') {
       const mailboxes = await withImap(account, auth, { signal: context.signal }, (client) => listMailboxes(client));
@@ -490,6 +543,8 @@ class MailService {
   async sendAction(args, context) {
     const state = this.stateOf(context);
     const account = requireAccount(state, args.accountId);
+    if (!accountCapabilities(account)[args.action === 'reply' ? 'reply' : 'send']) throw coded('unsupported', 'This account cannot perform that send operation. Use a direct SMTP sender; archive identities are not IMAP reply identities.');
+    if (args.archiveId || args.identity?.provider === 'open-archiver') throw coded('identity_invalid', 'Archive identities cannot be used as IMAP reply identities.');
     const requestId = clean(args.requestId, 80) || randomUUID();
     const flightKey = `${account.id}\0${requestId}`;
     const current = this.inflight.get(flightKey);
@@ -638,7 +693,7 @@ class MailService {
 
   async persist(context, accounts, credentials, watchEnabled) {
     const state = this.stateOf(context);
-    const defaultAccountId = accounts.some((account) => account.id === state.defaultAccountId) ? state.defaultAccountId : accounts[0]?.id || '';
+    const defaultAccountId = accounts.some((account) => !isArchive(account) && account.id === state.defaultAccountId) ? state.defaultAccountId : accounts.find((account) => !isArchive(account))?.id || '';
     const accountStatus = Object.fromEntries(Object.entries(state.accountStatus).filter(([id]) => accounts.some((account) => account.id === id)));
     await this.updateSettings(context, { accounts: JSON.stringify(accounts), credentials: JSON.stringify(credentials), watchEnabled, defaultAccountId, accountStatus: JSON.stringify(accountStatus) });
   }
@@ -786,7 +841,7 @@ class MailService {
     const state = loadState(this.context.settings);
     if (!state.watchEnabled) return;
     for (const account of state.accounts) {
-      if (!account.watch) continue;
+      if (!account.watch || !accountCapabilities(account).watch) continue;
       const controller = new AbortController();
       const job = this.watchAccount(account, controller.signal);
       this.watchers.push({ controller, job, accountId: account.id });
@@ -944,6 +999,12 @@ function authFlightKey(account, runtime) {
     .update(String(runtime?.clientSecret || ''))
     .digest('hex');
   return [account.id, account.user, account.oauthClientId, account.oauthTokenUrl, hash].join('\0');
+}
+
+function assertAccountKind(prior, next) {
+  if (prior && (isArchive(prior) !== isArchive(next) || (isArchive(next) && prior.baseUrl !== next.baseUrl))) {
+    throw coded('account_mismatch', 'Use a new account ID for a different Open Archiver service or account type.');
+  }
 }
 
 function requireAccount(state, accountId) {

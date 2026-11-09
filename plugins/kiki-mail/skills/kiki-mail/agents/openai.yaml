@@ -1,4 +1,4 @@
 interface:
   display_name: "Kiki Mail"
-  short_description: "Read and send mail on configured accounts"
-  default_prompt: "Use $kiki-mail to read or send mail for an account the user has configured."
+  short_description: "Read archived or direct mail and send safely"
+  default_prompt: "Use $kiki-mail to read archived or direct mail, save attachments, or send through a configured SMTP account."

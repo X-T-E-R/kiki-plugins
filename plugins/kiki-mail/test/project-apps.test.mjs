@@ -268,7 +268,7 @@ test('the panel configures the project once and the next mailbox does not ask fo
   };
   let receive;
   const parent = { postMessage(request) {
-    queueMicrotask(async () => receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: true, result: await service.panel(request.action, request.args, context) } }));
+    queueMicrotask(async () => receive({ source: parent, origin: 'https://kiki.example.test', data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: true, result: await service.panel(request.action, request.args, context) } }));
   } };
   const flush = async () => { for (let n = 0; n < 6; n += 1) await new Promise(setImmediate); };
   try {
@@ -280,7 +280,7 @@ test('the panel configures the project once and the next mailbox does not ask fo
       navigator: { language: 'en', clipboard: { async writeText() {} } },
       crypto: { randomUUID: () => 'panel-project' },
     });
-    receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'init' } });
+    receive({ source: parent, origin: 'https://kiki.example.test', data: { channel: 'kiki.panel.v1', kind: 'init' } });
     await flush();
     await get('appGmailSave').onclick();
     await flush();
@@ -365,7 +365,7 @@ test('the panel tests and saves a pasted inherited token, and a previous client 
   let receive;
   const parent = { postMessage(request) {
     requests.push(request);
-    queueMicrotask(async () => receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: true, result: await service.panel(request.action, request.args, context) } }));
+    queueMicrotask(async () => receive({ source: parent, origin: 'https://kiki.example.test', data: { channel: 'kiki.panel.v1', kind: 'response', id: request.id, ok: true, result: await service.panel(request.action, request.args, context) } }));
   } };
   const flush = async () => { for (let n = 0; n < 6; n += 1) await new Promise(setImmediate); };
   try {
@@ -377,7 +377,7 @@ test('the panel tests and saves a pasted inherited token, and a previous client 
       navigator: { language: 'en', clipboard: { async writeText() {} } },
       crypto: { randomUUID: () => 'panel-paste' },
     });
-    receive({ source: parent, data: { channel: 'kiki.panel.v1', kind: 'init' } });
+    receive({ source: parent, origin: 'https://kiki.example.test', data: { channel: 'kiki.panel.v1', kind: 'init' } });
     await flush();
     get('appGmailClientId').value = 'gmail-client-a';
     get('appGmailSecret').value = SECRET;

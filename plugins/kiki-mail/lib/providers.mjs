@@ -6,6 +6,12 @@ export const providerPresets = [
     note: 'Use the host, port and TLS mode published by that server. A password is sent only after TLS unless the host is loopback.',
   },
   {
+    id: 'open-archiver',
+    label: 'Open Archiver',
+    auth: 'apiKey',
+    note: 'Search and read archived mail across sources. Sending, unread flags and inbox watch stay on direct accounts.',
+  },
+  {
     id: 'gmail',
     label: 'Gmail',
     auth: 'password',

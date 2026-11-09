@@ -1,17 +1,17 @@
 {
   "name": "kiki-mail",
-  "version": "0.2.3",
-  "description": "Read and send mail through the IMAP and SMTP accounts you configure. Optional new-mail notices need a host IM bridge.",
+  "version": "0.3.0",
+  "description": "Search archived mail across sources in Open Archiver, or read and send through direct IMAP and SMTP accounts.",
   "license": "MIT",
   "icon": "./icon.svg",
   "skills": "./skills/",
   "interface": {
     "displayName": "Mail",
-    "shortDescription": "IMAP and SMTP for the accounts you add",
+    "shortDescription": "Archive search and direct IMAP / SMTP mail",
     "localization": {
       "zh-CN": {
         "displayName": "邮件",
-        "shortDescription": "用你添加的账号收发 IMAP / SMTP 邮件"
+        "shortDescription": "搜索归档邮件，也可通过 IMAP / SMTP 收发邮件"
       }
     }
   },
@@ -52,7 +52,8 @@
             "secret": true,
             "hidden": true
           },
-          "defaultAccountId": { "type": "string", "hidden": true, "title": "在 Mail 面板里管理默认账号" },
+          "defaultAccountId": { "type": "string", "hidden": true, "title": "在 Mail 面板里管理默认发件账号" },
+          "defaultReadAccountId": { "type": "string", "hidden": true, "title": "在 Mail 面板里管理默认阅读账号" },
           "accountStatus": { "type": "string", "hidden": true, "title": "在 Mail 面板查看连接测试" },
           "watchEnabled": {
             "type": "boolean",
@@ -67,7 +68,7 @@
       {
         "schemaVersion": 1,
         "name": "MailAccount",
-        "description": "List, show, save, delete or test configured IMAP/SMTP accounts, or list provider connection presets. Saving a password or token is refused here; use the Mail panel. Test reports this attempt only and does not mean a provider OAuth consent screen completed. Presets name real prerequisites and are not proof those providers were signed in.",
+        "description": "List, show, save, delete or test configured mail accounts, or list provider presets. List shows account capabilities, the default reader and the independent default SMTP sender. Set credentials in the Mail panel, never in chat. A connection test does not send mail or grant OAuth consent.",
         "parameters": {
           "type": "object",
           "additionalProperties": false,
@@ -88,8 +89,10 @@
                 "hooks": { "type": "array", "maxItems": 8, "items": { "type": "object", "additionalProperties": false, "properties": { "event": { "type": "string", "enum": ["beforeConnect", "afterSend"] }, "action": { "type": "string", "enum": ["setTimeout", "recordEvent"] }, "value": { "type": ["string", "integer"] } }, "required": ["event", "action", "value"] } },
                 "user": { "type": "string" },
                 "from": { "type": "string" },
-                "auth": { "type": "string", "enum": ["password", "oauth2"] },
+                "auth": { "type": "string", "enum": ["password", "oauth2", "apiKey"] },
                 "preset": { "type": "string" },
+                "baseUrl": { "type": "string", "description": "Open Archiver HTTPS service URL, without credentials." },
+                "sendOnly": { "type": "boolean", "description": "For direct accounts: keep SMTP and suspend direct reading and inbox watch." },
                 "imapHost": { "type": "string" },
                 "imapPort": { "type": "integer" },
                 "imapSecure": { "type": "boolean" },
@@ -117,25 +120,29 @@
       {
         "schemaVersion": 1,
         "name": "Mailbox",
-        "description": "List folders, search one page, read one message, or save one attachment for a configured account. Identify a message by that account, folder, UIDVALIDITY and UID. A changed UIDVALIDITY is a different message. Inline text can be a preview; textPath, htmlPath and attachment path point at the complete bytes.",
+        "description": "Search, read or save an attachment. Omit accountId to use the default reader for search or listing. Open Archiver searches across sources: use sources to list them, sourceIds and mailboxes to filter, and reuse the hit's accountId and archiveId for read, plus attachmentId to save. Direct IMAP uses folders, mailbox, uidValidity, uid and partId. Reuse nextCursor with the same filters. Full bodies and attachments may be returned as local paths.",
         "parameters": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "action": { "type": "string", "enum": ["folders", "search", "read", "attachment"] },
+            "action": { "type": "string", "enum": ["folders", "sources", "search", "read", "attachment"] },
             "accountId": { "type": "string" },
-            "mailbox": { "type": "string" },
+            "mailbox": { "type": "string", "description": "Direct IMAP folder, not an archive mailbox-owner address." },
             "query": { "type": "string" },
             "from": { "type": "string" },
-            "unseen": { "type": "boolean" },
+            "unseen": { "type": "boolean", "description": "Direct IMAP only." },
             "since": { "type": "string" },
             "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
             "cursor": { "type": "string" },
             "uidValidity": { "type": "string" },
             "uid": { "type": "string" },
-            "partId": { "type": "string" }
+            "partId": { "type": "string" },
+            "archiveId": { "type": "string", "description": "Open Archiver message ID returned by search." },
+            "attachmentId": { "type": "string", "description": "Open Archiver attachment identifier returned by read." },
+            "sourceIds": { "type": "array", "maxItems": 100, "items": { "type": "string" } },
+            "mailboxes": { "type": "array", "maxItems": 100, "items": { "type": "string" }, "description": "Open Archiver mailbox-owner addresses, not IMAP folders." }
           },
-          "required": ["action", "accountId"]
+          "required": ["action"]
         },
         "accesses": [{ "kind": "all" }],
         "disclosure": "deferred"
