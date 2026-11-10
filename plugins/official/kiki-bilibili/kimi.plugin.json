@@ -1,6 +1,6 @@
 {
   "name": "kiki-bilibili",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Discover, watch, comment, read messages and publish Bilibili videos through bili-agent.",
   "license": "MIT",
   "icon": "./icon.svg",
@@ -61,7 +61,7 @@
       {
         "schemaVersion": 1,
         "name": "bilibili_discover",
-        "description": "Search Bilibili videos or users, inspect hot searches, get personalized recommendations or read a following timeline. timeline uses next_offset as cursor; up optionally selects one creator.",
+        "description": "Search Bilibili videos or users, inspect hot searches/popular/weekly/precious/rank, get personalized recommendations or read a following timeline. unseen skips videos already watched in this profile.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -70,6 +70,10 @@
                 "search",
                 "users",
                 "hot",
+                "popular",
+                "weekly",
+                "precious",
+                "rank",
                 "recommend",
                 "timeline"
               ],
@@ -99,7 +103,7 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 50,
-              "description": "recommend: at most 30; search/hot/timeline: at most 50."
+              "description": "recommend: at most 30; search/hot/popular/rank/timeline: at most 50."
             },
             "cursor": {
               "type": "string",
@@ -117,6 +121,37 @@
                 "article",
                 "pgc"
               ]
+            },
+            "zone": {
+              "type": "string",
+              "enum": [
+                "all",
+                "anime",
+                "music",
+                "dance",
+                "game",
+                "knowledge",
+                "tech",
+                "sports",
+                "car",
+                "life",
+                "food",
+                "animal",
+                "kichiku",
+                "fashion",
+                "ent",
+                "film",
+                "original",
+                "rookie"
+              ]
+            },
+            "issue": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "unseen": {
+              "type": "boolean",
+              "default": false
             }
           },
           "required": [
@@ -134,7 +169,7 @@
       {
         "schemaVersion": 1,
         "name": "bilibili_watch",
-        "description": "Read metadata, timestamped subtitles or ASR, and real video frames. all reads subtitles (falls back to ASR when absent), then frames. visual=frames uses FFmpeg on the video stream; preview is only a seek-bar thumbnail. ASR defaults to local; cloud uses the explicitly configured profile service. Frame paths and requested/actual seconds remain in the result.",
+        "description": "Read metadata, digest (token-efficient one-call summary + capped transcript + chapters + hot comments + contact sheet), summary, chapters, danmaku, timestamped subtitles/ASR, or real frames. textOnly returns plain joined text to save tokens; frames=0 skips sheet extraction.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -142,6 +177,10 @@
               "type": "string",
               "enum": [
                 "metadata",
+                "digest",
+                "summary",
+                "chapters",
+                "danmaku",
                 "subtitle",
                 "transcribe",
                 "visual",
@@ -184,6 +223,46 @@
               "maximum": 20,
               "default": 6
             },
+            "frames": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 30,
+              "default": 9
+            },
+            "comments": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20,
+              "default": 5
+            },
+            "transcript": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "subtitle",
+                "none"
+              ],
+              "default": "auto"
+            },
+            "maxChars": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 6000
+            },
+            "textOnly": {
+              "type": "boolean",
+              "default": false
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2000,
+              "default": 200
+            },
+            "record": {
+              "type": "boolean",
+              "default": false
+            },
             "engine": {
               "type": "string",
               "enum": [
@@ -219,7 +298,7 @@
       {
         "schemaVersion": 1,
         "name": "bilibili_interact",
-        "description": "Read comments or replies, post with real @ mentions, like or favorite. check inspects the configured account’s recent comment lists (root: at most 3 pages; replies: 2); it cannot measure visibility to others. Use rootId for nested replies. resourceType defaults to video; other comment areas use numeric oid in video. Unknown writes are not repeated.",
+        "description": "Read comments (unreplied/supporters filter on page) or replies, post with real @ mentions, send danmaku, like or favorite. check inspects the configured account’s recent comment lists (root: at most 3 pages; replies: 2); it cannot measure visibility to others.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -232,6 +311,7 @@
                 "comment",
                 "reply",
                 "mention",
+                "danmaku",
                 "like",
                 "favorite"
               ]
@@ -289,6 +369,32 @@
                 "hot",
                 "time"
               ]
+            },
+            "unreplied": {
+              "type": "boolean",
+              "default": false
+            },
+            "supporters": {
+              "type": "boolean",
+              "default": false
+            },
+            "time": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Danmaku timestamp in seconds."
+            },
+            "danmakuMode": {
+              "type": "string",
+              "enum": [
+                "scroll",
+                "top",
+                "bottom"
+              ],
+              "default": "scroll"
+            },
+            "color": {
+              "type": "string",
+              "pattern": "^#?[0-9a-fA-F]{6}$"
             }
           },
           "required": [

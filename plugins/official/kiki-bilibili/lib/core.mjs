@@ -40,19 +40,36 @@ export function createBilibiliCore({ settings = {}, workspaceRoot, context = {},
   async function subtitle(args) {
     const command = ['video', 'subtitle', ...pageArgs(args)];
     option(command, '--lang', args.language);
+    if (args.textOnly) command.push('--text');
     return { source: 'subtitle', ...await call([...command, ...positional(video(args))]) };
   }
   async function transcribe(args) {
     const command = ['video', 'transcribe', ...pageArgs(args), '--engine', args.engine ?? 'local'];
     option(command, '--max-minutes', args.maxMinutes ?? 60);
+    if (args.textOnly) command.push('--text');
     return { source: 'asr', ...await call([...command, ...positional(video(args))]) };
+  }
+  async function digest(args) {
+    const command = [
+      'video', 'watch', ...pageArgs(args),
+      '--frames', String(args.frames ?? 9),
+      '--comments', String(args.comments ?? 5),
+      '--transcript', args.transcript ?? 'auto',
+      '--max-chars', String(args.maxChars ?? 6000),
+    ];
+    if (args.record) command.push('--record');
+    return call([...command, ...positional(video(args))]);
   }
   async function watch(args) {
     if (args.action === 'metadata') return call(['video', 'info', ...positional(video(args))]);
+    if (args.action === 'digest') return digest(args);
+    if (args.action === 'summary') return call(['video', 'summary', ...pageArgs(args), ...positional(video(args))]);
+    if (args.action === 'chapters') return call(['video', 'chapters', ...pageArgs(args), ...positional(video(args))]);
+    if (args.action === 'danmaku') return call(['video', 'danmaku', ...pageArgs(args), '--limit', String(args.limit ?? 200), ...positional(video(args))]);
     if (args.action === 'subtitle') return subtitle(args);
     if (args.action === 'transcribe') return transcribe(args);
     if (args.action === 'visual') return visual(args);
-    assert(args.action === 'all', 'ARGUMENT_INVALID', 'Choose metadata, subtitle, transcribe, visual or all.');
+    assert(args.action === 'all', 'ARGUMENT_INVALID', 'Choose metadata, digest, summary, chapters, danmaku, subtitle, transcribe, visual or all.');
     const metadata = await call(['video', 'info', ...positional(video(args))]);
     let transcript;
     try { transcript = await subtitle(args); }
@@ -66,14 +83,39 @@ export function createBilibiliCore({ settings = {}, workspaceRoot, context = {},
   }
   async function discover(args) {
     if (args.action === 'hot') return call(['hot', 'search', '--limit', String(args.limit ?? 20)]);
-    if (args.action === 'recommend') return call(['feed', 'recommend', '--count', String(args.limit ?? 12), ...pageArgs(args)]);
+    if (args.action === 'popular') {
+      const command = ['hot', 'popular', ...pageArgs(args), '--size', String(args.limit ?? 20)];
+      if (args.unseen) command.push('--unseen');
+      return call(command);
+    }
+    if (args.action === 'weekly') {
+      const command = ['hot', 'weekly'];
+      option(command, '--issue', args.issue);
+      if (args.unseen) command.push('--unseen');
+      return call(command);
+    }
+    if (args.action === 'precious') {
+      const command = ['hot', 'precious'];
+      if (args.unseen) command.push('--unseen');
+      return call(command);
+    }
+    if (args.action === 'rank') {
+      const command = ['hot', 'rank', '--zone', args.zone ?? 'all', '--limit', String(args.limit ?? 30)];
+      if (args.unseen) command.push('--unseen');
+      return call(command);
+    }
+    if (args.action === 'recommend') {
+      const command = ['feed', 'recommend', '--count', String(args.limit ?? 12), ...pageArgs(args)];
+      if (args.unseen) command.push('--unseen');
+      return call(command);
+    }
     if (args.action === 'timeline') {
       const command = ['feed', 'timeline', '--type', args.kind ?? 'all', '--limit', String(args.limit ?? 20)];
       option(command, '--up', args.up); option(command, '--offset', args.cursor);
       return call(command);
     }
     if (args.action === 'users') return call(['search', 'user', ...pageArgs(args), ...positional(required(args.keyword, 'keyword'))]);
-    assert(args.action === 'search', 'ARGUMENT_INVALID', 'Choose search, users, hot, recommend or timeline.');
+    assert(args.action === 'search', 'ARGUMENT_INVALID', 'Choose search, users, hot, popular, weekly, precious, rank, recommend or timeline.');
     return call(['search', 'video', '--order', args.order ?? 'default', ...pageArgs(args), '--size', String(args.limit ?? 20), ...positional(required(args.keyword, 'keyword'))]);
   }
   async function interact(args) {
@@ -87,8 +129,21 @@ export function createBilibiliCore({ settings = {}, workspaceRoot, context = {},
       const data = await call(command);
       return args.action === 'check' ? { ...data, inspection: { perspective: 'configured-account', max_pages: args.rootId ? 2 : 3, other_accounts_visibility: 'not_measured' } } : data;
     }
+    if (args.action === 'danmaku') {
+      assert(typeof args.time === 'number' && args.time >= 0, 'ARGUMENT_INVALID', 'time (seconds) is required for danmaku.');
+      const command = ['danmaku', 'send', ...pageArgs(args), '--time', String(args.time), '--mode', args.danmakuMode ?? 'scroll'];
+      option(command, '--color', args.color);
+      command.push(...positional(id, required(args.text, 'text')));
+      const data = await call(command, { write: true });
+      return { ...data, submission: 'accepted' };
+    }
     let command;
-    if (args.action === 'comments') command = ['comment', 'list', ...pageArgs(args), '--sort', args.sort ?? 'hot', ...positional(id)];
+    if (args.action === 'comments') {
+      command = ['comment', 'list', ...pageArgs(args), '--sort', args.sort ?? 'hot'];
+      if (args.unreplied) command.push('--unreplied');
+      if (args.supporters) command.push('--supporters');
+      command.push(...positional(id));
+    }
     else if (args.action === 'comment' || args.action === 'mention' || args.action === 'reply') {
       command = ['comment', args.action === 'reply' ? 'reply' : 'post'];
       for (const mention of args.mentions ?? []) option(command, '--at', mention);

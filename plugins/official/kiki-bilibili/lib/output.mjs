@@ -1,7 +1,10 @@
 import { readDataUrl } from './transport.mjs';
 
 export async function renderResult(result, imageIn) {
-  const images = result.qr_image ? [result.qr_image] : [];
+  const images = [];
+  if (result.qr_image) images.push(result.qr_image);
+  if (result.frames_sheet) images.push(result.frames_sheet);
+  if (result.sheet) images.push(result.sheet);
   for (const frame of result.frames ?? result.visual?.frames ?? []) if (frame.path) images.push(frame.path);
   const output = [{ type: 'text', text: JSON.stringify(result, null, 2) }];
   if (imageIn) for (const file of images) {
