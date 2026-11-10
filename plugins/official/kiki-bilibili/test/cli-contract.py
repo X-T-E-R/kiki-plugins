@@ -4,7 +4,7 @@ import sys
 from importlib.metadata import version
 from typer.main import get_command
 from bili_cli.main import app
-from bili_cli.commands import auth, comment, danmaku, dm, hot, search, upload, video, asr, feed
+from bili_cli.commands import auth, comment, danmaku, dm, hot, me, search, upload, video, asr, feed
 
 assert version('bili-agent') == '1.0.0'
 def deny(*args, **kwargs):
@@ -12,7 +12,7 @@ def deny(*args, **kwargs):
 socket.create_connection = deny
 socket.socket.connect = deny
 seen = []
-for module in (auth, comment, danmaku, dm, hot, search, upload, video, asr, feed):
+for module in (auth, comment, danmaku, dm, hot, me, search, upload, video, asr, feed):
     module.run = lambda body: seen.append(True)
 for args in json.load(sys.stdin):
     before = len(seen)

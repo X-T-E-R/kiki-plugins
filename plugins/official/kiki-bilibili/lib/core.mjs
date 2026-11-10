@@ -201,8 +201,24 @@ export function createBilibiliCore({ settings = {}, workspaceRoot, context = {},
     return { ...await call(command, { write: true }), submission: 'accepted' };
   }
   async function account(args) {
-    assert(['login', 'status', 'logout', 'asr_status'].includes(args.action), 'ARGUMENT_INVALID', 'Choose login, status, logout or asr_status.');
-    return call(args.action === 'asr_status' ? ['asr', 'status'] : ['auth', args.action]);
+    assert(['login', 'status', 'logout', 'profile', 'set_avatar', 'set_sign', 'set_name', 'asr_status'].includes(args.action), 'ARGUMENT_INVALID', 'Choose login, status, logout, profile, set_avatar, set_sign, set_name or asr_status.');
+    if (args.action === 'asr_status') return call(['asr', 'status']);
+    if (args.action === 'profile') return call(['me', 'show']);
+    if (args.action === 'set_avatar') {
+      const file = await workspaceFile(required(args.image, 'image'));
+      return { ...await call(['me', 'set-avatar', ...positional(file)], { write: true }), submission: 'accepted' };
+    }
+    if (args.action === 'set_sign') {
+      assert(typeof args.sign === 'string', 'ARGUMENT_INVALID', 'sign is required.');
+      return { ...await call(['me', 'set-sign', ...positional(args.sign)], { write: true }), submission: 'accepted' };
+    }
+    if (args.action === 'set_name') {
+      const command = ['me', 'set-name'];
+      if (args.allowCost) command.push('--allow-cost');
+      command.push(...positional(required(args.name, 'name')));
+      return { ...await call(command, { write: true }), submission: 'accepted' };
+    }
+    return call(['auth', args.action]);
   }
   async function diagnose() {
     const data = await call(['--version'], { timeoutMs: 10000 });

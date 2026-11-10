@@ -52,8 +52,12 @@ export const definitions = [
     schedule: { ...string, description: 'ISO datetime; platform accepts 2 hours to 15 days ahead.' },
     private: { type: 'boolean', default: false }, aiDeclare: { type: 'boolean', default: true },
   }),
-  tool('bilibili_account', 'Manage the explicitly configured bili-agent profile. login returns a QR image for the human; status polls that login or validates/refreshes its credentials. logout removes only that profile login. asr_status inspects ASR configuration. Does not import browser cookies or use an implicit user home.', {
-    action: { type: 'string', enum: ['login', 'status', 'logout', 'asr_status'] },
+  tool('bilibili_account', 'Manage the explicitly configured bili-agent profile: login/status/logout, profile (read own profile), set_avatar (workspace-local image), set_sign, set_name, or asr_status. Does not import browser cookies or use an implicit user home.', {
+    action: { type: 'string', enum: ['login', 'status', 'logout', 'profile', 'set_avatar', 'set_sign', 'set_name', 'asr_status'] },
+    image: { ...string, description: 'Workspace-local image path for set_avatar.' },
+    sign: { type: 'string', maxLength: 70, description: 'New profile signature for set_sign.' },
+    name: { ...string, description: 'New nickname for set_name.' },
+    allowCost: { type: 'boolean', default: false },
   }),
   tool('bilibili_diagnose', 'Check the installed bili-agent version and ASR dependencies in the explicit profile. Requires bili-agent 1.0.0. No login or external write is started.', {} , []),
 ];

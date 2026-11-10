@@ -546,7 +546,7 @@
       {
         "schemaVersion": 1,
         "name": "bilibili_account",
-        "description": "Manage the explicitly configured bili-agent profile. login returns a QR image for the human; status polls that login or validates/refreshes its credentials. logout removes only that profile login. asr_status inspects ASR configuration. Does not import browser cookies or use an implicit user home.",
+        "description": "Manage the explicitly configured bili-agent profile: login/status/logout, profile (read own profile), set_avatar (workspace-local image), set_sign, set_name, or asr_status. Does not import browser cookies or use an implicit user home.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -556,8 +556,31 @@
                 "login",
                 "status",
                 "logout",
+                "profile",
+                "set_avatar",
+                "set_sign",
+                "set_name",
                 "asr_status"
               ]
+            },
+            "image": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Workspace-local image path for set_avatar."
+            },
+            "sign": {
+              "type": "string",
+              "maxLength": 70,
+              "description": "New profile signature for set_sign."
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "New nickname for set_name."
+            },
+            "allowCost": {
+              "type": "boolean",
+              "default": false
             }
           },
           "required": [

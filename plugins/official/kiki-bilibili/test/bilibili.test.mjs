@@ -52,6 +52,9 @@ const cases = [
   ['account', { action: 'login' }, ['auth', 'login']],
   ['account', { action: 'status' }, ['auth', 'status']],
   ['account', { action: 'logout' }, ['auth', 'logout']],
+  ['account', { action: 'profile' }, ['me', 'show']],
+  ['account', { action: 'set_sign', sign: 'midnight lab' }, ['me', 'set-sign', '--', 'midnight lab']],
+  ['account', { action: 'set_name', name: 'Nia', allowCost: true }, ['me', 'set-name', '--allow-cost', '--', 'Nia']],
   ['account', { action: 'asr_status' }, ['asr', 'status']],
 ];
 
