@@ -1,6 +1,6 @@
 {
   "name": "magpie-harness-quota",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Optional Magpie quota sources for external harness instances, plus an agy-cli account source that binds Magpie Antigravity accounts to named instances (Antigravity direct collector plus Grok Build, Codex, Claude Code, Gemini CLI, Cursor, Qoder, and WorkBuddy via Magpie CLI).",
   "license": "MIT",
   "interface": {

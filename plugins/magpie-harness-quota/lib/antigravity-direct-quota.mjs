@@ -7,9 +7,11 @@
 //    Never mutates Magpie files on disk; rejects revoked/lapsed sign-ins (`lapsed` with `revoked:` mark) as unknown.
 // 2. Per-account OAuth token refresh strictly routed through that account's bound proxy (`http://`, `https://`, `socks5://`, `socks5h://`, or `host:port`),
 //    with in-process refresh caching and single-flight deduplication keyed by refresh token.
-//    A still-valid access token is used as-is. Refresh needs an OAuth client supplied at runtime
-//    (plugin settings or process environment), never a client compiled into this file.
-//    When that client is absent, only the expired account is unknown; other accounts continue.
+//    A still-valid access token is used as-is. Direct refresh uses an OAuth client supplied at runtime
+//    (plugin settings or process environment), never a client compiled into this file; when that client is
+//    unconfigured, refresh falls back single-flight to managed `magpie quota refresh` (which renews via Magpie's
+//    bound proxy and updates `logins.json`), then reloads `logins.json`. When neither is available, only the
+//    expired account is unknown; other accounts continue.
 // 3. Single-origin Code Assist query (`GATEWAY_ANTIGRAVITY_FORWARD_BASE_URL`: daily by default, prod when `prod`),
 //    plus Magpie's tier-entitlement fallback (`paidTier` -> `currentTier` -> none on HTTP 400) for `fetchAvailableModels`,
 //    with no cross-origin fallback and no redirect following.
@@ -20,6 +22,7 @@
 //      claims remaining enabled models of that vendor (`antigravityVendor`: Gemini / Claude / GPT-OSS) returned by `fetchAvailableModels`.
 //    - Never relies on accidental 100% quota equality or timestamp coincidence.
 
+import { execFile as nodeExecFile } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import http from 'node:http';
@@ -41,7 +44,9 @@ export const DEFAULT_IDE_VERSION = '2.29.0';
 export const DEFAULT_MIN_REFRESH_INTERVAL_MS = 300_000;
 
 const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
+const MAX_CLI_OUTPUT_BYTES = 8 * 1024 * 1024;
 const TOKEN_REFRESH_MARGIN_MS = 120_000;
+const CLI_REFRESHED_TOKEN_MIN_MS = 30_000;
 const TIER_REFUSED_TTL_MS = 24 * 60 * 60 * 1000;
 const ANTIGRAVITY_HIDDEN_MODELS = new Set([
   'chat_20706',
@@ -56,6 +61,7 @@ const ANTIGRAVITY_HIDDEN_MODELS = new Set([
 // reuse valid access tokens, 24h refused-tier memoization, and >=5min batch throttling without touching Magpie's disk files.
 const tokenMemoryCache = new Map();
 const tokenRefreshInFlight = new Map();
+const magpieCliRefreshInFlight = new Map();
 const refusedTierCache = new Map();
 const batchResultCache = new Map();
 const batchInFlight = new Map();
@@ -63,6 +69,7 @@ const batchInFlight = new Map();
 export function clearCollectorRuntimeCaches() {
   tokenMemoryCache.clear();
   tokenRefreshInFlight.clear();
+  magpieCliRefreshInFlight.clear();
   refusedTierCache.clear();
   batchResultCache.clear();
   batchInFlight.clear();
@@ -148,6 +155,143 @@ function resolveDefaultMagpieDir(env = process.env, homedir = os.homedir()) {
   return path.join(homedir, '.config', 'magpie');
 }
 
+function normalizeComparablePath(targetPath) {
+  const resolved = path.resolve(targetPath);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function resolveMagpieCliExecutable(magpiePath) {
+  if (typeof magpiePath === 'string' && magpiePath.trim()) {
+    const trimmed = magpiePath.trim();
+    if (!path.isAbsolute(trimmed) || /[\0\r\n]/u.test(trimmed)) {
+      throw new Error('magpiePath must be an absolute path on the Kiki server, or omitted.');
+    }
+    return trimmed;
+  }
+  return process.platform === 'win32' ? 'magpie.exe' : 'magpie';
+}
+
+async function resolvePortableDataDirForBinary(magpiePath) {
+  if (typeof magpiePath !== 'string' || !magpiePath.trim()) return null;
+  const trimmedExe = magpiePath.trim();
+  if (!path.isAbsolute(trimmedExe)) return null;
+  let realExe = trimmedExe;
+  try {
+    realExe = await fs.realpath(realExe);
+  } catch {
+    // Keep original absolute path if binary symlink target is unavailable in tests
+  }
+  const baseDir = path.dirname(realExe);
+  const portableData = path.join(baseDir, 'data');
+  try {
+    const markerStat = await fs.stat(path.join(baseDir, '.portable'));
+    if (!markerStat.isDirectory()) return portableData;
+  } catch {
+    // No .portable marker
+  }
+  try {
+    await fs.access(path.join(portableData, 'logins.json'));
+    return portableData;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveMagpieCliInvocationTarget({
+  configDir,
+  magpiePath,
+  env = process.env,
+  homedir = os.homedir(),
+  hasInjectedRunner = false,
+}) {
+  if (typeof configDir !== 'string' || !configDir.trim()) return null;
+  const resolvedDir = path.resolve(configDir.trim());
+  const executable = resolveMagpieCliExecutable(magpiePath);
+
+  if (hasInjectedRunner) {
+    const childEnv = { ...env };
+    if (path.basename(resolvedDir).toLowerCase() === 'magpie') {
+      childEnv.XDG_CONFIG_HOME = path.dirname(resolvedDir);
+    }
+    return { resolvedDir, executable, childEnv };
+  }
+
+  const portableDir = await resolvePortableDataDirForBinary(magpiePath);
+  if (portableDir) {
+    if (normalizeComparablePath(portableDir) !== normalizeComparablePath(resolvedDir)) {
+      return null;
+    }
+    return { resolvedDir, executable, childEnv: { ...env } };
+  }
+
+  const defaultDir = path.resolve(resolveDefaultMagpieDir(env, homedir));
+  if (normalizeComparablePath(defaultDir) === normalizeComparablePath(resolvedDir)) {
+    return { resolvedDir, executable, childEnv: { ...env } };
+  }
+
+  if (path.basename(resolvedDir).toLowerCase() === 'magpie') {
+    return {
+      resolvedDir,
+      executable,
+      childEnv: { ...env, XDG_CONFIG_HOME: path.dirname(resolvedDir) },
+    };
+  }
+
+  // Arbitrary directory name that real `magpie` CLI cannot address via appdir rules:
+  // fail closed rather than touching the user's real `~/.config/magpie`.
+  return null;
+}
+
+function defaultExecMagpieFile(executable, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    nodeExecFile(executable, args, {
+      encoding: 'utf8',
+      maxBuffer: MAX_CLI_OUTPUT_BYTES,
+      timeout: options.timeout ?? options.timeoutMs ?? 20_000,
+      signal: options.signal,
+      env: options.env,
+      windowsHide: options.windowsHide !== false,
+    }, (error, stdout, stderr) => {
+      if (error) {
+        error.stdout = typeof stdout === 'string' ? stdout : '';
+        error.stderr = typeof stderr === 'string' ? stderr : '';
+        reject(error);
+        return;
+      }
+      resolve({
+        stdout: typeof stdout === 'string' ? stdout : '',
+        stderr: typeof stderr === 'string' ? stderr : '',
+      });
+    });
+  });
+}
+
+async function readAntigravityAuthEntries(configDir) {
+  const loginsRaw = await fs.readFile(path.join(configDir, 'logins.json'), 'utf8');
+  const logins = JSON.parse(loginsRaw);
+  const out = [];
+  for (const entry of Array.isArray(logins) ? logins : []) {
+    if (!isRecord(entry) || String(entry.agent ?? '').toLowerCase() !== 'antigravity') continue;
+    const user = String(entry.user ?? '').trim();
+    if (!user || !entry.auth || entry.auth === 'null') continue;
+    let auth;
+    try {
+      auth = typeof entry.auth === 'string' ? JSON.parse(entry.auth) : entry.auth;
+    } catch {
+      continue;
+    }
+    if (!isRecord(auth) || typeof auth.refresh_token !== 'string' || !auth.refresh_token.trim()) continue;
+    out.push({
+      user,
+      lowerUser: user.toLowerCase(),
+      accessToken: typeof auth.access_token === 'string' ? auth.access_token : '',
+      refreshToken: auth.refresh_token.trim(),
+      expiryMs: typeof auth.expiry_date === 'number' ? auth.expiry_date : 0,
+    });
+  }
+  return out;
+}
+
 /**
  * Resolves Magpie's config directory following `internal/appdir/appdir.go`:
  * explicit `configDir` > portable `data` folder beside `magpiePath` (when `.portable` exists or `data/logins.json` exists)
@@ -166,26 +310,8 @@ export async function resolveMagpieConfigDir({ configDir, magpiePath, env = proc
     if (!path.isAbsolute(trimmedExe)) {
       throw new Error('magpiePath must be an absolute path on the Kiki server, or omitted.');
     }
-    let realExe = trimmedExe;
-    try {
-      realExe = await fs.realpath(realExe);
-    } catch {
-      // Keep original absolute path if binary symlink target is unavailable in tests
-    }
-    const baseDir = path.dirname(realExe);
-    const portableData = path.join(baseDir, 'data');
-    try {
-      const markerStat = await fs.stat(path.join(baseDir, '.portable'));
-      if (!markerStat.isDirectory()) return portableData;
-    } catch {
-      // No .portable marker
-    }
-    try {
-      await fs.access(path.join(portableData, 'logins.json'));
-      return portableData;
-    } catch {
-      // Not portable
-    }
+    const portableData = await resolvePortableDataDirForBinary(trimmedExe);
+    if (portableData) return portableData;
   }
   return resolveDefaultMagpieDir(env, homedir);
 }
@@ -1007,6 +1133,140 @@ function resolveCandidateEntitlements(loadResp, rtKey, projectId) {
   return candidates;
 }
 
+async function refreshAccessTokenViaMagpieCli(account, {
+  tokenUrl = GOOGLE_TOKEN_URL,
+  configDir,
+  magpiePath,
+  env = process.env,
+  homedir = os.homedir(),
+  execFileFn,
+  magpieRefreshFn,
+  magpieRefreshAccountScoped = false,
+  timeoutMs = 20_000,
+  signal,
+  cancelled,
+}) {
+  const secrets = account._secrets;
+  const hasInjectedRunner = typeof magpieRefreshFn === 'function' || typeof execFileFn === 'function';
+  const target = await resolveMagpieCliInvocationTarget({
+    configDir,
+    magpiePath,
+    env,
+    homedir,
+    hasInjectedRunner,
+  });
+  if (!target) {
+    throw oauthClientMissingError(account.userHash);
+  }
+
+  const scopeUser = magpieRefreshAccountScoped && typeof account.user === 'string' && account.user.trim()
+    ? account.user.trim()
+    : '';
+  const flightKey = refreshKeyOf(JSON.stringify([
+    'magpie-cli',
+    normalizeComparablePath(target.resolvedDir),
+    target.executable,
+    scopeUser,
+    tokenUrl,
+  ]));
+
+  let flight = magpieCliRefreshInFlight.get(flightKey);
+  if (!flight) {
+    const controller = new AbortController();
+    const promise = (async () => {
+      const cliArgs = scopeUser
+        ? ['quota', 'refresh', 'antigravity', scopeUser, '--json']
+        : ['quota', 'refresh', 'antigravity', '--json'];
+      const cliTimeout = Math.max(timeoutMs, 20_000);
+      try {
+        if (typeof magpieRefreshFn === 'function') {
+          await magpieRefreshFn({
+            executable: target.executable,
+            args: cliArgs,
+            configDir: target.resolvedDir,
+            account: account.user,
+            timeoutMs: cliTimeout,
+            signal: controller.signal,
+            env: target.childEnv,
+          });
+        } else {
+          const runExec = typeof execFileFn === 'function' ? execFileFn : defaultExecMagpieFile;
+          await runExec(target.executable, cliArgs, {
+            timeout: cliTimeout,
+            timeoutMs: cliTimeout,
+            signal: controller.signal,
+            windowsHide: true,
+            env: target.childEnv,
+          });
+        }
+      } catch (err) {
+        if (controller.signal.aborted || err?.code === 'ABORT_ERR' || err?.name === 'AbortError') {
+          throw cancelled();
+        }
+        if (err?.code === 'ENOENT') {
+          throw oauthClientMissingError(account.userHash);
+        }
+        throw new Error(`Magpie CLI token refresh failed for ${account.userHash}`);
+      }
+      if (controller.signal.aborted) throw cancelled();
+
+      const entries = await readAntigravityAuthEntries(target.resolvedDir);
+      const now = Date.now();
+      for (const entry of entries) {
+        if (entry.accessToken && entry.expiryMs - now > CLI_REFRESHED_TOKEN_MIN_MS) {
+          const entryKey = refreshKeyOf(`${entry.refreshToken}\0${tokenUrl}`);
+          tokenMemoryCache.set(entryKey, {
+            accessToken: entry.accessToken,
+            expiryMs: entry.expiryMs,
+          });
+        }
+      }
+      return entries;
+    })();
+    flight = { controller, promise, waiters: 0 };
+    magpieCliRefreshInFlight.set(flightKey, flight);
+    const settled = () => {
+      if (magpieCliRefreshInFlight.get(flightKey) === flight) magpieCliRefreshInFlight.delete(flightKey);
+    };
+    void promise.then(settled, settled);
+  }
+
+  flight.waiters++;
+  let onAbort;
+  try {
+    const entries = await (signal ? Promise.race([flight.promise, new Promise((_, reject) => {
+      onAbort = () => reject(cancelled());
+      if (signal.aborted) onAbort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    })]) : flight.promise);
+    if (signal?.aborted) throw cancelled();
+
+    const lowerUser = typeof account.user === 'string' ? account.user.trim().toLowerCase() : '';
+    const matched = entries.find((item) => (
+      (lowerUser && item.lowerUser === lowerUser) || item.refreshToken === secrets.refreshToken
+    ));
+    if (!matched || !matched.accessToken || matched.expiryMs - Date.now() <= CLI_REFRESHED_TOKEN_MIN_MS) {
+      throw new Error(`Magpie CLI token refresh did not renew access_token for ${account.userHash}`);
+    }
+
+    if (matched.refreshToken && matched.refreshToken !== secrets.refreshToken) {
+      secrets.refreshToken = matched.refreshToken;
+    }
+    const finalKey = refreshKeyOf(`${secrets.refreshToken}\0${tokenUrl}`);
+    const token = { accessToken: matched.accessToken, expiryMs: matched.expiryMs };
+    tokenMemoryCache.set(finalKey, token);
+    secrets.accessToken = token.accessToken;
+    secrets.expiryMs = token.expiryMs;
+    return token.accessToken;
+  } finally {
+    if (onAbort) signal.removeEventListener('abort', onAbort);
+    if (--flight.waiters === 0 && magpieCliRefreshInFlight.get(flightKey) === flight) {
+      magpieCliRefreshInFlight.delete(flightKey);
+      flight.controller.abort();
+    }
+  }
+}
+
 export async function ensureFreshAccessToken(account, {
   tokenUrl = GOOGLE_TOKEN_URL,
   requestFn = requestViaProxy,
@@ -1014,6 +1274,14 @@ export async function ensureFreshAccessToken(account, {
   signal,
   ca,
   oauthClient = null,
+  magpieRefresh = true,
+  configDir,
+  magpiePath,
+  env = process.env,
+  homedir = os.homedir(),
+  execFileFn,
+  magpieRefreshFn,
+  magpieRefreshAccountScoped = false,
 }) {
   const cancelled = () => Object.assign(new Error('The OAuth refresh was cancelled.'), { code: 'ABORT_ERR' });
   if (signal?.aborted) throw cancelled();
@@ -1030,7 +1298,22 @@ export async function ensureFreshAccessToken(account, {
   }
 
   if (!oauthClient?.clientId || !oauthClient?.clientSecret) {
-    throw oauthClientMissingError(account.userHash);
+    if (magpieRefresh === false) {
+      throw oauthClientMissingError(account.userHash);
+    }
+    return refreshAccessTokenViaMagpieCli(account, {
+      tokenUrl,
+      configDir,
+      magpiePath,
+      env,
+      homedir,
+      execFileFn,
+      magpieRefreshFn,
+      magpieRefreshAccountScoped,
+      timeoutMs,
+      signal,
+      cancelled,
+    });
   }
 
   const flightKey = refreshKeyOf(JSON.stringify([
@@ -1149,7 +1432,13 @@ export async function fetchOneAccountDirectQuota(account, {
   signal,
   ca,
   env = process.env,
+  homedir = os.homedir(),
   oauthClient = null,
+  magpieRefresh = true,
+  configDir,
+  magpiePath,
+  execFileFn,
+  magpieRefreshFn,
   includeEmailInReadings = true,
 } = {}) {
   const secrets = account._secrets;
@@ -1168,6 +1457,13 @@ export async function fetchOneAccountDirectQuota(account, {
     signal,
     ca,
     oauthClient,
+    magpieRefresh,
+    configDir,
+    magpiePath,
+    env,
+    homedir,
+    execFileFn,
+    magpieRefreshFn,
   });
 
   const commonHeaders = {
@@ -1305,6 +1601,9 @@ export async function collectMagpieAntigravityDirectQuotas({
   onlyEnabled = true,
   includeEmailInReadings = true,
   oauthClient,
+  magpieRefresh = true,
+  execFileFn,
+  magpieRefreshFn,
   settings,
 } = {}) {
   if (signal?.aborted) {
@@ -1312,10 +1611,13 @@ export async function collectMagpieAntigravityDirectQuotas({
     err.code = 'ABORT_ERR';
     throw err;
   }
+  const effectiveMagpiePath = typeof magpiePath === 'string' && magpiePath.trim()
+    ? magpiePath.trim()
+    : (typeof settings?.magpiePath === 'string' && settings.magpiePath.trim() ? settings.magpiePath.trim() : undefined);
   const resolvedOrigin = resolveCodeAssistOrigin({ baseUrl: origin, env });
-  const resolvedDir = await resolveMagpieConfigDir({ configDir, magpiePath, env, homedir });
+  const resolvedDir = await resolveMagpieConfigDir({ configDir, magpiePath: effectiveMagpiePath, env, homedir });
   const resolvedOAuthClient = resolveAntigravityOAuthClient({ oauthClient, settings, env });
-  const cacheKey = `${resolvedDir}\0${resolvedOrigin}\0${onlyEnabled ? '1' : '0'}\0${includeEmailInReadings ? '1' : '0'}\0${resolvedOAuthClient ? '1' : '0'}`;
+  const cacheKey = `${resolvedDir}\0${resolvedOrigin}\0${onlyEnabled ? '1' : '0'}\0${includeEmailInReadings ? '1' : '0'}\0${resolvedOAuthClient ? '1' : '0'}\0${magpieRefresh === false ? '0' : '1'}`;
 
   if (!forceRefresh && minRefreshIntervalMs > 0) {
     const cached = batchResultCache.get(cacheKey);
@@ -1330,6 +1632,7 @@ export async function collectMagpieAntigravityDirectQuotas({
   const runBatch = async () => {
     const accounts = await loadMagpieAntigravityAccounts({
       configDir: resolvedDir,
+      magpiePath: effectiveMagpiePath,
       env,
       homedir,
       requireProxy,
@@ -1349,7 +1652,13 @@ export async function collectMagpieAntigravityDirectQuotas({
           signal,
           ca,
           env,
+          homedir,
           oauthClient: resolvedOAuthClient,
+          magpieRefresh,
+          configDir: resolvedDir,
+          magpiePath: effectiveMagpiePath,
+          execFileFn,
+          magpieRefreshFn,
           includeEmailInReadings,
         });
         return { ok: true, acc, res };

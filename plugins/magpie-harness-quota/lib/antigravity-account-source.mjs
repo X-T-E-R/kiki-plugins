@@ -226,7 +226,8 @@ async function destroyChild(child) {
 /**
  * Magpie Antigravity account source for agy-cli.
  * List reads public login metadata only. Prepare opens one scoped sidecar for the
- * selected account; refresh reuses that lease and does not read the catalog again.
+ * selected account; refresh reuses that lease without re-querying the catalog,
+ * renewing via configured OAuth client or managed Magpie CLI fallback.
  */
 export class MagpieAntigravityAccountService {
   constructor(options = {}) {
@@ -253,7 +254,9 @@ export class MagpieAntigravityAccountService {
   async #storeOptions(settings, env) {
     const magpiePath = typeof settings.magpiePath === 'string' && settings.magpiePath.trim()
       ? settings.magpiePath.trim()
-      : undefined;
+      : (typeof this.options.magpiePath === 'string' && this.options.magpiePath.trim()
+        ? this.options.magpiePath.trim()
+        : undefined);
     const configDir = typeof settings.magpieConfigDir === 'string' && settings.magpieConfigDir.trim()
       ? settings.magpieConfigDir.trim()
       : this.options.configDir;
@@ -302,7 +305,15 @@ export class MagpieAntigravityAccountService {
     return accounts;
   }
 
-  async #session(account, { origin, tokenUrl, oauthClient, signal }) {
+  async #session(account, {
+    origin,
+    tokenUrl,
+    oauthClient,
+    configDir,
+    magpiePath,
+    env,
+    signal,
+  }) {
     const requestFn = requestWithProxy(account._secrets.proxyUrl);
     const accessToken = await ensureFreshAccessToken(account, {
       tokenUrl,
@@ -310,6 +321,14 @@ export class MagpieAntigravityAccountService {
       timeoutMs: HTTP_TIMEOUT_MS,
       signal,
       oauthClient,
+      magpieRefresh: this.options.magpieRefresh,
+      configDir,
+      magpiePath,
+      env,
+      homedir: this.options.homedir,
+      execFileFn: this.options.execFileFn,
+      magpieRefreshFn: this.options.magpieRefreshFn,
+      magpieRefreshAccountScoped: true,
     });
     const headers = {
       Authorization: `Bearer ${accessToken}`,
@@ -387,15 +406,30 @@ export class MagpieAntigravityAccountService {
 
   #issueBearer(lease, rejected) {
     const run = lease.refresh.then(async () => {
+      if (lease.released) throw abortError();
       const secrets = lease.account._secrets;
       if (rejected && rejected === secrets.accessToken) forgetAntigravityAccessToken(lease.account, lease.tokenUrl);
       await ensureFreshAccessToken(lease.account, {
         tokenUrl: lease.tokenUrl,
         requestFn: requestWithProxy(secrets.proxyUrl),
         timeoutMs: HTTP_TIMEOUT_MS,
-        signal: lease.signal,
+        signal: lease.leaseSignal,
         oauthClient: lease.oauthClient,
+        magpieRefresh: lease.magpieRefresh,
+        configDir: lease.configDir,
+        magpiePath: lease.magpiePath,
+        env: lease.env,
+        homedir: lease.homedir,
+        execFileFn: lease.execFileFn,
+        magpieRefreshFn: lease.magpieRefreshFn,
+        magpieRefreshAccountScoped: true,
       });
+      if (secrets.accessToken && !lease.redactions.includes(secrets.accessToken)) {
+        lease.redactions.push(secrets.accessToken);
+      }
+      if (secrets.refreshToken && !lease.redactions.includes(secrets.refreshToken)) {
+        lease.redactions.push(secrets.refreshToken);
+      }
       const bearer = bearerFrom(lease.account);
       if (!bearer.access_token || bearer.expires_at * 1000 <= Date.now()) {
         throw new Error('Antigravity authorization expired.');
@@ -516,7 +550,8 @@ export class MagpieAntigravityAccountService {
     const instanceId = textId(input?.instanceId, 'instance id');
     const env = this.#env();
     const settings = isRecord(context.settings) ? context.settings : {};
-    const loaded = await this.#loadedAccounts(settings, env);
+    const store = await this.#storeOptions(settings, env);
+    const loaded = await loadMagpieAntigravityAccounts(store);
     const selected = loaded.find((account) => account.user === accountId);
     if (!selected) throw new Error('Selected account was not found.');
     const status = accountStatus(selected);
@@ -535,10 +570,25 @@ export class MagpieAntigravityAccountService {
     const redactions = [account._secrets.accessToken, account._secrets.refreshToken, oauthClient?.clientSecret, choice.proxyUrl];
     try {
       throwIfAborted(signal);
-      const session = await this.#session(account, { origin, tokenUrl, oauthClient, signal });
+      const session = await this.#session(account, {
+        origin,
+        tokenUrl,
+        oauthClient,
+        configDir: store.configDir,
+        magpiePath: store.magpiePath,
+        env,
+        signal,
+      });
+      if (account._secrets.accessToken && !redactions.includes(account._secrets.accessToken)) {
+        redactions.push(account._secrets.accessToken);
+      }
+      if (account._secrets.refreshToken && !redactions.includes(account._secrets.refreshToken)) {
+        redactions.push(account._secrets.refreshToken);
+      }
       throwIfAborted(signal);
       const capability = crypto.randomBytes(32).toString('base64url');
       const leaseId = `lease_${crypto.randomBytes(18).toString('base64url')}`;
+      const leaseAbort = new AbortController();
       const lease = {
         leaseId,
         account,
@@ -548,9 +598,17 @@ export class MagpieAntigravityAccountService {
         origin,
         tokenUrl,
         oauthClient,
+        configDir: store.configDir,
+        magpiePath: store.magpiePath,
+        homedir: this.options.homedir,
+        magpieRefresh: this.options.magpieRefresh,
+        execFileFn: this.options.execFileFn,
+        magpieRefreshFn: this.options.magpieRefreshFn,
         modelIds: session.modelIds,
         env,
-        signal,
+        leaseAbort,
+        leaseSignal: leaseAbort.signal,
+        released: false,
         sidecarPath,
         redactions: [...redactions, capability],
         refresh: Promise.resolve(),
@@ -579,6 +637,8 @@ export class MagpieAntigravityAccountService {
     const lease = this.leases.get(leaseId);
     if (!lease) return;
     this.leases.delete(leaseId);
+    lease.released = true;
+    lease.leaseAbort?.abort();
     await destroyChild(lease.child);
   }
 }

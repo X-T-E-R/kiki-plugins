@@ -7,7 +7,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 import test from 'node:test';
-import { z } from 'zod';
 
 import manifest from '../kimi.plugin.json' with { type: 'json' };
 import {
@@ -34,31 +33,76 @@ import {
 const declaredSources = manifest['x-kiki'].harnessQuotaSources;
 const declaredAccountSources = manifest['x-kiki'].harnessAccountSources;
 
-// Exact contract schemas from packages/plugin-sdk/src/harness-quota.ts
-const identifier = z.string().min(1).max(1024).regex(/^[^\s\u0000]+$/);
-const harnessQuotaUnitSchema = z.enum(['percent', 'money', 'tokens', 'requests', 'credits', 'count']);
-const harnessQuotaSourceDefinitionSchema = z.object({
-  schemaVersion: z.literal(1),
-  id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
-  label: z.string().min(1),
-  engineIds: z.array(identifier).min(1).refine((ids) => new Set(ids).size === ids.length, 'Duplicate engine id'),
-  minRefreshIntervalMs: z.number().int().min(300_000).optional(),
-}).strict();
-const harnessQuotaReadingSchema = z.object({
-  accountId: identifier,
-  accountLabel: z.string().min(1).optional(),
-  modelIds: z.array(identifier).optional(),
-  pool: z.string().min(1).optional(),
-  unit: harnessQuotaUnitSchema,
-  window: z.string().min(1).optional(),
-  remaining: z.number().finite().nonnegative().optional(),
-  resetAt: z.string().datetime({ offset: true }).optional(),
-  readAt: z.string().datetime({ offset: true }).optional(),
-}).strict();
-const harnessQuotaBatchSchema = z.union([
-  z.array(harnessQuotaReadingSchema).max(500),
-  z.object({ readings: z.array(harnessQuotaReadingSchema).max(500) }).strict(),
-]);
+// Exact contract validators from packages/plugin-sdk/src/harness-quota.ts (zero external npm dependencies so standalone managed plugin tests run cleanly)
+const ALLOWED_QUOTA_UNITS = new Set(['percent', 'money', 'tokens', 'requests', 'credits', 'count']);
+const ISO_OFFSET_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+function assertIdentifier(val, label = 'identifier') {
+  assert.equal(typeof val, 'string', `${label} must be a string`);
+  assert.ok(val.length >= 1 && val.length <= 1024 && /^[^\s\u0000]+$/.test(val), `Invalid ${label}: ${val}`);
+}
+
+const harnessQuotaSourceDefinitionSchema = {
+  parse(source) {
+    assert.ok(source && typeof source === 'object' && !Array.isArray(source));
+    const allowed = new Set(['schemaVersion', 'id', 'label', 'engineIds', 'minRefreshIntervalMs']);
+    for (const k of Object.keys(source)) assert.ok(allowed.has(k), `Unexpected source key: ${k}`);
+    assert.equal(source.schemaVersion, 1);
+    assert.match(source.id, /^[a-z0-9][a-z0-9-]{0,63}$/);
+    assert.ok(typeof source.label === 'string' && source.label.length >= 1);
+    assert.ok(Array.isArray(source.engineIds) && source.engineIds.length >= 1);
+    for (const id of source.engineIds) assertIdentifier(id, 'engineId');
+    assert.equal(new Set(source.engineIds).size, source.engineIds.length, 'Duplicate engine id');
+    if (source.minRefreshIntervalMs !== undefined) {
+      assert.ok(Number.isInteger(source.minRefreshIntervalMs) && source.minRefreshIntervalMs >= 300_000);
+    }
+    return source;
+  },
+};
+
+const harnessQuotaReadingSchema = {
+  parse(reading) {
+    assert.ok(reading && typeof reading === 'object' && !Array.isArray(reading));
+    const allowed = new Set(['accountId', 'accountLabel', 'modelIds', 'pool', 'unit', 'window', 'remaining', 'resetAt', 'readAt']);
+    for (const k of Object.keys(reading)) assert.ok(allowed.has(k), `Unexpected reading key: ${k}`);
+    assertIdentifier(reading.accountId, 'accountId');
+    if (reading.accountLabel !== undefined) assert.ok(typeof reading.accountLabel === 'string' && reading.accountLabel.length >= 1);
+    if (reading.modelIds !== undefined) {
+      assert.ok(Array.isArray(reading.modelIds));
+      for (const id of reading.modelIds) assertIdentifier(id, 'modelId');
+    }
+    if (reading.pool !== undefined) assert.ok(typeof reading.pool === 'string' && reading.pool.length >= 1);
+    assert.ok(ALLOWED_QUOTA_UNITS.has(reading.unit), `Invalid unit: ${reading.unit}`);
+    if (reading.window !== undefined) assert.ok(typeof reading.window === 'string' && reading.window.length >= 1);
+    if (reading.remaining !== undefined) {
+      assert.ok(typeof reading.remaining === 'number' && Number.isFinite(reading.remaining) && reading.remaining >= 0);
+    }
+    if (reading.resetAt !== undefined) {
+      assert.match(reading.resetAt, ISO_OFFSET_DATETIME_RE);
+      assert.ok(Number.isFinite(Date.parse(reading.resetAt)));
+    }
+    if (reading.readAt !== undefined) {
+      assert.match(reading.readAt, ISO_OFFSET_DATETIME_RE);
+      assert.ok(Number.isFinite(Date.parse(reading.readAt)));
+    }
+    return reading;
+  },
+};
+
+const harnessQuotaBatchSchema = {
+  parse(batch) {
+    if (Array.isArray(batch)) {
+      assert.ok(batch.length <= 500);
+      for (const item of batch) harnessQuotaReadingSchema.parse(item);
+      return batch;
+    }
+    assert.ok(batch && typeof batch === 'object');
+    assert.deepEqual(Object.keys(batch), ['readings']);
+    assert.ok(Array.isArray(batch.readings) && batch.readings.length <= 500);
+    for (const item of batch.readings) harnessQuotaReadingSchema.parse(item);
+    return batch;
+  },
+};
 
 // Exact built-in external executor IDs from Kiki packages/agent-core-v2/src/app/agentExecutor/builtinDescriptorData.ts
 const BUILTIN_EXTERNAL_EXECUTOR_IDS = new Set([
@@ -387,7 +431,7 @@ const FIXTURE_MAGPIE_OTHER_SOURCES = {
 };
 
 test('manifest and entry registration declare verified 1:1 Magpie harness quota sources without speculative catch-all engine bindings or reading quota on register', () => {
-  assert.equal(manifest.version, '0.1.3');
+  assert.equal(manifest.version, '0.1.4');
   assert.deepEqual(declaredAccountSources, harnessAccountSourceDefinitions);
   assert.deepEqual(antigravityAccountSourceDefinition, {
     schemaVersion: 1,

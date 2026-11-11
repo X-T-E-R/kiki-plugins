@@ -692,3 +692,161 @@ exclusive('shared project is omitted only from the catalog and a broken stdin st
     await Promise.all([closeServer(server), rm(root, { recursive: true, force: true })]);
   }
 });
+
+exclusive('renews expired tokens via managed `magpie quota refresh` across both prepare and cross-hour runtime harness_refresh without OAuth client settings', async () => {
+  const rootBase = await mkdtemp(path.join(os.tmpdir(), 'magpie-agy-cli-renew-'));
+  const magpieDir = path.join(rootBase, 'magpie');
+  const { mkdir } = await import('node:fs/promises');
+  await mkdir(magpieDir, { recursive: true });
+  const upstream = await startUpstream();
+  const proxyA = await startForwardProxy('A');
+  const fake = fakeSpawn();
+  const cliInvocations = [];
+  let issuedCounter = 0;
+
+  const loginsPath = path.join(magpieDir, 'logins.json');
+  const providersPath = path.join(magpieDir, 'providers.json');
+
+  const execFileFn = async (executable, args, options) => {
+    cliInvocations.push({ executable, args, envXdg: options.env?.XDG_CONFIG_HOME });
+    const logins = JSON.parse(await readFile(loginsPath, 'utf8'));
+    issuedCounter += 1;
+    const targetUser = args[3];
+    for (const entry of logins) {
+      if (!targetUser || entry.user === targetUser) {
+        entry.auth.access_token = `CLI-RENEWED-TOKEN-${issuedCounter}-DO-NOT-LEAK`;
+        entry.auth.expiry_date = Date.now() + 3_600_000;
+      }
+    }
+    await writeFile(loginsPath, `${JSON.stringify(logins, null, 2)}\n`, 'utf8');
+    return { stdout: '[]', stderr: '' };
+  };
+
+  const service = new MagpieAntigravityAccountService({
+    spawnFn: fake.spawnFn,
+    execFileFn,
+    env: {
+      XDG_CONFIG_HOME: rootBase,
+      GATEWAY_ANTIGRAVITY_FORWARD_BASE_URL: upstream.origin,
+      ANTIGRAVITY_TOKEN_URL: `${upstream.origin}/oauth2/token`,
+    },
+  });
+
+  try {
+    await writeFile(loginsPath, JSON.stringify([{
+      agent: 'antigravity',
+      user: 'Work-A@example.test',
+      on: true,
+      auth: {
+        access_token: 'EXPIRED-INITIAL-TOKEN',
+        refresh_token: REFRESH_A,
+        expiry_date: 1_000,
+      },
+    }], null, 2), 'utf8');
+    await writeFile(providersPath, JSON.stringify({
+      providers: [{
+        id: 'antigravity',
+        accountProxies: { 'work-a@example.test': proxyA.url },
+      }],
+    }, null, 2), 'utf8');
+
+    const magpieExe = path.join(rootBase, 'bin', 'magpie.exe');
+    const prepareAbort = new AbortController();
+    const prepared = await service.prepare({
+      engineId: 'agy-cli',
+      accountId: 'Work-A@example.test',
+      instanceId: 'instance-cli-renew',
+      proxy: { mode: 'system' },
+    }, {
+      settings: {
+        magpieConfigDir: magpieDir,
+        magpiePath: magpieExe,
+        antigravitySidecarPath: SIDECAR,
+        // Note: NO antigravityOAuthClientId / antigravityOAuthClientSecret configured!
+      },
+      signal: prepareAbort.signal,
+    });
+
+    assert.equal(cliInvocations.length, 1);
+    assert.equal(cliInvocations[0].executable, magpieExe);
+    assert.deepEqual(cliInvocations[0].args, ['quota', 'refresh', 'antigravity', 'Work-A@example.test', '--json']);
+    assert.equal(cliInvocations[0].envXdg, rootBase);
+    assert.equal(upstream.hits.some((h) => h.path === '/oauth2/token'), false);
+
+    const sidecarRecord = fake.calls[0];
+    assert.equal(sidecarRecord.messages[0].type, 'harness_configure');
+    assert.equal(sidecarRecord.messages[0].bearer.access_token, 'CLI-RENEWED-TOKEN-1-DO-NOT-LEAK');
+    assert.equal(sidecarRecord.messages[0].bearer.project_id, 'project-A');
+
+    // Simulate prepare's caller signal expiring/aborting later (e.g. initial RPC timeout cleaned up)
+    // while the lease remains active for cross-hour sidecar execution:
+    prepareAbort.abort();
+
+    // Simulate 1 hour later: sidecar receives 401 or hits expiry and sends two concurrent `harness_refresh` requests
+    const refreshReplies = new Promise((resolve) => {
+      const check = () => {
+        const results = sidecarRecord.messages.filter((m) => m.type === 'harness_refresh_result');
+        if (results.length >= 2) resolve(results);
+      };
+      sidecarRecord.child.stdin.on('data', () => setImmediate(check));
+    });
+
+    sidecarRecord.child.stdout.write(`${JSON.stringify({
+      type: 'harness_refresh',
+      rejected_bearer: 'CLI-RENEWED-TOKEN-1-DO-NOT-LEAK',
+    })}\n`);
+    sidecarRecord.child.stdout.write(`${JSON.stringify({
+      type: 'harness_refresh',
+      rejected_bearer: 'CLI-RENEWED-TOKEN-1-DO-NOT-LEAK',
+    })}\n`);
+
+    const [reply1, reply2] = await refreshReplies;
+    assert.equal(reply1.error, undefined);
+    assert.equal(reply2.error, undefined);
+    assert.equal(reply1.bearer.access_token, 'CLI-RENEWED-TOKEN-2-DO-NOT-LEAK');
+    assert.equal(reply2.bearer.access_token, 'CLI-RENEWED-TOKEN-2-DO-NOT-LEAK');
+    assert.equal(cliInvocations.length, 2, 'second cross-hour renewal must coalesce concurrent harness_refresh into one CLI call');
+    // Catalog was NOT re-queried during runtime harness_refresh
+    assert.equal(upstream.hits.filter((h) => h.path === '/v1internal:fetchAvailableModels').length, 1);
+
+    // Verify ENOENT or disabled CLI fallback still surfaces OAUTH_CLIENT_UNCONFIGURED cleanly without leaking secrets
+    const enoentService = new MagpieAntigravityAccountService({
+      spawnFn: fake.spawnFn,
+      execFileFn: async () => {
+        const err = new Error('spawn magpie.exe ENOENT');
+        err.code = 'ENOENT';
+        throw err;
+      },
+      env: {
+        XDG_CONFIG_HOME: rootBase,
+        GATEWAY_ANTIGRAVITY_FORWARD_BASE_URL: upstream.origin,
+      },
+    });
+    await writeFile(loginsPath, JSON.stringify([{
+      agent: 'antigravity',
+      user: 'Work-A@example.test',
+      on: true,
+      auth: {
+        access_token: 'EXPIRED-AGAIN-TOKEN',
+        refresh_token: 'REFRESH-ENOENT-DO-NOT-LEAK',
+        expiry_date: 1_000,
+      },
+    }], null, 2), 'utf8');
+    clearCollectorRuntimeCaches();
+    await assert.rejects(
+      enoentService.prepare({
+        engineId: 'agy-cli',
+        accountId: 'Work-A@example.test',
+        instanceId: 'instance-enoent',
+        proxy: { mode: 'system' },
+      }, {
+        settings: { magpieConfigDir: magpieDir, magpiePath: magpieExe, antigravitySidecarPath: SIDECAR },
+      }),
+      (err) => err?.code === 'OAUTH_CLIENT_UNCONFIGURED' && !err.message.includes('REFRESH-ENOENT-DO-NOT-LEAK'),
+    );
+
+    await service.release({ leaseId: prepared.leaseId });
+  } finally {
+    await Promise.all([upstream.close(), proxyA.close(), rm(rootBase, { recursive: true, force: true })]);
+  }
+});

@@ -15,8 +15,10 @@ import {
   COLLECTOR_PROTOCOL_ID,
   COLLECTOR_SCHEMA_VERSION,
   MagpieAntigravityDirectQuotaService,
+  OAUTH_CLIENT_UNCONFIGURED,
   clearCollectorRuntimeCaches,
   collectMagpieAntigravityDirectQuotas,
+  ensureFreshAccessToken,
   interpretAntigravityDirectQuota,
   loadMagpieAntigravityAccounts,
   resolveCodeAssistOrigin,
@@ -847,6 +849,163 @@ test('missing OAuth client marks only expired accounts unknown; a live token sti
       await Promise.all([
         httpProxy.close(),
         socksProxy.close(),
+        new Promise((resolve) => httpsUpstream.close(resolve)),
+      ]);
+    }
+  } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('batch collector single-flights managed `magpie quota refresh antigravity --json` across multiple expired accounts when OAuth client is unconfigured, while preserving OAUTH_CLIENT_UNCONFIGURED on ENOENT or magpieRefresh: false', async () => {
+  clearCollectorRuntimeCaches();
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'magpie-cli-fallback-batch-'));
+  const magpieDir = path.join(tmpDir, 'magpie');
+  await fs.mkdir(magpieDir, { recursive: true });
+  try {
+    const httpProxy = await startAuthenticatedConnectProxy({ expectedAuth: '' });
+    const { keyPath, certPath } = generateTestSelfSignedCert(tmpDir);
+    const [keyPem, certPem] = await Promise.all([fs.readFile(keyPath), fs.readFile(certPath)]);
+    const upstreamHits = [];
+    const httpsUpstream = https.createServer({ key: keyPem, cert: certPem }, async (req, res) => {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      upstreamHits.push({ url: req.url, auth: req.headers.authorization });
+      res.setHeader('Content-Type', 'application/json');
+      if (req.url === '/v1internal:loadCodeAssist') {
+        res.writeHead(200).end(JSON.stringify({
+          cloudaicompanionProject: 'proj-cli-fallback',
+          currentTier: { id: 'standard-tier', name: 'Antigravity' },
+        }));
+        return;
+      }
+      if (req.url === '/v1internal:fetchAvailableModels') {
+        res.writeHead(200).end(JSON.stringify({
+          models: {
+            'gemini-4-argon-high': {
+              displayName: 'Gemini 4 Argon (High)',
+              quotaInfo: { remainingFraction: 0.9, resetTime: '2026-11-11T12:00:00Z' },
+            },
+          },
+        }));
+        return;
+      }
+      if (req.url === '/v1internal:retrieveUserQuotaSummary') {
+        res.writeHead(200).end(JSON.stringify({
+          groups: [{
+            displayName: 'Gemini 4 Argon',
+            description: 'Argon weekly pool',
+            buckets: [{ bucketId: 'argon-weekly', window: 'weekly', remainingFraction: 0.85, resetTime: '2026-11-18T00:00:00Z' }],
+          }],
+        }));
+        return;
+      }
+      res.writeHead(404).end('{}');
+    });
+    await new Promise((resolve) => httpsUpstream.listen(0, '127.0.0.1', resolve));
+    const origin = `https://127.0.0.1:${httpsUpstream.address().port}`;
+    const loginsPath = path.join(magpieDir, 'logins.json');
+    const providersPath = path.join(magpieDir, 'providers.json');
+
+    const writeExpiredSix = async () => {
+      const logins = Array.from({ length: 6 }, (_, idx) => ({
+        agent: 'antigravity',
+        user: `seat-${idx + 1}@example.test`,
+        on: true,
+        auth: {
+          access_token: `expired-at-${idx + 1}`,
+          refresh_token: `rt-seat-${idx + 1}`,
+          expiry_date: Date.now() + 30_000, // < 2 minutes margin -> triggers refresh
+        },
+      }));
+      await fs.writeFile(loginsPath, JSON.stringify(logins, null, 2), 'utf8');
+    };
+    await writeExpiredSix();
+    await fs.writeFile(providersPath, JSON.stringify({
+      providers: [{ id: 'antigravity', proxy: `http://127.0.0.1:${httpProxy.port}` }],
+    }, null, 2), 'utf8');
+
+    try {
+      // 1. Explicit `magpieRefresh: false` preserves OAUTH_CLIENT_UNCONFIGURED
+      const accountsForDirectCheck = await loadMagpieAntigravityAccounts({ configDir: magpieDir, env: { XDG_CONFIG_HOME: tmpDir } });
+      await assert.rejects(
+        () => ensureFreshAccessToken(accountsForDirectCheck[0], {
+          magpieRefresh: false,
+          configDir: magpieDir,
+          env: { XDG_CONFIG_HOME: tmpDir },
+        }),
+        (err) => err?.code === OAUTH_CLIENT_UNCONFIGURED,
+      );
+
+      // 2. Simulated missing binary (`ENOENT`) preserves OAUTH_CLIENT_UNCONFIGURED (-> status: 'unknown' in batch)
+      const enoentBatch = await collectMagpieAntigravityDirectQuotas({
+        configDir: magpieDir,
+        origin,
+        ca: certPem,
+        env: { XDG_CONFIG_HOME: tmpDir },
+        includeEmailInReadings: false,
+        execFileFn: async () => {
+          const err = new Error('spawn magpie ENOENT');
+          err.code = 'ENOENT';
+          throw err;
+        },
+      });
+      assert.equal(enoentBatch.accounts.length, 6);
+      assert.ok(enoentBatch.accounts.every((a) => a.status === 'unknown'));
+
+      // 3. Batch refresh across 6 expired accounts triggers ONE single-flight `magpie quota refresh antigravity --json`
+      let cliCalls = 0;
+      const cliSeenArgs = [];
+      const cliSeenEnv = [];
+      const refreshedBatch = await collectMagpieAntigravityDirectQuotas({
+        configDir: magpieDir,
+        magpiePath: path.resolve(tmpDir, 'bin', 'magpie.exe'),
+        origin,
+        ca: certPem,
+        env: { XDG_CONFIG_HOME: tmpDir },
+        includeEmailInReadings: true,
+        execFileFn: async (executable, args, options) => {
+          cliCalls += 1;
+          cliSeenArgs.push({ executable, args });
+          cliSeenEnv.push(options.env?.XDG_CONFIG_HOME);
+          const current = JSON.parse(await fs.readFile(loginsPath, 'utf8'));
+          const nextExpiry = Date.now() + 3_600_000;
+          for (let i = 0; i < current.length; i += 1) {
+            current[i].auth.access_token = `cli-fresh-token-${i + 1}`;
+            current[i].auth.expiry_date = nextExpiry;
+          }
+          await fs.writeFile(loginsPath, JSON.stringify(current, null, 2), 'utf8');
+          return { stdout: '[]', stderr: '' };
+        },
+      });
+
+      assert.equal(cliCalls, 1, '6 concurrent expired accounts must coalesce into 1 single-flight Magpie CLI invocation');
+      assert.deepEqual(cliSeenArgs[0].args, ['quota', 'refresh', 'antigravity', '--json']);
+      assert.equal(cliSeenEnv[0], tmpDir);
+      assert.equal(refreshedBatch.accounts.length, 6);
+      assert.ok(refreshedBatch.accounts.every((a) => a.status === 'ok'));
+      for (let i = 1; i <= 6; i += 1) {
+        assert.ok(upstreamHits.some((h) => h.auth === `Bearer cli-fresh-token-${i}`));
+      }
+      for (const r of refreshedBatch.readings) validateHarnessQuotaReading(r);
+
+      // Subsequent read reuses tokenMemoryCache without spawning Magpie CLI again even if logins.json still had old mtime
+      const secondBatch = await collectMagpieAntigravityDirectQuotas({
+        configDir: magpieDir,
+        magpiePath: path.resolve(tmpDir, 'bin', 'magpie.exe'),
+        origin,
+        ca: certPem,
+        env: { XDG_CONFIG_HOME: tmpDir },
+        includeEmailInReadings: true,
+        execFileFn: async () => {
+          throw new Error('must not invoke CLI while refreshed tokens remain cached in memory');
+        },
+      });
+      assert.ok(secondBatch.accounts.every((a) => a.status === 'ok'));
+    } finally {
+      httpsUpstream.closeAllConnections?.();
+      await Promise.all([
+        httpProxy.close(),
         new Promise((resolve) => httpsUpstream.close(resolve)),
       ]);
     }
