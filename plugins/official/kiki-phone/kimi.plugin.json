@@ -1,14 +1,21 @@
 {
   "name": "kiki-phone",
-  "version": "0.1.2",
-  "description": "Prepare and operate Android or iOS phones with Mobilewright semantic scripts, snapshots and screenshots, plus the complete Mobile MCP toolset and optional Android su commands.",
+  "version": "0.2.0",
+  "description": "Prepare, preview and operate Android or iOS phones with live workspace screen streaming, Mobilewright semantic scripts, snapshots and screenshots, plus the complete Mobile MCP toolset and optional Android su commands.",
   "license": "MIT",
+  "icon": "./icon.svg",
   "author": "Kiki",
   "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-phone",
   "interface": {
     "displayName": "Kiki Phone",
-    "shortDescription": "Connect phones, observe screens and operate apps",
-    "developerName": "Kiki"
+    "shortDescription": "Live Android & iOS screen preview and semantic phone control",
+    "developerName": "Kiki",
+    "localization": {
+      "zh-CN": {
+        "displayName": "Kiki 手机控制与预览",
+        "shortDescription": "Android 与 iOS 实时屏幕预览及语义操控"
+      }
+    }
   },
   "skills": [
     "./skills"
@@ -33,11 +40,26 @@
       "kiki": "^0.4.0"
     },
     "entry": "./entry.mjs",
+    "slots": [
+      "E5:prompt-context",
+      "E8:tool-pipeline",
+      "E12:server-gui-slots"
+    ],
     "permissions": {
       "exec": [
         "adb"
-      ]
+      ],
+      "uiPanel": true
     },
+    "panels": [
+      {
+        "schemaVersion": 1,
+        "id": "preview",
+        "label": "Phone Preview",
+        "slot": "sidebar",
+        "path": "./panel.html"
+      }
+    ],
     "settings": {
       "schemaVersion": 1,
       "schema": {
@@ -87,13 +109,13 @@
       {
         "schemaVersion": 1,
         "name": "phone_run",
-        "description": "Preferred phone interface: run async JavaScript with existing Mobilewright device, screen and expect, plus snapshot() and screenshot() that returns an image to Kiki. Use semantic screen.getByText/getByLabel/getByRole locators and their tap/fill/check methods. No script lists online devices. The chosen device persists across calls. If the runtime is missing, use phone_prepare. Scripts execute as trusted local code; observe an unclear modifying outcome before repeating it.",
+        "description": "Preferred phone interface: run async JavaScript with existing Mobilewright device, screen and expect, plus snapshot(), screenshot() that returns an image to Kiki, Android device.wake()/unlock()/sleep()/screenState(), and screen.typeText(). Use semantic screen.getByText/getByLabel/getByRole locators and their tap/fill/check methods. No script lists online devices. The chosen device persists across calls. If the runtime is missing, use phone_prepare. Scripts execute as trusted local code; observe an unclear modifying outcome before repeating it.",
         "parameters": {
           "type": "object",
           "properties": {
             "script": {
               "type": "string",
-              "description": "Async JavaScript body. Example: console.log(await snapshot()); await screenshot(); Native device/screen/expect are Mobilewright 0.0.67 APIs; console output is returned."
+              "description": "Async JavaScript body. Example: await device.wake(); console.log(await snapshot()); await screenshot(); Native device/screen/expect are Mobilewright 0.0.67 APIs plus Android power/lock helpers; console output is returned."
             },
             "device": {
               "type": "string",

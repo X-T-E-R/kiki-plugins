@@ -13,9 +13,9 @@ export const definitions = [
       platform: { type: 'string', enum: ['android', 'ios'], default: 'android', description: 'iOS prepares upstream packages without requiring Android ADB.' },
     }, []),
   tool('phone_run',
-    'Preferred phone interface: run async JavaScript with existing Mobilewright device, screen and expect, plus snapshot() and screenshot() that returns an image to Kiki. Use semantic screen.getByText/getByLabel/getByRole locators and their tap/fill/check methods. No script lists online devices. The chosen device persists across calls. If the runtime is missing, use phone_prepare. Scripts execute as trusted local code; observe an unclear modifying outcome before repeating it.',
+    'Preferred phone interface: run async JavaScript with existing Mobilewright device, screen and expect, plus snapshot(), screenshot() that returns an image to Kiki, Android device.wake()/unlock()/sleep()/screenState(), and screen.typeText(). Use semantic screen.getByText/getByLabel/getByRole locators and their tap/fill/check methods. No script lists online devices. The chosen device persists across calls. If the runtime is missing, use phone_prepare. Scripts execute as trusted local code; observe an unclear modifying outcome before repeating it.',
     {
-      script: text('Async JavaScript body. Example: console.log(await snapshot()); await screenshot(); Native device/screen/expect are Mobilewright 0.0.67 APIs; console output is returned.'),
+      script: text('Async JavaScript body. Example: await device.wake(); console.log(await snapshot()); await screenshot(); Native device/screen/expect are Mobilewright 0.0.67 APIs plus Android power/lock helpers; console output is returned.'),
       device: text('Online upstream device id. Required when multiple devices are online and none has been selected. Reuses the selected device on later calls.'),
       platform: { type: 'string', enum: ['android', 'ios'], default: 'android' },
       timeoutMs: { type: 'integer', minimum: 1000, maximum: 300000, default: 90000, description: 'Whole script deadline; completed phone actions are not rolled back on cancellation or timeout.' },

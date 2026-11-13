@@ -1,6 +1,6 @@
 {
   "name": "@kiki/phone-business",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Host-independent Kiki Phone business implementation",
   "type": "module",
   "license": "MIT",
@@ -12,8 +12,10 @@
     "./mobile-facade": { "types": "./types/mobile-facade.d.ts", "default": "./lib/mobile-facade.mjs" },
     "./phone-run": { "types": "./types/phone-run.d.ts", "default": "./lib/phone-run.mjs" },
     "./prepare": { "types": "./types/prepare.d.ts", "default": "./lib/prepare.mjs" },
+    "./preview-service": { "types": "./types/preview-service.d.ts", "default": "./lib/preview-service.mjs" },
     "./runtime": { "types": "./types/runtime.d.ts", "default": "./lib/launch-mobile-mcp.mjs" },
     "./skill": { "types": "./types/skill.d.ts", "default": "./lib/skill.mjs" },
+    "./slots": { "types": "./types/slots.d.ts", "default": "./lib/slots.mjs" },
     "./package.json": "./package.json"
   },
   "files": [

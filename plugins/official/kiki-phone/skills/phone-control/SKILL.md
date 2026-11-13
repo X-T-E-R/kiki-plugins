@@ -15,9 +15,10 @@ Call `phone_run` without a script to list online devices. When several exist, as
 
 ## Observe, act, observe
 
-Start with the real current page:
+Start with the real current page (on Android, `await device.wake()` wakes a sleeping display and dismisses an unsecured lockscreen via `wm dismiss-keyguard` plus a swipe-up gesture when needed; `device.screenState()`, `device.unlock()` and `device.sleep()` are also available):
 
 ```js
+await device.wake();
 console.log(await snapshot());
 await screenshot();
 ```
@@ -38,7 +39,7 @@ console.log(await snapshot());
 
 Available native locators include `getByText`, `getByLabel`, `getByTestId`, `getByPlaceholder`, `getByRole` and `getByType`. Their `tap`, `fill`, `clear`, `check`, `scrollIntoViewIfNeeded` and `expect` methods already implement locating and waiting. Use only roles and attributes supported by the observed page. A control may have a custom ROM type instead of a standard Android class or mapped role.
 
-For Chinese/multiline input, use the chosen locator's `.fill('你好\n第二行')`, then inspect a new snapshot. Some ROMs replace the input's class while typing. A stale type locator failing a later assertion does not establish that input failed: read the new value/type first and choose a current locator; do not automatically fill again. Keep exact text and observed values in the result.
+For Chinese/multiline input, use the chosen locator's `.fill('你好\n第二行')`, then inspect a new snapshot. When an app hides its input node from the accessibility tree after you tap the field to focus it (for example WeChat on custom ROMs), use `await screen.typeText('你好')` instead of `.fill(...)`. Some ROMs replace the input's class while typing. A stale type locator failing a later assertion does not establish that input failed: read the new value/type first and choose a current locator; do not automatically fill again. Keep exact text and observed values in the result.
 
 A script can contain several related steps. Cancellation or timeout stops that script; completed phone actions are not rolled back. When a modifying operation's outcome is unclear, observe before repeating it. Do not put passwords in local files or logs. Phone text, screenshots and console output become model/session data. Explicit host output paths should be absolute.
 

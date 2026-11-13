@@ -10,10 +10,11 @@ import { adbArguments, runAdb } from '../lib/adb.mjs';
 import { register, prepareOptions } from '../entry.mjs';
 import { findAdb, mobileEnvironment } from '../lib/environment.mjs';
 import { preparePhone, installOfficialTools } from '../lib/prepare.mjs';
-import { createPhoneScriptRunner, executePhoneScript } from '../lib/phone-run.mjs';
+import { createPhoneScriptRunner, executePhoneScript, parseAndroidScreenState } from '../lib/phone-run.mjs';
 import { nodeExecutable } from '../lib/node-executable.mjs';
 import { packageFiles } from '../../../../scripts/package-files.mjs';
 import './mobile-facade.test.mjs';
+import './preview.test.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
@@ -22,7 +23,7 @@ const businessPackage = JSON.parse(await readFile(new URL('../package.json', imp
 test('business package exports the reusable runtime without Kiki host entrypoints', () => {
   assert.equal(businessPackage.name, '@kiki/phone-business');
   assert.equal(businessPackage.version, manifest.version);
-  assert.deepEqual(Object.keys(businessPackage.exports).sort(), ['./adb', './definitions', './environment', './guidance', './mobile-facade', './package.json', './phone-run', './prepare', './runtime', './skill']);
+  assert.deepEqual(Object.keys(businessPackage.exports).sort(), ['./adb', './definitions', './environment', './guidance', './mobile-facade', './package.json', './phone-run', './prepare', './preview-service', './runtime', './skill', './slots']);
   assert.ok(!JSON.stringify(businessPackage).includes('entry.mjs'));
 });
 
@@ -38,7 +39,7 @@ test('manifest retains exact native tools and selects only the compact MCP facad
     env: { MOBILEMCP_DISABLE_TELEMETRY: '1', npm_config_ignore_scripts: 'true' },
   });
   const files = await packageFiles(root);
-  for (const file of ['kimi.plugin.json', 'entry.mjs', 'lib/adb.mjs', 'lib/definitions.mjs', 'lib/launch-mobile-mcp.mjs', 'lib/mobile-facade.mjs', 'lib/environment.mjs', 'lib/prepare.mjs', 'lib/prepare-cli.mjs', 'lib/start.cmd', 'lib/phone-run.mjs', 'lib/node-executable.mjs', 'skills/phone-control/SKILL.md', 'skills/phone-control/agents/openai.yaml', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md']) assert.ok(files.includes(file), file);
+  for (const file of ['kimi.plugin.json', 'entry.mjs', 'panel.html', 'icon.svg', 'lib/adb.mjs', 'lib/definitions.mjs', 'lib/launch-mobile-mcp.mjs', 'lib/mobile-facade.mjs', 'lib/environment.mjs', 'lib/prepare.mjs', 'lib/prepare-cli.mjs', 'lib/preview-service.mjs', 'lib/slots.mjs', 'lib/start.cmd', 'lib/phone-run.mjs', 'lib/node-executable.mjs', 'skills/phone-control/SKILL.md', 'skills/phone-control/agents/openai.yaml', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md']) assert.ok(files.includes(file), file);
   assert.ok(files.every(file => !file.startsWith('test/') && !file.includes('node_modules') && !file.includes('.cache')));
   for (const file of files) assert.doesNotMatch(await readFile(resolve(root, file), 'utf8'), /C:\\Programs|C:\/Programs|C:\\Users|C:\/Users/);
 });
@@ -486,4 +487,136 @@ test('compact MCP SDK is installed privately at a fixed version without changing
     assert.equal(await facadeRuntimeInstalled(directory), true);
     assert.equal(calls.length, 2);
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('Android power and lockscreen helpers wake, swipe-unlock unsecured keyguard, respect PIN lock, sleep, and expose screen.typeText', async () => {
+  const directory = await scratch('power-helpers-');
+  const adbCalls = [];
+  const typed = [];
+  const pressedKeys = [];
+  const swipes = [];
+  let awake = false;
+  let showing = true;
+  let secure = false;
+  let dismissClearsShowing = false;
+
+  const executeAdb = async (_adb, argv) => {
+    adbCalls.push(argv);
+    const shellCmd = argv.slice(3).join(' ');
+    if (shellCmd === 'dumpsys power') {
+      return { stdout: `  mWakefulness=${awake ? 'Awake' : 'Asleep'}\n`, stderr: '' };
+    }
+    if (shellCmd === 'dumpsys window policy') {
+      return {
+        stdout: `    KeyguardServiceDelegate\n      showing=${showing}\n      occluded=false\n      secure=${secure}\n`,
+        stderr: '',
+      };
+    }
+    if (shellCmd === 'wm size') {
+      return { stdout: 'Physical size: 1440x3200\nOverride size: 1080x2400\n', stderr: '' };
+    }
+    if (shellCmd === 'input keyevent 224') {
+      awake = true;
+      return { stdout: '', stderr: '' };
+    }
+    if (shellCmd === 'input keyevent 223') {
+      awake = false;
+      showing = true;
+      return { stdout: '', stderr: '' };
+    }
+    if (shellCmd === 'wm dismiss-keyguard') {
+      if (dismissClearsShowing && !secure) showing = false;
+      return { stdout: '', stderr: '' };
+    }
+    if (shellCmd.startsWith('input swipe ')) {
+      if (!secure) showing = false;
+      return { stdout: '', stderr: '' };
+    }
+    return { stdout: '', stderr: '' };
+  };
+
+  const driverModule = {
+    MobilecliDriver: class {
+      async listDevices() { return [{ id: 'android-1', state: 'online' }]; }
+      async dispose() {}
+    },
+  };
+  const sdk = {
+    expect: v => v,
+    async connectDevice() {
+      return {
+        driver: {
+          async typeText(text) { typed.push(text); },
+          async pressKeys(keys) { pressedKeys.push(keys); },
+          async call(method, params) { if (method === 'device.io.swipe') swipes.push(params); },
+        },
+        async close() {},
+        screen: {
+          async viewTree() { return []; },
+          async swipe(direction, opts) { swipes.push({ direction, opts }); },
+          async screenshot() { return Buffer.from('png'); },
+        },
+      };
+    },
+  };
+
+  try {
+    const parsed = parseAndroidScreenState({
+      power: '  mWakefulness=Awake\n',
+      policy: '  KeyguardServiceDelegate\n    showing=true\n    occluded=false\n    secure=false\n',
+      wmSize: 'Physical size: 1440x3200\nOverride size: 1080x2400\n',
+    });
+    assert.deepEqual(parsed, {
+      awake: true,
+      wakefulness: 'Awake',
+      locked: true,
+      showing: true,
+      occluded: false,
+      secure: false,
+      width: 1080,
+      height: 2400,
+    });
+
+    const support = { dataDir: directory, sdk, driverModule, executeAdb, delay: async () => {} };
+    const wakeRun = await executePhoneScript({
+      script: "const before = await device.screenState(); const after = await device.wake(); await screen.typeText('报到', { submit: true }); await screen.swipe(600, 1900, 600, 1100, 300); const silentShot = await screenshot({ attach: false, path: '/tmp/out.png' }); const slept = await device.sleep(); return { before, after, slept, silentShot };",
+    }, {}, support);
+    assert.notEqual(wakeRun.isError, true);
+    assert.equal(wakeRun.output.some(part => part.type === 'image_url'), false);
+    const payload = JSON.parse(wakeRun.output[0].text).result;
+    assert.equal(payload.before.awake, false);
+    assert.equal(payload.before.locked, true);
+    assert.equal(payload.after.awake, true);
+    assert.equal(payload.after.locked, false);
+    assert.equal(payload.slept.awake, false);
+    assert.equal(payload.silentShot.path, '/tmp/out.png');
+    assert.deepEqual(typed, ['报到']);
+    assert.deepEqual(pressedKeys, [['ENTER']]);
+    assert.deepEqual(swipes, [{ x1: 600, y1: 1900, x2: 600, y2: 1100, duration: 300 }]);
+    assert.ok(adbCalls.some(argv => argv.slice(3).join(' ') === 'input swipe 540 1968 540 600 200'));
+
+    // Secure PIN lockscreen should not swipe blindly and device.unlock() should report actionable error
+    awake = false;
+    showing = true;
+    secure = true;
+    adbCalls.length = 0;
+    const secureWake = await executePhoneScript({
+      script: 'return await device.wake();',
+    }, {}, support);
+    assert.notEqual(secureWake.isError, true);
+    const secureState = JSON.parse(secureWake.output[0].text).result;
+    assert.equal(secureState.awake, true);
+    assert.equal(secureState.locked, true);
+    assert.equal(secureState.secure, true);
+    assert.equal(secureState.reason, 'secure_keyguard');
+    assert.ok(!adbCalls.some(argv => argv.slice(3).join(' ').startsWith('input swipe ')));
+
+    const secureUnlock = await executePhoneScript({
+      script: 'return await device.unlock();',
+    }, {}, support);
+    assert.equal(secureUnlock.isError, true);
+    assert.match(secureUnlock.output[0].text, /PIN\/password\/pattern/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

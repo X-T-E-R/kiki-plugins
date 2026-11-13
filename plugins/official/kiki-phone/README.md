@@ -34,13 +34,22 @@
 
 ZIP 用户将解压后包含 `kimi.plugin.json` 的目录传给 `/plugins install --trust <目录>`。官方目录入口随正式发布提供。插件 MCP server 名为 `mobile`；若曾单独关闭，用 `/plugins mcp enable kiki-phone mobile` 开启。更换共享 ADB 后，重新连接这个 MCP server，使已启动进程取得新环境。
 
+## 手机实时预览页与多槽位快捷入口
+
+启用插件后，可从左侧边栏 **手机预览（Phone Preview）**、输入框工具栏按钮、顶栏在线设备胶囊或 `/phone-preview`（别名 `/phone`）直接在会话右侧常规 Kiki 预览区打开实时手机画面（同时支持 Android 与 iOS 真机／模拟器）：
+
+- **等比实时画面与触控直连**：自动按手机真实分辨率双向等比缩放并适配横竖屏旋转；支持直接在画布上点按（`tap`）、长按（`longPress`）和拖拽滑动（`swipe`）。
+- **右侧快捷控制栏与工具抽屉**：一键唤醒解锁、Home、Android 返回／多任务、屏幕旋转、无损 PNG 截图下载、深浅色外观切换、焦点文本直输、URL／Deep Link 跳转及 Android 11+ 无线调试配对连接。
+- **UI 语义树叠加检视（AX Overlay）**：开启网格叠加层即可高亮手机当前界面的可交互控件框，点选任意节点即展示控件属性并生成可直接粘贴到 `phone_run` 的 Mobilewright 定位器代码。
+
 ## 按语义操作，而不是先找坐标
 
 先调用不带脚本的 `phone_run` 列设备。多台在线时指定 `device`；已选择的设备会保留到后续调用，离线时返回实际设备列表，不转向另一台手机。
 
-`phone_run` 的 `script` 是异步 JavaScript，绑定的是原生 Mobilewright 对象。先打开设置并观察：
+`phone_run` 的 `script` 是异步 JavaScript，绑定的是原生 Mobilewright 对象，并在 Android 上补齐了 `device.wake()`（亮屏并自动划开无密码锁屏；遇 PIN／密码锁屏时不盲划并返回 `secure: true`）、`device.unlock()`、`device.sleep()`、`device.screenState()`，以及面向屏蔽无障碍树输入框的 `screen.typeText()`。先唤醒手机、打开设置并观察：
 
 ```js
+await device.wake();
 await device.launchApp('com.android.settings');
 console.log(await snapshot());
 await screenshot();

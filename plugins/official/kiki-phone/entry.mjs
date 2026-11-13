@@ -2,6 +2,10 @@ import { definitions } from './lib/definitions.mjs';
 import { runAdb } from './lib/adb.mjs';
 import { preparePhone } from './lib/prepare.mjs';
 import { runPhoneScript } from './lib/phone-run.mjs';
+import { createPhonePreviewService } from './lib/preview-service.mjs';
+import { createPhoneSlotHandlers } from './lib/slots.mjs';
+
+const previewService = createPhonePreviewService();
 
 export function prepareOptions(args, settings) {
   return { download: args.download, platform: args.platform, adbPath: settings?.adbPath };
@@ -19,3 +23,9 @@ export function register(api) {
     });
   }
 }
+
+export async function handlePanelRequest(action, args, context) {
+  return previewService.handlePanelRequest(action, args, context);
+}
+
+export const slots = createPhoneSlotHandlers(previewService);
