@@ -567,29 +567,51 @@
 
 <script>
 (() => {
+  const CHANNEL = 'kiki.panel.v1';
   let reqSeq = 0;
+  let booted = false;
+  let currentSessionId = null;
   const pending = new Map();
 
+  function applyPresentation(pres) {
+    if (!pres || typeof pres !== 'object') return;
+    const root = document.documentElement;
+    if (root && typeof root.setAttribute === 'function' && (pres.theme === 'dark' || pres.theme === 'light')) {
+      root.setAttribute('data-theme', pres.theme);
+    }
+  }
+
   window.addEventListener('message', (event) => {
+    if (event.source !== window.parent) return;
     const data = event.data;
-    if (!data || data.protocol !== 'kiki.panel.v1' || typeof data.id !== 'string') return;
+    if (!data || data.channel !== CHANNEL) return;
+    if (data.kind === 'presentation') {
+      applyPresentation(data.presentation);
+      return;
+    }
+    if (data.kind === 'init') {
+      currentSessionId = data.sessionId || null;
+      applyPresentation(data.presentation);
+      void startBoot();
+      return;
+    }
+    if (data.kind !== 'response' || !pending.has(data.id)) return;
     const entry = pending.get(data.id);
-    if (!entry) return;
     pending.delete(data.id);
     clearTimeout(entry.timer);
     if (data.ok) entry.resolve(data.result);
-    else entry.reject(new Error(data.error || 'Bridge request failed'));
+    else entry.reject(new Error((typeof data.error === 'string' ? data.error : data.error?.message) || 'Bridge request failed'));
   });
 
-  function bridgeCall(method, params = {}, timeoutMs = 20000) {
-    const id = 'phone-' + (++reqSeq) + '-' + Date.now();
+  function bridgeCall(method, payload = {}, timeoutMs = 20000) {
+    const id = ++reqSeq;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(new Error('Bridge request timed out'));
       }, timeoutMs);
       pending.set(id, { resolve, reject, timer });
-      window.parent.postMessage({ protocol: 'kiki.panel.v1', id, method, params }, '*');
+      window.parent.postMessage({ channel: CHANNEL, kind: 'request', id, method, ...payload }, '*');
     });
   }
 
@@ -1151,11 +1173,21 @@
     if (!document.hidden && state.live) void refreshFrame(true);
   });
 
-  (async () => {
+  async function startBoot() {
+    if (booted) {
+      await loadState();
+      await refreshFrame(true);
+      return;
+    }
+    booted = true;
     await loadState();
     await refreshFrame(true);
-    state.pollTimer = setInterval(() => { void refreshFrame(false); }, 1100);
-  })();
+    if (!state.pollTimer) {
+      state.pollTimer = setInterval(() => { void refreshFrame(false); }, 1100);
+    }
+  }
+
+  setTimeout(() => { if (!booted) void startBoot(); }, 250);
 })();
 </script>
 </body>

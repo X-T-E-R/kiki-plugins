@@ -1,6 +1,6 @@
 {
   "name": "kiki-phone",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Prepare, preview and operate Android or iOS phones with live workspace screen streaming, Mobilewright semantic scripts, snapshots and screenshots, plus the complete Mobile MCP toolset and optional Android su commands.",
   "license": "MIT",
   "icon": "./icon.svg",

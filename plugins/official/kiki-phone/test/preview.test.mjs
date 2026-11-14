@@ -196,9 +196,12 @@ test('preview service supports Android + iOS discovery, frame streaming, normali
   }
 });
 
-test('panel.html stays within the Kiki 256 KiB single-file srcDoc limit and carries no emoji', async () => {
+test('panel.html stays within the Kiki 256 KiB single-file srcDoc limit, speaks the canonical kiki.panel.v1 host envelope, and carries no emoji', async () => {
   const html = await readFile(new URL('../panel.html', import.meta.url), 'utf8');
   assert.ok(Buffer.byteLength(html, 'utf8') < 256 * 1024);
   assert.match(html, /kiki\.panel\.v1/);
+  assert.match(html, /kind:\s*'request'/);
+  assert.match(html, /channel:\s*CHANNEL/);
+  assert.doesNotMatch(html, /protocol:\s*'kiki\.panel\.v1'/);
   assert.doesNotMatch(html, /[\u{1F300}-\u{1FAFF}]/u);
 });
