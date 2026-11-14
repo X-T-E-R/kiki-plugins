@@ -1,0 +1,416 @@
+{
+  "name": "controller-ledger",
+  "version": "0.1.1",
+  "description": "Workspace-scoped, incremental controller work ledger with dependencies, decisions and evidence.",
+  "license": "MIT",
+  "interface": {
+    "displayName": "Controller Ledger",
+    "shortDescription": "局部更新工作、依赖、决定与证据"
+  },
+  "systemPrompt": "For controller work, on first use or after context recovery read controller-ledger ledger_read(view=\"brief\", workspace=\".\"). Keep running work and pending decisions with incremental ledger_write updates when facts change; do not inject the full ledger or equate a background task ending with acceptance. Native Task, Memory and History remain separate authorities linked by references.",
+  "x-kiki": {
+    "engines": {
+      "kiki": "^0.4.0"
+    },
+    "entry": "./entry.mjs",
+    "permissions": {
+      "fs": "outside"
+    },
+    "tools": [
+      {
+        "schemaVersion": 1,
+        "name": "ledger_read",
+        "disclosure": "inline",
+        "description": "Read the workspace controller ledger, not native Task/Memory. Start/resume with brief. overview/ready/next/blocked/pending-decisions are compact computed views; completed/history stay out unless requested. Search by query, get full item, history revisions, export JSON/Markdown. Every page/shortened field has an explicit continuation; use get for evidence. No execution, notification or acceptance is inferred.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "workspace": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Use \".\" for context.workspaceRoot (normal default). Required by host file admission. Another workspace root must be explicitly admitted; never use the plugin directory."
+            },
+            "view": {
+              "type": "string",
+              "enum": [
+                "brief",
+                "overview",
+                "ready",
+                "next",
+                "blocked",
+                "pending-decisions",
+                "search",
+                "get",
+                "history",
+                "export"
+              ],
+              "default": "overview"
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$"
+            },
+            "query": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "includeCompleted": {
+              "type": "boolean"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "cursor": {
+              "type": "string",
+              "maxLength": 4000
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "json",
+                "markdown"
+              ]
+            },
+            "textOffset": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maxChars": {
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 24000
+            },
+            "atGeneration": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Use generation from the first response to continue its stable revision-watermark snapshot; unrelated updates do not invalidate continuation."
+            }
+          },
+          "required": [
+            "workspace"
+          ],
+          "additionalProperties": false
+        },
+        "accesses": [
+          {
+            "kind": "file",
+            "operation": "read",
+            "path": "$.workspace",
+            "recursive": true
+          }
+        ]
+      },
+      {
+        "schemaVersion": 1,
+        "name": "ledger_write",
+        "disclosure": "inline",
+        "description": "Incrementally capture/patch controller work or decisions: create needs only id/title and stable requestKey; fill goal, success, owner, nextAction, references and factual basis as known. Omitted fields stay unchanged. set replaces named fields; append safely adds evidence/refs/keyDecisions. Optional baseRevision catches same-field stale conflicts; disjoint changes merge. Batch is atomic (up to 50). Explicit states record the controller’s judgment, not product acceptance or task execution. Missing/cyclic dependencies remain visible blockers; no automatic dispatch/messages.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "workspace": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Use \".\" for context.workspaceRoot (normal default). Required by host file admission. Another workspace root must be explicitly admitted; never use the plugin directory."
+            },
+            "requestKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "actor": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "basis": {
+              "type": "string",
+              "maxLength": 4000
+            },
+            "operations": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 50,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "create",
+                      "patch"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$"
+                  },
+                  "set": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "task",
+                          "decision"
+                        ]
+                      },
+                      "goal": {
+                        "type": "string",
+                        "maxLength": 12000
+                      },
+                      "success": {
+                        "type": "array",
+                        "maxItems": 100,
+                        "items": {
+                          "type": "string",
+                          "maxLength": 12000
+                        }
+                      },
+                      "owner": {
+                        "type": "string",
+                        "maxLength": 12000
+                      },
+                      "state": {
+                        "type": "string",
+                        "enum": [
+                          "planned",
+                          "active",
+                          "blocked",
+                          "awaiting_decision",
+                          "delivered",
+                          "accepted",
+                          "cancelled",
+                          "archived"
+                        ]
+                      },
+                      "dependsOn": {
+                        "type": "array",
+                        "maxItems": 100,
+                        "uniqueItems": true,
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$"
+                        }
+                      },
+                      "nextAction": {
+                        "type": "string",
+                        "maxLength": 12000
+                      },
+                      "blocker": {
+                        "type": "string",
+                        "maxLength": 12000
+                      },
+                      "decision": {
+                        "type": "string",
+                        "maxLength": 12000
+                      },
+                      "options": {
+                        "type": "array",
+                        "maxItems": 100,
+                        "items": {
+                          "type": "string",
+                          "maxLength": 12000
+                        }
+                      },
+                      "keyDecisions": {
+                        "type": "array",
+                        "maxItems": 100,
+                        "items": {
+                          "type": "string",
+                          "maxLength": 12000
+                        }
+                      },
+                      "refs": {
+                        "type": "array",
+                        "maxItems": 100,
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "task",
+                                "agent",
+                                "memory",
+                                "history",
+                                "document",
+                                "url",
+                                "other"
+                              ]
+                            },
+                            "ref": {
+                              "type": "string",
+                              "maxLength": 12000
+                            },
+                            "label": {
+                              "type": "string",
+                              "maxLength": 12000
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "ref"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "evidence": {
+                        "type": "array",
+                        "maxItems": 100,
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "task",
+                                "agent",
+                                "memory",
+                                "history",
+                                "document",
+                                "url",
+                                "other"
+                              ]
+                            },
+                            "ref": {
+                              "type": "string",
+                              "maxLength": 12000
+                            },
+                            "label": {
+                              "type": "string",
+                              "maxLength": 12000
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "ref"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "append": {
+                    "type": "object",
+                    "properties": {
+                      "evidence": {
+                        "type": "array",
+                        "maxItems": 100,
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "task",
+                                "agent",
+                                "memory",
+                                "history",
+                                "document",
+                                "url",
+                                "other"
+                              ]
+                            },
+                            "ref": {
+                              "type": "string",
+                              "maxLength": 12000
+                            },
+                            "label": {
+                              "type": "string",
+                              "maxLength": 12000
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "ref"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "refs": {
+                        "type": "array",
+                        "maxItems": 100,
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "task",
+                                "agent",
+                                "memory",
+                                "history",
+                                "document",
+                                "url",
+                                "other"
+                              ]
+                            },
+                            "ref": {
+                              "type": "string",
+                              "maxLength": 12000
+                            },
+                            "label": {
+                              "type": "string",
+                              "maxLength": 12000
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "ref"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "keyDecisions": {
+                        "type": "array",
+                        "maxItems": 100,
+                        "items": {
+                          "type": "string",
+                          "maxLength": 12000
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "baseRevision": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Optional revision from a prior read: merge disjoint fields; return precise conflicts for concurrently changed touched fields."
+                  }
+                },
+                "required": [
+                  "action",
+                  "id",
+                  "set"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "workspace",
+            "requestKey",
+            "operations"
+          ],
+          "additionalProperties": false
+        },
+        "accesses": [
+          {
+            "kind": "file",
+            "operation": "readwrite",
+            "path": "$.workspace",
+            "recursive": true
+          }
+        ]
+      }
+    ]
+  }
+}

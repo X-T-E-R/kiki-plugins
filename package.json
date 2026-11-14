@@ -15,6 +15,7 @@
   "devDependencies": {
     "@kiki/plugin-sdk": "file:vendor/kiki-plugin-sdk-0.1.1-host-5c649def1.tgz",
     "@types/node": "22.15.3",
+    "iconv-lite": "0.7.3",
     "semver": "7.7.4",
     "typescript": "6.0.2",
     "yauzl": "3.3.0",

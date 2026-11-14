@@ -33,9 +33,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// plugins/kiki-mail/node_modules/pino-std-serializers/lib/err-helpers.js
+// plugins/official/kiki-mail/node_modules/pino-std-serializers/lib/err-helpers.js
 var require_err_helpers = __commonJS({
-  "plugins/kiki-mail/node_modules/pino-std-serializers/lib/err-helpers.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino-std-serializers/lib/err-helpers.js"(exports, module) {
     "use strict";
     var isErrorLike2 = (err) => {
       return err && typeof err.message === "string";
@@ -90,9 +90,9 @@ var require_err_helpers = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/pino-std-serializers/lib/err-proto.js
+// plugins/official/kiki-mail/node_modules/pino-std-serializers/lib/err-proto.js
 var require_err_proto = __commonJS({
-  "plugins/kiki-mail/node_modules/pino-std-serializers/lib/err-proto.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino-std-serializers/lib/err-proto.js"(exports, module) {
     "use strict";
     var seen = Symbol("circular-ref-tag");
     var rawSymbol = Symbol("pino-raw-err-ref");
@@ -141,9 +141,9 @@ var require_err_proto = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/pino-std-serializers/lib/err.js
+// plugins/official/kiki-mail/node_modules/pino-std-serializers/lib/err.js
 var require_err = __commonJS({
-  "plugins/kiki-mail/node_modules/pino-std-serializers/lib/err.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino-std-serializers/lib/err.js"(exports, module) {
     "use strict";
     module.exports = errSerializer;
     var { messageWithCauses, stackWithCauses, isErrorLike: isErrorLike2 } = require_err_helpers();
@@ -181,9 +181,9 @@ var require_err = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/pino-std-serializers/lib/err-with-cause.js
+// plugins/official/kiki-mail/node_modules/pino-std-serializers/lib/err-with-cause.js
 var require_err_with_cause = __commonJS({
-  "plugins/kiki-mail/node_modules/pino-std-serializers/lib/err-with-cause.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino-std-serializers/lib/err-with-cause.js"(exports, module) {
     "use strict";
     module.exports = errWithCauseSerializer;
     var { isErrorLike: isErrorLike2 } = require_err_helpers();
@@ -224,9 +224,9 @@ var require_err_with_cause = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/pino-std-serializers/lib/req.js
+// plugins/official/kiki-mail/node_modules/pino-std-serializers/lib/req.js
 var require_req = __commonJS({
-  "plugins/kiki-mail/node_modules/pino-std-serializers/lib/req.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino-std-serializers/lib/req.js"(exports, module) {
     "use strict";
     module.exports = {
       mapHttpRequest,
@@ -319,9 +319,9 @@ var require_req = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/pino-std-serializers/lib/res.js
+// plugins/official/kiki-mail/node_modules/pino-std-serializers/lib/res.js
 var require_res = __commonJS({
-  "plugins/kiki-mail/node_modules/pino-std-serializers/lib/res.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino-std-serializers/lib/res.js"(exports, module) {
     "use strict";
     module.exports = {
       mapHttpResponse,
@@ -368,9 +368,9 @@ var require_res = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/pino-std-serializers/index.js
+// plugins/official/kiki-mail/node_modules/pino-std-serializers/index.js
 var require_pino_std_serializers = __commonJS({
-  "plugins/kiki-mail/node_modules/pino-std-serializers/index.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino-std-serializers/index.js"(exports, module) {
     "use strict";
     var errSerializer = require_err();
     var errWithCauseSerializer = require_err_with_cause();
@@ -405,9 +405,9 @@ var require_pino_std_serializers = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/pino/lib/caller.js
+// plugins/official/kiki-mail/node_modules/pino/lib/caller.js
 var require_caller = __commonJS({
-  "plugins/kiki-mail/node_modules/pino/lib/caller.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino/lib/caller.js"(exports, module) {
     "use strict";
     function noOpPrepareStackTrace(_, stack) {
       return stack;
@@ -433,9 +433,9 @@ var require_caller = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/@pinojs/redact/index.js
+// plugins/official/kiki-mail/node_modules/@pinojs/redact/index.js
 var require_redact = __commonJS({
-  "plugins/kiki-mail/node_modules/@pinojs/redact/index.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/@pinojs/redact/index.js"(exports, module) {
     "use strict";
     function deepClone(obj) {
       if (obj === null || typeof obj !== "object") {
@@ -866,9 +866,9 @@ var require_redact = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/pino/lib/symbols.js
+// plugins/official/kiki-mail/node_modules/pino/lib/symbols.js
 var require_symbols = __commonJS({
-  "plugins/kiki-mail/node_modules/pino/lib/symbols.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino/lib/symbols.js"(exports, module) {
     "use strict";
     var setLevelSym = Symbol("pino.setLevel");
     var getLevelSym = Symbol("pino.getLevel");
@@ -937,9 +937,9 @@ var require_symbols = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/pino/lib/redaction.js
+// plugins/official/kiki-mail/node_modules/pino/lib/redaction.js
 var require_redaction = __commonJS({
-  "plugins/kiki-mail/node_modules/pino/lib/redaction.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino/lib/redaction.js"(exports, module) {
     "use strict";
     var Redact = require_redact();
     var { redactFmtSym, wildcardFirstSym } = require_symbols();
@@ -1019,9 +1019,9 @@ var require_redaction = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/pino/lib/time.js
+// plugins/official/kiki-mail/node_modules/pino/lib/time.js
 var require_time = __commonJS({
-  "plugins/kiki-mail/node_modules/pino/lib/time.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino/lib/time.js"(exports, module) {
     "use strict";
     var nullTime = () => "";
     var epochTime = () => `,"time":${Date.now()}`;
@@ -1050,9 +1050,9 @@ var require_time = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/quick-format-unescaped/index.js
+// plugins/official/kiki-mail/node_modules/quick-format-unescaped/index.js
 var require_quick_format_unescaped = __commonJS({
-  "plugins/kiki-mail/node_modules/quick-format-unescaped/index.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/quick-format-unescaped/index.js"(exports, module) {
     "use strict";
     function tryStringify(o) {
       try {
@@ -1169,9 +1169,9 @@ var require_quick_format_unescaped = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/atomic-sleep/index.js
+// plugins/official/kiki-mail/node_modules/atomic-sleep/index.js
 var require_atomic_sleep = __commonJS({
-  "plugins/kiki-mail/node_modules/atomic-sleep/index.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/atomic-sleep/index.js"(exports, module) {
     "use strict";
     if (typeof SharedArrayBuffer !== "undefined" && typeof Atomics !== "undefined") {
       let sleep = function(ms) {
@@ -1204,9 +1204,9 @@ var require_atomic_sleep = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/sonic-boom/index.js
+// plugins/official/kiki-mail/node_modules/sonic-boom/index.js
 var require_sonic_boom = __commonJS({
-  "plugins/kiki-mail/node_modules/sonic-boom/index.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/sonic-boom/index.js"(exports, module) {
     "use strict";
     var fs4 = __require("fs");
     var EventEmitter8 = __require("events");
@@ -1791,9 +1791,9 @@ var require_sonic_boom = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/on-exit-leak-free/index.js
+// plugins/official/kiki-mail/node_modules/on-exit-leak-free/index.js
 var require_on_exit_leak_free = __commonJS({
-  "plugins/kiki-mail/node_modules/on-exit-leak-free/index.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/on-exit-leak-free/index.js"(exports, module) {
     "use strict";
     var refs = {
       exit: [],
@@ -1885,9 +1885,9 @@ var require_on_exit_leak_free = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/thread-stream/package.json
+// plugins/official/kiki-mail/node_modules/thread-stream/package.json
 var require_package = __commonJS({
-  "plugins/kiki-mail/node_modules/thread-stream/package.json"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/thread-stream/package.json"(exports, module) {
     module.exports = {
       name: "thread-stream",
       version: "4.2.0",
@@ -1941,9 +1941,9 @@ var require_package = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/thread-stream/lib/wait.js
+// plugins/official/kiki-mail/node_modules/thread-stream/lib/wait.js
 var require_wait = __commonJS({
-  "plugins/kiki-mail/node_modules/thread-stream/lib/wait.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/thread-stream/lib/wait.js"(exports, module) {
     "use strict";
     var WAIT_MS = 1e4;
     function wait(state, index, expected, timeout, done) {
@@ -2000,9 +2000,9 @@ var require_wait = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/thread-stream/lib/indexes.js
+// plugins/official/kiki-mail/node_modules/thread-stream/lib/indexes.js
 var require_indexes = __commonJS({
-  "plugins/kiki-mail/node_modules/thread-stream/lib/indexes.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/thread-stream/lib/indexes.js"(exports, module) {
     "use strict";
     var SEQ_INDEX = 2;
     var WRITE_INDEX = 4;
@@ -2015,9 +2015,9 @@ var require_indexes = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/thread-stream/index.js
+// plugins/official/kiki-mail/node_modules/thread-stream/index.js
 var require_thread_stream = __commonJS({
-  "plugins/kiki-mail/node_modules/thread-stream/index.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/thread-stream/index.js"(exports, module) {
     "use strict";
     var { version: version3 } = require_package();
     var { EventEmitter: EventEmitter8 } = __require("events");
@@ -2534,9 +2534,9 @@ var require_thread_stream = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/pino/lib/transport.js
+// plugins/official/kiki-mail/node_modules/pino/lib/transport.js
 var require_transport = __commonJS({
-  "plugins/kiki-mail/node_modules/pino/lib/transport.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino/lib/transport.js"(exports, module) {
     "use strict";
     var { createRequire } = __require("module");
     var { existsSync } = __require("node:fs");
@@ -2757,9 +2757,9 @@ var require_transport = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/pino/lib/tools.js
+// plugins/official/kiki-mail/node_modules/pino/lib/tools.js
 var require_tools = __commonJS({
-  "plugins/kiki-mail/node_modules/pino/lib/tools.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino/lib/tools.js"(exports, module) {
     "use strict";
     var diagChan = __require("node:diagnostics_channel");
     var format = require_quick_format_unescaped();
@@ -3086,9 +3086,9 @@ var require_tools = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/pino/lib/constants.js
+// plugins/official/kiki-mail/node_modules/pino/lib/constants.js
 var require_constants = __commonJS({
-  "plugins/kiki-mail/node_modules/pino/lib/constants.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino/lib/constants.js"(exports, module) {
     var DEFAULT_LEVELS = {
       trace: 10,
       debug: 20,
@@ -3108,9 +3108,9 @@ var require_constants = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/pino/lib/levels.js
+// plugins/official/kiki-mail/node_modules/pino/lib/levels.js
 var require_levels = __commonJS({
-  "plugins/kiki-mail/node_modules/pino/lib/levels.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino/lib/levels.js"(exports, module) {
     "use strict";
     var {
       lsCacheSym,
@@ -3301,17 +3301,17 @@ var require_levels = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/pino/lib/meta.js
+// plugins/official/kiki-mail/node_modules/pino/lib/meta.js
 var require_meta = __commonJS({
-  "plugins/kiki-mail/node_modules/pino/lib/meta.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino/lib/meta.js"(exports, module) {
     "use strict";
     module.exports = { version: "10.3.1" };
   }
 });
 
-// plugins/kiki-mail/node_modules/pino/lib/proto.js
+// plugins/official/kiki-mail/node_modules/pino/lib/proto.js
 var require_proto = __commonJS({
-  "plugins/kiki-mail/node_modules/pino/lib/proto.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino/lib/proto.js"(exports, module) {
     "use strict";
     var { EventEmitter: EventEmitter8 } = __require("node:events");
     var {
@@ -3539,9 +3539,9 @@ var require_proto = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/safe-stable-stringify/index.js
+// plugins/official/kiki-mail/node_modules/safe-stable-stringify/index.js
 var require_safe_stable_stringify = __commonJS({
-  "plugins/kiki-mail/node_modules/safe-stable-stringify/index.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/safe-stable-stringify/index.js"(exports, module) {
     "use strict";
     var { hasOwnProperty } = Object.prototype;
     var stringify = configure();
@@ -4135,9 +4135,9 @@ ${originalIndentation}`;
   }
 });
 
-// plugins/kiki-mail/node_modules/pino/lib/multistream.js
+// plugins/official/kiki-mail/node_modules/pino/lib/multistream.js
 var require_multistream = __commonJS({
-  "plugins/kiki-mail/node_modules/pino/lib/multistream.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino/lib/multistream.js"(exports, module) {
     "use strict";
     var metadata = Symbol.for("pino.metadata");
     var { DEFAULT_LEVELS } = require_constants();
@@ -4303,9 +4303,9 @@ var require_multistream = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/pino/pino.js
+// plugins/official/kiki-mail/node_modules/pino/pino.js
 var require_pino = __commonJS({
-  "plugins/kiki-mail/node_modules/pino/pino.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/pino/pino.js"(exports, module) {
     "use strict";
     var os3 = __require("node:os");
     var stdSerializers = require_pino_std_serializers();
@@ -4513,9 +4513,9 @@ var require_pino = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/smart-buffer/build/utils.js
+// plugins/official/kiki-mail/node_modules/smart-buffer/build/utils.js
 var require_utils = __commonJS({
-  "plugins/kiki-mail/node_modules/smart-buffer/build/utils.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/smart-buffer/build/utils.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     var buffer_1 = __require("buffer");
@@ -4582,9 +4582,9 @@ var require_utils = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/smart-buffer/build/smartbuffer.js
+// plugins/official/kiki-mail/node_modules/smart-buffer/build/smartbuffer.js
 var require_smartbuffer = __commonJS({
-  "plugins/kiki-mail/node_modules/smart-buffer/build/smartbuffer.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/smart-buffer/build/smartbuffer.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     var utils_1 = require_utils();
@@ -5740,9 +5740,9 @@ var require_smartbuffer = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/socks/build/common/constants.js
+// plugins/official/kiki-mail/node_modules/socks/build/common/constants.js
 var require_constants2 = __commonJS({
-  "plugins/kiki-mail/node_modules/socks/build/common/constants.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/socks/build/common/constants.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.SOCKS5_NO_ACCEPTABLE_AUTH = exports.SOCKS5_CUSTOM_AUTH_END = exports.SOCKS5_CUSTOM_AUTH_START = exports.SOCKS_INCOMING_PACKET_SIZES = exports.SocksClientState = exports.Socks5Response = exports.Socks5HostType = exports.Socks5Auth = exports.Socks4Response = exports.SocksCommand = exports.ERRORS = exports.DEFAULT_TIMEOUT = void 0;
@@ -5857,9 +5857,9 @@ var require_constants2 = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/socks/build/common/util.js
+// plugins/official/kiki-mail/node_modules/socks/build/common/util.js
 var require_util = __commonJS({
-  "plugins/kiki-mail/node_modules/socks/build/common/util.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/socks/build/common/util.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.SocksClientError = void 0;
@@ -5880,9 +5880,9 @@ var require_util = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/ip-address/dist/address-error.js
+// plugins/official/kiki-mail/node_modules/ip-address/dist/address-error.js
 var require_address_error = __commonJS({
-  "plugins/kiki-mail/node_modules/ip-address/dist/address-error.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/ip-address/dist/address-error.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.AddressError = void 0;
@@ -5897,9 +5897,9 @@ var require_address_error = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/ip-address/dist/common.js
+// plugins/official/kiki-mail/node_modules/ip-address/dist/common.js
 var require_common = __commonJS({
-  "plugins/kiki-mail/node_modules/ip-address/dist/common.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/ip-address/dist/common.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.isInSubnet = isInSubnet;
@@ -6000,9 +6000,9 @@ var require_common = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/ip-address/dist/v4/constants.js
+// plugins/official/kiki-mail/node_modules/ip-address/dist/v4/constants.js
 var require_constants3 = __commonJS({
-  "plugins/kiki-mail/node_modules/ip-address/dist/v4/constants.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/ip-address/dist/v4/constants.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.SPECIAL_PURPOSE = exports.RE_SUBNET_STRING = exports.RE_ADDRESS = exports.GROUPS = exports.BITS = void 0;
@@ -6041,9 +6041,9 @@ var require_constants3 = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/ip-address/dist/ipv4.js
+// plugins/official/kiki-mail/node_modules/ip-address/dist/ipv4.js
 var require_ipv4 = __commonJS({
-  "plugins/kiki-mail/node_modules/ip-address/dist/ipv4.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/ip-address/dist/ipv4.js"(exports) {
     "use strict";
     var __createBinding = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
@@ -6610,9 +6610,9 @@ var require_ipv4 = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/ip-address/dist/v6/constants.js
+// plugins/official/kiki-mail/node_modules/ip-address/dist/v6/constants.js
 var require_constants4 = __commonJS({
-  "plugins/kiki-mail/node_modules/ip-address/dist/v6/constants.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/ip-address/dist/v6/constants.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.SPECIAL_PURPOSE = exports.RE_URL_WITH_PORT = exports.RE_URL = exports.RE_ZONE_STRING = exports.RE_SUBNET_STRING = exports.RE_BAD_ADDRESS = exports.RE_BAD_CHARACTERS = exports.TYPES = exports.SCOPES = exports.GROUPS = exports.BITS = void 0;
@@ -6700,9 +6700,9 @@ var require_constants4 = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/ip-address/dist/v6/helpers.js
+// plugins/official/kiki-mail/node_modules/ip-address/dist/v6/helpers.js
 var require_helpers = __commonJS({
-  "plugins/kiki-mail/node_modules/ip-address/dist/v6/helpers.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/ip-address/dist/v6/helpers.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.escapeHtml = escapeHtml2;
@@ -6739,9 +6739,9 @@ var require_helpers = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/ip-address/dist/v6/regular-expressions.js
+// plugins/official/kiki-mail/node_modules/ip-address/dist/v6/regular-expressions.js
 var require_regular_expressions = __commonJS({
-  "plugins/kiki-mail/node_modules/ip-address/dist/v6/regular-expressions.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/ip-address/dist/v6/regular-expressions.js"(exports) {
     "use strict";
     var __createBinding = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
@@ -6831,9 +6831,9 @@ var require_regular_expressions = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/ip-address/dist/ipv6.js
+// plugins/official/kiki-mail/node_modules/ip-address/dist/ipv6.js
 var require_ipv6 = __commonJS({
-  "plugins/kiki-mail/node_modules/ip-address/dist/ipv6.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/ip-address/dist/ipv6.js"(exports) {
     "use strict";
     var __createBinding = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
@@ -8164,9 +8164,9 @@ var require_ipv6 = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/ip-address/dist/ip-address.js
+// plugins/official/kiki-mail/node_modules/ip-address/dist/ip-address.js
 var require_ip_address = __commonJS({
-  "plugins/kiki-mail/node_modules/ip-address/dist/ip-address.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/ip-address/dist/ip-address.js"(exports) {
     "use strict";
     var __createBinding = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
@@ -8214,9 +8214,9 @@ var require_ip_address = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/socks/build/common/helpers.js
+// plugins/official/kiki-mail/node_modules/socks/build/common/helpers.js
 var require_helpers2 = __commonJS({
-  "plugins/kiki-mail/node_modules/socks/build/common/helpers.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/socks/build/common/helpers.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.validateSocksClientOptions = validateSocksClientOptions;
@@ -8320,9 +8320,9 @@ var require_helpers2 = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/socks/build/common/receivebuffer.js
+// plugins/official/kiki-mail/node_modules/socks/build/common/receivebuffer.js
 var require_receivebuffer = __commonJS({
-  "plugins/kiki-mail/node_modules/socks/build/common/receivebuffer.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/socks/build/common/receivebuffer.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.ReceiveBuffer = void 0;
@@ -8368,9 +8368,9 @@ var require_receivebuffer = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/socks/build/client/socksclient.js
+// plugins/official/kiki-mail/node_modules/socks/build/client/socksclient.js
 var require_socksclient = __commonJS({
-  "plugins/kiki-mail/node_modules/socks/build/client/socksclient.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/socks/build/client/socksclient.js"(exports) {
     "use strict";
     var __awaiter = exports && exports.__awaiter || function(thisArg, _arguments, P, generator) {
       function adopt(value) {
@@ -9047,9 +9047,9 @@ var require_socksclient = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/socks/build/index.js
+// plugins/official/kiki-mail/node_modules/socks/build/index.js
 var require_build = __commonJS({
-  "plugins/kiki-mail/node_modules/socks/build/index.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/socks/build/index.js"(exports) {
     "use strict";
     var __createBinding = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
       if (k2 === void 0) k2 = k;
@@ -9072,9 +9072,9 @@ var require_build = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/safer-buffer/safer.js
+// plugins/official/kiki-mail/node_modules/safer-buffer/safer.js
 var require_safer = __commonJS({
-  "plugins/kiki-mail/node_modules/safer-buffer/safer.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/safer-buffer/safer.js"(exports, module) {
     "use strict";
     var buffer = __require("buffer");
     var Buffer2 = buffer.Buffer;
@@ -9140,9 +9140,9 @@ var require_safer = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/lib/bom-handling.js
+// plugins/official/kiki-mail/node_modules/iconv-lite/lib/bom-handling.js
 var require_bom_handling = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/lib/bom-handling.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/lib/bom-handling.js"(exports) {
     "use strict";
     var BOMChar = "\uFEFF";
     exports.PrependBOM = PrependBOMWrapper;
@@ -9186,9 +9186,9 @@ var require_bom_handling = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/lib/helpers/merge-exports.js
+// plugins/official/kiki-mail/node_modules/iconv-lite/lib/helpers/merge-exports.js
 var require_merge_exports = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/lib/helpers/merge-exports.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/lib/helpers/merge-exports.js"(exports, module) {
     "use strict";
     var hasOwn2 = typeof Object.hasOwn === "undefined" ? Function.call.bind(Object.prototype.hasOwnProperty) : Object.hasOwn;
     function mergeModules(target, module2) {
@@ -9202,9 +9202,9 @@ var require_merge_exports = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/internal.js
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/internal.js
 var require_internal = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/internal.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/internal.js"(exports, module) {
     "use strict";
     var Buffer2 = require_safer().Buffer;
     module.exports = {
@@ -9383,9 +9383,9 @@ var require_internal = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/utf32.js
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/utf32.js
 var require_utf32 = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/utf32.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/utf32.js"(exports) {
     "use strict";
     var Buffer2 = require_safer().Buffer;
     exports._utf32 = Utf32Codec;
@@ -9618,9 +9618,9 @@ var require_utf32 = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/utf16.js
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/utf16.js
 var require_utf16 = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/utf16.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/utf16.js"(exports) {
     "use strict";
     var Buffer2 = require_safer().Buffer;
     exports.utf16be = Utf16BECodec;
@@ -9761,9 +9761,9 @@ var require_utf16 = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/utf7.js
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/utf7.js
 var require_utf7 = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/utf7.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/utf7.js"(exports) {
     "use strict";
     var Buffer2 = require_safer().Buffer;
     exports.utf7 = Utf7Codec;
@@ -9979,9 +9979,9 @@ var require_utf7 = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/sbcs-codec.js
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/sbcs-codec.js
 var require_sbcs_codec = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/sbcs-codec.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/sbcs-codec.js"(exports) {
     "use strict";
     var Buffer2 = require_safer().Buffer;
     exports._sbcs = SBCSCodec;
@@ -10041,9 +10041,9 @@ var require_sbcs_codec = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/sbcs-data.js
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/sbcs-data.js
 var require_sbcs_data = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/sbcs-data.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/sbcs-data.js"(exports, module) {
     "use strict";
     module.exports = {
       // Not supported by iconv, not sure why.
@@ -10196,9 +10196,9 @@ var require_sbcs_data = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/sbcs-data-generated.js
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/sbcs-data-generated.js
 var require_sbcs_data_generated = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/sbcs-data-generated.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/sbcs-data-generated.js"(exports, module) {
     "use strict";
     module.exports = {
       "437": "cp437",
@@ -10651,9 +10651,9 @@ var require_sbcs_data_generated = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/dbcs-codec.js
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/dbcs-codec.js
 var require_dbcs_codec = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/dbcs-codec.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/dbcs-codec.js"(exports) {
     "use strict";
     var Buffer2 = require_safer().Buffer;
     exports._dbcs = DBCSCodec;
@@ -11111,9 +11111,9 @@ var require_dbcs_codec = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/tables/shiftjis.json
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/tables/shiftjis.json
 var require_shiftjis = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/tables/shiftjis.json"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/tables/shiftjis.json"(exports, module) {
     module.exports = [
       ["0", "\0", 128],
       ["a1", "\uFF61", 62],
@@ -11242,9 +11242,9 @@ var require_shiftjis = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/tables/eucjp.json
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/tables/eucjp.json
 var require_eucjp = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/tables/eucjp.json"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/tables/eucjp.json"(exports, module) {
     module.exports = [
       ["0", "\0", 127],
       ["8ea1", "\uFF61", 62],
@@ -11430,9 +11430,9 @@ var require_eucjp = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/tables/cp936.json
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/tables/cp936.json
 var require_cp936 = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/tables/cp936.json"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/tables/cp936.json"(exports, module) {
     module.exports = [
       ["0", "\0", 127, "\u20AC"],
       ["8140", "\u4E02\u4E04\u4E05\u4E06\u4E0F\u4E12\u4E17\u4E1F\u4E20\u4E21\u4E23\u4E26\u4E29\u4E2E\u4E2F\u4E31\u4E33\u4E35\u4E37\u4E3C\u4E40\u4E41\u4E42\u4E44\u4E46\u4E4A\u4E51\u4E55\u4E57\u4E5A\u4E5B\u4E62\u4E63\u4E64\u4E65\u4E67\u4E68\u4E6A", 5, "\u4E72\u4E74", 9, "\u4E7F", 6, "\u4E87\u4E8A"],
@@ -11700,9 +11700,9 @@ var require_cp936 = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/tables/gbk-added.json
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/tables/gbk-added.json
 var require_gbk_added = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/tables/gbk-added.json"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/tables/gbk-added.json"(exports, module) {
     module.exports = [
       ["a140", "\uE4C6", 62],
       ["a180", "\uE505", 32],
@@ -11762,16 +11762,16 @@ var require_gbk_added = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/tables/gb18030-ranges.json
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/tables/gb18030-ranges.json
 var require_gb18030_ranges = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/tables/gb18030-ranges.json"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/tables/gb18030-ranges.json"(exports, module) {
     module.exports = { uChars: [128, 165, 169, 178, 184, 216, 226, 235, 238, 244, 248, 251, 253, 258, 276, 284, 300, 325, 329, 334, 364, 463, 465, 467, 469, 471, 473, 475, 477, 506, 594, 610, 712, 716, 730, 930, 938, 962, 970, 1026, 1104, 1106, 8209, 8215, 8218, 8222, 8231, 8241, 8244, 8246, 8252, 8365, 8452, 8454, 8458, 8471, 8482, 8556, 8570, 8596, 8602, 8713, 8720, 8722, 8726, 8731, 8737, 8740, 8742, 8748, 8751, 8760, 8766, 8777, 8781, 8787, 8802, 8808, 8816, 8854, 8858, 8870, 8896, 8979, 9322, 9372, 9548, 9588, 9616, 9622, 9634, 9652, 9662, 9672, 9676, 9680, 9702, 9735, 9738, 9793, 9795, 11906, 11909, 11913, 11917, 11928, 11944, 11947, 11951, 11956, 11960, 11964, 11979, 12284, 12292, 12312, 12319, 12330, 12351, 12436, 12447, 12535, 12543, 12586, 12842, 12850, 12964, 13200, 13215, 13218, 13253, 13263, 13267, 13270, 13384, 13428, 13727, 13839, 13851, 14617, 14703, 14801, 14816, 14964, 15183, 15471, 15585, 16471, 16736, 17208, 17325, 17330, 17374, 17623, 17997, 18018, 18212, 18218, 18301, 18318, 18760, 18811, 18814, 18820, 18823, 18844, 18848, 18872, 19576, 19620, 19738, 19887, 40870, 59244, 59336, 59367, 59413, 59417, 59423, 59431, 59437, 59443, 59452, 59460, 59478, 59493, 63789, 63866, 63894, 63976, 63986, 64016, 64018, 64021, 64025, 64034, 64037, 64042, 65074, 65093, 65107, 65112, 65127, 65132, 65375, 65510, 65536], gbChars: [0, 36, 38, 45, 50, 81, 89, 95, 96, 100, 103, 104, 105, 109, 126, 133, 148, 172, 175, 179, 208, 306, 307, 308, 309, 310, 311, 312, 313, 341, 428, 443, 544, 545, 558, 741, 742, 749, 750, 805, 819, 820, 7922, 7924, 7925, 7927, 7934, 7943, 7944, 7945, 7950, 8062, 8148, 8149, 8152, 8164, 8174, 8236, 8240, 8262, 8264, 8374, 8380, 8381, 8384, 8388, 8390, 8392, 8393, 8394, 8396, 8401, 8406, 8416, 8419, 8424, 8437, 8439, 8445, 8482, 8485, 8496, 8521, 8603, 8936, 8946, 9046, 9050, 9063, 9066, 9076, 9092, 9100, 9108, 9111, 9113, 9131, 9162, 9164, 9218, 9219, 11329, 11331, 11334, 11336, 11346, 11361, 11363, 11366, 11370, 11372, 11375, 11389, 11682, 11686, 11687, 11692, 11694, 11714, 11716, 11723, 11725, 11730, 11736, 11982, 11989, 12102, 12336, 12348, 12350, 12384, 12393, 12395, 12397, 12510, 12553, 12851, 12962, 12973, 13738, 13823, 13919, 13933, 14080, 14298, 14585, 14698, 15583, 15847, 16318, 16434, 16438, 16481, 16729, 17102, 17122, 17315, 17320, 17402, 17418, 17859, 17909, 17911, 17915, 17916, 17936, 17939, 17961, 18664, 18703, 18814, 18962, 19043, 33469, 33470, 33471, 33484, 33485, 33490, 33497, 33501, 33505, 33513, 33520, 33536, 33550, 37845, 37921, 37948, 38029, 38038, 38064, 38065, 38066, 38069, 38075, 38076, 38078, 39108, 39109, 39113, 39114, 39115, 39116, 39265, 39394, 189e3] };
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/tables/cp949.json
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/tables/cp949.json
 var require_cp949 = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/tables/cp949.json"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/tables/cp949.json"(exports, module) {
     module.exports = [
       ["0", "\0", 127],
       ["8141", "\uAC02\uAC03\uAC05\uAC06\uAC0B", 4, "\uAC18\uAC1E\uAC1F\uAC21\uAC22\uAC23\uAC25", 6, "\uAC2E\uAC32\uAC33\uAC34"],
@@ -12048,9 +12048,9 @@ var require_cp949 = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/tables/cp950.json
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/tables/cp950.json
 var require_cp950 = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/tables/cp950.json"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/tables/cp950.json"(exports, module) {
     module.exports = [
       ["0", "\0", 127],
       ["a140", "\u3000\uFF0C\u3001\u3002\uFF0E\u2027\uFF1B\uFF1A\uFF1F\uFF01\uFE30\u2026\u2025\uFE50\uFE51\uFE52\xB7\uFE54\uFE55\uFE56\uFE57\uFF5C\u2013\uFE31\u2014\uFE33\u2574\uFE34\uFE4F\uFF08\uFF09\uFE35\uFE36\uFF5B\uFF5D\uFE37\uFE38\u3014\u3015\uFE39\uFE3A\u3010\u3011\uFE3B\uFE3C\u300A\u300B\uFE3D\uFE3E\u3008\u3009\uFE3F\uFE40\u300C\u300D\uFE41\uFE42\u300E\u300F\uFE43\uFE44\uFE59\uFE5A"],
@@ -12231,9 +12231,9 @@ var require_cp950 = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/tables/big5-added.json
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/tables/big5-added.json
 var require_big5_added = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/tables/big5-added.json"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/tables/big5-added.json"(exports, module) {
     module.exports = [
       ["8740", "\u43F0\u4C32\u4603\u45A6\u4578\u{27267}\u4D77\u45B3\u{27CB1}\u4CE2\u{27CC5}\u3B95\u4736\u4744\u4C47\u4C40\u{242BF}\u{23617}\u{27352}\u{26E8B}\u{270D2}\u4C57\u{2A351}\u474F\u45DA\u4C85\u{27C6C}\u4D07\u4AA4\u46A1\u{26B23}\u7225\u{25A54}\u{21A63}\u{23E06}\u{23F61}\u664D\u56FB"],
       ["8767", "\u7D95\u591D\u{28BB9}\u3DF4\u9734\u{27BEF}\u5BDB\u{21D5E}\u5AA4\u3625\u{29EB0}\u5AD1\u5BB7\u5CFC\u676E\u8593\u{29945}\u7461\u749D\u3875\u{21D53}\u{2369E}\u{26021}\u3EEC"],
@@ -12359,9 +12359,9 @@ var require_big5_added = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/dbcs-data.js
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/dbcs-data.js
 var require_dbcs_data = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/dbcs-data.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/dbcs-data.js"(exports, module) {
     "use strict";
     module.exports = {
       // == Japanese/ShiftJIS ====================================================
@@ -12606,9 +12606,9 @@ var require_dbcs_data = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/encodings/index.js
+// plugins/official/kiki-mail/node_modules/iconv-lite/encodings/index.js
 var require_encodings = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/encodings/index.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/encodings/index.js"(exports, module) {
     "use strict";
     var mergeModules = require_merge_exports();
     var modules = [
@@ -12631,9 +12631,9 @@ var require_encodings = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/lib/streams.js
+// plugins/official/kiki-mail/node_modules/iconv-lite/lib/streams.js
 var require_streams = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/lib/streams.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/lib/streams.js"(exports, module) {
     "use strict";
     var Buffer2 = require_safer().Buffer;
     module.exports = function(streamModule) {
@@ -12728,9 +12728,9 @@ var require_streams = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/iconv-lite/lib/index.js
+// plugins/official/kiki-mail/node_modules/iconv-lite/lib/index.js
 var require_lib = __commonJS({
-  "plugins/kiki-mail/node_modules/iconv-lite/lib/index.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/iconv-lite/lib/index.js"(exports, module) {
     "use strict";
     var Buffer2 = require_safer().Buffer;
     var bomHandling = require_bom_handling();
@@ -12860,9 +12860,9 @@ var require_lib = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/encoding-japanese/src/util.js
+// plugins/official/kiki-mail/node_modules/encoding-japanese/src/util.js
 var require_util2 = __commonJS({
-  "plugins/kiki-mail/node_modules/encoding-japanese/src/util.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/encoding-japanese/src/util.js"(exports) {
     var config = require_config();
     var fromCharCode = String.fromCharCode;
     var slice = Array.prototype.slice;
@@ -13315,9 +13315,9 @@ var require_util2 = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/encoding-japanese/src/utf8-to-jis-table.js
+// plugins/official/kiki-mail/node_modules/encoding-japanese/src/utf8-to-jis-table.js
 var require_utf8_to_jis_table = __commonJS({
-  "plugins/kiki-mail/node_modules/encoding-japanese/src/utf8-to-jis-table.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/encoding-japanese/src/utf8-to-jis-table.js"(exports, module) {
     module.exports = {
       15711649: 33,
       15711650: 34,
@@ -20718,9 +20718,9 @@ var require_utf8_to_jis_table = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/encoding-japanese/src/utf8-to-jis-alias-table.js
+// plugins/official/kiki-mail/node_modules/encoding-japanese/src/utf8-to-jis-alias-table.js
 var require_utf8_to_jis_alias_table = __commonJS({
-  "plugins/kiki-mail/node_modules/encoding-japanese/src/utf8-to-jis-alias-table.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/encoding-japanese/src/utf8-to-jis-alias-table.js"(exports, module) {
     module.exports = {
       14846098: 8541,
       // − U+2212 MINUS SIGN same cell as － U+FF0D (0xEFBC8D) -> SJIS 0x817C
@@ -20734,9 +20734,9 @@ var require_utf8_to_jis_alias_table = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/encoding-japanese/src/utf8-to-jisx0212-table.js
+// plugins/official/kiki-mail/node_modules/encoding-japanese/src/utf8-to-jisx0212-table.js
 var require_utf8_to_jisx0212_table = __commonJS({
-  "plugins/kiki-mail/node_modules/encoding-japanese/src/utf8-to-jisx0212-table.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/encoding-japanese/src/utf8-to-jisx0212-table.js"(exports, module) {
     module.exports = {
       52120: 8751,
       52103: 8752,
@@ -26809,25 +26809,25 @@ var require_utf8_to_jisx0212_table = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/encoding-japanese/src/jis-to-utf8-table.js
+// plugins/official/kiki-mail/node_modules/encoding-japanese/src/jis-to-utf8-table.js
 var require_jis_to_utf8_table = __commonJS({
-  "plugins/kiki-mail/node_modules/encoding-japanese/src/jis-to-utf8-table.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/encoding-japanese/src/jis-to-utf8-table.js"(exports, module) {
     var JIS_TO_UTF8_TABLE = null;
     module.exports = JIS_TO_UTF8_TABLE;
   }
 });
 
-// plugins/kiki-mail/node_modules/encoding-japanese/src/jisx0212-to-utf8-table.js
+// plugins/official/kiki-mail/node_modules/encoding-japanese/src/jisx0212-to-utf8-table.js
 var require_jisx0212_to_utf8_table = __commonJS({
-  "plugins/kiki-mail/node_modules/encoding-japanese/src/jisx0212-to-utf8-table.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/encoding-japanese/src/jisx0212-to-utf8-table.js"(exports, module) {
     var JISX0212_TO_UTF8_TABLE = null;
     module.exports = JISX0212_TO_UTF8_TABLE;
   }
 });
 
-// plugins/kiki-mail/node_modules/encoding-japanese/src/encoding-table.js
+// plugins/official/kiki-mail/node_modules/encoding-japanese/src/encoding-table.js
 var require_encoding_table = __commonJS({
-  "plugins/kiki-mail/node_modules/encoding-japanese/src/encoding-table.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/encoding-japanese/src/encoding-table.js"(exports) {
     exports.UTF8_TO_JIS_TABLE = require_utf8_to_jis_table();
     exports.UTF8_TO_JIS_ALIAS_TABLE = require_utf8_to_jis_alias_table();
     exports.UTF8_TO_JISX0212_TABLE = require_utf8_to_jisx0212_table();
@@ -26836,9 +26836,9 @@ var require_encoding_table = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/encoding-japanese/src/config.js
+// plugins/official/kiki-mail/node_modules/encoding-japanese/src/config.js
 var require_config = __commonJS({
-  "plugins/kiki-mail/node_modules/encoding-japanese/src/config.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/encoding-japanese/src/config.js"(exports) {
     var util3 = require_util2();
     var EncodingTable = require_encoding_table();
     exports.FALLBACK_CHARACTER = 63;
@@ -26958,9 +26958,9 @@ var require_config = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/encoding-japanese/src/encoding-detect.js
+// plugins/official/kiki-mail/node_modules/encoding-japanese/src/encoding-detect.js
 var require_encoding_detect = __commonJS({
-  "plugins/kiki-mail/node_modules/encoding-japanese/src/encoding-detect.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/encoding-japanese/src/encoding-detect.js"(exports) {
     function isBINARY(data) {
       var i = 0;
       var len = data && data.length;
@@ -27327,9 +27327,9 @@ var require_encoding_detect = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/encoding-japanese/src/sjis-ext.js
+// plugins/official/kiki-mail/node_modules/encoding-japanese/src/sjis-ext.js
 var require_sjis_ext = __commonJS({
-  "plugins/kiki-mail/node_modules/encoding-japanese/src/sjis-ext.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/encoding-japanese/src/sjis-ext.js"(exports) {
     var CP932_IBM_EXT_SYMBOL_MAP = [
       // 0xFA40 - 0xFA49 [ⅰ-ⅹ]
       61167,
@@ -27429,9 +27429,9 @@ var require_sjis_ext = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/encoding-japanese/src/encoding-convert.js
+// plugins/official/kiki-mail/node_modules/encoding-japanese/src/encoding-convert.js
 var require_encoding_convert = __commonJS({
-  "plugins/kiki-mail/node_modules/encoding-japanese/src/encoding-convert.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/encoding-japanese/src/encoding-convert.js"(exports) {
     var config = require_config();
     var util3 = require_util2();
     var EncodingDetect = require_encoding_detect();
@@ -28714,9 +28714,9 @@ var require_encoding_convert = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/encoding-japanese/src/kana-case-table.js
+// plugins/official/kiki-mail/node_modules/encoding-japanese/src/kana-case-table.js
 var require_kana_case_table = __commonJS({
-  "plugins/kiki-mail/node_modules/encoding-japanese/src/kana-case-table.js"(exports) {
+  "plugins/official/kiki-mail/node_modules/encoding-japanese/src/kana-case-table.js"(exports) {
     exports.HANKANA_TABLE = {
       12289: 65380,
       12290: 65377,
@@ -28856,9 +28856,9 @@ var require_kana_case_table = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/encoding-japanese/package.json
+// plugins/official/kiki-mail/node_modules/encoding-japanese/package.json
 var require_package2 = __commonJS({
-  "plugins/kiki-mail/node_modules/encoding-japanese/package.json"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/encoding-japanese/package.json"(exports, module) {
     module.exports = {
       name: "encoding-japanese",
       version: "2.4.0",
@@ -28938,9 +28938,9 @@ var require_package2 = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/encoding-japanese/src/index.js
+// plugins/official/kiki-mail/node_modules/encoding-japanese/src/index.js
 var require_src = __commonJS({
-  "plugins/kiki-mail/node_modules/encoding-japanese/src/index.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/encoding-japanese/src/index.js"(exports, module) {
     var config = require_config();
     var util3 = require_util2();
     var EncodingDetect = require_encoding_detect();
@@ -29454,9 +29454,9 @@ var require_src = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/libmime/lib/charsets.js
+// plugins/official/kiki-mail/node_modules/libmime/lib/charsets.js
 var require_charsets = __commonJS({
-  "plugins/kiki-mail/node_modules/libmime/lib/charsets.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/libmime/lib/charsets.js"(exports, module) {
     "use strict";
     module.exports = {
       "866": "IBM866",
@@ -29669,9 +29669,9 @@ var require_charsets = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/libmime/lib/charset.js
+// plugins/official/kiki-mail/node_modules/libmime/lib/charset.js
 var require_charset = __commonJS({
-  "plugins/kiki-mail/node_modules/libmime/lib/charset.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/libmime/lib/charset.js"(exports, module) {
     "use strict";
     var { Buffer: Buffer2 } = __require("node:buffer");
     var iconv2 = require_lib();
@@ -29771,9 +29771,9 @@ var require_charset = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/libbase64/lib/libbase64.js
+// plugins/official/kiki-mail/node_modules/libbase64/lib/libbase64.js
 var require_libbase64 = __commonJS({
-  "plugins/kiki-mail/node_modules/libbase64/lib/libbase64.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/libbase64/lib/libbase64.js"(exports, module) {
     "use strict";
     var { Buffer: Buffer2 } = __require("node:buffer");
     var stream = __require("node:stream");
@@ -29991,9 +29991,9 @@ var require_libbase64 = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/libqp/lib/libqp.js
+// plugins/official/kiki-mail/node_modules/libqp/lib/libqp.js
 var require_libqp = __commonJS({
-  "plugins/kiki-mail/node_modules/libqp/lib/libqp.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/libqp/lib/libqp.js"(exports, module) {
     "use strict";
     var { Buffer: Buffer2 } = __require("node:buffer");
     var stream = __require("node:stream");
@@ -30239,9 +30239,9 @@ var require_libqp = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/libmime/lib/mimetypes.js
+// plugins/official/kiki-mail/node_modules/libmime/lib/mimetypes.js
 var require_mimetypes = __commonJS({
-  "plugins/kiki-mail/node_modules/libmime/lib/mimetypes.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/libmime/lib/mimetypes.js"(exports, module) {
     "use strict";
     module.exports = {
       list: {
@@ -32290,9 +32290,9 @@ var require_mimetypes = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/libmime/lib/libmime.js
+// plugins/official/kiki-mail/node_modules/libmime/lib/libmime.js
 var require_libmime = __commonJS({
-  "plugins/kiki-mail/node_modules/libmime/lib/libmime.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/libmime/lib/libmime.js"(exports, module) {
     "use strict";
     var { Buffer: Buffer2 } = __require("node:buffer");
     var libcharset = require_charset();
@@ -33061,9 +33061,9 @@ var require_libmime = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/@zone-eu/mailsplit/lib/headers.js
+// plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/lib/headers.js
 var require_headers = __commonJS({
-  "plugins/kiki-mail/node_modules/@zone-eu/mailsplit/lib/headers.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/lib/headers.js"(exports, module) {
     "use strict";
     var libmime3 = require_libmime();
     var Libmime = (
@@ -33429,9 +33429,9 @@ var require_headers = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/@zone-eu/mailsplit/lib/mime-node.js
+// plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/lib/mime-node.js
 var require_mime_node = __commonJS({
-  "plugins/kiki-mail/node_modules/@zone-eu/mailsplit/lib/mime-node.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/lib/mime-node.js"(exports, module) {
     "use strict";
     var Headers2 = require_headers();
     var libmime3 = require_libmime();
@@ -33792,9 +33792,9 @@ var require_mime_node = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/@zone-eu/mailsplit/lib/message-splitter.js
+// plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/lib/message-splitter.js
 var require_message_splitter = __commonJS({
-  "plugins/kiki-mail/node_modules/@zone-eu/mailsplit/lib/message-splitter.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/lib/message-splitter.js"(exports, module) {
     "use strict";
     var Transform12 = __require("stream").Transform;
     var MimeNode3 = require_mime_node();
@@ -34299,9 +34299,9 @@ var require_message_splitter = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/@zone-eu/mailsplit/lib/message-joiner.js
+// plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/lib/message-joiner.js
 var require_message_joiner = __commonJS({
-  "plugins/kiki-mail/node_modules/@zone-eu/mailsplit/lib/message-joiner.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/lib/message-joiner.js"(exports, module) {
     "use strict";
     var Transform12 = __require("stream").Transform;
     var MessageJoiner = class extends Transform12 {
@@ -34343,9 +34343,9 @@ var require_message_joiner = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/@zone-eu/mailsplit/lib/flowed-decoder.js
+// plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/lib/flowed-decoder.js
 var require_flowed_decoder = __commonJS({
-  "plugins/kiki-mail/node_modules/@zone-eu/mailsplit/lib/flowed-decoder.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/lib/flowed-decoder.js"(exports, module) {
     "use strict";
     var Transform12 = __require("stream").Transform;
     var libmime3 = require_libmime();
@@ -34398,9 +34398,9 @@ var require_flowed_decoder = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/@zone-eu/mailsplit/lib/node-rewriter.js
+// plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/lib/node-rewriter.js
 var require_node_rewriter = __commonJS({
-  "plugins/kiki-mail/node_modules/@zone-eu/mailsplit/lib/node-rewriter.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/lib/node-rewriter.js"(exports, module) {
     "use strict";
     var Transform12 = __require("stream").Transform;
     var FlowedDecoder2 = require_flowed_decoder();
@@ -34585,9 +34585,9 @@ var require_node_rewriter = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/@zone-eu/mailsplit/lib/node-streamer.js
+// plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/lib/node-streamer.js
 var require_node_streamer = __commonJS({
-  "plugins/kiki-mail/node_modules/@zone-eu/mailsplit/lib/node-streamer.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/lib/node-streamer.js"(exports, module) {
     "use strict";
     var Transform12 = __require("stream").Transform;
     var FlowedDecoder2 = require_flowed_decoder();
@@ -34721,9 +34721,9 @@ var require_node_streamer = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/@zone-eu/mailsplit/lib/chunked-passthrough.js
+// plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/lib/chunked-passthrough.js
 var require_chunked_passthrough = __commonJS({
-  "plugins/kiki-mail/node_modules/@zone-eu/mailsplit/lib/chunked-passthrough.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/lib/chunked-passthrough.js"(exports, module) {
     "use strict";
     var { Transform: Transform12 } = __require("stream");
     var ChunkedPassthrough = class extends Transform12 {
@@ -34769,9 +34769,9 @@ var require_chunked_passthrough = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/@zone-eu/mailsplit/index.js
+// plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/index.js
 var require_mailsplit = __commonJS({
-  "plugins/kiki-mail/node_modules/@zone-eu/mailsplit/index.js"(exports, module) {
+  "plugins/official/kiki-mail/node_modules/@zone-eu/mailsplit/index.js"(exports, module) {
     "use strict";
     var MessageSplitter = require_message_splitter();
     var MessageJoiner = require_message_joiner();
@@ -34792,14 +34792,14 @@ var require_mailsplit = __commonJS({
   }
 });
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/mailer/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/mailer/index.js
 import { EventEmitter } from "node:events";
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/shared/url.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/shared/url.js
 import net from "node:net";
 import urllib from "node:url";
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/punycode/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/punycode/index.js
 var maxInt = 2147483647;
 var base = 36;
 var tMin = 1;
@@ -35011,7 +35011,7 @@ var toASCII = function(input) {
   });
 };
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/shared/url.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/shared/url.js
 var SLASHLESS_AUTHORITY = /^([a-zA-Z][a-zA-Z0-9+.-]*:)(?!\/\/)([\s\S]+)$/;
 function stripSurroundingWhitespace(input) {
   let start = 0;
@@ -35142,17 +35142,17 @@ var resolve = (from, to) => {
   }
 };
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/shared/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/shared/index.js
 import util from "node:util";
 import fs from "node:fs";
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/fetch/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/fetch/index.js
 import http from "node:http";
 import https from "node:https";
 import zlib from "node:zlib";
 import { PassThrough } from "node:stream";
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/fetch/cookies.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/fetch/cookies.js
 import net2 from "node:net";
 var SESSION_TIMEOUT = 1800;
 var Cookies = class {
@@ -35364,15 +35364,15 @@ var Cookies = class {
 };
 var cookies_default = Cookies;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/package-info.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/package-info.js
 var name = "nodemailer";
 var version = "10.1.3";
 var homepage = "https://nodemailer.com/";
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/fetch/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/fetch/index.js
 import net3 from "node:net";
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/errors.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/errors.js
 var ECONNECTION = "ECONNECTION";
 var ETIMEDOUT = "ETIMEDOUT";
 var ESOCKET = "ESOCKET";
@@ -35393,7 +35393,7 @@ var EFETCH = "EFETCH";
 var isTransientError = (err) => err.responseCode === 421 || err.code === ECONNECTION || err.code === ESOCKET || err.code === ETIMEDOUT;
 var ERR_ACCESS_DENIED = "ERR_ACCESS_DENIED";
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/shared/objects.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/shared/objects.js
 var isProtoKey = (key) => key === "__proto__";
 var copyOwnKeys = (target, source, skip) => {
   Object.keys(source || {}).forEach((key) => {
@@ -35405,7 +35405,7 @@ var copyOwnKeys = (target, source, skip) => {
   return target;
 };
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/fetch/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/fetch/index.js
 var MAX_REDIRECTS = 5;
 var DEFAULT_TIMEOUT = 60 * 1e3;
 var DEFAULT_MAX_TIME = 2 * 60 * 1e3;
@@ -35710,7 +35710,7 @@ nmfetch.DEFAULT_TIMEOUT = DEFAULT_TIMEOUT;
 nmfetch.DEFAULT_MAX_TIME = DEFAULT_MAX_TIME;
 var fetch_default = nmfetch;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/shared/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/shared/index.js
 import dns from "node:dns";
 import net4 from "node:net";
 import os from "node:os";
@@ -36284,7 +36284,7 @@ function createDefaultLogger(levels) {
   return logger2;
 }
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/mime-funcs/mime-types.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/mime-funcs/mime-types.js
 import path from "node:path";
 var defaultMimeType = "application/octet-stream";
 var defaultExtension = "bin";
@@ -38381,13 +38381,13 @@ function detectExtension(mimeType) {
   }
 }
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/mime-node/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/mime-node/index.js
 import crypto from "node:crypto";
 import fs2 from "node:fs";
 import { PassThrough as PassThrough2, finished as finished2, pipeline } from "node:stream";
 import urlModule from "node:url";
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/base64/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/base64/index.js
 import { Transform } from "node:stream";
 function encode2(buffer) {
   if (typeof buffer === "string") {
@@ -38483,7 +38483,7 @@ var Encoder = class extends Transform {
   }
 };
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/qp/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/qp/index.js
 import { Transform as Transform2 } from "node:stream";
 var MIN_LINE_LENGTH = 4;
 var QP_RANGES = [
@@ -38687,7 +38687,7 @@ var Encoder2 = class extends Transform2 {
   }
 };
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/mime-funcs/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/mime-funcs/index.js
 function isPlainText(value, isParam) {
   const re = isParam ? /[\x00-\x1f\x7f"\u0080-\uFFFF]/ : /[\x00-\x08\x0b\x0c\x0e-\x1f\u0080-\uFFFF]/;
   return typeof value === "string" && !re.test(value);
@@ -39139,7 +39139,7 @@ function safeEncodeURIComponent(str) {
   return str.replace(/[\x00-\x1F *'()<>@,;:\\"[\]?=\u007F-\uFFFF]/g, (chr) => encodeURICharComponent(chr));
 }
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/addressparser/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/addressparser/index.js
 function _quoteLocalPart(address) {
   const lastAt = address.lastIndexOf("@");
   if (lastAt < 0) {
@@ -39645,7 +39645,7 @@ function addressparser(str, options) {
 }
 var addressparser_default = addressparser;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/mime-node/last-newline.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/mime-node/last-newline.js
 import { Transform as Transform3 } from "node:stream";
 var LastNewline = class extends Transform3 {
   constructor() {
@@ -39674,7 +39674,7 @@ var LastNewline = class extends Transform3 {
   }
 };
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/mime-node/le-windows.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/mime-node/le-windows.js
 import { Transform as Transform4 } from "node:stream";
 var LeWindows = class extends Transform4 {
   constructor(options) {
@@ -39711,7 +39711,7 @@ var LeWindows = class extends Transform4 {
   }
 };
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/mime-node/le-unix.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/mime-node/le-unix.js
 import { Transform as Transform5 } from "node:stream";
 var LeUnix = class extends Transform5 {
   constructor(options) {
@@ -39741,7 +39741,7 @@ var LeUnix = class extends Transform5 {
   }
 };
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/mime-node/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/mime-node/index.js
 var FORMATTED_HEADERS = ["From", "Sender", "To", "Cc", "Bcc", "Reply-To", "Date", "References"];
 var ATEXT = "[A-Za-z0-9!#$%&'*+\\-/=?^_`{|}~\\x80-\\uFFFF]";
 var DOT_ATOM = new RegExp("^" + ATEXT + "+(?:\\." + ATEXT + "+)*$");
@@ -40955,7 +40955,7 @@ var MimeNode = class _MimeNode {
 };
 var mime_node_default = MimeNode;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/mail-composer/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/mail-composer/index.js
 function isContentObject(value) {
   const content = value;
   return typeof value === "object" && !!(content.content || content.path || content.href || content.raw);
@@ -41441,7 +41441,7 @@ var MailComposer = class {
 };
 var mail_composer_default = MailComposer;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/dkim/message-parser.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/dkim/message-parser.js
 import { Transform as Transform6 } from "node:stream";
 function _trimFieldName(str) {
   let start = 0;
@@ -41579,7 +41579,7 @@ var MessageParser = class extends Transform6 {
 };
 var message_parser_default = MessageParser;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/dkim/relaxed-body.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/dkim/relaxed-body.js
 import { Transform as Transform7 } from "node:stream";
 import crypto2 from "node:crypto";
 var CHAR_CR = 13;
@@ -41701,7 +41701,7 @@ var RelaxedBody = class extends Transform7 {
 };
 var relaxed_body_default = RelaxedBody;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/dkim/sign.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/dkim/sign.js
 import crypto3 from "node:crypto";
 function unsupportedHashAlgoError(hashAlgo) {
   const err = new Error('Unsupported DKIM hash algorithm "' + hashAlgo + '"');
@@ -41780,7 +41780,7 @@ function relaxedHeaderLine(line) {
   return line.substr(line.indexOf(":") + 1).replace(/\r?\n/g, "").replace(/[ \t]+/g, " ").replace(/^ | $/g, "");
 }
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/dkim/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/dkim/index.js
 import { PassThrough as PassThrough3 } from "node:stream";
 import fs3 from "node:fs";
 import path2 from "node:path";
@@ -41995,7 +41995,7 @@ var DKIM = class {
 };
 var dkim_default = DKIM;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/smtp-connection/http-proxy-client.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/smtp-connection/http-proxy-client.js
 import net5 from "node:net";
 import tls from "node:tls";
 var MAX_RESPONSE_HEADER_BYTES = 64 * 1024;
@@ -42127,10 +42127,10 @@ function httpProxyClient(proxyUrl, destinationPort, destinationHost, tlsOptions,
 }
 var http_proxy_client_default = httpProxyClient;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/mailer/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/mailer/index.js
 import util2 from "node:util";
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/mailer/mail-message.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/mailer/mail-message.js
 var hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 var MailMessage = class {
   constructor(mailer, data) {
@@ -42404,7 +42404,7 @@ var MailMessage = class {
   }
 };
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/mailer/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/mailer/index.js
 import net6 from "node:net";
 import dns2 from "node:dns";
 import crypto5 from "node:crypto";
@@ -42752,17 +42752,17 @@ var Mail = class extends EventEmitter {
 };
 var mailer_default = Mail;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/smtp-pool/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/smtp-pool/index.js
 import { EventEmitter as EventEmitter4 } from "node:events";
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/smtp-connection/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/smtp-connection/index.js
 import { EventEmitter as EventEmitter2 } from "node:events";
 import net7 from "node:net";
 import tls2 from "node:tls";
 import os2 from "node:os";
 import crypto6 from "node:crypto";
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/smtp-connection/data-stream.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/smtp-connection/data-stream.js
 import { Transform as Transform8 } from "node:stream";
 var INSERT_LF = Buffer.from("\n");
 var INSERT_LF_DOT = Buffer.from("\n.");
@@ -42848,7 +42848,7 @@ var DataStream = class extends Transform8 {
   }
 };
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/smtp-connection/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/smtp-connection/index.js
 import { PassThrough as PassThrough4 } from "node:stream";
 var CONNECTION_TIMEOUT = 2 * 60 * 1e3;
 var SOCKET_TIMEOUT = 10 * 60 * 1e3;
@@ -44566,7 +44566,7 @@ var SMTPConnection = class extends EventEmitter2 {
 };
 var smtp_connection_default = SMTPConnection;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/xoauth2/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/xoauth2/index.js
 import { Stream } from "node:stream";
 import crypto7 from "node:crypto";
 var XOAuth2 = class extends Stream {
@@ -44897,7 +44897,7 @@ var XOAuth2 = class extends Stream {
 };
 var xoauth2_default = XOAuth2;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/smtp-pool/pool-resource.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/smtp-pool/pool-resource.js
 import { EventEmitter as EventEmitter3 } from "node:events";
 var PoolResource = class extends EventEmitter3 {
   constructor(pool) {
@@ -45172,7 +45172,7 @@ var PoolResource = class extends EventEmitter3 {
   }
 };
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/well-known/services.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/well-known/services.js
 var services = {
   "126": {
     "description": "126 Mail (NetEase)",
@@ -45851,7 +45851,7 @@ var services = {
   }
 };
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/well-known/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/well-known/index.js
 var normalized = {};
 Object.keys(services).forEach((key) => {
   const service = services[key];
@@ -45881,7 +45881,7 @@ function wellKnown(key) {
   return normalized[key] || false;
 }
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/smtp-pool/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/smtp-pool/index.js
 var REQUEUE_BASE_DELAY = 50;
 var REQUEUE_MAX_DELAY = 2e3;
 var SMTPPool = class extends EventEmitter4 {
@@ -46365,7 +46365,7 @@ var SMTPPool = class extends EventEmitter4 {
 };
 var smtp_pool_default = SMTPPool;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/smtp-transport/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/smtp-transport/index.js
 import { EventEmitter as EventEmitter5 } from "node:events";
 var MESSAGE_AUTH_KEYS = ["type", "user", "pass", "accessToken", "refreshToken", "expires"];
 var SMTPTransport = class extends EventEmitter5 {
@@ -46686,7 +46686,7 @@ var SMTPTransport = class extends EventEmitter5 {
 };
 var smtp_transport_default = SMTPTransport;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/sendmail-transport/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/sendmail-transport/index.js
 import { spawn } from "node:child_process";
 import { pipeline as pipeline2 } from "node:stream";
 var STDIN_ERROR_EXIT_WAIT = 1e3;
@@ -46850,7 +46850,7 @@ var SendmailTransport = class {
 };
 var sendmail_transport_default = SendmailTransport;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/stream-transport/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/stream-transport/index.js
 var StreamTransport = class {
   constructor(options) {
     options = options || {};
@@ -46938,7 +46938,7 @@ var StreamTransport = class {
 };
 var stream_transport_default = StreamTransport;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/json-transport/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/json-transport/index.js
 var JSONTransport = class {
   constructor(options) {
     options = options || {};
@@ -46990,7 +46990,7 @@ var JSONTransport = class {
 };
 var json_transport_default = JSONTransport;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/ses-transport/index.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/ses-transport/index.js
 import EventEmitter6 from "node:events";
 function tagSesError(err) {
   if (err && typeof err === "object" && !err.code) {
@@ -47172,7 +47172,7 @@ var SESTransport = class extends EventEmitter6 {
 };
 var ses_transport_default = SESTransport;
 
-// plugins/kiki-mail/node_modules/nodemailer/dist/esm/nodemailer.js
+// plugins/official/kiki-mail/node_modules/nodemailer/dist/esm/nodemailer.js
 function createTransport(transporter, defaults) {
   let options;
   if (
@@ -47210,14 +47210,14 @@ function createTransport(transporter, defaults) {
   return new mailer_default(transporter, options, defaults);
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/imap-flow.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/imap-flow.js
 import tls4 from "node:tls";
 import net9 from "node:net";
 import zlib2 from "node:zlib";
 import { EventEmitter as EventEmitter7 } from "node:events";
 import { PassThrough as PassThrough6 } from "node:stream";
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/logger.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/logger.js
 var import_pino = __toESM(require_pino(), 1);
 var logger = null;
 function getDefaultLogger() {
@@ -47237,14 +47237,14 @@ function createConnectionLogger(options) {
   return child;
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/package-info.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/package-info.js
 var name2 = "imapflow";
 var version2 = "2.5.4";
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/handler/imap-stream.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/handler/imap-stream.js
 import { Transform as Transform9 } from "node:stream";
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/errors.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/errors.js
 var ImapFlowErrorCode = {
   // the connection is gone, the command was not (or can no longer be) completed
   NoConnection: "NoConnection",
@@ -47315,7 +47315,7 @@ function createImapError(message, code, props) {
   return error2;
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/handler/limits.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/handler/limits.js
 var MAX_LITERAL_SIZE = 1024 * 1024 * 1024;
 var MAX_LINE_SIZE = MAX_LITERAL_SIZE;
 var MAX_RESPONSE_SIZE2 = 2 * MAX_LITERAL_SIZE;
@@ -47330,7 +47330,7 @@ var createLiteralTooLargeError = (literalSize, maxSize, reason) => createImapErr
   maxSize
 });
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/handler/imap-stream.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/handler/imap-stream.js
 var LINE = 1;
 var LITERAL = 2;
 var LF = 10;
@@ -47717,7 +47717,7 @@ var ImapStream = class extends Transform9 {
   }
 };
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/handler/imap-formal-syntax.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/handler/imap-formal-syntax.js
 function expandRange(start, end) {
   let chars = [];
   for (let i = start; i <= end; i++) {
@@ -47782,7 +47782,7 @@ var imapFormalSyntax = {
 };
 var imap_formal_syntax_default = imapFormalSyntax;
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/handler/token-parser.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/handler/token-parser.js
 var STATE_ATOM = 1;
 var STATE_LITERAL = 2;
 var STATE_NORMAL = 3;
@@ -48400,7 +48400,7 @@ var TokenParser = class {
   }
 };
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/handler/parser-instance.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/handler/parser-instance.js
 var ParserInstance = class {
   /**
    * Creates a new ParserInstance for parsing an IMAP response line.
@@ -48587,7 +48587,7 @@ var ParserInstance = class {
   }
 };
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/handler/imap-parser.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/handler/imap-parser.js
 var PARSER_ERROR_CODES = /^(?:ParserError\d+|ParserErrorExchange|MAX_IMAP_NESTING_REACHED|LiteralTooLarge)$/;
 function asParserError(err, input) {
   if (err instanceof Error && PARSER_ERROR_CODES.test(err.code || "")) {
@@ -48654,7 +48654,7 @@ async function parser(command2, options) {
   return response;
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/handler/imap-compiler.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/handler/imap-compiler.js
 var SEQ_RANGE = /^(\d+|\*)(:(\d+|\*))?$/;
 var isValidSequenceSet = (value) => value === "$" || value.split(",").every((part) => SEQ_RANGE.test(part));
 var safeNumber = (value) => {
@@ -48837,16 +48837,16 @@ function compiler(response, options) {
 }
 var imap_compiler_default = compiler;
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/proxy-connection.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/proxy-connection.js
 var import_socks = __toESM(require_build(), 1);
 import dns3 from "node:dns";
 import net8 from "node:net";
 import tls3 from "node:tls";
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/tools.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/tools.js
 var import_libmime = __toESM(require_libmime(), 1);
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/charsets.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/charsets.js
 var CHARACTER_SETS = [
   "US-ASCII",
   "ISO-8859-1",
@@ -49120,14 +49120,14 @@ var resolveCharset = (charset) => {
   return CHARSET_MAP.get(key) ?? null;
 };
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/tools.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/tools.js
 import { createHash } from "node:crypto";
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/jp-decoder.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/jp-decoder.js
 var import_encoding_japanese = __toESM(require_src(), 1);
 import { Transform as Transform11 } from "node:stream";
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/limited-passthrough.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/limited-passthrough.js
 import { Transform as Transform10 } from "node:stream";
 var normalizeByteLimit = (value) => {
   let bytes = Number(value);
@@ -49161,7 +49161,7 @@ var LimitedPassthrough = class extends Transform10 {
   }
 };
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/jp-decoder.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/jp-decoder.js
 var JPDecoder = class extends Transform11 {
   constructor(charset, maxBytes) {
     super();
@@ -49218,7 +49218,7 @@ var JPDecoder = class extends Transform11 {
   }
 };
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/tools.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/tools.js
 var import_iconv_lite = __toESM(require_lib(), 1);
 var FLAG_COLORS = ["red", "orange", "yellow", "green", "blue", "purple", "grey"];
 var CONNECTION_GONE_CODES = /* @__PURE__ */ new Set([ImapFlowErrorCode.NoConnection, ImapFlowErrorCode.EConnectionClosed, ImapFlowErrorCode.StateLogout]);
@@ -50168,7 +50168,7 @@ function packMessageRange(list2) {
   return parts.join(",");
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/connection-deadline.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/connection-deadline.js
 var CONNECT_TIMEOUT = 90 * 1e3;
 var ConnectionDeadline = class {
   /**
@@ -50242,7 +50242,7 @@ var ConnectionDeadline = class {
   }
 };
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/proxy-connection.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/proxy-connection.js
 var MAX_RESPONSE_HEADER_BYTES2 = 64 * 1024;
 var DEFAULT_SOCKS_PORT = 1080;
 var unbracketAddress = (host) => typeof host === "string" && host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
@@ -50508,7 +50508,7 @@ var proxyConnection = async (logger2, connectionUrl, host, port, options) => {
   return void 0;
 };
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/download.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/download.js
 var import_libmime2 = __toESM(require_libmime(), 1);
 var import_libqp = __toESM(require_libqp(), 1);
 var import_libbase64 = __toESM(require_libbase64(), 1);
@@ -51025,7 +51025,7 @@ async function downloadMessageParts(client, range, parts, options) {
   return data;
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/id.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/id.js
 async function id(connection, clientInfo) {
   if (!connection.capabilities.has("ID")) {
     return;
@@ -51075,7 +51075,7 @@ function formatValue(key, value) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/capability.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/capability.js
 async function capability(connection) {
   if (connection.capabilities.size && !connection.expectCapabilityUpdate) {
     return connection.capabilities;
@@ -51091,7 +51091,7 @@ async function capability(connection) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/namespace.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/namespace.js
 async function namespace(connection) {
   if (!isAuthenticatedState(connection)) {
     return;
@@ -51196,7 +51196,7 @@ function getNamsepaceInfo(attribute) {
   return entries;
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/login.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/login.js
 async function login(connection, username, password) {
   if (connection.state !== connection.states.NOT_AUTHENTICATED) {
     return;
@@ -51223,7 +51223,7 @@ async function login(connection, username, password) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/logout.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/logout.js
 var LOGOUT_TIMEOUT = 10 * 1e3;
 async function logout(connection) {
   if (connection.state === connection.states.LOGOUT) {
@@ -51255,7 +51255,7 @@ async function logout(connection) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/starttls.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/starttls.js
 async function starttls(connection) {
   if (!connection.capabilities.has("STARTTLS") || connection.secureConnection) {
     return false;
@@ -51272,7 +51272,7 @@ async function starttls(connection) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/status-fields.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/status-fields.js
 var uint32 = (value) => parseUintValue(value, MAX_UINT32_DIGITS);
 var STATUS_FIELDS = {
   MESSAGES: { key: "messages", parser: uint32 },
@@ -51310,7 +51310,7 @@ var parseStatusList = (list2, onField) => {
   });
 };
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/special-use.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/special-use.js
 var GENERIC_TOKENS = new Set([
   // English. "e" is here because TOKEN_SPLIT breaks on the hyphen, so the
   // "e-mail" / "e-posta" / "e-kirjad" family arrives as a bare "e" token.
@@ -52183,7 +52183,7 @@ var specialUse = (hasSpecialUseExtension, folder) => {
   return { flag: null };
 };
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/list.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/list.js
 async function list(connection, reference, mailbox, options) {
   options = options || {};
   const FLAG_SORT_ORDER = ["\\Inbox", "\\Flagged", "\\Sent", "\\Drafts", "\\All", "\\Archive", "\\Junk", "\\Trash"];
@@ -52534,7 +52534,7 @@ async function list(connection, reference, mailbox, options) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/enable.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/enable.js
 async function enable(connection, extensionList) {
   if (!hasCapability(connection, "ENABLE") || connection.state !== connection.states.AUTHENTICATED) {
     return;
@@ -52577,7 +52577,7 @@ async function enable(connection, extensionList) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/select.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/select.js
 var VALUED_RESPONSE_CODES = Object.assign(/* @__PURE__ */ Object.create(null), {
   // CONDSTORE (RFC 7162): highest mod-sequence value for the mailbox, used for incremental
   // sync. Stored as a BigInt since modseq values can exceed Number.MAX_SAFE_INTEGER.
@@ -52758,7 +52758,7 @@ async function select(connection, pathInput, options) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/fetch.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/fetch.js
 async function fetch(connection, range, query, options) {
   let mailbox = getSelectedMailbox(connection);
   if (!mailbox || !range) {
@@ -52971,7 +52971,7 @@ async function fetch(connection, range, query, options) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/create.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/create.js
 async function create(connection, path3) {
   if (!isAuthenticatedState(connection)) {
     return;
@@ -53023,7 +53023,7 @@ async function create(connection, path3) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/delete.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/delete.js
 async function deleteMailbox(connection, path3) {
   if (!isAuthenticatedState(connection)) {
     return;
@@ -53047,7 +53047,7 @@ async function deleteMailbox(connection, path3) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/rename.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/rename.js
 async function rename(connection, path3, newPath) {
   if (!isAuthenticatedState(connection)) {
     return;
@@ -53076,7 +53076,7 @@ async function rename(connection, path3, newPath) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/close.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/close.js
 async function close(connection, options) {
   if (connection.state !== connection.states.SELECTED) {
     return;
@@ -53099,7 +53099,7 @@ async function close(connection, options) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/subscription.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/subscription.js
 async function setSubscription(connection, command2, path3) {
   if (!isAuthenticatedState(connection)) {
     return;
@@ -53116,17 +53116,17 @@ async function setSubscription(connection, command2, path3) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/subscribe.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/subscribe.js
 async function subscribe(connection, path3) {
   return await setSubscription(connection, "SUBSCRIBE", path3);
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/unsubscribe.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/unsubscribe.js
 async function unsubscribe(connection, path3) {
   return await setSubscription(connection, "UNSUBSCRIBE", path3);
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/store.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/store.js
 async function store(connection, range, flags2, options) {
   options = options || {};
   let mailbox = getSelectedMailbox(connection);
@@ -53199,7 +53199,7 @@ async function store(connection, range, flags2, options) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/search-compiler.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/search-compiler.js
 var UNICODE_PATTERN = /[^\x00-\x7F]/;
 var setBoolOpt = (attributes, term, value) => {
   if (!value) {
@@ -53515,7 +53515,7 @@ var searchCompiler = (connection, query) => {
   return attributes;
 };
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/esearch-parser.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/esearch-parser.js
 function parseEsearchResponse(attrs) {
   const result = {};
   let i = 0;
@@ -53588,7 +53588,7 @@ function parseEsearchResponse(attrs) {
   return result;
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/search.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/search.js
 var stripEsearchPrefix = (attrs) => {
   let start = 0;
   if (attrs[start] && Array.isArray(attrs[start]))
@@ -53739,7 +53739,7 @@ async function search(connection, query, options) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/noop.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/noop.js
 async function noop2(connection) {
   try {
     let response = await connection.exec("NOOP", false, { comment: "Requested by command" });
@@ -53751,7 +53751,7 @@ async function noop2(connection) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/expunge.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/expunge.js
 async function expunge(connection, range, options) {
   let mailbox = getSelectedMailbox(connection);
   if (!mailbox || !range) {
@@ -53784,7 +53784,7 @@ async function expunge(connection, range, options) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/append.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/append.js
 async function append(connection, destination, content, flags2, idate) {
   if (!isAuthenticatedState(connection) || !destination) {
     return;
@@ -53913,7 +53913,7 @@ async function append(connection, destination, content, flags2, idate) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/status.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/status.js
 var MAILBOX_UPDATERS = {
   messages: (value, mailbox, connection, path3) => {
     let prevCount = mailbox.exists;
@@ -53986,7 +53986,7 @@ async function status(connection, path3, query) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/copyuid-parser.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/copyuid-parser.js
 var UID_SET_ELEMENT = /^\d+(:\d+)?$/;
 var isUidSet = (value) => typeof value === "string" && value.split(",").every((part) => UID_SET_ELEMENT.test(part));
 var uidSetValues = (attribute) => {
@@ -54011,7 +54011,7 @@ function parseCopyUid(response, map2) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/copy.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/copy.js
 async function copy(connection, range, destination, options) {
   let mailbox = getSelectedMailbox(connection);
   if (!mailbox || !range || !destination) {
@@ -54036,7 +54036,7 @@ async function copy(connection, range, destination, options) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/move.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/move.js
 async function move(connection, range, destination, options) {
   let mailbox = getSelectedMailbox(connection);
   if (!mailbox || !range || !destination) {
@@ -54075,7 +54075,7 @@ async function move(connection, range, destination, options) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/compress.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/compress.js
 async function compress(connection) {
   if (!connection.capabilities.has("COMPRESS=DEFLATE") || connection._inflate) {
     return false;
@@ -54098,7 +54098,7 @@ async function compress(connection) {
   return true;
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/quota.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/quota.js
 async function quota(connection, path3) {
   if (!isAuthenticatedState(connection) || !path3) {
     return;
@@ -54184,7 +54184,7 @@ async function quota(connection, path3) {
   }
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/idle.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/idle.js
 var NOOP_INTERVAL = 2 * 60 * 1e3;
 function claimIdling(connection) {
   let token = {};
@@ -54455,7 +54455,7 @@ async function idle(connection, maxIdleTime) {
   return runPollingFallback(connection, maxIdleTime);
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/commands/authenticate.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/commands/authenticate.js
 var RE_CONTROL_CHARS = /[\x00-\x1f\x7f]/;
 function assertSaslValue(value, what) {
   if (RE_CONTROL_CHARS.test(value)) {
@@ -54614,7 +54614,7 @@ async function authenticate(connection, username, { accessToken, password, login
   throw new Error("Unsupported authentication mechanism");
 }
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/imap-commands.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/imap-commands.js
 var imapCommands = /* @__PURE__ */ new Map([
   ["ID", id],
   ["CAPABILITY", capability],
@@ -54647,7 +54647,7 @@ var imapCommands = /* @__PURE__ */ new Map([
 ]);
 var imap_commands_default = imapCommands;
 
-// plugins/kiki-mail/node_modules/imapflow/dist/esm/imap-flow.js
+// plugins/official/kiki-mail/node_modules/imapflow/dist/esm/imap-flow.js
 var GREETING_TIMEOUT2 = 16 * 1e3;
 var ALERT_RESPONSES = /* @__PURE__ */ new Set(["OK", "NO", "BAD", "BYE", "PREAUTH"]);
 var UPGRADE_TIMEOUT = 10 * 1e3;
@@ -57662,7 +57662,7 @@ if (typeof Symbol.asyncDispose === "symbol") {
   };
 }
 
-// plugins/kiki-mail/node_modules/postal-mime/dist/esm/decode-strings.js
+// plugins/official/kiki-mail/node_modules/postal-mime/dist/esm/decode-strings.js
 var textEncoder = new TextEncoder();
 var isWsp = (c) => c === 32 || c === 9;
 var base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -58150,7 +58150,7 @@ function decodeParameterValueContinuations(header) {
   });
 }
 
-// plugins/kiki-mail/node_modules/postal-mime/dist/esm/pass-through-decoder.js
+// plugins/official/kiki-mail/node_modules/postal-mime/dist/esm/pass-through-decoder.js
 var PassThroughDecoder = class {
   constructor() {
     this.chunks = [];
@@ -58201,7 +58201,7 @@ var PassThroughDecoder = class {
   }
 };
 
-// plugins/kiki-mail/node_modules/postal-mime/dist/esm/chunk-writer.js
+// plugins/official/kiki-mail/node_modules/postal-mime/dist/esm/chunk-writer.js
 var ChunkWriter = class {
   constructor(maxChunkSize = 100 * 1024) {
     this.maxChunkSize = maxChunkSize;
@@ -58253,7 +58253,7 @@ var ChunkWriter = class {
   }
 };
 
-// plugins/kiki-mail/node_modules/postal-mime/dist/esm/base64-decoder.js
+// plugins/official/kiki-mail/node_modules/postal-mime/dist/esm/base64-decoder.js
 var Base64Decoder = class {
   constructor(opts) {
     opts = opts || {};
@@ -58293,7 +58293,7 @@ var Base64Decoder = class {
   }
 };
 
-// plugins/kiki-mail/node_modules/postal-mime/dist/esm/qp-decoder.js
+// plugins/official/kiki-mail/node_modules/postal-mime/dist/esm/qp-decoder.js
 var CHR_EQUALS = 61;
 var QPDecoder = class {
   constructor() {
@@ -58350,7 +58350,7 @@ var QPDecoder = class {
   }
 };
 
-// plugins/kiki-mail/node_modules/postal-mime/dist/esm/mime-node.js
+// plugins/official/kiki-mail/node_modules/postal-mime/dist/esm/mime-node.js
 var headerDecoder = new TextDecoder("utf-8", { ignoreBOM: true });
 var FLOWED_JOIN_INTERVAL = 4096;
 var HEADER_LINE_MIN_COST = 64;
@@ -58788,7 +58788,7 @@ var MimeNode2 = class {
   }
 };
 
-// plugins/kiki-mail/node_modules/postal-mime/dist/esm/html-entities.js
+// plugins/official/kiki-mail/node_modules/postal-mime/dist/esm/html-entities.js
 var htmlEntities = {
   "&AElig": "\xC6",
   "&AElig;": "\xC6",
@@ -61023,7 +61023,7 @@ var htmlEntities = {
   "&zwnj;": "\u200C"
 };
 
-// plugins/kiki-mail/node_modules/postal-mime/dist/esm/text-format.js
+// plugins/official/kiki-mail/node_modules/postal-mime/dist/esm/text-format.js
 var C1_ENTITY_REPLACEMENTS = /* @__PURE__ */ new Map([
   [128, 8364],
   [130, 8218],
@@ -61385,7 +61385,7 @@ function formatHtmlHeader(message) {
   return template;
 }
 
-// plugins/kiki-mail/node_modules/postal-mime/dist/esm/address-parser.js
+// plugins/official/kiki-mail/node_modules/postal-mime/dist/esm/address-parser.js
 var HAS_WHITESPACE2 = /\s/;
 var QUOTED_LOCAL_ADDR2 = /^("(?:[^"\\]|\\[\s\S])*"@\S+)(?:\s+([\s\S]+))?$/;
 var ADDR_SPEC2 = /^[^@\s]+@[^@\s]+$/;
@@ -61921,7 +61921,7 @@ function addressParser(str, options) {
 }
 var address_parser_default = addressParser;
 
-// plugins/kiki-mail/node_modules/postal-mime/dist/esm/base64-encoder.js
+// plugins/official/kiki-mail/node_modules/postal-mime/dist/esm/base64-encoder.js
 function base64ArrayBuffer(arrayBuffer) {
   let base64 = "";
   const encodings = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -61954,7 +61954,7 @@ function base64ArrayBuffer(arrayBuffer) {
   return base64;
 }
 
-// plugins/kiki-mail/node_modules/postal-mime/dist/esm/postal-mime.js
+// plugins/official/kiki-mail/node_modules/postal-mime/dist/esm/postal-mime.js
 function isReadableStream(value) {
   return !!value && typeof value.getReader === "function";
 }

@@ -18,6 +18,9 @@ Voice needs a Kiki Host with plugin dependencies and the Media and messages APIs
 | Notion | Notion's HTTP MCP service and its OAuth authorization. See [Notion](plugins/official/kiki-notion/README.md). |
 | Phone | Prepare the runtime, then operate a connected phone with semantic Mobilewright scripts or Mobile MCP. Needs Node.js 22.12+ with npm; Android uses official platform-tools and USB or wireless debugging. iOS needs a signed upstream device agent. See [Phone setup](plugins/official/kiki-phone/README.md). |
 | Media | Install the Media entry plus a provider; configure an entitled API connection or key. Cloud generation may incur charges. ComfyUI needs your running endpoint and installed workflow/models; no GPU engine or models are included. |
+| Everything Search | Windows with the Everything index running and the `es.exe` command-line client installed. |
+| QQ | An official QQ Bot account or a OneBot 11 endpoint. |
+| Mail | An IMAP/SMTP account for direct mail or an Open Archiver URL and read-only key for archives. |
 
 The two Moonshot entries are **author-hosted references**, not mirrored source in this repository. Their original license and external daemon/service requirements apply. The three community entries keep pinned author commits; their Claude-plugin import compatibility is marked unverified, so inspect Kiki's unsupported-contribution diagnostics before enabling them.
 
@@ -33,7 +36,7 @@ npm run build
 npm run dev
 ```
 
-`check` validates catalog-listed local packages, exact manifest/entry registrations, manifest synchronization and each package's routed fixtures. To select one package, use `npm run check -- kiki-phone` with the same `KIKI_HOST_RUNNER`; unknown IDs fail. `npm run check -- catalog` validates only catalog metadata for CI's metadata-only route.
+`check` validates catalog-listed local packages and non-marketplace packages under `plugins/`, including exact manifest/entry registration, manifest synchronization and routed fixtures. To select one package, use `npm run check -- kiki-phone` with the same `KIKI_HOST_RUNNER`; unknown IDs fail. `npm run check -- catalog` validates only catalog metadata for CI's metadata-only route.
 
 The runner must match the checksum in `sdk.lock.json`. Without `KIKI_HOST_RUNNER`, `check` downloads it from the fixed Kiki commit; that commit must be available on GitHub first. Checks use temporary fixtures without Kiki-home access or paid API credentials.
 
@@ -54,6 +57,7 @@ Office's real document-engine tests require `OFFICECLI_TEST_BINARY` pointing to 
 
 - `plugins/official/<id>/`: first-party manifests, runtime, skills/panels, icons, and licenses.
 - `plugins/official/media-runtime/`: shared source distributed into ten self-contained providers; not a catalog package.
+- `plugins/<id>/`: additional source packages that are not listed in the public marketplace.
 - `plugins/marketplace.json`: descriptions and author-hosted external entries.
 - `scripts/`: packaging, validation, development server, and release tooling.
 - `vendor/kiki-plugin-sdk-0.1.1-host-a3c694c402.tgz`: compiled SDK artifact selected by `sdk.lock.json`; older artifacts remain intact. CI recompiles the fixed Kiki ref and compares its public exports and compiled files.

@@ -4,10 +4,10 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { satisfies } from 'semver';
-import { packageFiles } from '../../../scripts/package-files.mjs';
+import { packageFiles } from '../../../../scripts/package-files.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const repo = path.resolve(root, '../..');
+const repo = path.resolve(root, '../../..');
 const manifest = JSON.parse(await readFile(path.join(root, 'kimi.plugin.json'), 'utf8'));
 const sdkLock = JSON.parse(await readFile(path.join(repo, 'sdk.lock.json'), 'utf8'));
 assert.equal(manifest.name, 'kiki-mail');
@@ -21,7 +21,7 @@ for (const required of [
 ]) assert.ok(files.includes(required), `missing ${required}`);
 assert.equal(files.some((file) => file.includes('node_modules') || file.startsWith('test/') || file === 'package.json'), false);
 const catalog = JSON.parse(await readFile(path.join(repo, 'plugins', 'marketplace.json'), 'utf8'));
-assert.equal(catalog.plugins.some((plugin) => plugin.id === 'kiki-mail' || String(plugin.source).includes('kiki-mail')), false);
+assert.equal(catalog.plugins.find((plugin) => plugin.id === 'kiki-mail')?.source, './official/kiki-mail');
 const versions = JSON.parse(await readFile(path.join(root, 'vendor', 'versions.json'), 'utf8'));
 const npmLock = JSON.parse(await readFile(path.join(root, 'package-lock.json'), 'utf8'));
 for (const name of ['nodemailer', 'imapflow', 'postal-mime']) {

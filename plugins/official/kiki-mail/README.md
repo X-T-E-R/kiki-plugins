@@ -10,11 +10,11 @@ This directory includes the bundled mail runtime in `vendor/`. From a Kiki chat,
 /plugins install --trust <path-to-kiki-mail>
 ```
 
-Enable **kiki-mail** and open the **Mail** panel. Build an offline package with `node plugins/kiki-mail/scripts/pack.mjs`. Rebuilding the bundle from the lockfile is separate from installing:
+Enable **kiki-mail** and open the **Mail** panel. Build an offline package with `node plugins/official/kiki-mail/scripts/pack.mjs`. Rebuilding the bundle from the lockfile is separate from installing:
 
 ```
-npm ci --ignore-scripts --prefix plugins/kiki-mail
-node plugins/kiki-mail/scripts/build-vendor.mjs
+npm ci --ignore-scripts --prefix plugins/official/kiki-mail
+node plugins/official/kiki-mail/scripts/build-vendor.mjs
 ```
 
 ## Manage accounts in Mail
@@ -86,7 +86,7 @@ Notification forwarding is also off until enabled for a direct mailbox and a lis
 
 Only an authorized operator should run this migration procedure after the Mail build with Open Archiver support is installed in Kiki and the destination is approved. Its commands contact local Kiki and Open Archiver and can create or reconnect sources.
 
-Run `node plugins/kiki-mail/scripts/migrate-open-archiver.mjs` from the repository root. Every invocation needs the options for the running local Kiki owner: `--home <kiki-home> --session <session-id> --kiki <kiki-executable>`. Replace placeholders; never pass a key or secret itself on the command line. The `*-key-file` options take approved JSON file paths.
+Run `node plugins/official/kiki-mail/scripts/migrate-open-archiver.mjs` from the repository root. Every invocation needs the options for the running local Kiki owner: `--home <kiki-home> --session <session-id> --kiki <kiki-executable>`. Replace placeholders; never pass a key or secret itself on the command line. The `*-key-file` options take approved JSON file paths.
 
 1. `inventory` lists configured account types, saved-credential presence, watch/send-only state, and the default reader and sender. Select only direct, readable accounts with a saved password and verified implicit IMAP TLS. OAuth accounts are not migrated; authorize them separately in Open Archiver. Existing Send-only accounts are not readers to migrate.
 2. `connect --url https://archive.example.test --read-key-file <approved-key-file>` tests and saves the Open Archiver account through Mail. Replace the example URL with the approved service URL. This command uses only `readonly_user.api_key` from the approved JSON file. Choose an archive account ID with `--archive-account` if needed. Save no Basic credentials.

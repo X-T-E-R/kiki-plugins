@@ -59,7 +59,7 @@
       "id": "kiki-office",
       "tier": "official",
       "displayName": "Kiki Office Suite",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "description": "Create and edit local Word, Excel and PowerPoint files.",
       "keywords": [
         "office",
@@ -276,7 +276,7 @@
       "id": "kiki-work",
       "tier": "official",
       "displayName": "Kiki Work",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Local table checks for office work: audit CSV keys and reconcile two tables without modifying or uploading them.",
       "keywords": [
         "work",
@@ -304,7 +304,7 @@
       "id": "kiki-pet",
       "tier": "official",
       "displayName": "Desktop Pet",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "An isolated native desktop companion that reacts to Kiki tasks, imports Codex pets and carries a pet-making skill.",
       "keywords": [
         "pet",
@@ -357,7 +357,7 @@
       "id": "kiki-bilibili",
       "tier": "official",
       "displayName": "Kiki Bilibili",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "description": "Search and understand Bilibili videos, manage comments and notifications, and publish through bili-agent.",
       "keywords": [
         "bilibili",
@@ -418,7 +418,7 @@
       "id": "kiki-phone",
       "tier": "official",
       "displayName": "Kiki Phone",
-      "version": "0.1.0",
+      "version": "0.2.1",
       "description": "Prepare the runtime, then use Mobilewright semantic scripts or Mobile MCP to operate a connected Android or iOS phone. Rooted Android also supports su commands.",
       "keywords": [
         "phone",
@@ -441,6 +441,90 @@
             "苹果",
             "操作手机",
             "root"
+          ]
+        }
+      }
+    },
+    {
+      "id": "kiki-everything",
+      "tier": "official",
+      "displayName": "Everything Search",
+      "version": "0.1.2",
+      "description": "Find files and folders on Windows by name, path, size or date with the Everything index.",
+      "keywords": [
+        "search",
+        "files",
+        "everything",
+        "windows"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-everything",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-everything",
+      "localizations": {
+        "zh": {
+          "description": "用 Everything 索引按名称、路径、大小或日期查找 Windows 本机文件和文件夹。",
+          "keywords": [
+            "文件搜索",
+            "文件夹",
+            "Everything",
+            "Windows"
+          ]
+        }
+      }
+    },
+    {
+      "id": "kiki-qq",
+      "tier": "official",
+      "displayName": "QQ",
+      "version": "0.4.0",
+      "description": "Connect an official QQ Bot or OneBot 11 channel to exchange messages and media in Kiki.",
+      "keywords": [
+        "qq",
+        "onebot",
+        "chat",
+        "messaging"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-qq",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-qq",
+      "localizations": {
+        "zh": {
+          "description": "连接官方 QQ 机器人或 OneBot 11 渠道，在 Kiki 中收发消息与媒体。",
+          "keywords": [
+            "QQ",
+            "OneBot",
+            "聊天",
+            "消息"
+          ]
+        }
+      }
+    },
+    {
+      "id": "kiki-mail",
+      "tier": "official",
+      "displayName": "Mail",
+      "version": "0.3.0",
+      "description": "Search mail across Open Archiver sources, or read and send through your IMAP and SMTP accounts.",
+      "keywords": [
+        "mail",
+        "archive",
+        "imap",
+        "smtp"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-mail",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-mail",
+      "localizations": {
+        "zh": {
+          "description": "跨来源搜索 Open Archiver 归档邮件，或用自己的 IMAP 和 SMTP 账号收发邮件。",
+          "keywords": [
+            "邮件",
+            "归档",
+            "IMAP",
+            "SMTP"
           ]
         }
       }

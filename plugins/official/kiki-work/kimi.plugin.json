@@ -1,6 +1,6 @@
 {
   "name": "kiki-work",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local table checks for office work: audit CSV keys and reconcile two tables without modifying or uploading them.",
   "license": "MIT",
   "skills": ["./skills/work-reconciliation"],

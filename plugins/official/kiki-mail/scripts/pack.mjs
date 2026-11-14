@@ -3,10 +3,10 @@ import { createWriteStream } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { packageBytes, packageFiles } from '../../../scripts/package-files.mjs';
+import { packageBytes, packageFiles } from '../../../../scripts/package-files.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const repo = path.resolve(root, '../..');
+const repo = path.resolve(root, '../../..');
 const require = createRequire(path.join(repo, 'package.json'));
 const yazl = require('yazl');
 const manifest = JSON.parse(await readFile(path.join(root, 'kimi.plugin.json'), 'utf8'));

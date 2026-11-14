@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -13,6 +14,12 @@ assert.equal(new Set(catalog.plugins.map(p=>p.id)).size,catalog.plugins.length,'
 for(const p of catalog.plugins){assert.ok(p.author&&p.license&&p.version&&p.source);if(!p.source.startsWith('./official/'))assert.ok(p.compatibility?.status);else assert.equal(p.source,`./official/${p.id}`);}
 const selected=process.argv[2];
 const packages=catalog.plugins.filter(p=>p.source.startsWith('./official/')&&(!selected||selected===p.id));
+if(!selected)for(const entry of await readdir('plugins',{withFileTypes:true})){
+  if(entry.isDirectory()&&entry.name!=='official'&&existsSync(resolve('plugins',entry.name,'kimi.plugin.json'))){
+    const {id,source}=await resolveLocalPlugin(entry.name);
+    packages.push({id,source});
+  }
+}
 if(selected && selected!=='catalog' && packages.length===0){
   const {id,source}=await resolveLocalPlugin(selected);
   packages.push({id,source});
@@ -53,9 +60,14 @@ async function checkPackages(){
   }
   if(!selected||selected==='kiki-extract')run('--test',['plugins/official/kiki-extract/test/documents.test.mjs']);
   if(!selected||selected==='kiki-office')run('--test',['plugins/official/kiki-office/test/office.test.mjs']);
+  if(!selected||selected==='kiki-mail')run('plugins/official/kiki-mail/scripts/check.mjs');
   if(!selected||selected==='kiki-task-board')run('--test',['plugins/official/kiki-task-board/test/board.test.mjs','plugins/official/kiki-task-board/test/engine.test.mjs','plugins/official/kiki-task-board/test/panel-recovery.test.mjs']);
   if(!selected||selected==='kiki-media') { run('plugins/official/kiki-media/scripts/sync-sources.mjs',['--check']); run('scripts/sync-media-catalog.mjs',['--check']); run('--test',['test/media-concurrency.test.mjs','plugins/official/kiki-media/test/settings-panel.test.mjs']); }
   if(!selected||selected.startsWith('kiki-media-'))run('--test',['plugins/official/media-runtime/test/protocol.test.mjs']);
-  if(selected==='magpie-harness-quota'){run('plugins/magpie-harness-quota/scripts/sync-manifest.mjs',['--check']);run('--test',['--test-timeout=60000','plugins/magpie-harness-quota/test/magpie-harness-quota.test.mjs','plugins/magpie-harness-quota/test/antigravity-direct-quota.test.mjs','plugins/magpie-harness-quota/test/antigravity-account-source.test.mjs','plugins/magpie-harness-quota/test/magpie-manage.test.mjs']);}
-  if(selected==='model-dispatch-advisor'){run('plugins/model-dispatch-advisor/scripts/sync-manifest.mjs',['--check']);run('--test',['plugins/model-dispatch-advisor/test/model-dispatch-advisor.test.mjs']);}
+  if(!selected||selected==='magpie-harness-quota'){run('plugins/magpie-harness-quota/scripts/sync-manifest.mjs',['--check']);run('--test',['--test-timeout=60000','plugins/magpie-harness-quota/test/magpie-harness-quota.test.mjs','plugins/magpie-harness-quota/test/antigravity-direct-quota.test.mjs','plugins/magpie-harness-quota/test/antigravity-account-source.test.mjs','plugins/magpie-harness-quota/test/magpie-manage.test.mjs']);}
+  if(!selected||selected==='model-dispatch-advisor'){run('plugins/model-dispatch-advisor/scripts/sync-manifest.mjs',['--check']);run('--test',['plugins/model-dispatch-advisor/test/model-dispatch-advisor.test.mjs']);}
+  for(const p of packages.filter(p=>!p.source.startsWith('./official/')&&!['magpie-harness-quota','model-dispatch-advisor'].includes(p.id))){
+    const root=resolve('plugins',p.source),testDir=resolve(root,'test');
+    if(existsSync(testDir))run('--test',(await readdir(testDir)).filter(file=>file.endsWith('.test.mjs')).map(file=>resolve(testDir,file)));
+  }
 }

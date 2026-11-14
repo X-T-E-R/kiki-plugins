@@ -3,6 +3,7 @@
   "version": "0.4.0",
   "description": "QQ Bot and OneBot 11 channels with optional official QR setup, messaging, media receipts and read-only OneBot group tools.",
   "license": "MIT",
+  "icon": "./icon.svg",
   "interface": {
     "displayName": "QQ",
     "shortDescription": "Official QQ Bot API and OneBot 11 channels"

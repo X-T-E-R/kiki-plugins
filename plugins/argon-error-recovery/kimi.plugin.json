@@ -1,0 +1,18 @@
+{
+  "name": "argon-error-recovery",
+  "version": "0.3.0",
+  "description": "Unofficial Argon recovery: retry in place without retained output, or continue from retained output.",
+  "license": "MIT",
+  "author": "Community",
+  "interface": {
+    "displayName": "Argon Error Recovery (Unofficial)",
+    "shortDescription": "Retry in place without retained output, or continue from retained output."
+  },
+  "hooks": [
+    {
+      "event": "StopFailure",
+      "command": "node ./runtime.mjs",
+      "timeout": 5
+    }
+  ]
+}
