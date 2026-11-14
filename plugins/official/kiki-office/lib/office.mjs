@@ -59,7 +59,7 @@ export function createOfficeCore({ locateBinary = findBinary, invoke = runProces
       const binary = await locateBinary({ binaryPath: scope?.binaryPath, signal: context.signal });
       if (name === 'office_preview') {
         if (args.mode !== undefined) throw new OfficeError('ARGUMENT_INVALID', 'Preview mode is not a tool parameter.', 'Use office_preview for PNG or outline; HTML is reserved for the panel.');
-        const rendered = await renderPreview(binary, file, { page: args.page, signal: context.signal, imageIn: context.imageIn });
+        const rendered = await renderPreview(binary, file, { page: args.page, range: args.range, signal: context.signal, imageIn: context.imageIn, invoke });
         return { success: true, data: rendered };
       }
       let cli;

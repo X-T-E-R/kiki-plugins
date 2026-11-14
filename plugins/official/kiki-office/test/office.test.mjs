@@ -92,6 +92,27 @@ void test('rejects missing engine, incompatible engine and path escapes', async 
   await no('office_create', { file: path.join(directory, 'unknown.csv') }, 'FORMAT_UNSUPPORTED');
 });
 
+void test('preview accepts pages beyond the old arbitrary cap and rejects nonpositive pages', async () => {
+  await writeFile(path.join(directory, 'many-pages.docx'), 'fixture');
+  const calls = [];
+  const preview = createOfficeCore({
+    scope: { workspaceRoot: directory },
+    locateBinary: async () => 'officecli-test',
+    invoke: async (_binary, args) => {
+      calls.push(args);
+      const output = args[args.indexOf('--out') + 1];
+      await writeFile(output, Buffer.from('89504e470d0a1a0a', 'hex'));
+      return { code: 0, stdout: '', stderr: '' };
+    },
+  });
+  const result = await preview.run('office_preview', { file: 'many-pages.docx', page: 101 }, { imageIn: true });
+  assert.equal(result.success, true, JSON.stringify(result.error));
+  assert.deepEqual(calls[0].slice(calls[0].indexOf('--page'), calls[0].indexOf('--page') + 2), ['--page', '101']);
+  const invalid = await preview.run('office_preview', { file: 'many-pages.docx', page: 0 }, { imageIn: true });
+  assert.equal(invalid.success, false);
+  assert.equal(invalid.error.code, 'ARGUMENT_INVALID');
+});
+
 void test('Word chain, precise reads, style preservation and safe edits', { skip: !process.env.OFFICECLI_TEST_BINARY }, async () => {
   binary = await findBinary({ binaryPath: binary });
   assert.equal((await runProcess(binary, ['--version'])).stdout.trim(), OFFICECLI_VERSION);

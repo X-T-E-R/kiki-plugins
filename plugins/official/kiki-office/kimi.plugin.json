@@ -1,6 +1,6 @@
 {
   "name": "kiki-office",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Create, inspect, edit and preview Word, Excel and PowerPoint files locally with pinned OfficeCLI.",
   "license": "MIT",
   "icon": "./icon.svg",
@@ -395,8 +395,10 @@
             },
             "page": {
               "type": "integer",
-              "minimum": 1,
-              "maximum": 100
+              "minimum": 1
+            },
+            "range": {
+              "type": "string"
             }
           },
           "required": [

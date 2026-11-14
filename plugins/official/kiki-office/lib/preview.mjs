@@ -4,19 +4,19 @@ import path from 'node:path';
 import { OfficeError } from './paths.mjs';
 import { runProcess } from './binary.mjs';
 
-export async function renderPreview(binary, file, { mode = 'screenshot', page = 1, signal, imageIn = false } = {}) {
+export async function renderPreview(binary, file, { mode = 'screenshot', page = 1, range, signal, imageIn = false, invoke = runProcess } = {}) {
   if (mode === 'screenshot' && !imageIn) mode = 'outline';
   if (mode === 'outline') {
-    const result = await runProcess(binary, ['view', file, 'outline', '--max-lines', '100'], { signal });
+    const result = await invoke(binary, ['view', file, 'outline', '--max-lines', '100'], { signal });
     if (result.code !== 0) throw new OfficeError('RENDER_FAILED', result.stderr || 'Outline rendering failed.', 'Try office_view text or check the document.');
     return { text: `Image input is unavailable for this model; document outline:\n${result.stdout.slice(0, 16_384)}` };
   }
   if (!['screenshot', 'html'].includes(mode)) throw new OfficeError('ARGUMENT_INVALID', 'Unsupported preview mode.', 'Choose screenshot or html.');
-  if (!Number.isInteger(page) || page < 1 || page > 100) throw new OfficeError('ARGUMENT_INVALID', 'Page must be an integer from 1 to 100.', 'Choose a valid page number.');
+  if (!Number.isInteger(page) || page < 1) throw new OfficeError('ARGUMENT_INVALID', 'Page must be a positive integer.', 'Choose a valid page number.');
   const directory = await mkdtemp(path.join(os.tmpdir(), 'kiki-office-preview-'));
   try {
     const output = path.join(directory, mode === 'html' ? 'preview.html' : 'preview.png');
-    const result = await runProcess(binary, ['view', file, mode, '--page', String(page), '--out', output], { signal, timeoutMs: 60_000 });
+    const result = await invoke(binary, ['view', file, mode, '--page', String(page), ...(range === undefined ? [] : ['--range', range]), '--out', output], { signal, timeoutMs: 60_000 });
     if (result.code !== 0) throw new OfficeError('RENDER_FAILED', result.stderr || 'Preview rendering failed.', 'Try office_view outline or check the document.');
     const bytes = await readFile(output);
     if (mode === 'html') return { html: bytes.toString('utf8').slice(0, 256 * 1024) };
