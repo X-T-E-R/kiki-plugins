@@ -219,29 +219,28 @@
     cursor: crosshair;
     touch-action: none;
   }
-  .phone-screen img {
+  .phone-screen canvas {
     width: 100%;
     height: 100%;
-    object-fit: fill;
     display: block;
     pointer-events: none;
     user-select: none;
   }
   .touch-ripple {
     position: absolute;
-    width: 26px;
-    height: 26px;
-    margin-left: -13px;
-    margin-top: -13px;
+    width: 24px;
+    height: 24px;
+    margin-left: -12px;
+    margin-top: -12px;
     border-radius: 999px;
-    border: 2px solid rgba(255, 255, 255, 0.92);
-    background: rgba(88, 168, 143, 0.36);
+    border: 2px solid rgba(255, 255, 255, 0.9);
+    background: rgba(88, 168, 143, 0.34);
     pointer-events: none;
-    animation: ripple 420ms ease-out forwards;
+    animation: ripple 360ms ease-out forwards;
   }
   @keyframes ripple {
-    0% { transform: scale(0.45); opacity: 1; }
-    100% { transform: scale(1.55); opacity: 0; }
+    0% { transform: scale(0.42); opacity: 1; }
+    100% { transform: scale(1.5); opacity: 0; }
   }
   .gesture-line {
     position: absolute;
@@ -439,8 +438,8 @@
       <span id="platformPill" class="platform-pill" hidden>ANDROID</span>
       <span id="fgApp" class="meta-app"></span>
     </div>
-    <button id="liveToggle" type="button" class="pill-btn active" title="Toggle live stream polling">Live</button>
-    <button id="refreshBtn" type="button" class="pill-btn" title="Refresh devices & frame">Refresh</button>
+    <button id="liveToggle" type="button" class="pill-btn active" title="Toggle live screen stream">Live</button>
+    <button id="refreshBtn" type="button" class="pill-btn" title="Refresh devices and reconnect stream">Refresh</button>
   </header>
 
   <div class="workspace">
@@ -457,7 +456,7 @@
 
       <div id="chassis" class="phone-chassis" style="width:260px;height:560px" hidden>
         <div id="screenBox" class="phone-screen">
-          <img id="screenImg" alt="Phone screen" draggable="false" />
+          <canvas id="screenCanvas" width="540" height="1200"></canvas>
           <svg id="gestureSvg" class="gesture-line" viewBox="0 0 100 100" preserveAspectRatio="none" hidden>
             <line id="gestureLine" x1="0" y1="0" x2="0" y2="0" stroke="rgba(88,168,143,0.9)" stroke-width="1.2" stroke-linecap="round" />
           </svg>
@@ -466,7 +465,7 @@
       </div>
 
       <aside class="rail" aria-label="Device controls">
-        <button type="button" class="rail-btn" data-act="wake" title="Wake & unlock screen">
+        <button type="button" class="rail-btn" data-act="wake" title="Wake and unlock screen">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
         </button>
         <button type="button" class="rail-btn" data-act="home" title="Home">
@@ -488,11 +487,11 @@
         <button type="button" class="rail-btn" data-act="shot" title="Download PNG screenshot">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
         </button>
-        <button id="toolsBtn" type="button" class="rail-btn" title="Device tools & wireless ADB">
+        <button id="toolsBtn" type="button" class="rail-btn" title="Device tools and wireless ADB">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
         </button>
         <div class="rail-sep"></div>
-        <button type="button" class="rail-btn" data-act="sleep" title="Lock / sleep screen">
+        <button type="button" class="rail-btn" data-act="sleep" title="Lock or sleep screen">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2v10"/><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/></svg>
         </button>
       </aside>
@@ -568,10 +567,26 @@
 <script>
 (() => {
   const CHANNEL = 'kiki.panel.v1';
+  const RATE_WINDOW_MS = 10000;
+  const FRAME_BUDGET_IN_WINDOW = 112;
+  const MIN_POLL_INTERVAL_MS = 88;
+  const STREAM_HANDSHAKE_TIMEOUT_MS = 2000;
+  const FRAME_MAGIC = 0x4b;
+  const TOUCH_MAGIC = 0x54;
+  const SCROLL_MAGIC = 0x53;
+
   let reqSeq = 0;
   let booted = false;
   let currentSessionId = null;
   const pending = new Map();
+  const rpcStamps = [];
+
+  function pruneRpcWindow(now = Date.now()) {
+    while (rpcStamps.length > 0 && now - rpcStamps[0] >= RATE_WINDOW_MS) {
+      rpcStamps.shift();
+    }
+    return rpcStamps.length;
+  }
 
   function applyPresentation(pres) {
     if (!pres || typeof pres !== 'object') return;
@@ -595,28 +610,46 @@
       void startBoot();
       return;
     }
-    if (data.kind !== 'response' || !pending.has(data.id)) return;
+    if (data.kind !== 'response') return;
     const entry = pending.get(data.id);
+    if (!entry) {
+      if (event.ports && event.ports[0]) {
+        try {
+          event.ports[0].postMessage({ __kikiStreamControl: 'close' });
+          event.ports[0].close();
+        } catch {}
+      }
+      return;
+    }
     pending.delete(data.id);
     clearTimeout(entry.timer);
-    if (data.ok) entry.resolve(data.result);
-    else entry.reject(new Error((typeof data.error === 'string' ? data.error : data.error?.message) || 'Bridge request failed'));
+    if (data.ok) {
+      entry.resolve(entry.withPort ? { result: data.result, port: (event.ports && event.ports[0]) || null } : data.result);
+    } else {
+      entry.reject(new Error((typeof data.error === 'string' ? data.error : data.error?.message) || 'Bridge request failed'));
+    }
   });
 
-  function bridgeCall(method, payload = {}, timeoutMs = 20000) {
+  function bridgeCall(method, payload = {}, timeoutMs = 20000, withPort = false) {
     const id = ++reqSeq;
+    const now = Date.now();
+    pruneRpcWindow(now);
+    rpcStamps.push(now);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(new Error('Bridge request timed out'));
       }, timeoutMs);
-      pending.set(id, { resolve, reject, timer });
+      pending.set(id, { resolve, reject, timer, withPort });
       window.parent.postMessage({ channel: CHANNEL, kind: 'request', id, method, ...payload }, '*');
     });
   }
 
   const panelCall = (action, args = {}, timeoutMs = 20000) =>
-    bridgeCall('plugin.call', { action, args }, timeoutMs);
+    bridgeCall('plugin.call', { action, args }, timeoutMs, false);
+
+  const openPanelStream = (stream, args = {}, timeoutMs = STREAM_HANDSHAKE_TIMEOUT_MS) =>
+    bridgeCall('plugin.openStream', { stream, args }, timeoutMs, true);
 
   const state = {
     devices: [],
@@ -628,9 +661,21 @@
     selectedAx: null,
     screenSize: { width: 1080, height: 2400 },
     orientation: 'portrait',
+    asleep: false,
     frameInFlight: false,
     pollTimer: null,
+    lastPollStartedAt: 0,
     pointerStart: null,
+    streamActive: false,
+    streamPort: null,
+    streamGeneration: 0,
+    videoDecoder: null,
+    configuredCodec: '',
+    waitingForKeyframe: true,
+    hostStreamUnsupported: false,
+    pendingMove: null,
+    moveRaf: 0,
+    fpsTimes: [],
   };
 
   const el = {
@@ -647,7 +692,7 @@
     offlineList: document.getElementById('offlineList'),
     chassis: document.getElementById('chassis'),
     screenBox: document.getElementById('screenBox'),
-    screenImg: document.getElementById('screenImg'),
+    screenCanvas: document.getElementById('screenCanvas'),
     gestureSvg: document.getElementById('gestureSvg'),
     gestureLine: document.getElementById('gestureLine'),
     axLayer: document.getElementById('axLayer'),
@@ -663,9 +708,54 @@
     axNodeLocator: document.getElementById('axNodeLocator'),
   };
 
+  const canvasCtx = el.screenCanvas.getContext('2d', { alpha: false, desynchronized: true })
+    || el.screenCanvas.getContext('2d');
+
   function setStatus(msg, isError = false) {
     el.statusText.textContent = msg;
     el.statusText.classList.toggle('err', Boolean(isError));
+  }
+
+  function recordRenderedFrame() {
+    const now = performance.now();
+    state.fpsTimes.push(now);
+    while (state.fpsTimes.length > 0 && now - state.fpsTimes[0] > 1500) {
+      state.fpsTimes.shift();
+    }
+    updateResolutionBar();
+  }
+
+  function currentFps() {
+    if (state.fpsTimes.length < 2) return 0;
+    const span = state.fpsTimes[state.fpsTimes.length - 1] - state.fpsTimes[0];
+    if (span < 80) return 0;
+    return Math.round(((state.fpsTimes.length - 1) * 1000) / span);
+  }
+
+  function updateResolutionBar() {
+    const w = state.screenSize.width || 0;
+    const h = state.screenSize.height || 0;
+    if (!w || !h) {
+      el.resText.textContent = '--';
+      return;
+    }
+    const fps = currentFps();
+    const parts = [`${w}×${h}`];
+    if (state.streamActive) {
+      parts.push(fps > 0 ? `${fps}fps · H.264` : '60fps · H.264');
+    } else if (fps > 0 && state.live) {
+      parts.push(`${fps}fps`);
+    }
+    if (state.asleep) parts.push('Asleep');
+    el.resText.textContent = parts.join(' · ');
+  }
+
+  function updateScreenDimensions(width, height) {
+    if (!width || !height) return;
+    const changed = width !== state.screenSize.width || height !== state.screenSize.height;
+    state.screenSize = { width, height };
+    if (changed) layoutChassis();
+    updateResolutionBar();
   }
 
   function fitDeviceFrame(aspect, width, height, rightInset) {
@@ -688,6 +778,347 @@
   }
 
   new ResizeObserver(layoutChassis).observe(el.stage);
+
+  function activeOnlineDevice() {
+    if (!state.selected) return null;
+    const dev = state.devices.find((d) => d.id === state.selected.id && d.platform === state.selected.platform);
+    return dev && dev.state === 'online' ? dev : null;
+  }
+
+  function dataUrlToBlob(dataUrl) {
+    const comma = dataUrl.indexOf(',');
+    if (comma === -1) throw new Error('Invalid image data URL');
+    const header = dataUrl.slice(0, comma);
+    const mimeMatch = /^data:([^;]+)/.exec(header);
+    const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+    const raw = atob(dataUrl.slice(comma + 1));
+    const len = raw.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) bytes[i] = raw.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  }
+
+  async function drawDataUrlToCanvas(dataUrl) {
+    if (typeof createImageBitmap === 'function') {
+      const bmp = await createImageBitmap(dataUrlToBlob(dataUrl));
+      try {
+        if (el.screenCanvas.width !== bmp.width || el.screenCanvas.height !== bmp.height) {
+          el.screenCanvas.width = bmp.width;
+          el.screenCanvas.height = bmp.height;
+        }
+        canvasCtx.drawImage(bmp, 0, 0, bmp.width, bmp.height);
+      } finally {
+        bmp.close();
+      }
+      recordRenderedFrame();
+      return;
+    }
+    await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        if (el.screenCanvas.width !== img.naturalWidth || el.screenCanvas.height !== img.naturalHeight) {
+          el.screenCanvas.width = img.naturalWidth || 540;
+          el.screenCanvas.height = img.naturalHeight || 1200;
+        }
+        canvasCtx.drawImage(img, 0, 0, el.screenCanvas.width, el.screenCanvas.height);
+        recordRenderedFrame();
+        resolve();
+      };
+      img.onerror = reject;
+      img.src = dataUrl;
+    });
+  }
+
+  function extractAvcCodecFromAnnexB(bytes) {
+    const len = bytes.length;
+    for (let i = 0; i + 6 < len; i++) {
+      let off = -1;
+      if (bytes[i] === 0 && bytes[i + 1] === 0 && bytes[i + 2] === 1) off = i + 3;
+      else if (i + 7 < len && bytes[i] === 0 && bytes[i + 1] === 0 && bytes[i + 2] === 0 && bytes[i + 3] === 1) off = i + 4;
+      if (off !== -1 && off + 3 < len) {
+        if ((bytes[off] & 0x1f) === 7) {
+          const p = bytes[off + 1].toString(16).padStart(2, '0');
+          const c = bytes[off + 2].toString(16).padStart(2, '0');
+          const l = bytes[off + 3].toString(16).padStart(2, '0');
+          return `avc1.${p}${c}${l}`;
+        }
+        i = off;
+      }
+    }
+    return '';
+  }
+
+  function stopStreamMode(sendClose = true) {
+    state.streamGeneration++;
+    state.streamActive = false;
+    state.waitingForKeyframe = true;
+    state.configuredCodec = '';
+    if (state.moveRaf) {
+      cancelAnimationFrame(state.moveRaf);
+      state.moveRaf = 0;
+    }
+    state.pendingMove = null;
+    if (state.videoDecoder) {
+      try {
+        if (state.videoDecoder.state !== 'closed') state.videoDecoder.close();
+      } catch {}
+      state.videoDecoder = null;
+    }
+    if (state.streamPort) {
+      const port = state.streamPort;
+      state.streamPort = null;
+      port.onmessage = null;
+      try {
+        if (sendClose) port.postMessage({ __kikiStreamControl: 'close' });
+        port.close();
+      } catch {}
+    }
+  }
+
+  async function ensureVideoDecoder(codecString) {
+    const codec = codecString || 'avc1.640020';
+    if (state.videoDecoder && state.videoDecoder.state === 'configured' && state.configuredCodec === codec) {
+      return state.videoDecoder;
+    }
+    if (!state.videoDecoder || state.videoDecoder.state === 'closed') {
+      state.videoDecoder = new VideoDecoder({
+        output(videoFrame) {
+          try {
+            const w = videoFrame.displayWidth || videoFrame.codedWidth;
+            const h = videoFrame.displayHeight || videoFrame.codedHeight;
+            if (w && h) {
+              if (el.screenCanvas.width !== w || el.screenCanvas.height !== h) {
+                el.screenCanvas.width = w;
+                el.screenCanvas.height = h;
+              }
+              updateScreenDimensions(w, h);
+              canvasCtx.drawImage(videoFrame, 0, 0, w, h);
+              recordRenderedFrame();
+            }
+          } finally {
+            videoFrame.close();
+          }
+        },
+        error() {
+          state.waitingForKeyframe = true;
+          sendStreamJson({ type: 'resetVideo' });
+        },
+      });
+    }
+    let config = { codec, optimizeForLatency: true, hardwareAcceleration: 'prefer-hardware' };
+    try {
+      const sup = await VideoDecoder.isConfigSupported(config);
+      if (!sup?.supported) {
+        config = { codec, optimizeForLatency: true, hardwareAcceleration: 'no-preference' };
+      }
+    } catch {
+      config = { codec, optimizeForLatency: true, hardwareAcceleration: 'no-preference' };
+    }
+    state.videoDecoder.configure(config);
+    state.configuredCodec = codec;
+    state.waitingForKeyframe = true;
+    return state.videoDecoder;
+  }
+
+  function handleStreamBinaryFrame(arrayBuffer, gen) {
+    if (gen !== state.streamGeneration || !(arrayBuffer instanceof ArrayBuffer) || arrayBuffer.byteLength <= 16) return;
+    const dv = new DataView(arrayBuffer);
+    if (dv.getUint8(0) !== FRAME_MAGIC) return;
+    const isKey = dv.getUint8(1) === 1;
+    const w = dv.getUint16(2, false);
+    const h = dv.getUint16(4, false);
+    const ptsUs = dv.getFloat64(8, false);
+    const nalu = new Uint8Array(arrayBuffer, 16);
+
+    if (w && h) updateScreenDimensions(w, h);
+    if (document.hidden) {
+      state.waitingForKeyframe = true;
+      return;
+    }
+
+    if (isKey) {
+      const detectedCodec = extractAvcCodecFromAnnexB(nalu) || state.configuredCodec || 'avc1.640020';
+      if (!state.videoDecoder || state.videoDecoder.state !== 'configured' || state.configuredCodec !== detectedCodec) {
+        void ensureVideoDecoder(detectedCodec).then((dec) => {
+          if (gen !== state.streamGeneration || dec.state !== 'configured') return;
+          state.waitingForKeyframe = false;
+          dec.decode(new EncodedVideoChunk({ type: 'key', timestamp: ptsUs, data: nalu }));
+        }).catch(() => {});
+        return;
+      }
+      state.waitingForKeyframe = false;
+    } else if (state.waitingForKeyframe || !state.videoDecoder || state.videoDecoder.state !== 'configured') {
+      return;
+    } else if (state.videoDecoder.decodeQueueSize > 8) {
+      state.waitingForKeyframe = true;
+      sendStreamJson({ type: 'resetVideo' });
+      return;
+    }
+
+    try {
+      state.videoDecoder.decode(new EncodedVideoChunk({
+        type: isKey ? 'key' : 'delta',
+        timestamp: ptsUs,
+        data: nalu,
+      }));
+    } catch {
+      state.waitingForKeyframe = true;
+      sendStreamJson({ type: 'resetVideo' });
+    }
+  }
+
+  function sendStreamTouch(action, buttons, normX, normY, slot = 0) {
+    if (!state.streamActive || !state.streamPort) return false;
+    const buf = new ArrayBuffer(12);
+    const dv = new DataView(buf);
+    dv.setUint8(0, TOUCH_MAGIC);
+    dv.setUint8(1, action & 0xff);
+    dv.setUint8(2, buttons & 0xff);
+    dv.setUint8(3, slot & 0xff);
+    dv.setFloat32(4, normX, false);
+    dv.setFloat32(8, normY, false);
+    try {
+      state.streamPort.postMessage(buf, [buf]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function sendStreamScroll(normX, normY, hScroll, vScroll) {
+    if (!state.streamActive || !state.streamPort) return false;
+    const buf = new ArrayBuffer(16);
+    const dv = new DataView(buf);
+    const clampI16 = (v) => Math.max(-32768, Math.min(32767, Math.round(v * 2048)));
+    dv.setUint8(0, SCROLL_MAGIC);
+    dv.setFloat32(4, normX, false);
+    dv.setFloat32(8, normY, false);
+    dv.setInt16(12, clampI16(hScroll), false);
+    dv.setInt16(14, clampI16(vScroll), false);
+    try {
+      state.streamPort.postMessage(buf, [buf]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function sendStreamJson(obj) {
+    if (!state.streamActive || !state.streamPort) return false;
+    try {
+      state.streamPort.postMessage(JSON.stringify(obj));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function tryConnectHardwareStream(forceRetryHost = false) {
+    const active = activeOnlineDevice();
+    if (!active || !state.live || active.platform !== 'android') return false;
+    if (typeof window.VideoDecoder !== 'function') return false;
+    if (state.hostStreamUnsupported && !forceRetryHost) return false;
+
+    stopStreamMode(true);
+    const gen = ++state.streamGeneration;
+
+    try {
+      const { result, port } = await openPanelStream('screen', {
+        deviceId: active.id,
+        platform: active.platform,
+        maxFps: 60,
+        maxWidth: 1080,
+        bitRate: 4000000,
+      }, STREAM_HANDSHAKE_TIMEOUT_MS);
+
+      if (gen !== state.streamGeneration || !state.live) {
+        if (port) {
+          try {
+            port.postMessage({ __kikiStreamControl: 'close' });
+            port.close();
+          } catch {}
+        }
+        return false;
+      }
+
+      if (!port) {
+        state.hostStreamUnsupported = true;
+        return false;
+      }
+
+      state.hostStreamUnsupported = false;
+      state.streamPort = port;
+      state.streamActive = true;
+      state.fpsTimes = [];
+      clearPollTimer();
+
+      if (result?.width && result?.height) {
+        updateScreenDimensions(result.width, result.height);
+      }
+      if (result?.codecProfile) {
+        await ensureVideoDecoder(result.codecProfile).catch(() => {});
+      }
+
+      port.onmessage = (ev) => {
+        if (gen !== state.streamGeneration) return;
+        const payload = ev.data;
+        if (payload instanceof ArrayBuffer) {
+          handleStreamBinaryFrame(payload, gen);
+          return;
+        }
+        if (typeof payload === 'string') {
+          try {
+            const meta = JSON.parse(payload);
+            if (meta?.type === 'meta' && meta.width && meta.height) {
+              updateScreenDimensions(meta.width, meta.height);
+            }
+          } catch {}
+          return;
+        }
+        if (payload && typeof payload === 'object' && payload.__kikiStreamEvent === 'close') {
+          stopStreamMode(false);
+          if (state.live && activeOnlineDevice()) {
+            setStatus('Connected · Live');
+            scheduleNextPoll(20);
+          }
+        }
+      };
+      if (typeof port.start === 'function') port.start();
+
+      setStatus('Connected · 60fps H.264');
+      updateResolutionBar();
+      return true;
+    } catch (err) {
+      const msg = String(err?.message || '');
+      if (/unsupported method|timed out/i.test(msg)) {
+        state.hostStreamUnsupported = true;
+      }
+      return false;
+    }
+  }
+
+  function clearPollTimer() {
+    if (state.pollTimer) {
+      clearTimeout(state.pollTimer);
+      state.pollTimer = null;
+    }
+  }
+
+  function scheduleNextPoll(preferredDelayMs = MIN_POLL_INTERVAL_MS) {
+    clearPollTimer();
+    if (!state.live || state.streamActive || document.hidden || !activeOnlineDevice()) return;
+    const now = Date.now();
+    const count = pruneRpcWindow(now);
+    let delay = Math.max(8, preferredDelayMs);
+    if (count >= FRAME_BUDGET_IN_WINDOW) {
+      const oldestInBudget = rpcStamps[count - FRAME_BUDGET_IN_WINDOW];
+      delay = Math.max(delay, oldestInBudget + RATE_WINDOW_MS + 25 - now);
+    }
+    state.pollTimer = setTimeout(() => {
+      state.pollTimer = null;
+      void refreshFrame(false);
+    }, delay);
+  }
 
   function renderDeviceOptions() {
     el.deviceSelect.innerHTML = '';
@@ -723,7 +1154,7 @@
     const active = state.selected
       ? state.devices.find((d) => d.id === state.selected.id && d.platform === state.selected.platform)
       : null;
-    const isOnline = active && active.state === 'online';
+    const isOnline = Boolean(active && active.state === 'online');
 
     el.statusDot.className = 'status-dot ' + (isOnline ? 'online' : state.devices.length ? 'warn' : '');
     if (active) {
@@ -741,6 +1172,8 @@
       el.chassis.hidden = false;
       layoutChassis();
     } else {
+      stopStreamMode(true);
+      clearPollTimer();
       el.chassis.hidden = true;
       el.emptyState.hidden = false;
       renderOfflineList();
@@ -774,7 +1207,7 @@
           const res = await panelCall('action', { action: 'boot', deviceId: dev.id, platform: dev.platform }, 65000);
           if (res?.ok) {
             await loadState();
-            await refreshFrame(true);
+            await activateLiveTransport(false);
           } else {
             setStatus(res?.error || 'Boot failed', true);
           }
@@ -800,39 +1233,66 @@
   }
 
   async function refreshFrame(force = false) {
+    if (state.streamActive && !force) return;
     if (state.frameInFlight) return;
     if (!force && (!state.live || document.hidden)) return;
-    const active = state.selected
-      ? state.devices.find((d) => d.id === state.selected.id && d.platform === state.selected.platform)
-      : null;
-    if (!active || active.state !== 'online') return;
+    const active = activeOnlineDevice();
+    if (!active) return;
+
+    if (!force && pruneRpcWindow() >= FRAME_BUDGET_IN_WINDOW) {
+      scheduleNextPoll(MIN_POLL_INTERVAL_MS);
+      return;
+    }
 
     state.frameInFlight = true;
+    const startedAt = performance.now();
+    state.lastPollStartedAt = startedAt;
     try {
       const res = await panelCall('frame', {
         deviceId: active.id,
         platform: active.platform,
         format: 'jpeg',
-        quality: 74,
+        quality: 72,
         maxWidth: 720,
+        live: state.live && !state.streamActive,
       });
+      if (state.streamActive && !force) return;
       if (res?.ok && res.dataUrl) {
-        el.screenImg.src = res.dataUrl;
+        await drawDataUrlToCanvas(res.dataUrl);
+        state.asleep = Boolean(res.powerState && !res.powerState.awake);
         if (res.screenSize?.width && res.screenSize?.height) {
-          const changed = res.screenSize.width !== state.screenSize.width || res.screenSize.height !== state.screenSize.height;
-          state.screenSize = res.screenSize;
-          if (changed) layoutChassis();
-          el.resText.textContent = `${res.screenSize.width}×${res.screenSize.height}${res.powerState && !res.powerState.awake ? ' · Asleep' : ''}`;
+          updateScreenDimensions(res.screenSize.width, res.screenSize.height);
         }
         el.fgApp.textContent = res.foregroundApp || '';
-        setStatus(res.powerState && !res.powerState.awake ? 'Screen asleep — click Sun icon to wake' : 'Connected · Live');
+        setStatus(state.asleep ? 'Screen asleep — click Sun icon to wake' : 'Connected · Live');
       } else if (res?.error) {
         setStatus(res.error, true);
       }
     } catch (err) {
-      setStatus(err.message || 'Frame capture failed', true);
+      if (!/rate limited/i.test(String(err?.message || ''))) {
+        setStatus(err.message || 'Frame capture failed', true);
+      }
     } finally {
       state.frameInFlight = false;
+      if (state.live && !state.streamActive && !document.hidden) {
+        const elapsed = performance.now() - startedAt;
+        scheduleNextPoll(Math.max(10, MIN_POLL_INTERVAL_MS - elapsed));
+      }
+    }
+  }
+
+  async function activateLiveTransport(forceRetryStream = false) {
+    stopStreamMode(true);
+    clearPollTimer();
+    const active = activeOnlineDevice();
+    if (!active) return;
+
+    void refreshFrame(true);
+    if (state.live) {
+      scheduleNextPoll(MIN_POLL_INTERVAL_MS);
+    }
+    if (state.live && active.platform === 'android') {
+      await tryConnectHardwareStream(forceRetryStream);
     }
   }
 
@@ -895,7 +1355,7 @@
     dot.style.left = (normX * 100) + '%';
     dot.style.top = (normY * 100) + '%';
     el.screenBox.appendChild(dot);
-    setTimeout(() => dot.remove(), 450);
+    setTimeout(() => dot.remove(), 380);
   }
 
   function normFromEvent(ev) {
@@ -909,10 +1369,17 @@
   }
 
   el.screenBox.addEventListener('pointerdown', (ev) => {
-    if (state.axEnabled || ev.button !== 0) return;
+    if (state.axEnabled || ev.button !== 0 || !state.selected) return;
     el.screenBox.setPointerCapture(ev.pointerId);
     const pt = normFromEvent(ev);
-    state.pointerStart = { ...pt, time: Date.now(), pointerId: ev.pointerId };
+    showRipple(pt.x, pt.y);
+
+    if (state.streamActive && sendStreamTouch(0, 1, pt.x, pt.y)) {
+      state.pointerStart = { ...pt, time: Date.now(), pointerId: ev.pointerId, streamed: true };
+      return;
+    }
+
+    state.pointerStart = { ...pt, time: Date.now(), pointerId: ev.pointerId, streamed: false };
     el.gestureLine.setAttribute('x1', String(pt.x * 100));
     el.gestureLine.setAttribute('y1', String(pt.y * 100));
     el.gestureLine.setAttribute('x2', String(pt.x * 100));
@@ -922,6 +1389,21 @@
   el.screenBox.addEventListener('pointermove', (ev) => {
     if (!state.pointerStart || state.pointerStart.pointerId !== ev.pointerId) return;
     const pt = normFromEvent(ev);
+
+    if (state.pointerStart.streamed && state.streamActive) {
+      state.pendingMove = pt;
+      if (!state.moveRaf) {
+        state.moveRaf = requestAnimationFrame(() => {
+          state.moveRaf = 0;
+          if (state.pendingMove && state.pointerStart?.streamed) {
+            sendStreamTouch(2, 1, state.pendingMove.x, state.pendingMove.y);
+            state.pendingMove = null;
+          }
+        });
+      }
+      return;
+    }
+
     const dist = Math.hypot(pt.pxX - state.pointerStart.pxX, pt.pxY - state.pointerStart.pxY);
     if (dist > 10) {
       el.gestureSvg.hidden = false;
@@ -930,18 +1412,31 @@
     }
   });
 
-  el.screenBox.addEventListener('pointerup', async (ev) => {
+  async function finishPointerGesture(ev, cancelled = false) {
     if (!state.pointerStart || state.pointerStart.pointerId !== ev.pointerId) return;
     const start = state.pointerStart;
     state.pointerStart = null;
     el.gestureSvg.hidden = true;
     const end = normFromEvent(ev);
+
+    if (start.streamed) {
+      if (state.moveRaf) {
+        cancelAnimationFrame(state.moveRaf);
+        state.moveRaf = 0;
+      }
+      if (state.pendingMove && !cancelled) {
+        sendStreamTouch(2, 1, state.pendingMove.x, state.pendingMove.y);
+      }
+      state.pendingMove = null;
+      sendStreamTouch(cancelled ? 3 : 1, 0, end.x, end.y);
+      return;
+    }
+
+    if (cancelled || !state.selected) return;
     const dist = Math.hypot(end.pxX - start.pxX, end.pxY - start.pxY);
     const elapsed = Date.now() - start.time;
 
-    if (!state.selected) return;
     if (dist > 14) {
-      setStatus('Swiping...');
       await panelCall('action', {
         action: 'swipe',
         deviceId: state.selected.id,
@@ -950,11 +1445,9 @@
         startNormY: start.y,
         endNormX: end.x,
         endNormY: end.y,
-        durationMs: Math.min(900, Math.max(160, elapsed)),
+        durationMs: Math.min(900, Math.max(140, elapsed)),
       });
     } else if (elapsed >= 520) {
-      showRipple(end.x, end.y);
-      setStatus('Long pressing...');
       await panelCall('action', {
         action: 'longPress',
         deviceId: state.selected.id,
@@ -964,8 +1457,6 @@
         durationMs: Math.min(2000, elapsed),
       });
     } else {
-      showRipple(end.x, end.y);
-      setStatus('Tapping...');
       await panelCall('action', {
         action: 'tap',
         deviceId: state.selected.id,
@@ -974,8 +1465,20 @@
         normY: end.y,
       });
     }
-    setTimeout(() => { void refreshFrame(true); }, 260);
-  });
+    scheduleNextPoll(35);
+  }
+
+  el.screenBox.addEventListener('pointerup', (ev) => { void finishPointerGesture(ev, false); });
+  el.screenBox.addEventListener('pointercancel', (ev) => { void finishPointerGesture(ev, true); });
+
+  el.screenBox.addEventListener('wheel', (ev) => {
+    if (!state.streamActive || state.axEnabled) return;
+    ev.preventDefault();
+    const pt = normFromEvent(ev);
+    const vx = Math.max(-4, Math.min(4, -ev.deltaX / 80));
+    const vy = Math.max(-4, Math.min(4, -ev.deltaY / 80));
+    if (vx !== 0 || vy !== 0) sendStreamScroll(pt.x, pt.y, vx, vy);
+  }, { passive: false });
 
   el.deviceSelect.addEventListener('change', async () => {
     const val = el.deviceSelect.value;
@@ -983,9 +1486,10 @@
     const [platform, ...rest] = val.split(':');
     const id = rest.join(':');
     state.selected = { id, platform };
+    state.fpsTimes = [];
     await panelCall('action', { action: 'select', deviceId: id, platform });
     renderDeviceOptions();
-    await refreshFrame(true);
+    await activateLiveTransport(false);
     if (state.axEnabled) await loadAxTree();
   });
 
@@ -993,13 +1497,20 @@
     state.live = !state.live;
     el.liveToggle.classList.toggle('active', state.live);
     el.liveToggle.textContent = state.live ? 'Live' : 'Paused';
-    if (state.live) void refreshFrame(true);
+    if (state.live) {
+      void activateLiveTransport(false);
+    } else {
+      stopStreamMode(true);
+      clearPollTimer();
+      updateResolutionBar();
+      setStatus('Paused');
+    }
   });
 
   el.refreshBtn.addEventListener('click', async () => {
     setStatus('Refreshing...');
     await loadState();
-    await refreshFrame(true);
+    await activateLiveTransport(true);
     if (state.axEnabled) await loadAxTree();
   });
 
@@ -1047,6 +1558,12 @@
         return;
       }
       const mapButton = { home: 'HOME', back: 'BACK', recents: 'RECENTS' };
+      if (state.streamActive && mapButton[act] && sendStreamJson({ type: 'button', button: mapButton[act] })) {
+        return;
+      }
+      if (state.streamActive && act === 'rotate' && sendStreamJson({ type: 'rotate' })) {
+        return;
+      }
       const payload = mapButton[act]
         ? { action: 'button', button: mapButton[act] }
         : { action: act };
@@ -1057,7 +1574,7 @@
         platform: state.selected.platform,
       });
       if (!res?.ok && res?.error) setStatus(res.error, true);
-      setTimeout(() => { void refreshFrame(true); }, 320);
+      if (!state.streamActive) scheduleNextPoll(80);
     });
   });
 
@@ -1076,7 +1593,8 @@
     });
     if (res?.ok) {
       input.value = '';
-      setTimeout(() => { void refreshFrame(true); }, 280);
+      setStatus(state.streamActive ? 'Connected · 60fps H.264' : 'Connected · Live');
+      if (!state.streamActive) scheduleNextPoll(80);
     } else setStatus(res?.error || 'Text input failed', true);
   });
 
@@ -1092,8 +1610,8 @@
       platform: state.selected.platform,
       url,
     });
-    if (res?.ok) setTimeout(() => { void refreshFrame(true); }, 500);
-    else setStatus(res?.error || 'Open URL failed', true);
+    if (res?.ok && !state.streamActive) scheduleNextPoll(180);
+    else if (!res?.ok) setStatus(res?.error || 'Open URL failed', true);
   });
 
   document.querySelectorAll('[data-Appearance]').forEach((btn) => {
@@ -1106,8 +1624,8 @@
         platform: state.selected.platform,
         mode,
       });
-      if (res?.ok) setTimeout(() => { void refreshFrame(true); }, 400);
-      else setStatus(res?.error || 'Appearance switch unsupported', true);
+      if (res?.ok && !state.streamActive) scheduleNextPoll(180);
+      else if (!res?.ok) setStatus(res?.error || 'Appearance switch unsupported', true);
     });
   });
 
@@ -1129,7 +1647,7 @@
     const res = await panelCall('action', { action: 'adbConnection', subAction: 'connect', address });
     setStatus(res?.ok ? (res.stdout || 'Connected') : (res?.error || 'Connect failed'), !res?.ok);
     await loadState();
-    await refreshFrame(true);
+    await activateLiveTransport(false);
   });
 
   document.getElementById('adbPairBtn').addEventListener('click', async () => {
@@ -1164,27 +1682,35 @@
       normY: ny,
     });
     setTimeout(async () => {
-      await refreshFrame(true);
+      if (!state.streamActive) await refreshFrame(true);
       if (state.axEnabled) await loadAxTree();
-    }, 320);
+    }, 240);
   });
 
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && state.live) void refreshFrame(true);
+    if (document.hidden) {
+      clearPollTimer();
+    } else if (state.live) {
+      if (state.streamActive) {
+        state.waitingForKeyframe = true;
+        sendStreamJson({ type: 'resetVideo' });
+      } else {
+        scheduleNextPoll(10);
+      }
+    }
   });
+
+  window.addEventListener('pagehide', () => stopStreamMode(true));
 
   async function startBoot() {
     if (booted) {
       await loadState();
-      await refreshFrame(true);
+      if (!state.streamActive) await activateLiveTransport(false);
       return;
     }
     booted = true;
     await loadState();
-    await refreshFrame(true);
-    if (!state.pollTimer) {
-      state.pollTimer = setInterval(() => { void refreshFrame(false); }, 1100);
-    }
+    await activateLiveTransport(false);
   }
 
   setTimeout(() => { if (!booted) void startBoot(); }, 250);

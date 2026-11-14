@@ -38,7 +38,7 @@ ZIP 用户将解压后包含 `kimi.plugin.json` 的目录传给 `/plugins instal
 
 启用插件后，可从左侧边栏 **手机预览（Phone Preview）**、输入框工具栏按钮、顶栏在线设备胶囊或 `/phone-preview`（别名 `/phone`）直接在会话右侧常规 Kiki 预览区打开实时手机画面（同时支持 Android 与 iOS 真机／模拟器）：
 
-- **等比实时画面与触控直连**：自动按手机真实分辨率双向等比缩放并适配横竖屏旋转；支持直接在画布上点按（`tap`）、长按（`longPress`）和拖拽滑动（`swipe`）。
+- **等比实时画面与低延迟触控直连**：Android 支持 60fps H.264 WebCodecs 硬解直连与实时跟手拖拽／滚轮滚动，在不支持二进制流的环境与 iOS 上自动采用无锁双缓冲画布预览；双向等比缩放并适配横竖屏旋转，支持点按（`tap`）、长按（`longPress`）和滑动（`swipe`）。
 - **右侧快捷控制栏与工具抽屉**：一键唤醒解锁、Home、Android 返回／多任务、屏幕旋转、无损 PNG 截图下载、深浅色外观切换、焦点文本直输、URL／Deep Link 跳转及 Android 11+ 无线调试配对连接。
 - **UI 语义树叠加检视（AX Overlay）**：开启网格叠加层即可高亮手机当前界面的可交互控件框，点选任意节点即展示控件属性并生成可直接粘贴到 `phone_run` 的 Mobilewright 定位器代码。
 
@@ -130,4 +130,4 @@ lib\start.cmd --adb "D:\Android SDK\platform-tools\adb.exe"
 
 `node lib/prepare-cli.mjs --json` 输出完整准备报告；`--no-warmup` 只查 Node/npm/ADB，不安装上游包。`--server` 在准备后启动紧凑 MCP 服务；独立旧客户端使用 `--server --raw` 恢复原始工具列表。
 
-插件为 MIT；Mobile MCP／Mobilewright 为 Apache-2.0，mobilecli 为 FSL-1.1-ALv2，Google platform-tools 遵循其 SDK 条款，见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
+插件为 MIT；Mobile MCP／Mobilewright／scrcpy-server 为 Apache-2.0，mobilecli 为 FSL-1.1-ALv2，Google platform-tools 遵循其 SDK 条款，见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。

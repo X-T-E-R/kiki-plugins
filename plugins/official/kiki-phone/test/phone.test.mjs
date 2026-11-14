@@ -23,7 +23,7 @@ const businessPackage = JSON.parse(await readFile(new URL('../package.json', imp
 test('business package exports the reusable runtime without Kiki host entrypoints', () => {
   assert.equal(businessPackage.name, '@kiki/phone-business');
   assert.equal(businessPackage.version, manifest.version);
-  assert.deepEqual(Object.keys(businessPackage.exports).sort(), ['./adb', './definitions', './environment', './guidance', './mobile-facade', './package.json', './phone-run', './prepare', './preview-service', './runtime', './skill', './slots']);
+  assert.deepEqual(Object.keys(businessPackage.exports).sort(), ['./adb', './definitions', './environment', './guidance', './mobile-facade', './package.json', './phone-run', './prepare', './preview-service', './runtime', './scrcpy-stream', './skill', './slots']);
   assert.ok(!JSON.stringify(businessPackage).includes('entry.mjs'));
 });
 
@@ -39,7 +39,7 @@ test('manifest retains exact native tools and selects only the compact MCP facad
     env: { MOBILEMCP_DISABLE_TELEMETRY: '1', npm_config_ignore_scripts: 'true' },
   });
   const files = await packageFiles(root);
-  for (const file of ['kimi.plugin.json', 'entry.mjs', 'panel.html', 'icon.svg', 'lib/adb.mjs', 'lib/definitions.mjs', 'lib/launch-mobile-mcp.mjs', 'lib/mobile-facade.mjs', 'lib/environment.mjs', 'lib/prepare.mjs', 'lib/prepare-cli.mjs', 'lib/preview-service.mjs', 'lib/slots.mjs', 'lib/start.cmd', 'lib/phone-run.mjs', 'lib/node-executable.mjs', 'skills/phone-control/SKILL.md', 'skills/phone-control/agents/openai.yaml', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md']) assert.ok(files.includes(file), file);
+  for (const file of ['kimi.plugin.json', 'entry.mjs', 'panel.html', 'icon.svg', 'lib/adb.mjs', 'lib/definitions.mjs', 'lib/launch-mobile-mcp.mjs', 'lib/mobile-facade.mjs', 'lib/environment.mjs', 'lib/prepare.mjs', 'lib/prepare-cli.mjs', 'lib/preview-service.mjs', 'lib/scrcpy-stream.mjs', 'lib/slots.mjs', 'lib/start.cmd', 'lib/phone-run.mjs', 'lib/node-executable.mjs', 'skills/phone-control/SKILL.md', 'skills/phone-control/agents/openai.yaml', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md']) assert.ok(files.includes(file), file);
   assert.ok(files.every(file => !file.startsWith('test/') && !file.includes('node_modules') && !file.includes('.cache')));
   for (const file of files) assert.doesNotMatch(await readFile(resolve(root, file), 'utf8'), /C:\\Programs|C:\/Programs|C:\\Users|C:\/Users/);
 });

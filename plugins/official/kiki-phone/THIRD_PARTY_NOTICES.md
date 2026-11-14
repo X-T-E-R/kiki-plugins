@@ -8,10 +8,11 @@ Kiki Phone invokes these published packages without copying or modifying their i
 | `@modelcontextprotocol/sdk` | `1.27.1` | MIT | https://github.com/modelcontextprotocol/typescript-sdk |
 | `mobilewright` (Mobile MCP direct dependency) | `0.0.67` | Apache-2.0 | https://github.com/mobile-next/mobilewright |
 | `mobilecli` and its platform-specific `@mobilenext/mobilecli-*` executables | `1.0.21` | FSL-1.1-ALv2 | https://github.com/mobile-next/mobilecli |
+| `scrcpy-server` (Android H.264 stream & low-latency control server, SHA-256 verified into local data dir) | `4.0` | Apache-2.0 | https://github.com/Genymobile/scrcpy |
 
 Published package metadata and installed package license files govern their respective components and transitive dependencies. mobilecli's Functional Source License includes use restrictions and a future Apache-2.0 license grant; consult its [full license](https://github.com/mobile-next/mobilecli/blob/main/LICENSE) for your use.
 
-Android preparation reuses installed official SDK Platform-Tools, or downloads Google's Windows package after the user accepts Google's linked terms. No ADB or Apple executable is redistributed in this plugin.
+Android preparation reuses installed official SDK Platform-Tools, or downloads Google's Windows package after the user accepts Google's linked terms. Android live screen streaming reuses a SHA-256-verified local `scrcpy-server` 4.0 binary or fetches the official Apache-2.0 release into the local `kiki-phone` data directory. No ADB, scrcpy binary, or Apple executable is redistributed in this plugin.
 
 ## Referenced open-source UI layout & device workspace patterns
 

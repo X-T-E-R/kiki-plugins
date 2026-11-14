@@ -28,4 +28,12 @@ export async function handlePanelRequest(action, args, context) {
   return previewService.handlePanelRequest(action, args, context);
 }
 
+export async function openPanelStream(stream, args, session, context) {
+  return previewService.openPanelStream(stream, args, session, context);
+}
+
+export async function deactivate() {
+  await previewService.dispose();
+}
+
 export const slots = createPhoneSlotHandlers(previewService);
