@@ -1,6 +1,6 @@
 {
   "name": "kiki-everything",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Find local files and folders through the Everything index by name, path, extension, size and modification time.",
   "license": "MIT",
   "icon": "./icon.svg",

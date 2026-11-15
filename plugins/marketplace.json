@@ -481,7 +481,7 @@
       "id": "kiki-everything",
       "tier": "official",
       "displayName": "Everything Search",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "description": "Find files and folders on Windows by name, path, size or date with the Everything index.",
       "keywords": [
         "search",
