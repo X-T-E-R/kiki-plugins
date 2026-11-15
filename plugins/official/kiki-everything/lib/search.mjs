@@ -20,7 +20,8 @@ export function validateArgs(args, settings = {}) {
   return result;
 }
 export function searchArgs(args, root, settings) {
-  const output = ['-txt', '-no-header', '-full-path-and-name', '-no-name', '-no-path-column', '-no-extension', '-no-size', '-no-date-created', '-no-date-modified', '-no-date-accessed', '-no-attributes', '-no-filelist-filename', '-no-run-count', '-no-date-run', '-no-date-recently-changed', '-no-highlight', '-no-double-quote', '-no-pause', '-no-folder-append-path-separator'];
+  // ES converts stdout to the console code page, which is not UTF-8 on most Windows locales.
+  const output = ['-txt', '-no-header', '-cp', '65001', '-full-path-and-name', '-no-name', '-no-path-column', '-no-extension', '-no-size', '-no-date-created', '-no-date-modified', '-no-date-accessed', '-no-attributes', '-no-filelist-filename', '-no-run-count', '-no-date-run', '-no-date-recently-changed', '-no-highlight', '-no-double-quote', '-no-pause', '-no-folder-append-path-separator'];
   const flags = ['-no-case', '-no-whole-word', '-no-match-path'];
   if (args.match_case) flags.push('-case');
   if (args.match_path) flags.push('-p');

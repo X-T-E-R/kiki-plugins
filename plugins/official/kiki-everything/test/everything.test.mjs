@@ -93,6 +93,11 @@ test('UTF-8 is decoded as one buffer, preserving BOM, Chinese and split multibyt
   assert.equal(decodeOutput(Buffer.concat([bytes.subarray(0, 8), bytes.subarray(8)])), text);
   assert.throws(() => decodeOutput(Buffer.from([0xff, 0xfe])), { code: 'ES_ENCODING' });
 });
+test('search pins ES stdout to UTF-8 so non-ASCII paths survive any console code page', () => {
+  const args = searchArgs(validateArgs({ root: '.', query: 'ext:md' }), 'C:\\My Docs', {});
+  assert.deepEqual(args.slice(args.indexOf('-cp'), args.indexOf('-cp') + 2), ['-cp', '65001']);
+  assert.equal(args.filter(arg => arg === '-cp').length, 1);
+});
 test('exit 1 is a real failure, exit 9 alone is no results', async () => {
   for (const code of [1, 6, 8, 9]) {
     const fixture = fixtureRunner(); const result = fixture.executor.run('fixture-es', []);
