@@ -1,0 +1,137 @@
+{
+  "name": "kiki-error-pulse",
+  "version": "0.1.0",
+  "description": "Non-blocking incremental error telemetry, normalized failure signatures, and retry-streak radar across Kiki session logs.",
+  "license": "MIT",
+  "icon": "./icon.svg",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Error Pulse",
+    "shortDescription": "Incremental tool error rates, normalized signatures, and retry streaks",
+    "localization": {
+      "zh-CN": {
+        "displayName": "报错雷达",
+        "shortDescription": "非阻塞增量报错统计、归一化错误指纹与连环撞墙定位"
+      }
+    }
+  },
+  "x-kiki": {
+    "activation": "app",
+    "engines": {
+      "kiki": ">=0.4.1"
+    },
+    "entry": "./entry.mjs",
+    "permissions": {
+      "fs": "outside",
+      "uiPanel": true
+    },
+    "panels": [
+      {
+        "schemaVersion": 1,
+        "id": "pulse",
+        "label": "报错雷达",
+        "slot": "workspace",
+        "path": "./panel.html"
+      }
+    ],
+    "settings": {
+      "schemaVersion": 1,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "autoScanEnabled": {
+            "type": "boolean",
+            "title": "启用后台定时增量扫描",
+            "description": "Kiki 打开期间在后台定时读取新增 wire.jsonl 尾部，冷启动延迟首扫且不阻塞主进程。",
+            "default": true
+          },
+          "scanIntervalMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 1440,
+            "default": 30,
+            "title": "后台扫描间隔（分钟）",
+            "description": "定时增量扫描的时间间隔（5–1440 分钟，默认 30 分钟）。"
+          },
+          "maxScanMegabytesPerTick": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 64,
+            "default": 16,
+            "title": "单轮扫描字节预算（MiB）",
+            "description": "单次后台扫描最多读取的新增日志字节数（2–64 MiB，默认 16 MiB），到达预算即保存游标待下轮继续。"
+          }
+        }
+      }
+    },
+    "tools": [
+      {
+        "schemaVersion": 1,
+        "name": "error_pulse_report",
+        "description": "Inspect incremental workspace and session error statistics, high-error tools, normalized failure signatures, retry-streak hotspots, and redacted samples from wire.jsonl logs. Use summary, top_signatures, streaks, or samples for zero-scan reads, or scan_now for a bounded incremental refresh.",
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "summary",
+                "scan_now",
+                "top_signatures",
+                "streaks",
+                "samples"
+              ],
+              "default": "summary",
+              "description": "summary returns window totals + top tools/signatures/streaks; scan_now runs a bounded incremental scan first; top_signatures lists normalized error clusters; streaks lists consecutive same-tool retry hotspots; samples returns redacted samples for signatureId (or top signatures)."
+            },
+            "windowHours": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 720,
+              "default": 168,
+              "description": "Lookback time window in hours (1..720, default 168 = 7 days)."
+            },
+            "toolFilter": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Optional exact or case-insensitive tool / lifecycle event filter (e.g. \"Bash\", \"Edit\", \"CallTool:mcp_name\", \"provider.error\")."
+            },
+            "signatureId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "Signature identifier (e.g. \"sig_...\") when inspecting samples with action=\"samples\"."
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 15,
+              "description": "Maximum rows to return (1..50, default 15)."
+            },
+            "maxMegabytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64,
+              "description": "Optional byte budget in MiB when action=\"scan_now\" (1..64; defaults to maxScanMegabytesPerTick setting)."
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 500,
+              "description": "Optional brief note on why this tool is being called (ignored at runtime)."
+            }
+          }
+        },
+        "accesses": [
+          {
+            "kind": "all"
+          }
+        ],
+        "concurrencySafe": true,
+        "disclosure": "deferred"
+      }
+    ]
+  }
+}

@@ -1,0 +1,1117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>报错雷达</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --canvas: var(--color-canvas, #f2efe8);
+  --paper: var(--color-paper, #fbfaf6);
+  --panel: var(--color-panel, #fffdfa);
+  --ink: var(--color-ink, #1b1a17);
+  --ink-soft: var(--color-ink-soft, #4b453e);
+  --ink-faint: var(--color-ink-faint, #6d6459);
+  --hairline: var(--color-hairline, #e4ddd0);
+  --hairline-strong: var(--color-hairline-strong, #cdc3b1);
+  --accent: var(--color-accent, #c8401a);
+  --accent-deep: var(--color-accent-deep, #9c3012);
+  --on-accent: var(--color-on-accent, #ffffff);
+  --selected: var(--color-selected, #e7e1d5);
+  --selected-ink: var(--color-selected-ink, #1b1a17);
+  --ok: var(--color-success, #2f6b45);
+  --warn: var(--color-amber-ink, #87480b);
+  --warn-bg: var(--color-amber-card, #f8eedd);
+  --danger: var(--color-danger, #b0261e);
+  --wash: rgb(27 26 23 / 0.038);
+  --sans: "Instrument Sans", ui-sans-serif, system-ui, "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --display: "Newsreader", Georgia, "Iowan Old Style", "Songti SC", "Noto Serif SC", serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --radius: 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: var(--color-canvas, #13191c);
+    --paper: var(--color-paper, #1b2226);
+    --panel: var(--color-panel, #232b30);
+    --ink: var(--color-ink, #eeeae2);
+    --ink-soft: var(--color-ink-soft, #c1c5c5);
+    --ink-faint: var(--color-ink-faint, #98a2a6);
+    --hairline: var(--color-hairline, #323c43);
+    --hairline-strong: var(--color-hairline-strong, #536169);
+    --accent: var(--color-accent, #eb946f);
+    --accent-deep: var(--color-accent-deep, #f4b08f);
+    --on-accent: var(--color-on-accent, #261a14);
+    --selected: var(--color-selected, #2a353c);
+    --selected-ink: var(--color-selected-ink, #eeeae2);
+    --ok: var(--color-success, #9ac6ae);
+    --warn: var(--color-amber-ink, #f4ae8d);
+    --warn-bg: var(--color-amber-card, #33271e);
+    --danger: var(--color-danger, #f1a29a);
+    --wash: rgb(238 234 226 / 0.05);
+  }
+}
+
+:root[data-theme="dark"] {
+  --canvas: var(--color-canvas, #13191c);
+  --paper: var(--color-paper, #1b2226);
+  --panel: var(--color-panel, #232b30);
+  --ink: var(--color-ink, #eeeae2);
+  --ink-soft: var(--color-ink-soft, #c1c5c5);
+  --ink-faint: var(--color-ink-faint, #98a2a6);
+  --hairline: var(--color-hairline, #323c43);
+  --hairline-strong: var(--color-hairline-strong, #536169);
+  --accent: var(--color-accent, #eb946f);
+  --accent-deep: var(--color-accent-deep, #f4b08f);
+  --on-accent: var(--color-on-accent, #261a14);
+  --selected: var(--color-selected, #2a353c);
+  --selected-ink: var(--color-selected-ink, #eeeae2);
+  --ok: var(--color-success, #9ac6ae);
+  --warn: var(--color-amber-ink, #f4ae8d);
+  --warn-bg: var(--color-amber-card, #33271e);
+  --danger: var(--color-danger, #f1a29a);
+  --wash: rgb(238 234 226 / 0.05);
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 13px/1.5 var(--sans);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 24px 24px 56px;
+}
+
+.masthead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--hairline-strong);
+}
+
+.title-group {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+h1 {
+  margin: 0;
+  font: 500 22px/1.2 var(--display);
+  letter-spacing: -0.01em;
+}
+
+.scan-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-faint);
+  font-size: 12px;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  flex: none;
+}
+.dot[data-tone="ok"] { background: var(--ok); }
+.dot[data-tone="busy"] { background: var(--accent); }
+.dot[data-tone="warn"] { background: var(--warn); }
+.dot[data-tone="danger"] { background: var(--danger); }
+
+.controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.seg button {
+  border: 0;
+  border-right: 1px solid var(--hairline);
+  border-radius: 0;
+  min-height: 30px;
+  padding: 0 11px;
+  background: transparent;
+  color: var(--ink-soft);
+  font: 500 12px/1 var(--sans);
+  cursor: pointer;
+}
+.seg button:last-child { border-right: 0; }
+.seg button:hover:not([aria-pressed="true"]):not(:disabled) { background: var(--wash); }
+.seg button[aria-pressed="true"] {
+  background: var(--selected);
+  color: var(--selected-ink);
+  font-weight: 600;
+}
+
+button.action {
+  min-height: 30px;
+  padding: 0 13px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: var(--on-accent);
+  font: 500 12.5px/1 var(--sans);
+  cursor: pointer;
+  transition: background-color 0.14s ease;
+}
+button.action:hover:not(:disabled) { background: var(--accent-deep); }
+button.action:disabled, .seg button:disabled { opacity: 0.55; cursor: default; }
+
+button.ghost {
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: var(--radius);
+  border: 1px solid var(--hairline-strong);
+  background: transparent;
+  color: var(--ink-soft);
+  font: 500 11.5px/1 var(--sans);
+  cursor: pointer;
+}
+button.ghost:hover { background: var(--wash); color: var(--ink); }
+
+button:focus-visible, .sig-head:focus-visible, .tool-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.metrics-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px 36px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metric-label {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+
+.metric-val {
+  font: 600 20px/1.2 var(--sans);
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.metric-val[data-tone="danger"] { color: var(--accent); }
+.metric-val[data-tone="warn"] { color: var(--warn); }
+
+.metric-sub {
+  font-weight: 400;
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  margin-left: 5px;
+}
+
+.notice {
+  margin: 14px 0 0;
+  padding: 9px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--wash);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+}
+
+.section {
+  padding-top: 26px;
+}
+
+.sec-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+h2 {
+  margin: 0;
+  font: 600 12.5px/1.3 var(--sans);
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+}
+
+.sec-count {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.filter-pill {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 500 11.5px/1.4 var(--mono);
+  cursor: pointer;
+}
+.filter-pill:hover { border-color: var(--accent); color: var(--accent); }
+
+.tools-ledger {
+  border-top: 1px solid var(--hairline);
+}
+
+.tool-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1.4fr) minmax(90px, 1.2fr) auto;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 9px 6px;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.tool-row:hover { background: var(--wash); }
+.tool-row[aria-current="true"] { background: var(--selected); }
+
+.tool-name {
+  font: 500 12.5px/1.35 var(--mono);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bar-track {
+  display: block;
+  width: 100%;
+  height: 4px;
+  background: var(--hairline);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--ink-soft);
+  border-radius: 2px;
+}
+.bar-fill[data-high="true"] { background: var(--accent); }
+
+.tool-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+  font-size: 12px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.rate {
+  min-width: 46px;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.rate[data-high="true"] { color: var(--accent); font-weight: 600; }
+
+.tag-streak {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  font: 500 11px/1.45 var(--sans);
+  white-space: nowrap;
+}
+
+.tag-tool {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink-soft);
+  font: 500 11px/1.4 var(--mono);
+}
+
+.sig-list {
+  border-top: 1px solid var(--hairline);
+}
+
+.sig-item {
+  border-bottom: 1px solid var(--hairline);
+}
+
+.sig-head {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.sig-head:hover { background: var(--wash); }
+
+.sig-count {
+  font: 600 15px/1.2 var(--mono);
+  color: var(--accent);
+}
+
+.sig-body {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.sig-meta-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sig-time {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+
+.sig-code {
+  font: 400 12.5px/1.45 var(--mono);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--ink-faint);
+  transition: transform 0.15s ease;
+  align-self: center;
+}
+.sig-item[data-open="true"] .chevron { transform: rotate(90deg); color: var(--ink); }
+
+.sig-drawer {
+  padding: 4px 10px 16px 64px;
+}
+
+.drawer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--ink-faint);
+  font-size: 11.5px;
+}
+
+.sample-list {
+  display: grid;
+  gap: 10px;
+}
+
+.sample-row {
+  padding: 9px 11px;
+  border-left: 2px solid var(--hairline-strong);
+  background: var(--panel);
+}
+
+.sample-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  color: var(--ink-faint);
+  font: 11.5px/1.4 var(--mono);
+  margin-bottom: 4px;
+}
+
+.sample-line {
+  font: 12px/1.45 var(--mono);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.sample-args {
+  font: 11.5px/1.4 var(--mono);
+  color: var(--ink-soft);
+  margin-bottom: 3px;
+  overflow-wrap: anywhere;
+}
+
+.empty-state {
+  padding: 28px 4px;
+  color: var(--ink-faint);
+  font-size: 13px;
+}
+
+@media (max-width: 620px) {
+  main { padding: 16px 14px 40px; }
+  .controls { margin-left: 0; width: 100%; justify-content: space-between; }
+  .tool-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .bar-track { display: none; }
+  .sig-head { grid-template-columns: 42px minmax(0, 1fr) auto; }
+  .sig-drawer { padding-left: 10px; }
+}
+</style>
+</head>
+<body>
+<main>
+  <header class="masthead">
+    <div class="title-group">
+      <h1>报错雷达</h1>
+      <span class="scan-meta">
+        <span class="dot" id="statusDot"></span>
+        <span id="scanStatus">等待宿主连接…</span>
+      </span>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="时间窗口">
+        <button type="button" data-hours="24" aria-pressed="false">24h</button>
+        <button type="button" data-hours="168" aria-pressed="true">7d</button>
+        <button type="button" data-hours="720" aria-pressed="false">30d</button>
+      </div>
+      <button type="button" class="action" id="refreshBtn">增量刷新</button>
+    </div>
+  </header>
+
+  <div class="notice" id="errorBanner" hidden role="alert"></div>
+
+  <section class="metrics-strip" aria-label="时间窗概览">
+    <div class="metric">
+      <span class="metric-label">工具调用</span>
+      <span class="metric-val" id="mCalls">0</span>
+    </div>
+    <div class="metric">
+      <span class="metric-label">工具报错 · 错率</span>
+      <span class="metric-val" id="mErrors">0<span class="metric-sub" id="mRate">0%</span></span>
+    </div>
+    <div class="metric">
+      <span class="metric-label">连环撞墙</span>
+      <span class="metric-val" id="mStreaks">0</span>
+    </div>
+    <div class="metric">
+      <span class="metric-label">轮次与子代理异常</span>
+      <span class="metric-val" id="mLifecycle">0</span>
+    </div>
+  </section>
+
+  <section class="section" id="toolsSection">
+    <div class="sec-head">
+      <h2>高错率工具榜</h2>
+      <span class="sec-count" id="toolsCount"></span>
+    </div>
+    <div class="tools-ledger" id="toolsRoot"></div>
+  </section>
+
+  <section class="section">
+    <div class="sec-head">
+      <h2>Top 报错指纹排行</h2>
+      <span class="sec-count" id="sigsCount"></span>
+      <button type="button" class="filter-pill" id="clearFilterBtn" hidden></button>
+    </div>
+    <div class="sig-list" id="sigsRoot"></div>
+  </section>
+</main>
+
+<script>
+(() => {
+  'use strict';
+  const CHANNEL = 'kiki.panel.v1';
+  const RPC_TIMEOUT_MS = 20000;
+  const pending = new Map();
+  const sampleCache = new Map();
+
+  let seq = 0;
+  let parentOrigin = '';
+  let windowHours = 168;
+  let toolFilter = '';
+  let expandedSigId = '';
+  let busy = false;
+  let viewEpoch = 0;
+
+  const $ = (id) => document.getElementById(id);
+  const numFmt = new Intl.NumberFormat('zh-CN');
+
+  function fmtInt(n) {
+    return numFmt.format(Number(n) || 0);
+  }
+
+  function fmtBytes(bytes) {
+    const b = Number(bytes) || 0;
+    if (b <= 0) return '0 B';
+    if (b < 1024) return `${b} B`;
+    if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KiB`;
+    return `${(b / (1024 * 1024)).toFixed(2)} MiB`;
+  }
+
+  function fmtPercent(rate) {
+    const pct = (Number(rate) || 0) * 100;
+    if (pct === 0) return '0%';
+    if (pct < 0.1) return '<0.1%';
+    return `${pct.toFixed(1)}%`;
+  }
+
+  function fmtTimeAgo(ts) {
+    if (!ts) return '';
+    const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    if (diffSec < 60) return '刚刚';
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)} 分钟前`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} 小时前`;
+    const d = new Date(ts);
+    const pad = (v) => String(v).padStart(2, '0');
+    return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function applyPresentation(pres) {
+    if (!pres || typeof pres !== 'object') return;
+    const root = document.documentElement;
+    if (pres.theme === 'light' || pres.theme === 'dark') {
+      root.setAttribute('data-theme', pres.theme);
+    }
+    if (pres.tokens && typeof pres.tokens === 'object') {
+      for (const [k, v] of Object.entries(pres.tokens)) {
+        if (typeof k === 'string' && k.startsWith('--color-') && typeof v === 'string' && v.trim()) {
+          root.style.setProperty(k, v.trim());
+        }
+      }
+    }
+  }
+
+  function setStatus(text, tone = '') {
+    $('scanStatus').textContent = text;
+    $('statusDot').dataset.tone = tone;
+  }
+
+  function setError(message) {
+    const node = $('errorBanner');
+    if (!message) {
+      node.hidden = true;
+      node.textContent = '';
+      return;
+    }
+    node.textContent = message;
+    node.hidden = false;
+  }
+
+  function call(action, args = {}) {
+    const id = ++seq;
+    const targetOrigin = !parentOrigin || parentOrigin === 'null' ? '*' : parentOrigin;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error('面板请求超时，请稍后重试。'));
+      }, RPC_TIMEOUT_MS);
+
+      pending.set(id, (msg) => {
+        clearTimeout(timer);
+        pending.delete(id);
+        if (!msg || msg.ok !== true) {
+          reject(new Error(typeof msg?.error === 'string' && msg.error ? msg.error : '面板请求未完成。'));
+          return;
+        }
+        if (msg.result && msg.result.ok === false) {
+          reject(new Error(msg.result.error?.message || msg.result.message || '操作失败。'));
+          return;
+        }
+        resolve(msg.result);
+      });
+
+      try {
+        window.parent.postMessage({ channel: CHANNEL, kind: 'request', id, method: 'plugin.call', action, args }, targetOrigin);
+      } catch (err) {
+        clearTimeout(timer);
+        pending.delete(id);
+        reject(err);
+      }
+    });
+  }
+
+  function describeScanStatus(report) {
+    const scan = report?.lastScan;
+    if (!report?.indexed || !scan) {
+      return { text: '尚未扫描日志，点击增量刷新建立索引', tone: 'warn' };
+    }
+    const ms = Math.round(Number(scan.scanDurationMs) || 0);
+    const skipped = fmtInt(scan.filesSkippedUnchanged || 0);
+    const parts = [`${ms}ms`];
+    if (scan.bytesRead > 0) parts.push(`增量读取 ${fmtBytes(scan.bytesRead)}`);
+    parts.push(`跳过 ${skipped} 个未变文件`);
+    if (scan.budgetPaused) parts.push('已达单轮字节上限');
+    return {
+      text: parts.join(' · '),
+      tone: scan.budgetPaused ? 'warn' : 'ok',
+    };
+  }
+
+  function copyTextSafe(text, buttonEl) {
+    const done = () => {
+      const prev = buttonEl.textContent;
+      buttonEl.textContent = '已复制';
+      setTimeout(() => { buttonEl.textContent = prev; }, 1200);
+    };
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+    } else {
+      fallbackCopy(text, done);
+    }
+  }
+
+  function fallbackCopy(text, onDone) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.append(ta);
+    ta.select();
+    try { document.execCommand('copy'); onDone(); } catch {}
+    ta.remove();
+  }
+
+  function createChevronSvg() {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.classList.add('chevron');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M6 3.5L10.5 8L6 12.5');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '1.5');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.append(path);
+    return svg;
+  }
+
+  function renderSummaryMetrics(totals = {}) {
+    $('mCalls').textContent = fmtInt(totals.calls || 0);
+
+    const errNode = $('mErrors');
+    errNode.replaceChildren();
+    errNode.append(document.createTextNode(fmtInt(totals.errors || 0)));
+    const sub = document.createElement('span');
+    sub.className = 'metric-sub';
+    sub.textContent = fmtPercent(totals.errorRate || 0);
+    errNode.append(sub);
+    errNode.dataset.tone = (totals.errors || 0) > 0 ? 'danger' : '';
+
+    const streakNode = $('mStreaks');
+    streakNode.textContent = fmtInt(totals.streaks || 0);
+    streakNode.dataset.tone = (totals.streaks || 0) > 0 ? 'warn' : '';
+
+    const lfNode = $('mLifecycle');
+    lfNode.textContent = fmtInt(totals.lifecycleErrors || 0);
+    lfNode.dataset.tone = (totals.lifecycleErrors || 0) > 0 ? 'danger' : '';
+  }
+
+  function renderTools(tools = [], lifecycleFailures = []) {
+    const root = $('toolsRoot');
+    root.replaceChildren();
+
+    const merged = [...tools];
+    for (const lf of lifecycleFailures) {
+      if (lf.count > 0) {
+        merged.push({
+          tool: lf.type,
+          calls: lf.count,
+          errors: lf.count,
+          errorRate: 1,
+          streaks: 0,
+          isLifecycle: true,
+        });
+      }
+    }
+
+    const withErrors = merged.filter((item) => item.errors > 0);
+    const list = withErrors.length > 0 ? withErrors : merged.slice(0, 6);
+    $('toolsSection').hidden = list.length === 0;
+    $('toolsCount').textContent = list.length > 0 ? `${list.length} 项` : '';
+
+    const maxErrors = list.reduce((acc, item) => Math.max(acc, item.errors || 0), 1);
+
+    for (const item of list) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tool-row';
+      const selected = toolFilter && toolFilter.toLowerCase() === item.tool.toLowerCase();
+      btn.setAttribute('aria-current', selected ? 'true' : 'false');
+      btn.onclick = () => {
+        toolFilter = selected ? '' : item.tool;
+        expandedSigId = '';
+        void loadState();
+      };
+
+      const name = document.createElement('span');
+      name.className = 'tool-name';
+      name.textContent = item.tool;
+
+      const track = document.createElement('span');
+      track.className = 'bar-track';
+      const fill = document.createElement('span');
+      fill.className = 'bar-fill';
+      const ratio = item.errors > 0 ? Math.max(6, Math.round((item.errors / maxErrors) * 100)) : 0;
+      fill.style.width = `${ratio}%`;
+      fill.dataset.high = item.errorRate >= 0.2 || item.isLifecycle ? 'true' : 'false';
+      track.append(fill);
+
+      const stats = document.createElement('span');
+      stats.className = 'tool-stats';
+
+      if (item.streaks > 0) {
+        const st = document.createElement('span');
+        st.className = 'tag-streak';
+        st.textContent = `连撞 ${fmtInt(item.streaks)}`;
+        stats.append(st);
+      }
+
+      const ratioText = document.createElement('span');
+      ratioText.textContent = item.isLifecycle
+        ? `${fmtInt(item.errors)} 次异常`
+        : `${fmtInt(item.errors)} / ${fmtInt(item.calls)}`;
+
+      const rate = document.createElement('span');
+      rate.className = 'rate';
+      rate.dataset.high = item.errorRate >= 0.2 && item.errors > 0 ? 'true' : 'false';
+      rate.textContent = item.isLifecycle ? '生命周期' : fmtPercent(item.errorRate);
+
+      stats.append(ratioText, rate);
+      btn.append(name, track, stats);
+      root.append(btn);
+    }
+  }
+
+  function renderSampleDrawer(drawerEl, sigItem, detail) {
+    drawerEl.replaceChildren();
+
+    const bar = document.createElement('div');
+    bar.className = 'drawer-toolbar';
+    const streakNote = document.createElement('span');
+    streakNote.textContent =
+      sigItem.streaks > 0
+        ? `连环撞墙 ${fmtInt(sigItem.streaks)} 次 · 单轮最高连续报错 ${fmtInt(detail?.maxStreakLength || sigItem.maxStreakLength || 2)} 次`
+        : `最近脱敏样本（最多保留 5 条）`;
+
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'ghost';
+    copyBtn.textContent = '复制指纹';
+    copyBtn.onclick = () => copyTextSafe(`${sigItem.tool}: ${sigItem.signature}`, copyBtn);
+    bar.append(streakNote, copyBtn);
+    drawerEl.append(bar);
+
+    const samples = Array.isArray(detail?.samples) ? detail.samples : [];
+    if (samples.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'sample-head';
+      empty.textContent = '暂无保存的样本明细。';
+      drawerEl.append(empty);
+      return;
+    }
+
+    const list = document.createElement('div');
+    list.className = 'sample-list';
+    for (const s of samples) {
+      const row = document.createElement('div');
+      row.className = 'sample-row';
+
+      const head = document.createElement('div');
+      head.className = 'sample-head';
+      const loc = document.createElement('span');
+      loc.textContent = `${s.workspace || 'default'} · ${s.sessionId || '-'} · ${s.agentId || 'main'}`;
+      const ts = document.createElement('span');
+      ts.textContent = fmtTimeAgo(s.timestamp);
+      head.append(loc, ts);
+      row.append(head);
+
+      if (s.argsPreview) {
+        const args = document.createElement('div');
+        args.className = 'sample-args';
+        args.textContent = `参数: ${s.argsPreview}`;
+        row.append(args);
+      }
+
+      const err = document.createElement('div');
+      err.className = 'sample-line';
+      err.textContent = s.errorPreview || sigItem.signature;
+      row.append(err);
+      list.append(row);
+    }
+    drawerEl.append(list);
+  }
+
+  async function toggleSignature(itemEl, drawerEl, sigItem) {
+    const isOpen = itemEl.dataset.open === 'true';
+    if (isOpen) {
+      itemEl.dataset.open = 'false';
+      drawerEl.hidden = true;
+      expandedSigId = '';
+      return;
+    }
+
+    for (const openEl of document.querySelectorAll('.sig-item[data-open="true"]')) {
+      openEl.dataset.open = 'false';
+      const d = openEl.querySelector('.sig-drawer');
+      if (d) d.hidden = true;
+    }
+
+    expandedSigId = sigItem.signatureId;
+    itemEl.dataset.open = 'true';
+    drawerEl.hidden = false;
+
+    const cached = sampleCache.get(sigItem.signatureId);
+    if (cached) {
+      renderSampleDrawer(drawerEl, sigItem, cached);
+      return;
+    }
+
+    drawerEl.textContent = '加载样本中…';
+    try {
+      const detail = await call('samples', {
+        signatureId: sigItem.signatureId,
+        windowHours,
+      });
+      sampleCache.set(sigItem.signatureId, detail);
+      if (expandedSigId === sigItem.signatureId) {
+        renderSampleDrawer(drawerEl, sigItem, detail);
+      }
+    } catch (err) {
+      if (expandedSigId === sigItem.signatureId) {
+        drawerEl.textContent = err?.message || '无法读取样本。';
+      }
+    }
+  }
+
+  function renderSignatures(signatures = [], indexed = true) {
+    const root = $('sigsRoot');
+    root.replaceChildren();
+
+    const filterBtn = $('clearFilterBtn');
+    if (toolFilter) {
+      filterBtn.hidden = false;
+      filterBtn.textContent = `筛选: ${toolFilter} ×`;
+      filterBtn.onclick = () => {
+        toolFilter = '';
+        expandedSigId = '';
+        void loadState();
+      };
+    } else {
+      filterBtn.hidden = true;
+    }
+
+    $('sigsCount').textContent = signatures.length > 0 ? `${signatures.length} 类归一化指纹` : '';
+
+    if (signatures.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = !indexed
+        ? '尚未生成本地统计索引，点击右上角「增量刷新」即可读取近期会话日志。'
+        : toolFilter
+          ? `当前时间窗内「${toolFilter}」无报错记录。`
+          : '当前时间窗内无报错记录。';
+      root.append(empty);
+      return;
+    }
+
+    for (const sigItem of signatures) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'sig-item';
+      wrapper.dataset.open = 'false';
+
+      const head = document.createElement('button');
+      head.type = 'button';
+      head.className = 'sig-head';
+
+      const count = document.createElement('span');
+      count.className = 'sig-count';
+      count.textContent = fmtInt(sigItem.count);
+
+      const body = document.createElement('span');
+      body.className = 'sig-body';
+
+      const metaLine = document.createElement('span');
+      metaLine.className = 'sig-meta-line';
+
+      const toolTag = document.createElement('span');
+      toolTag.className = 'tag-tool';
+      toolTag.textContent = sigItem.tool;
+      metaLine.append(toolTag);
+
+      if (sigItem.streaks > 0) {
+        const streakTag = document.createElement('span');
+        streakTag.className = 'tag-streak';
+        streakTag.textContent = `连环撞墙 ${fmtInt(sigItem.streaks)} 次`;
+        metaLine.append(streakTag);
+      }
+
+      if (sigItem.lastSeenAt) {
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'sig-time';
+        timeSpan.textContent = fmtTimeAgo(sigItem.lastSeenAt);
+        metaLine.append(timeSpan);
+      }
+
+      const code = document.createElement('span');
+      code.className = 'sig-code';
+      code.textContent = sigItem.signature;
+
+      body.append(metaLine, code);
+      head.append(count, body, createChevronSvg());
+
+      const drawer = document.createElement('div');
+      drawer.className = 'sig-drawer';
+      drawer.hidden = true;
+
+      head.onclick = () => {
+        void toggleSignature(wrapper, drawer, sigItem);
+      };
+
+      wrapper.append(head, drawer);
+      root.append(wrapper);
+
+      if (expandedSigId && expandedSigId === sigItem.signatureId) {
+        void toggleSignature(wrapper, drawer, sigItem);
+      }
+    }
+  }
+
+  function applyReport(report) {
+    const status = describeScanStatus(report);
+    setStatus(status.text, status.tone);
+    renderSummaryMetrics(report?.totals || {});
+    renderTools(report?.highErrorTools || [], report?.lifecycleFailures || []);
+    renderSignatures(report?.topSignatures || [], report?.indexed !== false);
+  }
+
+  function syncControls() {
+    $('refreshBtn').disabled = busy;
+    for (const btn of document.querySelectorAll('.seg button[data-hours]')) {
+      const h = Number(btn.dataset.hours);
+      btn.setAttribute('aria-pressed', h === windowHours ? 'true' : 'false');
+      btn.disabled = busy;
+    }
+  }
+
+  async function loadState() {
+    const epoch = ++viewEpoch;
+    setError('');
+    try {
+      const report = await call('state', {
+        windowHours,
+        ...(toolFilter ? { toolFilter } : {}),
+        limit: 25,
+      });
+      if (epoch !== viewEpoch) return;
+      applyReport(report);
+    } catch (err) {
+      if (epoch !== viewEpoch) return;
+      setStatus('读取索引失败', 'danger');
+      setError(err?.message || '无法读取报错索引。');
+    }
+  }
+
+  async function runIncrementalScan() {
+    if (busy) return;
+    busy = true;
+    const epoch = ++viewEpoch;
+    syncControls();
+    setError('');
+    setStatus('正在增量扫描新增日志…', 'busy');
+    sampleCache.clear();
+    try {
+      const report = await call('scan_now', {
+        windowHours,
+        ...(toolFilter ? { toolFilter } : {}),
+        limit: 25,
+      });
+      if (epoch === viewEpoch) {
+        applyReport(report);
+      }
+    } catch (err) {
+      if (epoch === viewEpoch) {
+        setStatus('增量扫描未完成', 'danger');
+        setError(err?.message || '增量扫描失败。');
+      }
+    } finally {
+      busy = false;
+      syncControls();
+    }
+  }
+
+  for (const btn of document.querySelectorAll('.seg button[data-hours]')) {
+    btn.addEventListener('click', () => {
+      const next = Number(btn.dataset.hours);
+      if (!next || next === windowHours) return;
+      windowHours = next;
+      syncControls();
+      void loadState();
+    });
+  }
+
+  $('refreshBtn').addEventListener('click', () => {
+    void runIncrementalScan();
+  });
+
+  window.addEventListener('message', (event) => {
+    if (event.source !== window.parent || !event.data || event.data.channel !== CHANNEL) return;
+    if (parentOrigin && event.origin !== parentOrigin) return;
+
+    if (event.data.kind === 'presentation') {
+      applyPresentation(event.data.presentation);
+      return;
+    }
+    if (event.data.kind === 'init') {
+      parentOrigin = event.origin;
+      applyPresentation(event.data.presentation);
+      void loadState();
+      return;
+    }
+    if (event.data.kind === 'response') {
+      pending.get(event.data.id)?.(event.data);
+    }
+  });
+})();
+</script>
+</body>
+</html>
