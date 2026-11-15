@@ -329,73 +329,126 @@ export class ErrorPulseService {
       }
     };
 
-    // 1. Discover wire.jsonl paths cooperatively without blocking the event loop.
+    // 1. Discover wire.jsonl paths cooperatively with directory pruning & bounded concurrency.
+    const SKIP_SUBDIRS = new Set([
+      'tasks',
+      'attachments',
+      'media',
+      'engine-v1',
+      'tool-results',
+      'blobs',
+      'snapshots',
+      'checkpoints',
+      'cache',
+      'notes',
+      'todos',
+      'logs',
+      'tmp',
+      '.tmp',
+    ]);
     const discoveredWireFiles = [];
-    const walkSessions = async (dir, depth) => {
-      if (depth > 6) return;
+    let frontier = [{ dir: paths.sessionsDir, depth: 0 }];
+    while (frontier.length > 0) {
       signal.throwIfAborted();
-      let entries;
-      try {
-        entries = await readdir(dir, { withFileTypes: true });
-      } catch (error) {
-        if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR' || error?.code === 'EACCES') return;
-        throw error;
-      }
-      entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-      for (const entry of entries) {
+      const nextFrontier = [];
+      for (let i = 0; i < frontier.length; i += 16) {
         signal.throwIfAborted();
-        dirOpsSinceYield += 1;
-        if (dirOpsSinceYield >= 32) await maybeYield(false);
-
-        if (entry.isSymbolicLink()) continue;
-        const fullPath = path.join(dir, entry.name);
-        if (entry.isFile()) {
-          if (entry.name === 'wire.jsonl') {
-            const relKey = path.relative(paths.sessionsDir, fullPath).replace(/\\/g, '/');
-            discoveredWireFiles.push({ fullPath, relKey });
+        const batch = frontier.slice(i, i + 16);
+        const batchEntries = await Promise.all(
+          batch.map(async ({ dir, depth }) => {
+            try {
+              const entries = await readdir(dir, { withFileTypes: true });
+              return { dir, depth, entries };
+            } catch (error) {
+              if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR' || error?.code === 'EACCES') {
+                return { dir, depth, entries: [] };
+              }
+              throw error;
+            }
+          }),
+        );
+        for (const { dir, depth, entries } of batchEntries) {
+          for (const entry of entries) {
+            if (entry.isSymbolicLink()) continue;
+            const fullPath = path.join(dir, entry.name);
+            if (entry.isFile()) {
+              if (entry.name === 'wire.jsonl') {
+                const relKey = path.relative(paths.sessionsDir, fullPath).replace(/\\/g, '/');
+                discoveredWireFiles.push({ fullPath, relKey });
+              }
+            } else if (entry.isDirectory() && depth < 6 && !SKIP_SUBDIRS.has(entry.name)) {
+              nextFrontier.push({ dir: fullPath, depth: depth + 1 });
+            }
           }
-        } else if (entry.isDirectory()) {
-          // Skip heavy tool-output blobs / engine folders that never contain wire.jsonl.
-          if (entry.name === 'engine-v1' || entry.name === 'tool-results' || entry.name === 'blobs') continue;
-          await walkSessions(fullPath, depth + 1);
         }
+        dirOpsSinceYield += batch.length;
+        if (dirOpsSinceYield >= 32) await maybeYield(false);
       }
-    };
-
-    await walkSessions(paths.sessionsDir, 0);
+      frontier = nextFrontier;
+    }
+    discoveredWireFiles.sort((a, b) => (a.relKey < b.relKey ? -1 : a.relKey > b.relKey ? 1 : 0));
 
     let filesScanned = 0;
     let filesSkippedUnchanged = 0;
     let totalBytesRead = 0;
     let budgetPaused = false;
+    let dirtyMarkedSkipped = 0;
     const seenKeys = new Set();
     const scratchBuf = Buffer.allocUnsafe(chunkBytes);
+    const coldBootstrapCutoffMs = nowMs - 7 * 24 * 3600 * 1000;
+    const dirtyFiles = [];
 
-    for (const { fullPath, relKey } of discoveredWireFiles) {
+    for (let i = 0; i < discoveredWireFiles.length; i += 32) {
       signal.throwIfAborted();
-      seenKeys.add(relKey);
-
-      let st;
-      try {
-        st = await statFile(fullPath);
-      } catch (error) {
-        if (error?.code === 'ENOENT') continue;
-        throw error;
+      const batch = discoveredWireFiles.slice(i, i + 32);
+      const stats = await Promise.all(
+        batch.map(async ({ fullPath, relKey }) => {
+          try {
+            const st = await statFile(fullPath);
+            return { fullPath, relKey, st };
+          } catch (error) {
+            if (error?.code === 'ENOENT') return null;
+            throw error;
+          }
+        }),
+      );
+      for (const item of stats) {
+        if (!item) continue;
+        const { fullPath, relKey, st } = item;
+        seenKeys.add(relKey);
+        const saved = index.files[relKey];
+        // O(1) unchanged check: zero open(), zero read()!
+        if (
+          saved &&
+          !saved.partial &&
+          st.size === saved.size &&
+          Math.floor(st.mtimeMs) === Math.floor(saved.mtimeMs)
+        ) {
+          filesSkippedUnchanged += 1;
+          continue;
+        }
+        // On cold bootstrap, skip archival logs unmodified in the last 7 days without reading bytes.
+        if (!saved && st.mtimeMs > 0 && st.mtimeMs < coldBootstrapCutoffMs) {
+          index.files[relKey] = {
+            size: st.size,
+            mtimeMs: st.mtimeMs,
+            offset: st.size,
+          };
+          dirtyMarkedSkipped += 1;
+          filesSkippedUnchanged += 1;
+          continue;
+        }
+        dirtyFiles.push({ fullPath, relKey, st, saved });
       }
+      dirOpsSinceYield += batch.length;
+      if (dirOpsSinceYield >= 64) await maybeYield(false);
+    }
 
-      const saved = index.files[relKey];
-      // O(1) unchanged check: zero open(), zero read()!
-      if (
-        saved &&
-        !saved.partial &&
-        st.size === saved.size &&
-        Math.floor(st.mtimeMs) === Math.floor(saved.mtimeMs)
-      ) {
-        filesSkippedUnchanged += 1;
-        dirOpsSinceYield += 1;
-        if (dirOpsSinceYield >= 48) await maybeYield(false);
-        continue;
-      }
+    // Prioritize newest active session logs first so bounded ticks always capture fresh errors immediately.
+    dirtyFiles.sort((a, b) => b.st.mtimeMs - a.st.mtimeMs);
+
+    for (const { fullPath, relKey, st, saved } of dirtyFiles) {
+      signal.throwIfAborted();
 
       if (totalBytesRead >= budgetBytes) {
         budgetPaused = true;
@@ -711,7 +764,7 @@ export class ErrorPulseService {
     index.lastScan = scanMeta;
 
     // Persist atomically when new bytes/deletions occurred, on explicit scan_now, or on initial index creation.
-    if (filesScanned > 0 || prunedFiles > 0 || reason === 'scan_now' || !indexExisted) {
+    if (filesScanned > 0 || prunedFiles > 0 || dirtyMarkedSkipped > 0 || reason === 'scan_now' || !indexExisted) {
       await writeIndexAtomic(paths.indexPath, index, finishedNowMs);
     }
     this.cachedIndex = index;
