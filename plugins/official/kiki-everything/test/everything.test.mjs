@@ -64,6 +64,10 @@ test('manifest and registration share one exact schema', async () => {
   register({ registerTool: (...args) => registrations.push(args) });
   assert.equal(registrations.length, 1); assert.deepEqual(registrations[0][0], definition);
   assert.deepEqual(definition.accesses, [{ kind: 'file', operation: 'search', path: '$.root', recursive: true }]);
+  assert.deepEqual(definition.parameters.properties.reason, { type: 'string', maxLength: 500, description: 'Optional brief note on why this tool is being called (ignored at runtime).' });
+  const parsedWithReason = validateArgs({ root: 'C:/', query: 'ext:pdf', reason: 'Locate user PDF report' });
+  assert.equal('reason' in parsedWithReason, false);
+  assert.equal(searchArgs(parsedWithReason, 'C:\\', {}).some(arg => arg.includes('Locate user PDF report')), false);
 });
 test('donor query tokenizer preserves quotes, AND terms, triple quotes and unclosed quotes', () => {
   assert.deepEqual(splitQueryTerms('ext:log dm:today path:"C:\\My Docs" "annual report"'), ['ext:log', 'dm:today', 'path:"C:\\My Docs"', '"annual report"']);

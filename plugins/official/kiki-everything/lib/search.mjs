@@ -5,7 +5,9 @@ export const sorts = ['name', 'name-descending', 'path', 'path-descending', 'ext
 const functions = new Set(['name', 'path', 'ext', 'extension', 'size', 'dm', 'datemodified', 'file', 'folder', 'case', 'nocase', 'wholeword', 'nowholeword', 'wildcards', 'nowildcards', 'regex', 'noregex', 'exact', 'startwith', 'endwith']);
 export function validateArgs(args, settings = {}) {
   if (!args || typeof args !== 'object') throw new EverythingError('INVALID_ARGUMENT', 'Provide root and an optional indexed query.');
-  const result = { query: '', type: 'both', limit: 100, offset: 0, sort: 'date-modified-descending', ...args };
+  const { reason, ...cleanArgs } = args;
+  if (reason !== undefined && (typeof reason !== 'string' || reason.length > 500)) throw new EverythingError('INVALID_ARGUMENT', 'reason must be a string of at most 500 characters.');
+  const result = { query: '', type: 'both', limit: 100, offset: 0, sort: 'date-modified-descending', ...cleanArgs };
   if (typeof result.query !== 'string' || result.query.length > 4096 || result.query.includes('\0')) throw new EverythingError('INVALID_QUERY', 'query must be a string of at most 4096 characters without NUL.');
   if (!['both', 'file', 'directory'].includes(result.type) || !sorts.includes(result.sort) || !Number.isSafeInteger(result.limit) || result.limit < 1 || result.limit > 1000 || !Number.isSafeInteger(result.offset) || result.offset < 0 || result.offset > 2147480000) throw new EverythingError('INVALID_ARGUMENT', 'Use type=both/file/directory, a supported sort, limit=1..1000 and a nonnegative integer offset.');
   for (const flag of ['match_case', 'match_path', 'match_whole_word']) if (result[flag] !== undefined && typeof result[flag] !== 'boolean') throw new EverythingError('INVALID_ARGUMENT', `${flag} must be boolean.`);

@@ -71,14 +71,18 @@ test('manifest equals native registrations; runtime has no plan/mock-only tools'
   const actual = [];
   register({ registerTool: (d) => actual.push(d) });
   assert.deepEqual(actual, definitions);
-  for (const d of definitions) { assert.ok(d.description.length < 600); assert.equal(d.parameters.properties.mode, undefined); }
+  for (const d of definitions) {
+    assert.ok(d.description.length < 600);
+    assert.equal(d.parameters.properties.mode, undefined);
+    assert.deepEqual(d.parameters.properties.reason, { type: 'string', maxLength: 500, description: 'Optional brief note on why this tool is being called (ignored at runtime).' });
+  }
 });
 
 test('complete platform path maps to the donor commands, including option-like text', async () => {
   const calls = [];
   const core = createBilibiliCore({ cli: async (args, options) => { calls.push({ args, options }); return { marked_read: args.includes('--mark-read') }; } });
   for (const [method, input, args] of cases) {
-    const result = await core[method](input);
+    const result = await core[method]({ ...input, reason: 'CallTool caller intent note' });
     assert.deepEqual(calls.at(-1).args, args);
     if (method === 'inbox') assert.equal(result.marked_read, input.action === 'mark_read');
   }

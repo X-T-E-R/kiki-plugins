@@ -1,4 +1,5 @@
-const object = (properties, required = []) => ({ type: 'object', properties, required, additionalProperties: false });
+const reason = { type: 'string', maxLength: 500, description: 'Optional brief note on why this tool is being called (ignored at runtime).' };
+const object = (properties, required = []) => ({ type: 'object', properties: { ...properties, reason }, required, additionalProperties: false });
 const string = { type: 'string', minLength: 1 };
 const page = { type: 'integer', minimum: 1, default: 1 };
 const tool = (name, description, properties, required = ['action']) => ({ schemaVersion: 1, name, description, parameters: object(properties, required), accesses: [{ kind: 'all' }], disclosure: 'deferred' });

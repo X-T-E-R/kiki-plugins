@@ -10,7 +10,8 @@ export function register(api) {
       try {
         const core = createBilibiliCore({ settings: context.settings, workspaceRoot: context.workspaceRoot, context });
         context.progress({ kind: 'status', text: `${definition.name} running` });
-        const result = await core[methods[definition.name]](args ?? {});
+        const { reason: _reason, ...toolArgs } = args ?? {};
+        const result = await core[methods[definition.name]](toolArgs);
         return await renderResult(result, context.imageIn);
       } catch (error) {
         return { output: JSON.stringify(fail(error)), isError: true };

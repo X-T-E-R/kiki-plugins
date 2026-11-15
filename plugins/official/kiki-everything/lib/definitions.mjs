@@ -16,6 +16,7 @@ export const definition = {
       match_case: { type: 'boolean', default: false },
       match_path: { type: 'boolean', default: false },
       match_whole_word: { type: 'boolean', default: false },
+      reason: { type: 'string', maxLength: 500, description: 'Optional brief note on why this tool is being called (ignored at runtime).' },
     },
     required: ['root'], additionalProperties: false,
   },
