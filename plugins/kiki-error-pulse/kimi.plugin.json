@@ -46,17 +46,13 @@
             "default": true
           },
           "scanIntervalMinutes": {
-            "type": "integer",
-            "minimum": 5,
-            "maximum": 1440,
+            "type": "number",
             "default": 30,
             "title": "后台扫描间隔（分钟）",
             "description": "定时增量扫描的时间间隔（5–1440 分钟，默认 30 分钟）。"
           },
           "maxScanMegabytesPerTick": {
-            "type": "integer",
-            "minimum": 2,
-            "maximum": 64,
+            "type": "number",
             "default": 16,
             "title": "单轮扫描字节预算（MiB）",
             "description": "单次后台扫描最多读取的新增日志字节数（2–64 MiB，默认 16 MiB），到达预算即保存游标待下轮继续。"

@@ -80,12 +80,10 @@ test('manifest, sync-manifest, registration, icon budget, and zero-emoji panel c
 
   const props = manifest['x-kiki'].settings.schema.properties;
   assert.equal(props.autoScanEnabled.default, true);
+  assert.equal(props.scanIntervalMinutes.type, 'number');
   assert.equal(props.scanIntervalMinutes.default, 30);
-  assert.equal(props.scanIntervalMinutes.minimum, 5);
-  assert.equal(props.scanIntervalMinutes.maximum, 1440);
+  assert.equal(props.maxScanMegabytesPerTick.type, 'number');
   assert.equal(props.maxScanMegabytesPerTick.default, 16);
-  assert.equal(props.maxScanMegabytesPerTick.minimum, 2);
-  assert.equal(props.maxScanMegabytesPerTick.maximum, 64);
 
   const syncCheck = spawnSync(
     process.execPath,
