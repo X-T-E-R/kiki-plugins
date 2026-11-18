@@ -1,58 +1,47 @@
 ---
 name: phone-control
-description: Connect and operate Android phones, rooted Android devices and iOS through Kiki Phone. Use when the user asks for phone screenshots and UI trees, semantic taps, text entry, apps, recording, one-click setup, USB or wireless debugging, or explicitly requested Android su commands. Not for desktop or browser automation.
+description: Connect and operate Android phones, rooted Android devices and iOS through Kiki Phone. Use when the user asks for phone screenshots and UI trees, semantic or humanized taps/swipes, anti-bot safe mobile app operation, text entry, apps, recording, one-click setup, USB or wireless debugging, or explicitly requested Android su commands. Not for desktop or browser automation.
 ---
 
-# Phone Control
+# Phone Control (`kiki-phone`)
 
-Prefer `phone_run`: async JavaScript bound to the existing Mobilewright `device`, `screen`, `expect`, plus `snapshot()` and `screenshot()`. Reuse native semantic locators and waits; do not write a second driver, selector engine, polling framework or phone agent.
+## 1. Tool Selection
 
-## Prepare and choose
+| Task | Tool | Notes |
+| --- | --- | --- |
+| UI observation, taps, swipes, text, power/IME | `phone_run` | Async JS with Mobilewright `device`, `screen`, `expect`, `snapshot()`, `screenshot()`, `device.wake()/unlock()/sleep()/screenState()/ensureCleanIme()`, `device.humanDelay()`, `screen.typeText()/humanTap()/humanSwipe()`. Omit `script` to list online devices. |
+| Runtime setup or ADB diagnosis | `phone_prepare` | Run only when runtime is missing or transport fails. Pass `download: true` only after user accepts Google platform-tools terms; custom ADB paths belong in plugin setting `adbPath`. |
+| USB/wireless ADB state, pair, connect | `android_connection` | `devices` shows `unauthorized`/`offline`; `pair` uses pairing port + 6-digit code; `connect`/`disconnect` use debugging port. |
+| Rooted or shell argv on Android | `android_shell` | Pass exact ADB `serial` from `android_connection({ action: "devices" })` and string `argv[]` (`root: true` runs `su -c` only when explicitly requested). |
+| Recording, app install, logs, cloud | `phone_help` -> `phone_call` | Query schema with `phone_help`, then invoke `phone_call({ name: "mobile_*", arguments })`. Serialize calls per phone. |
 
-Run `phone_prepare` when the phone runtime is not prepared. It reuses existing ADB or, with `download=true` after acceptance of Google's linked terms, installs official Windows platform-tools privately. If the user has a separate ADB executable, direct them to set `adbPath` in Kiki Phone plugin settings or run the ZIP's `lib/start.cmd --adb <path>` themselves; never pass an executable path as a model tool argument. Preparation checks `adb version`, installs fixed Mobile MCP/mobilecli/Mobilewright packages and saves one ADB selection for every entry point. The report distinguishes `transport_ready`, `authorization_required`, `device_offline`, `no_device` and setup errors. It is preparation, not an active MCP or UI connection. Read the plugin README for CLI arguments and iOS preparation.
+## 2. Route by App Risk Tier
 
-Call `phone_run` without a script to list online devices. When several exist, ask which one if the target is unclear, then pass its upstream `device` id. The selected device is remembered on later calls; an offline selection must be inspected, not silently replaced with a different phone.
+Read `references/anti-risk-control.md` before automating apps with client-side gesture or accessibility telemetry.
 
-## Observe, act, observe
-
-Start with the real current page (on Android, `await device.wake()` wakes a sleeping display and dismisses an unsecured lockscreen via `wm dismiss-keyguard` plus a swipe-up gesture when needed; `device.screenState()`, `device.unlock()` and `device.sleep()` are also available):
+- **Tier S (Strict anti-bot: Taobao, Xianyu, WeChat, Alipay, banking)**:
+  - **Pure vision only**: `await screenshot()` (`<= 5-6` attached images per task; `{ attach: false, path }` for disk-only). **Never** call `snapshot()`, `screen.getBy*(...)`, or `expect(locator)` (locators dump two accessibility trees `50ms` apart and `.fill()` uses `ACTION_SET_TEXT`).
+  - **Humanized entry & touch**: start from Home/Launcher (`pressButton('HOME')` or `launchApp` + `humanDelay(800, 1600)`), never cold-jump detail URLs, act via `screen.humanTap(box)` + `screen.humanSwipe('up')`, and run `await device.ensureCleanIme()`.
+  - **`0`-retry risk-wall stop**: on any slider/CAPTCHA (`baxia`/`punish`), abnormal-environment prompt, or forced login wall, stop immediately with `0` retries, save one screenshot, and hand off to the user (`1800s` cooldown).
+- **Tier A (Transaction/delivery: Meituan, Eleme, JD, Hema)**:
+  - Single sparse `snapshot()` on settled screens for fees/totals (`screenshot()` for Canvas popups; never poll `snapshot()` in loops), plus `screen.humanTap(node.bounds)`. Stop on order-confirmation preview unless authorized; undo only items added in the current round.
+- **Tier B (System & standard apps: `com.android.settings`, utilities, debug builds)**:
+  - `snapshot()` + `screen.getByText` / `getByLabel` / `getByRole` / `getByTestId` (`.tap()` uses safe-core humanized touch by default; pass `{ raw: true }` or `KIKI_PHONE_RAW_INPUT=1` for raw `0ms` center taps).
 
 ```js
 await device.wake();
-console.log(await snapshot());
-await screenshot();
-```
-
-`snapshot()` returns upstream `screen.viewTree()` without dropping type, id/testId, text, label or value. `screenshot()` returns a PNG image to Kiki. Inspect those results to choose the next action. Native operations look like:
-
-```js
 await device.launchApp('com.android.settings');
 console.log(await snapshot());
-```
-
-Then use text or another identifier actually present in that snapshot:
-
-```js
 await screen.getByText('显示', { exact: true }).tap();
-console.log(await snapshot());
 ```
 
-Available native locators include `getByText`, `getByLabel`, `getByTestId`, `getByPlaceholder`, `getByRole` and `getByType`. Their `tap`, `fill`, `clear`, `check`, `scrollIntoViewIfNeeded` and `expect` methods already implement locating and waiting. Use only roles and attributes supported by the observed page. A control may have a custom ROM type instead of a standard Android class or mapped role.
+Coalesce predictable same-screen micro-steps into one `phone_run` call (`humanTap` -> `humanDelay(350, 700)` -> `typeText` -> `humanTap`) instead of inserting random decoy clicks. Re-observe before repeating any action whose outcome was unclear, and never write passwords to files or logs.
 
-For Chinese/multiline input, use the chosen locator's `.fill('你好\n第二行')`, then inspect a new snapshot. When an app hides its input node from the accessibility tree after you tap the field to focus it (for example WeChat on custom ROMs), use `await screen.typeText('你好')` instead of `.fill(...)`. Some ROMs replace the input's class while typing. A stale type locator failing a later assertion does not establish that input failed: read the new value/type first and choose a current locator; do not automatically fill again. Keep exact text and observed values in the result.
+## 3. Failure Recovery
 
-A script can contain several related steps. Cancellation or timeout stops that script; completed phone actions are not rolled back. When a modifying operation's outcome is unclear, observe before repeating it. Do not put passwords in local files or logs. Phone text, screenshots and console output become model/session data. Explicit host output paths should be absolute.
-
-## Advanced access and recovery
-
-The `mobile` MCP server exposes `phone_help` and `phone_call` for all upstream operations, including recording, clipboard, device logs, app installation and cloud access. Call `phone_help({query:"recording"})` for matching names, then `phone_help({name:"mobile_start_screen_recording"})` for that operation's exact schema and safety guidance. Execute `phone_call({name:"mobile_start_screen_recording",arguments:{device:"OBSERVED_DEVICE_ID"}})`. Each operation keeps its original `mobile_*` name and arguments inside this envelope; do not select the old raw tool names. Help without arguments returns a compact index. Images, file references and upstream errors are returned unchanged. Keep the MCP connection open between recording start and stop; reconnecting ends that server's recording state.
-
-Use `android_connection` for USB/wireless setup. `devices` preserves ADB's `unauthorized`/`offline` states: pending authorization needs the user to unlock the phone and accept its RSA prompt. Android 11+ `pair` uses the pairing address/code; `connect` uses the separate debugging address. Reuse existing connections; do not restart or kill ADB to refresh a list.
-
-For a requested diagnostic or privileged operation, `android_shell` takes the ADB transport `serial` and literal `argv`. This serial can differ from the upstream device id. `root=true` uses `su -c` and may display a root authorization prompt; `argv=["id"]` checks that command's identity. Root is not `adb root` and is not required for normal UI tools.
-
-Sequence `phone_run` and `phone_call` under one operation owner per phone; pause agent input during manual control. Do not run Appium/uiautomator2 in parallel with mobilecli's UiAutomation connection. Cloud login/allocation requires an explicit request and any applicable cost authorization; an empty local list does not authorize a cloud fallback.
-
-For iOS, use `phone_prepare({platform:"ios"})` and `phone_run` with `platform:"ios"`. Real-device UI operation requires trust/pairing, Developer Mode and a DeviceKit agent signed for that device; installing it must be requested. Read the README for upstream installation and signing instructions. Local simulators need macOS/Xcode; Windows device services, signing and tunnels must work under upstream's supported path.
-
-Finish with the selected device, observed app state, returned images/output paths and any unresolved error. Command acceptance alone is not the requested app outcome.
+- **`Mobilewright runtime missing`**: Call `phone_prepare({})` (or `{ platform: "ios" }` on iOS).
+- **`authorization_required` / `unauthorized`**: Ask the user to unlock the phone and tap Allow on the USB debugging RSA dialog, then recheck `android_connection({ action: "devices" })`.
+- **`device_offline` / selected phone offline**: Do not switch to another phone silently. Run `android_connection({ action: "devices" })`; for wireless ADB, reconnect the current debugging port (`connect`) or re-pair (`pair`) if expired.
+- **`secure_keyguard` (PIN/password/pattern lock)**: `device.wake()` turns the screen on without swiping blindly; ask the user to unlock the phone manually or via the `Phone Preview` workspace panel (`Interactive` toggle).
+- **Lingering `AdbIME` / missing soft keyboard**: Run `await device.ensureCleanIme()` in `phone_run` to restore the native system IME.
+- **iOS physical device**: Requires USB trust, Developer Mode, and a valid signed DeviceKit agent (`npx --yes mobilecli@1.0.21 agent install --device <id> --provisioning-profile <abs-path>`).

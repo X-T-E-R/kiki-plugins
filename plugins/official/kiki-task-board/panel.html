@@ -6,114 +6,853 @@
   <title>Task board</title>
   <style>
     :root {
-      color-scheme: light;
-      --canvas: #f3efe6;
-      --paper: #fffdf8;
-      --ink: #1c1915;
-      --soft: #5c564c;
-      --faint: #8a8175;
-      --line: #e3d9c8;
-      --accent: #c8401a;
-      --accent-ink: #fff8f4;
-      --ok: #1f6b45;
-      --danger: #9d2c24;
-      --sans: "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+      color-scheme: light dark;
+      font-synthesis: none;
+      --bg: #f6f4ef;
+      --paper: #fcfbf8;
+      --panel: #efece4;
+      --ink: #1b1a17;
+      --ink-soft: #5c5850;
+      --ink-faint: #8c867b;
+      --line: rgba(27, 26, 23, 0.10);
+      --line-strong: rgba(27, 26, 23, 0.20);
+      --accent: #2c5e4f;
+      --accent-soft: rgba(44, 94, 79, 0.10);
+      --accent-ink: #fcfbf8;
+      --ok: #2c5e4f;
+      --danger: #a1352b;
+      --p0: #a1352b;
+      --p0-bg: rgba(161, 53, 43, 0.10);
+      --p1: #8c581c;
+      --p1-bg: rgba(140, 88, 28, 0.11);
+      --p2: #2c5e4f;
+      --p2-bg: rgba(44, 94, 79, 0.10);
+      --p3: #6e695f;
+      --p3-bg: rgba(27, 26, 23, 0.06);
+      --sans: "Instrument Sans", ui-sans-serif, system-ui, "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+      --radius: 8px;
     }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #141413;
+        --paper: #1c1b19;
+        --panel: #252320;
+        --ink: #edeae2;
+        --ink-soft: #b2aca0;
+        --ink-faint: #7b766c;
+        --line: rgba(237, 234, 226, 0.10);
+        --line-strong: rgba(237, 234, 226, 0.22);
+        --accent: #58a88f;
+        --accent-soft: rgba(88, 168, 143, 0.14);
+        --accent-ink: #141413;
+        --ok: #58a88f;
+        --danger: #e28379;
+        --p0: #e5857b;
+        --p0-bg: rgba(229, 133, 123, 0.15);
+        --p1: #deb068;
+        --p1-bg: rgba(222, 176, 104, 0.14);
+        --p2: #58a88f;
+        --p2-bg: rgba(88, 168, 143, 0.14);
+        --p3: #9c968b;
+        --p3-bg: rgba(237, 234, 226, 0.08);
+      }
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #141413;
+      --paper: #1c1b19;
+      --panel: #252320;
+      --ink: #edeae2;
+      --ink-soft: #b2aca0;
+      --ink-faint: #7b766c;
+      --line: rgba(237, 234, 226, 0.10);
+      --line-strong: rgba(237, 234, 226, 0.22);
+      --accent: #58a88f;
+      --accent-soft: rgba(88, 168, 143, 0.14);
+      --accent-ink: #141413;
+      --ok: #58a88f;
+      --danger: #e28379;
+      --p0: #e5857b;
+      --p0-bg: rgba(229, 133, 123, 0.15);
+      --p1: #deb068;
+      --p1-bg: rgba(222, 176, 104, 0.14);
+      --p2: #58a88f;
+      --p2-bg: rgba(88, 168, 143, 0.14);
+      --p3: #9c968b;
+      --p3-bg: rgba(237, 234, 226, 0.08);
+    }
+    :root[data-theme="light"] { color-scheme: light; }
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.45 var(--sans); }
-    main { padding: 16px; }
-    header { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 14px; }
-    h1 { font-size: 20px; font-weight: 650; letter-spacing: -0.02em; margin: 0; }
-    label { display: grid; gap: 4px; color: var(--soft); font-size: 12px; }
-    select, input, textarea, button { font: inherit; color: inherit; }
-    select, input, textarea { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; }
-    textarea { min-height: 64px; resize: vertical; }
-    button { border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-ink); padding: 8px 12px; cursor: pointer; }
-    button.quiet { background: transparent; color: var(--ink); border: 1px solid var(--line); }
-    button:disabled { opacity: 0.55; cursor: default; }
-    .grow { margin-left: auto; }
-    .columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
-    section { background: transparent; min-width: 0; }
-    section h2 { margin: 0 0 8px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
-    article { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 8px; }
-    article h3 { margin: 0 0 4px; font-size: 14px; overflow-wrap: anywhere; }
-    article p { margin: 0; color: var(--soft); font-size: 12.5px; }
-    .meta { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-    .meta span, .meta select { font-size: 12px; color: var(--faint); }
-    form { display: grid; gap: 8px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 14px; }
-    .row { display: flex; gap: 8px; flex-wrap: wrap; }
-    .row > * { flex: 1 1 140px; }
-    #status { min-height: 1.2em; color: var(--danger); font-size: 12.5px; }
+    [hidden] { display: none !important; }
+    html { margin: 0; }
+    body {
+      margin: 0;
+      overflow-x: clip;
+      background: var(--bg);
+      color: var(--ink);
+      font: 13.5px/1.5 var(--sans);
+      -webkit-font-smoothing: antialiased;
+    }
+    main { max-width: 1360px; margin: 0 auto; padding: 18px 20px 32px; min-width: 0; }
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 12px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 14px;
+    }
+    .brand { display: flex; align-items: baseline; gap: 8px; margin-right: auto; min-width: 0; }
+    h1 {
+      font-size: 18px;
+      line-height: 1.28;
+      font-weight: 600;
+      letter-spacing: 0;
+      margin: 0;
+      white-space: nowrap;
+    }
+    .count-badge {
+      font-size: 12px;
+      color: var(--ink-faint);
+      font-variant-numeric: tabular-nums;
+    }
+    .toolbar-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .sr-label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    select, input, textarea, button {
+      font: inherit;
+      color: inherit;
+      max-width: 100%;
+    }
+    select, input, textarea {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 6px 10px;
+      min-height: 32px;
+      outline: none;
+      transition: border-color 140ms ease, background-color 140ms ease;
+    }
+    select:hover, input:hover, textarea:hover { border-color: var(--line-strong); }
+    select:focus, input:focus, textarea:focus { border-color: var(--accent); }
+    select {
+      appearance: none;
+      padding-right: 26px;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%238c867b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+      background-size: 11px;
+    }
+    .search-box {
+      position: relative;
+      display: flex;
+      align-items: center;
+      min-width: 168px;
+      flex: 1 1 170px;
+    }
+    .search-box svg {
+      position: absolute;
+      left: 9px;
+      width: 14px;
+      height: 14px;
+      color: var(--ink-faint);
+      pointer-events: none;
+    }
+    .search-box input {
+      width: 100%;
+      padding-left: 28px;
+      padding-right: 26px;
+      font-size: 12.5px;
+    }
+    .clear-search {
+      position: absolute;
+      right: 4px;
+      width: 22px;
+      height: 22px;
+      min-height: 22px;
+      padding: 0;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--ink-faint);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .clear-search:hover { color: var(--ink); background: var(--panel); }
+    .workspace-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--ink-soft);
+      min-width: 0;
+    }
+    .workspace-wrap select { max-width: 180px; font-size: 12.5px; }
+    button {
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+      background: var(--accent);
+      color: var(--accent-ink);
+      min-height: 32px;
+      padding: 0 12px;
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      white-space: nowrap;
+      transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, opacity 140ms ease;
+    }
+    button:hover:not(:disabled) { opacity: 0.92; }
+    button.quiet {
+      background: transparent;
+      color: var(--ink-soft);
+      border-color: var(--line);
+    }
+    button.quiet:hover:not(:disabled) {
+      color: var(--ink);
+      border-color: var(--line-strong);
+      background: var(--paper);
+      opacity: 1;
+    }
+    button.ghost {
+      background: transparent;
+      color: var(--ink-faint);
+      border-color: transparent;
+      min-height: 26px;
+      padding: 0 7px;
+      font-size: 12px;
+    }
+    button.ghost:hover:not(:disabled) {
+      color: var(--ink);
+      background: var(--panel);
+      opacity: 1;
+    }
+    button:disabled { opacity: 0.48; cursor: not-allowed; }
+    button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, article:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    /* Quick composer: sleek single-row bar by default, expandable detail */
+    .composer {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      margin-bottom: 12px;
+      display: grid;
+      gap: 8px;
+    }
+    .composer-main {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .composer-title-wrap {
+      flex: 1 1 220px;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+    }
+    .composer-title-wrap input {
+      width: 100%;
+      border-color: transparent;
+      background: transparent;
+      padding: 5px 6px;
+      font-size: 13.5px;
+    }
+    .composer-title-wrap input:focus {
+      background: var(--bg);
+      border-color: var(--line-strong);
+    }
+    .composer-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-left: auto;
+    }
+    #priority { width: auto; min-width: 66px; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .composer-detail {
+      border-top: 1px solid var(--line);
+      padding-top: 8px;
+    }
+    .composer-detail textarea {
+      width: 100%;
+      min-height: 64px;
+      resize: vertical;
+      font-size: 13px;
+      line-height: 1.55;
+      background: var(--bg);
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 20px;
+      margin-bottom: 10px;
+    }
+    #status {
+      margin: 0;
+      color: var(--danger);
+      font-size: 12.5px;
+      min-height: 1.2em;
+    }
     #status.ok { color: var(--ok); }
-    @media (max-width: 640px) {
-      main { padding: 12px; }
-      .columns { grid-template-columns: 1fr; }
-      header { align-items: stretch; }
-      .grow { margin-left: 0; }
+
+    /* Mobile / narrow filter pills + layout switcher */
+    .mobile-bar {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 12px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+      scrollbar-width: none;
+    }
+    .mobile-bar::-webkit-scrollbar { display: none; }
+    .seg-pill {
+      min-height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      background: transparent;
+      color: var(--ink-soft);
+      border: 1px solid var(--line);
+      font-variant-numeric: tabular-nums;
+    }
+    .seg-pill[aria-pressed="true"] {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* Kanban Lanes */
+    .columns {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(216px, 1fr));
+      gap: 12px;
+      align-items: start;
+      min-width: 0;
+    }
+    .lane {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      min-width: 0;
+      transition: border-color 140ms ease, background-color 140ms ease;
+    }
+    .lane.is-collapsed {
+      padding: 8px 10px;
+      background: transparent;
+    }
+    .lane.drag-over {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    .lane-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .lane.is-collapsed .lane-head { margin-bottom: 0; }
+    .lane-toggle {
+      background: transparent;
+      border: 0;
+      color: var(--ink-soft);
+      padding: 2px 4px;
+      min-height: 24px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+    .lane-toggle:hover { color: var(--ink); opacity: 1; }
+    .lane-count {
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--ink-faint);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0 7px;
+      line-height: 18px;
+      font-variant-numeric: tabular-nums;
+    }
+    .lane-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 24px;
+    }
+    .lane.is-collapsed .lane-cards { display: none; }
+    .empty-lane {
+      margin: 0;
+      padding: 10px 6px;
+      font-size: 12px;
+      color: var(--ink-faint);
+      text-align: center;
+    }
+    .drop-line {
+      height: 2px;
+      border-radius: 2px;
+      background: var(--accent);
+      margin: -2px 2px;
+      pointer-events: none;
+    }
+
+    /* Card Slip */
+    article.card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 11px;
+      min-width: 0;
+      cursor: grab;
+      transition: border-color 130ms ease, transform 130ms ease, opacity 130ms ease;
+    }
+    article.card:hover { border-color: var(--line-strong); }
+    article.card.dragging { opacity: 0.42; }
+    article.card.editing { cursor: default; border-color: var(--accent); }
+    .card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+    article.card h3 {
+      margin: 0;
+      font-size: 13.5px;
+      line-height: 1.42;
+      font-weight: 550;
+      color: var(--ink);
+      overflow-wrap: anywhere;
+      flex: 1;
+      min-width: 0;
+    }
+    .card-tools {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+    .icon-btn {
+      width: 24px;
+      height: 24px;
+      min-height: 24px;
+      padding: 0;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--ink-faint);
+    }
+    .icon-btn:hover:not(:disabled) {
+      color: var(--ink);
+      background: var(--panel);
+      opacity: 1;
+    }
+    article.card p.card-desc {
+      margin: 5px 0 0;
+      color: var(--ink-soft);
+      font-size: 12.5px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .meta {
+      margin-top: 9px;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .prio-pill {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 20px;
+      height: 22px;
+      min-height: 22px;
+      padding: 0 7px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      font-variant-numeric: tabular-nums;
+      cursor: pointer;
+    }
+    .prio-pill[data-prio="P0"] { color: var(--p0); background: var(--p0-bg); }
+    .prio-pill[data-prio="P1"] { color: var(--p1); background: var(--p1-bg); }
+    .prio-pill[data-prio="P2"] { color: var(--p2); background: var(--p2-bg); }
+    .prio-pill[data-prio="P3"] { color: var(--p3); background: var(--p3-bg); }
+    .flow-pill {
+      height: 22px;
+      min-height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid transparent;
+      font-weight: 500;
+    }
+    .flow-pill:hover:not(:disabled) {
+      border-color: var(--accent);
+      opacity: 1;
+    }
+    .meta select.status-select {
+      margin-left: auto;
+      min-height: 22px;
+      height: 22px;
+      padding: 0 22px 0 7px;
+      font-size: 11.5px;
+      color: var(--ink-soft);
+      background-color: transparent;
+      border-color: var(--line);
+      border-radius: 999px;
+      background-position: right 6px center;
+      background-size: 9px;
+    }
+
+    /* In-place card editor */
+    .inline-editor {
+      display: grid;
+      gap: 7px;
+    }
+    .inline-editor input {
+      width: 100%;
+      font-size: 13px;
+      padding: 5px 8px;
+      min-height: 30px;
+      background: var(--bg);
+    }
+    .inline-editor-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .inline-editor-bar select {
+      min-height: 28px;
+      height: 28px;
+      padding: 0 24px 0 8px;
+      font-size: 12px;
+      background-color: var(--bg);
+    }
+    .inline-editor-bar .spacer { margin-left: auto; }
+
+    #mobile-mode { display: none; }
+    .lane.is-single {
+      background: transparent;
+      border: 0;
+      padding: 0;
+    }
+    .lane.is-single > .lane-head { display: none; }
+
+    @media (max-width: 720px) {
+      main { padding: 14px 12px 26px; }
+      #mobile-mode { display: inline-flex; }
+      .topbar { gap: 8px; }
+      .toolbar-controls { width: 100%; }
+      .workspace-wrap { flex: 1 1 130px; }
+      .workspace-wrap select { max-width: none; width: 100%; }
+      .mobile-bar { display: flex; }
+      .columns[data-mobile-view="list"] {
+        grid-template-columns: 1fr;
+      }
+      .columns[data-mobile-view="snap"] {
+        display: flex;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        gap: 10px;
+        padding-bottom: 6px;
+      }
+      .columns[data-mobile-view="snap"] .lane {
+        flex: 0 0 min(84vw, 300px);
+        scroll-snap-align: start;
+      }
+    }
+    @media (pointer: coarse) {
+      button, select, input { min-height: 40px; }
+      .prio-pill, .flow-pill, .meta select.status-select { min-height: 32px; height: 32px; }
+      .icon-btn { width: 34px; height: 34px; min-height: 34px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
     }
   </style>
 </head>
 <body>
   <main>
-    <header>
-      <div>
+    <header class="topbar">
+      <div class="brand">
         <h1 id="title">Task board</h1>
+        <span id="board-summary" class="count-badge"></span>
       </div>
-      <label class="grow" id="workspace-label">Workspace
-        <select id="workspace"></select>
-      </label>
-      <button id="lang" class="quiet" type="button">中文</button>
+      <div class="toolbar-controls">
+        <div class="search-box">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="7" cy="7" r="4.5"></circle>
+            <path d="m10.5 10.5 3 3"></path>
+          </svg>
+          <input id="search" type="search" autocomplete="off">
+          <button id="clear-search" class="clear-search" type="button" hidden aria-label="Clear search">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+              <path d="M3 3l6 6M9 3l-6 6"></path>
+            </svg>
+          </button>
+        </div>
+        <label class="workspace-wrap" id="workspace-label"><span class="sr-label">Workspace</span>
+          <select id="workspace"></select>
+        </label>
+        <button id="mobile-mode" class="quiet" type="button"></button>
+        <button id="lang" class="quiet" type="button">中文</button>
+      </div>
     </header>
-    <form id="create">
-      <div class="row">
-        <label id="title-label">Title
-          <input id="card-title" required maxlength="1000">
+
+    <form id="create" class="composer" onsubmit="return false;">
+      <div class="composer-main">
+        <label class="composer-title-wrap" id="title-label"><span class="sr-label">Title</span>
+          <input id="card-title" required maxlength="1000" autocomplete="off">
         </label>
-        <label id="priority-label">Priority
-          <select id="priority">
-            <option>P1</option><option>P0</option><option>P2</option><option>P3</option>
-          </select>
-        </label>
+        <div class="composer-actions">
+          <label id="priority-label"><span class="sr-label">Priority</span>
+            <select id="priority">
+              <option value="P1">P1</option>
+              <option value="P0">P0</option>
+              <option value="P2">P2</option>
+              <option value="P3">P3</option>
+            </select>
+          </label>
+          <button id="toggle-detail" class="ghost" type="button" aria-expanded="false"></button>
+          <button id="save" type="button">Save card</button>
+        </div>
       </div>
-      <label id="detail-label">Detail
-        <textarea id="detail" maxlength="100000"></textarea>
-      </label>
-      <div class="row">
-        <button id="save" type="button">Save card</button>
+      <div id="detail-wrap" class="composer-detail" hidden>
+        <label id="detail-label"><span class="sr-label">Detail</span>
+          <textarea id="detail" maxlength="100000"></textarea>
+        </label>
       </div>
     </form>
-    <p id="status" role="status"></p>
-    <div id="columns" class="columns"></div>
+
+    <div class="status-row">
+      <p id="status" role="status" aria-live="polite"></p>
+    </div>
+
+    <div id="mobile-bar" class="mobile-bar" role="toolbar"></div>
+    <div id="columns" class="columns" data-mobile-view="list"></div>
   </main>
   <script>
+    const memoryStore = new Map();
+    const safeStorage = {
+      get(key) {
+        try {
+          const store = window.localStorage;
+          if (!store) throw new Error('unavailable');
+          const v = store.getItem(key);
+          return v === null ? (memoryStore.has(key) ? memoryStore.get(key) : null) : v;
+        } catch {
+          return memoryStore.has(key) ? memoryStore.get(key) : null;
+        }
+      },
+      set(key, value) {
+        const str = String(value);
+        memoryStore.set(key, str);
+        try {
+          const store = window.localStorage;
+          if (store) store.setItem(key, str);
+        } catch {}
+      },
+    };
+
+    async function copyText(str) {
+      try {
+        if (typeof navigator === 'object' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          await navigator.clipboard.writeText(str);
+          return true;
+        }
+      } catch {}
+      try {
+        if (!document.body || typeof document.execCommand !== 'function') return false;
+        const area = document.createElement('textarea');
+        area.value = str;
+        if (area.style) {
+          area.style.position = 'fixed';
+          area.style.opacity = '0';
+          area.style.pointerEvents = 'none';
+        }
+        document.body.append(area);
+        if (typeof area.select === 'function') area.select();
+        const ok = document.execCommand('copy');
+        if (typeof area.remove === 'function') area.remove();
+        return Boolean(ok);
+      } catch {
+        return false;
+      }
+    }
+
     const copy = {
       en: {
         title: 'Task board',
-        workspace: 'Workspace', titleField: 'Title', priority: 'Priority', detail: 'Detail', save: 'Save card', empty: 'No cards in this column.',
+        workspace: 'Workspace', titleField: 'Title', priority: 'Priority', detail: 'Detail', save: 'Save card',
+        quickPlaceholder: 'New requirement — press Enter to add',
+        detailPlaceholder: 'Context, acceptance criteria, or scope notes…',
+        detailBtn: 'Note', detailHide: 'Hide note',
+        searchPlaceholder: 'Filter cards…', clearSearch: 'Clear filter',
+        empty: 'No cards',
+        allFilter: 'All', snapView: 'Swimlanes', listView: 'List',
+        editAction: 'Edit card', copyAction: 'Copy card title', copied: 'Copied to clipboard.',
+        saveEdit: 'Save', cancelEdit: 'Cancel', updated: 'Card updated.',
         saved: 'Card saved.', none: 'No registered workspace.', missing: 'Kiki did not provide a home for this panel.',
         failed: 'Not saved. The text is still here.',
         unknownSave: 'No save result came back. The text is still here. Saving again retries the same request.',
         unknownUpdate: 'No result came back for that change. It was not sent again.',
         unavailable: 'The panel did not get a result.',
         accepted: 'The earlier save was accepted. The text now in the form was left as it is.',
-        lang: '中文', statuses: { active: 'To do', in_progress: 'In progress', paused: 'Paused', done: 'Done', cancelled: 'Cancelled', superseded: 'Superseded' },
+        lang: '中文',
+        statuses: { active: 'To do', in_progress: 'In progress', paused: 'Paused', done: 'Done', cancelled: 'Cancelled', superseded: 'Superseded' },
+        flowLabel: { active: 'Start', in_progress: 'Done', paused: 'Resume', done: 'Reopen', cancelled: 'Reopen', superseded: 'Reopen' },
       },
       zh: {
         title: '任务看板',
-        workspace: '工作区', titleField: '标题', priority: '优先级', detail: '说明', save: '保存卡片', empty: '这一列还没有卡片。',
+        workspace: '工作区', titleField: '标题', priority: '优先级', detail: '说明', save: '新建卡片',
+        quickPlaceholder: '输入需求标题，回车直接新建',
+        detailPlaceholder: '补充背景、验收边界或备注…',
+        detailBtn: '备注', detailHide: '收起备注',
+        searchPlaceholder: '筛选标题或内容…', clearSearch: '清除筛选',
+        empty: '暂无卡片',
+        allFilter: '全部', snapView: '横向泳道', listView: '紧凑列表',
+        editAction: '原位编辑', copyAction: '复制标题', copied: '已复制卡片标题。',
+        saveEdit: '保存', cancelEdit: '取消', updated: '卡片已更新。',
         saved: '卡片已保存。', none: '没有已注册的工作区。', missing: '面板没有拿到 Kiki 的 home。',
         failed: '没有保存。填写的内容还在。',
         unknownSave: '没有收到保存结果。填写的内容还在。再保存会重试同一次请求。',
         unknownUpdate: '没有收到这次修改的结果。没有再发送一次。',
         unavailable: '面板没有收到结果。',
         accepted: '上一次保存已经接受。表单里现在的文字保持原样。',
-        lang: 'English', statuses: { active: '待办', in_progress: '进行中', paused: '暂停', done: '完成', cancelled: '取消', superseded: '已替代' },
+        lang: 'English',
+        statuses: { active: '待办', in_progress: '进行中', paused: '暂停', done: '完成', cancelled: '取消', superseded: '已替代' },
+        flowLabel: { active: '开始', in_progress: '完成', paused: '继续', done: '重开', cancelled: '重开', superseded: '重开' },
       },
     };
+
     const statuses = ['active', 'in_progress', 'paused', 'done', 'cancelled', 'superseded'];
-    let lang = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+    const priorities = ['P0', 'P1', 'P2', 'P3'];
+    const flowNext = {
+      active: 'in_progress',
+      in_progress: 'done',
+      paused: 'in_progress',
+      done: 'active',
+      cancelled: 'active',
+      superseded: 'active',
+    };
+
+    let lang = (typeof navigator === 'object' && String(navigator.language || '').toLowerCase().startsWith('zh')) ? 'zh' : 'en';
+    const savedLang = safeStorage.get('kiki.board.lang');
+    if (savedLang === 'zh' || savedLang === 'en') lang = savedLang;
+
+    let hostTheme = '';
+    function setRootTheme(theme) {
+      if (theme !== 'dark' && theme !== 'light') return;
+      if (document.documentElement.dataset) document.documentElement.dataset.theme = theme;
+      else if (typeof document.documentElement.setAttribute === 'function') document.documentElement.setAttribute('data-theme', theme);
+    }
+    function applyPresentation(presentation) {
+      if (!presentation || typeof presentation !== 'object') return;
+      if (typeof presentation.locale === 'string') {
+        lang = presentation.locale.toLowerCase().startsWith('zh') ? 'zh' : 'en';
+      }
+      if (presentation.theme === 'dark' || presentation.theme === 'light') {
+        hostTheme = presentation.theme;
+        setRootTheme(presentation.theme);
+      }
+      if (presentation.tokens && typeof presentation.tokens === 'object' && document.documentElement.style && typeof document.documentElement.style.setProperty === 'function') {
+        const map = {
+          '--color-canvas': '--bg',
+          '--color-paper': '--paper',
+          '--color-panel': '--panel',
+          '--color-ink': '--ink',
+          '--color-ink-soft': '--ink-soft',
+          '--color-ink-faint': '--ink-faint',
+          '--color-hairline': '--line',
+          '--color-accent': '--accent',
+        };
+        for (const [src, dst] of Object.entries(map)) {
+          const val = presentation.tokens[src];
+          if (typeof val === 'string' && val.length < 120 && /^(#[0-9a-fA-F]{3,9}|rgba?\(|hsla?\(|color-mix\()/.test(val.trim())) {
+            document.documentElement.style.setProperty(dst, val.trim());
+          }
+        }
+      }
+    }
+    try {
+      if (typeof URLSearchParams !== 'undefined' && typeof location === 'object' && location && location.search) {
+        const paramTheme = new URLSearchParams(location.search).get('theme');
+        if (paramTheme === 'dark' || paramTheme === 'light') {
+          hostTheme = paramTheme;
+          setRootTheme(paramTheme);
+        }
+      }
+    } catch {}
+    if (!hostTheme && typeof matchMedia === 'function') {
+      const mq = matchMedia('(prefers-color-scheme: dark)');
+      const syncOs = () => { if (!hostTheme) setRootTheme(mq.matches ? 'dark' : 'light'); };
+      syncOs();
+      if (typeof mq.addEventListener === 'function') mq.addEventListener('change', syncOs);
+    }
+
     let workspaces = [];
     let page = { cards: [] };
+    let searchQuery = '';
+    let detailOpen = false;
+    let editingId = null;
+    let mobileFilter = 'all';
+    let mobileView = safeStorage.get('kiki.board.mobileView') === 'snap' ? 'snap' : 'list';
+    let collapsedLanes = new Set(['cancelled', 'superseded']);
+    try {
+      const storedCollapsed = safeStorage.get('kiki.board.collapsed');
+      if (storedCollapsed) {
+        const parsed = JSON.parse(storedCollapsed);
+        if (Array.isArray(parsed)) collapsedLanes = new Set(parsed.filter((s) => statuses.includes(s)));
+      }
+    } catch {}
+    let draggingCardId = null;
+
     const POST_WAIT_MS = 12000;
     const pending = new Map();
     const late = new Map();
@@ -122,9 +861,40 @@
     const text = () => copy[lang];
     const $ = (id) => document.getElementById(id);
 
+    function makeSvg(paths, size = 13) {
+      if (typeof document.createElementNS !== 'function') {
+        const fallback = document.createElement('span');
+        return fallback;
+      }
+      const ns = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(ns, 'svg');
+      svg.setAttribute('width', String(size));
+      svg.setAttribute('height', String(size));
+      svg.setAttribute('viewBox', '0 0 16 16');
+      svg.setAttribute('fill', 'none');
+      svg.setAttribute('stroke', 'currentColor');
+      svg.setAttribute('stroke-width', '1.5');
+      svg.setAttribute('stroke-linecap', 'round');
+      svg.setAttribute('stroke-linejoin', 'round');
+      svg.setAttribute('aria-hidden', 'true');
+      for (const d of paths) {
+        const p = document.createElementNS(ns, 'path');
+        p.setAttribute('d', d);
+        svg.append(p);
+      }
+      return svg;
+    }
+
     window.addEventListener('message', (event) => {
       if (event.source !== window.parent || !event.data || event.data.channel !== 'kiki.panel.v1') return;
-      if (event.data.kind === 'init') void refresh();
+      if (event.data.theme === 'dark' || event.data.theme === 'light') {
+        hostTheme = event.data.theme;
+        setRootTheme(event.data.theme);
+      }
+      if (event.data.presentation) applyPresentation(event.data.presentation);
+      if (event.data.kind === 'presentation') { paint(); return; }
+      if (event.data.kind === 'theme') { paint(); return; }
+      if (event.data.kind === 'init') { void refresh(); return; }
       if (event.data.kind === 'response') pending.get(event.data.id)?.(event.data);
     });
 
@@ -171,6 +941,19 @@
       return response;
     }
 
+    function saveCollapsedState() {
+      safeStorage.set('kiki.board.collapsed', JSON.stringify([...collapsedLanes]));
+    }
+
+    function matchesSearch(card) {
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) return true;
+      return String(card.title || '').toLowerCase().includes(q)
+        || String(card.description || '').toLowerCase().includes(q)
+        || String(card.priority || '').toLowerCase().includes(q)
+        || String(card.category || '').toLowerCase().includes(q);
+    }
+
     function paintChrome() {
       const t = text();
       document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
@@ -182,6 +965,327 @@
       $('save').textContent = t.save;
       $('lang').textContent = t.lang;
       $('workspace').setAttribute('aria-label', t.workspace);
+
+      const cardTitle = $('card-title');
+      if (cardTitle) {
+        cardTitle.placeholder = t.quickPlaceholder;
+        cardTitle.setAttribute('aria-label', t.titleField);
+      }
+      const detail = $('detail');
+      if (detail) {
+        detail.placeholder = t.detailPlaceholder;
+        detail.setAttribute('aria-label', t.detail);
+      }
+      const priority = $('priority');
+      if (priority) priority.setAttribute('aria-label', t.priority);
+
+      const search = $('search');
+      if (search) {
+        search.placeholder = t.searchPlaceholder;
+        search.setAttribute('aria-label', t.searchPlaceholder);
+      }
+      const clearSearch = $('clear-search');
+      if (clearSearch) {
+        clearSearch.hidden = !searchQuery;
+        clearSearch.setAttribute('aria-label', t.clearSearch);
+      }
+      const toggleDetail = $('toggle-detail');
+      const detailWrap = $('detail-wrap');
+      const shouldShowDetail = detailOpen || Boolean(detail && detail.value);
+      if (detailWrap) detailWrap.hidden = !shouldShowDetail;
+      if (toggleDetail) {
+        toggleDetail.textContent = shouldShowDetail ? t.detailHide : t.detailBtn;
+        toggleDetail.setAttribute('aria-expanded', shouldShowDetail ? 'true' : 'false');
+      }
+      const summary = $('board-summary');
+      if (summary) {
+        const activeCount = (page.cards || []).filter((c) => c.status === 'active' || c.status === 'in_progress' || c.status === 'paused').length;
+        const total = (page.cards || []).length;
+        summary.textContent = total > 0 ? `${activeCount} / ${total}` : '';
+      }
+      const mobileMode = $('mobile-mode');
+      if (mobileMode) {
+        mobileMode.textContent = mobileView === 'snap' ? t.listView : t.snapView;
+      }
+    }
+
+    function paintMobileBar(filteredCards) {
+      const bar = $('mobile-bar');
+      if (!bar) return;
+      const t = text();
+      bar.replaceChildren();
+      const entries = [['all', `${t.allFilter} · ${filteredCards.length}`]];
+      for (const s of statuses) {
+        const cnt = filteredCards.filter((c) => c.status === s).length;
+        if (cnt > 0 || ['active', 'in_progress', 'done'].includes(s)) {
+          entries.push([s, `${t.statuses[s]} · ${cnt}`]);
+        }
+      }
+      for (const [key, label] of entries) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'seg-pill';
+        btn.textContent = label;
+        btn.setAttribute('aria-pressed', mobileFilter === key ? 'true' : 'false');
+        btn.addEventListener('click', () => {
+          mobileFilter = key;
+          paint();
+        });
+        bar.append(btn);
+      }
+    }
+
+    function buildInlineEditor(card) {
+      const t = text();
+      const wrap = document.createElement('div');
+      wrap.className = 'inline-editor';
+      const titleInput = document.createElement('input');
+      titleInput.type = 'text';
+      titleInput.value = card.title;
+      titleInput.setAttribute('aria-label', t.titleField);
+
+      const bar = document.createElement('div');
+      bar.className = 'inline-editor-bar';
+      const prioSelect = document.createElement('select');
+      prioSelect.setAttribute('aria-label', t.priority);
+      for (const p of priorities) {
+        const opt = document.createElement('option');
+        opt.value = p;
+        opt.textContent = p;
+        if (p === (card.priority || 'P1')) opt.selected = true;
+        prioSelect.append(opt);
+      }
+      prioSelect.value = card.priority || 'P1';
+
+      const spacer = document.createElement('span');
+      spacer.className = 'spacer';
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'quiet';
+      cancelBtn.textContent = t.cancelEdit;
+      cancelBtn.addEventListener('click', () => {
+        editingId = null;
+        paint();
+      });
+
+      const commitBtn = document.createElement('button');
+      commitBtn.type = 'button';
+      commitBtn.dataset.action = 'commit-edit';
+      commitBtn.textContent = t.saveEdit;
+
+      const submitEdit = () => {
+        const nextTitle = titleInput.value.trim();
+        const nextPrio = prioSelect.value;
+        if (!nextTitle) return;
+        const patch = {};
+        if (nextTitle !== card.title) patch.title = nextTitle;
+        if (nextPrio !== card.priority) patch.priority = nextPrio;
+        editingId = null;
+        if (Object.keys(patch).length === 0) { paint(); return; }
+        void updatePatch(card, patch);
+      };
+
+      commitBtn.addEventListener('click', submitEdit);
+      titleInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); submitEdit(); }
+        else if (e.key === 'Escape') { e.preventDefault(); editingId = null; paint(); }
+      });
+
+      bar.append(prioSelect, spacer, cancelBtn, commitBtn);
+      wrap.append(titleInput, bar);
+      setTimeout(() => { if (typeof titleInput.focus === 'function') titleInput.focus(); }, 0);
+      return wrap;
+    }
+
+    function buildCard(card) {
+      const t = text();
+      const article = document.createElement('article');
+      article.dataset.card = card.id;
+      article.dataset.status = card.status;
+      const isEditing = editingId === card.id;
+      article.className = isEditing ? 'card editing' : 'card';
+      article.setAttribute('tabindex', '0');
+
+      if (isEditing) {
+        article.append(buildInlineEditor(card));
+        return article;
+      }
+
+      article.setAttribute('draggable', 'true');
+      article.addEventListener('dragstart', (e) => {
+        draggingCardId = card.id;
+        article.className = 'card dragging';
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          try { e.dataTransfer.setData('text/plain', card.id); } catch {}
+        }
+      });
+      article.addEventListener('dragend', () => {
+        draggingCardId = null;
+        article.className = 'card';
+        clearDropIndicators();
+      });
+
+      const top = document.createElement('div');
+      top.className = 'card-top';
+      const title = document.createElement('h3');
+      title.textContent = card.title;
+      title.addEventListener('dblclick', () => {
+        editingId = card.id;
+        paint();
+      });
+
+      const tools = document.createElement('div');
+      tools.className = 'card-tools';
+
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'icon-btn';
+      editBtn.dataset.action = 'edit';
+      editBtn.setAttribute('aria-label', t.editAction);
+      editBtn.setAttribute('title', t.editAction);
+      editBtn.append(makeSvg(['M11.5 2.5a1.4 1.4 0 0 1 2 2L5.5 12.5l-3 .7.7-3Z']));
+      editBtn.addEventListener('click', () => {
+        editingId = card.id;
+        paint();
+      });
+
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'icon-btn';
+      copyBtn.dataset.action = 'copy';
+      copyBtn.setAttribute('aria-label', t.copyAction);
+      copyBtn.setAttribute('title', t.copyAction);
+      copyBtn.append(makeSvg(['M5.5 5.5h7v8h-7z', 'M3.5 10.5h-1v-8h7v1']));
+      copyBtn.addEventListener('click', async () => {
+        const ok = await copyText(card.title);
+        if (ok) note(t.copied, true);
+      });
+
+      tools.append(editBtn, copyBtn);
+      top.append(title, tools);
+
+      const detail = document.createElement('p');
+      detail.className = 'card-desc';
+      detail.textContent = card.description || '';
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+
+      const prio = card.priority || 'P1';
+      const priorityBtn = document.createElement('button');
+      priorityBtn.type = 'button';
+      priorityBtn.className = 'prio-pill';
+      priorityBtn.dataset.prio = prio;
+      priorityBtn.dataset.action = 'cycle-priority';
+      priorityBtn.textContent = prio;
+      priorityBtn.setAttribute('aria-label', `${t.priority}: ${prio}`);
+      priorityBtn.addEventListener('click', () => {
+        const idx = priorities.indexOf(prio);
+        const nextPrio = priorities[(idx + 1) % priorities.length];
+        void updatePatch(card, { priority: nextPrio });
+      });
+
+      const targetStatus = flowNext[card.status] || 'active';
+      const flowBtn = document.createElement('button');
+      flowBtn.type = 'button';
+      flowBtn.className = 'flow-pill';
+      flowBtn.dataset.action = 'flow';
+      flowBtn.dataset.nextStatus = targetStatus;
+      flowBtn.textContent = t.flowLabel[card.status] || t.statuses[targetStatus];
+      flowBtn.addEventListener('click', () => { void update(card, targetStatus); });
+
+      const choice = document.createElement('select');
+      choice.className = 'status-select';
+      choice.setAttribute('aria-label', card.title);
+      for (const item of statuses) {
+        const option = document.createElement('option');
+        option.value = item;
+        option.textContent = t.statuses[item];
+        if (item === card.status) option.selected = true;
+        choice.append(option);
+      }
+      choice.value = card.status;
+      choice.addEventListener('change', () => { void update(card, choice.value); });
+
+      meta.append(priorityBtn, flowBtn, choice);
+      article.append(top, ...(card.description ? [detail] : []), meta);
+
+      article.addEventListener('keydown', (e) => {
+        if (e.target && e.target !== article) return;
+        const idx = statuses.indexOf(card.status);
+        if (e.key === 'Enter' || e.key === 'F2' || e.key === 'e') {
+          e.preventDefault();
+          editingId = card.id;
+          paint();
+        } else if ((e.key === 'ArrowRight' || e.key === ']') && idx < statuses.length - 1) {
+          e.preventDefault();
+          void update(card, statuses[idx + 1]);
+        } else if ((e.key === 'ArrowLeft' || e.key === '[') && idx > 0) {
+          e.preventDefault();
+          void update(card, statuses[idx - 1]);
+        } else if (['1', '2', '3', '4'].includes(e.key)) {
+          e.preventDefault();
+          const nextPrio = priorities[Number(e.key) - 1];
+          if (nextPrio && nextPrio !== card.priority) void updatePatch(card, { priority: nextPrio });
+        }
+      });
+
+      return article;
+    }
+
+    function clearDropIndicators() {
+      if (typeof document.querySelectorAll !== 'function') return;
+      for (const el of document.querySelectorAll('.drop-line')) {
+        if (typeof el.remove === 'function') el.remove();
+      }
+      for (const lane of document.querySelectorAll('.lane.drag-over')) {
+        lane.className = lane.className.replace(/\s*drag-over\b/g, '');
+      }
+    }
+
+    function attachLaneDrop(section, cardsBox, status) {
+      section.addEventListener('dragover', (e) => {
+        if (!draggingCardId) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        if (!section.className.includes('drag-over')) section.className += ' drag-over';
+        if (typeof cardsBox.querySelectorAll !== 'function') return;
+        for (const old of cardsBox.querySelectorAll('.drop-line')) old.remove();
+        const line = document.createElement('div');
+        line.className = 'drop-line';
+        const articles = [...cardsBox.querySelectorAll('article.card:not(.dragging)')];
+        let after = null;
+        const y = typeof e.clientY === 'number' ? e.clientY : 0;
+        for (const child of articles) {
+          if (typeof child.getBoundingClientRect !== 'function') continue;
+          const box = child.getBoundingClientRect();
+          if (y < box.top + box.height / 2) { after = child; break; }
+        }
+        if (after && typeof cardsBox.insertBefore === 'function') cardsBox.insertBefore(line, after);
+        else cardsBox.append(line);
+      });
+      section.addEventListener('dragleave', (e) => {
+        if (e.relatedTarget && typeof section.contains === 'function' && section.contains(e.relatedTarget)) return;
+        section.className = section.className.replace(/\s*drag-over\b/g, '');
+        if (typeof cardsBox.querySelectorAll === 'function') {
+          for (const old of cardsBox.querySelectorAll('.drop-line')) old.remove();
+        }
+      });
+      section.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const droppedId = draggingCardId || (e.dataTransfer ? e.dataTransfer.getData('text/plain') : '');
+        draggingCardId = null;
+        clearDropIndicators();
+        if (!droppedId) return;
+        const card = (page.cards || []).find((c) => c.id === droppedId);
+        if (!card || card.status === status) return;
+        if (collapsedLanes.has(status)) {
+          collapsedLanes.delete(status);
+          saveCollapsedState();
+        }
+        void update(card, status);
+      });
     }
 
     function paint() {
@@ -201,39 +1305,59 @@
         select.append(option);
       }
       if ([...select.options].some((option) => option.value === current)) select.value = current;
+
+      const filteredCards = (page.cards || []).filter(matchesSearch);
+      paintMobileBar(filteredCards);
+
       const root = $('columns');
+      root.dataset.mobileView = mobileView;
       root.replaceChildren();
       for (const status of statuses) {
+        if (mobileFilter !== 'all' && mobileFilter !== status) continue;
+        const cards = filteredCards.filter((card) => card.status === status);
+        const collapsed = mobileFilter === 'all' && collapsedLanes.has(status) && !searchQuery.trim();
         const section = document.createElement('section');
-        const heading = document.createElement('h2');
-        const cards = (page.cards || []).filter((card) => card.status === status);
-        heading.textContent = text().statuses[status] + ' · ' + cards.length;
-        section.append(heading);
-        for (const card of cards) {
-          const article = document.createElement('article');
-          article.dataset.card = card.id;
-          const title = document.createElement('h3');
-          title.textContent = card.title;
-          const detail = document.createElement('p');
-          detail.textContent = card.description || '';
-          const meta = document.createElement('div');
-          meta.className = 'meta';
-          const priority = document.createElement('span');
-          priority.textContent = card.priority || '';
-          const choice = document.createElement('select');
-          choice.setAttribute('aria-label', card.title);
-          for (const item of statuses) {
-            const option = document.createElement('option');
-            option.value = item;
-            option.textContent = text().statuses[item];
-            if (item === card.status) option.selected = true;
-            choice.append(option);
+        section.className = mobileFilter !== 'all' ? 'lane is-single' : (collapsed ? 'lane is-collapsed' : 'lane');
+        section.dataset.lane = status;
+
+        const head = document.createElement('div');
+        head.className = 'lane-head';
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'lane-toggle';
+        toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        const chevronPath = collapsed ? 'M6 4l4 4-4 4' : 'M4 6l4 4 4-4';
+        toggle.append(makeSvg([chevronPath], 11));
+        const heading = document.createElement('span');
+        heading.textContent = text().statuses[status];
+        toggle.append(heading);
+        toggle.addEventListener('click', () => {
+          if (collapsedLanes.has(status)) collapsedLanes.delete(status);
+          else collapsedLanes.add(status);
+          saveCollapsedState();
+          paint();
+        });
+
+        const count = document.createElement('span');
+        count.className = 'lane-count';
+        count.textContent = String(cards.length);
+        head.append(toggle, count);
+        section.append(head);
+
+        const cardsBox = document.createElement('div');
+        cardsBox.className = 'lane-cards';
+        if (cards.length === 0) {
+          const empty = document.createElement('p');
+          empty.className = 'empty-lane';
+          empty.textContent = text().empty;
+          cardsBox.append(empty);
+        } else {
+          for (const card of cards) {
+            cardsBox.append(buildCard(card));
           }
-          choice.addEventListener('change', () => { void update(card, choice.value); });
-          meta.append(priority, choice);
-          article.append(title, ...(card.description ? [detail] : []), meta);
-          section.append(article);
         }
+        section.append(cardsBox);
+        attachLaneDrop(section, cardsBox, status);
         root.append(section);
       }
     }
@@ -262,16 +1386,17 @@
       }
     }
 
-    async function update(card, status) {
+    async function updatePatch(card, patch) {
       note('');
       try {
         const request = post('write', {
           action: 'update', workspaceId: card.workspaceId, storage: card.storage, id: card.id,
-          expectedRevision: card.revision, patch: { status },
+          expectedRevision: card.revision, patch,
         });
         const result = await request;
         if (!result.ok) { note(result.error?.message || text().failed); await refresh(); return; }
         await refresh();
+        if (!patch.status && $('status').textContent === '') note(text().updated, true);
       } catch (error) {
         note(error && error.outcome === 'unknown' ? text().unknownUpdate : (error && error.message) || text().failed);
         if (error && error.outcome === 'unknown' && error.id !== undefined) {
@@ -282,6 +1407,10 @@
           });
         }
       }
+    }
+
+    async function update(card, status) {
+      return updatePatch(card, { status });
     }
 
     function sameCreate(draft) {
@@ -298,6 +1427,7 @@
       if (same) {
         $('card-title').value = '';
         $('detail').value = '';
+        detailOpen = false;
       }
       await refresh();
       if ($('status').textContent === '') note(same ? text().saved : text().accepted, same);
@@ -314,9 +1444,7 @@
       await settleCreate(attempt);
     }
 
-    $('lang').addEventListener('click', () => { lang = lang === 'en' ? 'zh' : 'en'; paint(); });
-    $('workspace').addEventListener('change', () => { void refresh(); });
-    $('save').addEventListener('click', async () => {
+    async function submitCreate() {
       const workspaceId = $('workspace').value;
       const title = $('card-title').value.trim();
       const description = $('detail').value;
@@ -349,7 +1477,83 @@
       } finally {
         $('save').disabled = false;
       }
+    }
+
+    $('lang').addEventListener('click', () => {
+      lang = lang === 'en' ? 'zh' : 'en';
+      safeStorage.set('kiki.board.lang', lang);
+      paint();
     });
+    $('workspace').addEventListener('change', () => { void refresh(); });
+    $('save').addEventListener('click', () => { void submitCreate(); });
+
+    const cardTitleEl = $('card-title');
+    if (cardTitleEl) {
+      cardTitleEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.isComposing) {
+          e.preventDefault();
+          void submitCreate();
+        }
+      });
+    }
+    const detailEl = $('detail');
+    if (detailEl) {
+      detailEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          void submitCreate();
+        }
+      });
+    }
+    const toggleDetailEl = $('toggle-detail');
+    if (toggleDetailEl) {
+      toggleDetailEl.addEventListener('click', () => {
+        detailOpen = !detailOpen;
+        paintChrome();
+        if (detailOpen && detailEl && typeof detailEl.focus === 'function') detailEl.focus();
+      });
+    }
+    const searchEl = $('search');
+    if (searchEl) {
+      searchEl.addEventListener('input', () => {
+        searchQuery = searchEl.value || '';
+        paint();
+      });
+      searchEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && searchQuery) {
+          e.preventDefault();
+          searchEl.value = '';
+          searchQuery = '';
+          paint();
+        }
+      });
+    }
+    const clearSearchEl = $('clear-search');
+    if (clearSearchEl) {
+      clearSearchEl.addEventListener('click', () => {
+        if (searchEl) searchEl.value = '';
+        searchQuery = '';
+        paint();
+        if (searchEl && typeof searchEl.focus === 'function') searchEl.focus();
+      });
+    }
+    const mobileModeEl = $('mobile-mode');
+    if (mobileModeEl) {
+      mobileModeEl.addEventListener('click', () => {
+        mobileView = mobileView === 'snap' ? 'list' : 'snap';
+        safeStorage.set('kiki.board.mobileView', mobileView);
+        paint();
+      });
+    }
+    if (typeof window.addEventListener === 'function') {
+      window.addEventListener('keydown', (e) => {
+        if (e.key === '/' && searchEl && (!e.target || !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName))) {
+          e.preventDefault();
+          if (typeof searchEl.focus === 'function') searchEl.focus();
+        }
+      });
+    }
+
     paint();
   </script>
 </body>

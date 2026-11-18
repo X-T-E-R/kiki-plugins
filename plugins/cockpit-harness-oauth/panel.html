@@ -1,153 +1,1024 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Cockpit OAuth</title>
 <style>
 :root {
   color-scheme: light dark;
-  --paper: #fbfaf6;
-  --panel: #fffdfa;
-  --ink: #1b1a17;
-  --soft: #4b453e;
-  --faint: #665e54;
-  --line: #e4ddd0;
-  --line-strong: #cdc3b1;
-  --accent: #c8401a;
-  --accent-deep: #9c3012;
-  --on-accent: #fff;
-  --ok: #2f6b45;
-  --selected: #1d4d6d;
-  --danger: #b0261e;
+  font-synthesis: none;
+  --bg: var(--color-canvas, #f6f4ef);
+  --paper: var(--color-paper, #fcfbf8);
+  --panel: var(--color-panel, #efece4);
+  --ink: var(--color-ink, #1b1a17);
+  --ink-soft: var(--color-ink-soft, #5c5850);
+  --ink-faint: var(--color-ink-faint, #8c867b);
+  --line: var(--color-hairline, rgba(27, 26, 23, 0.10));
+  --line-strong: var(--color-hairline-strong, rgba(27, 26, 23, 0.18));
+  --accent: var(--color-accent, #2c5e4f);
+  --accent-deep: var(--color-accent-deep, #22493d);
+  --accent-soft: rgba(44, 94, 79, 0.10);
+  --on-accent: var(--color-on-accent, #fcfbf8);
+  --ok: var(--color-success, #2c6e49);
+  --warn: var(--color-amber-ink, #8a5a19);
+  --warn-bg: var(--color-amber-card, rgba(138, 90, 25, 0.11));
+  --danger: var(--color-danger, #a63429);
+  --danger-bg: rgba(166, 52, 41, 0.09);
+  --wash: rgba(27, 26, 23, 0.04);
+  --sans: "Instrument Sans", ui-sans-serif, system-ui, "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --display: "Newsreader", Georgia, "Songti SC", "Noto Serif SC", serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --radius: 6px;
 }
+
 @media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #1b2226; --panel: #252d31; --ink: #eeEae2; --soft: #c1c5c5;
-    --faint: #a2acaf; --line: #354047; --line-strong: #596870;
-    --accent: #eb946f; --accent-deep: #f4ae8d; --on-accent: #261a14;
-    --ok: #9ac6ae; --selected: #a3cbde; --danger: #f1a29a;
+  :root:not([data-theme="light"]) {
+    --bg: var(--color-canvas, #141413);
+    --paper: var(--color-paper, #1c1b19);
+    --panel: var(--color-panel, #252320);
+    --ink: var(--color-ink, #edeae2);
+    --ink-soft: var(--color-ink-soft, #b2aca0);
+    --ink-faint: var(--color-ink-faint, #7b766c);
+    --line: var(--color-hairline, rgba(237, 234, 226, 0.10));
+    --line-strong: var(--color-hairline-strong, rgba(237, 234, 226, 0.18));
+    --accent: var(--color-accent, #58a88f);
+    --accent-deep: var(--color-accent-deep, #6ebe9f);
+    --accent-soft: rgba(88, 168, 143, 0.15);
+    --on-accent: var(--color-on-accent, #141413);
+    --ok: var(--color-success, #6bbf8e);
+    --warn: var(--color-amber-ink, #dca056);
+    --warn-bg: var(--color-amber-card, rgba(220, 160, 86, 0.14));
+    --danger: var(--color-danger, #e27a6e);
+    --danger-bg: rgba(226, 122, 110, 0.14);
+    --wash: rgba(237, 234, 226, 0.05);
   }
 }
+
+:root[data-theme="dark"] {
+  --bg: var(--color-canvas, #141413);
+  --paper: var(--color-paper, #1c1b19);
+  --panel: var(--color-panel, #252320);
+  --ink: var(--color-ink, #edeae2);
+  --ink-soft: var(--color-ink-soft, #b2aca0);
+  --ink-faint: var(--color-ink-faint, #7b766c);
+  --line: var(--color-hairline, rgba(237, 234, 226, 0.10));
+  --line-strong: var(--color-hairline-strong, rgba(237, 234, 226, 0.18));
+  --accent: var(--color-accent, #58a88f);
+  --accent-deep: var(--color-accent-deep, #6ebe9f);
+  --accent-soft: rgba(88, 168, 143, 0.15);
+  --on-accent: var(--color-on-accent, #141413);
+  --ok: var(--color-success, #6bbf8e);
+  --warn: var(--color-amber-ink, #dca056);
+  --warn-bg: var(--color-amber-card, rgba(220, 160, 86, 0.14));
+  --danger: var(--color-danger, #e27a6e);
+  --danger-bg: rgba(226, 122, 110, 0.14);
+  --wash: rgba(237, 234, 226, 0.05);
+}
+
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-body {
-  margin: 0; background: var(--paper); color: var(--ink);
-  font: 13px/1.5 'Instrument Sans', ui-sans-serif, system-ui, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font: 13px/1.55 var(--sans);
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
-main { max-width: 700px; margin: 0 auto; padding: 22px 20px 44px; }
-header { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
-h1 { margin: 0; font-size: 19px; font-weight: 500; letter-spacing: -.01em; }
-header p { flex: 1 1 100%; margin: -5px 0 0; color: var(--faint); }
+
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 22px 22px 48px;
+}
+
+.icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  flex: none;
+}
+
+.masthead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+h1 {
+  margin: 0;
+  font: 500 20px/1.28 var(--display);
+  letter-spacing: 0;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  line-height: 1.2;
+}
+.status-chip[data-tone="error"] {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  flex: none;
+}
+.dot[data-tone="ok"] { background: var(--ok); }
+.dot[data-tone="warn"] { background: var(--warn); }
+.dot[data-tone="error"] { background: var(--danger); }
+.dot[data-tone="busy"] { background: var(--accent); }
+
+.head-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 button {
-  min-height: 34px; border: 1px solid var(--line-strong); border-radius: 7px;
-  padding: 0 13px; background: transparent; color: var(--ink); font: inherit;
-  cursor: pointer; transition: background-color .15s ease, border-color .15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink-soft);
+  font: 500 12px/1 var(--sans);
+  cursor: pointer;
+  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
 }
-button.primary { border-color: transparent; background: var(--accent); color: var(--on-accent); }
-button.primary:hover:not(:disabled) { background: var(--accent-deep); }
-button:hover:not(:disabled) { background: rgb(27 26 23 / .06); }
-button:disabled { cursor: default; opacity: .5; }
-button:focus-visible { outline: 2px solid var(--selected); outline-offset: 2px; }
-.rule { height: 1px; margin: 17px 0; border: 0; background: var(--line); }
-.status { min-height: 1.4em; color: var(--faint); }
-.status.error { color: var(--danger); }
-.status.ok { color: var(--ok); }
-section { margin-top: 18px; }
-.section-head { display: flex; align-items: baseline; gap: 10px; }
-h2 { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--soft); }
-.section-head span { margin-left: auto; color: var(--faint); font-size: 12px; }
-.configuration { display: grid; gap: 12px; margin-top: 12px; }
-.config-field { display: grid; gap: 5px; color: var(--soft); }
-input {
-  width: 100%; min-width: 0; min-height: 36px; padding: 7px 10px;
-  border: 1px solid var(--line-strong); border-radius: 7px; background: var(--panel); color: var(--ink);
-  font: 12px/1.45 'JetBrains Mono', ui-monospace, Consolas, monospace;
+button:hover:not(:disabled) { background: var(--panel); color: var(--ink); }
+button.primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--on-accent);
 }
-input:hover:not(:disabled) { border-color: var(--soft); }
-input:focus { border-color: var(--selected); outline: 2px solid color-mix(in srgb, var(--selected) 28%, transparent); outline-offset: 1px; }
-input:disabled { opacity: .55; }
-.config-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
-.config-actions .status { flex: 1 1 220px; margin: 0; }
-code { font: 12px/1.45 'JetBrains Mono', ui-monospace, Consolas, monospace; }
-.empty { margin: 9px 0 0; color: var(--faint); }
-.account { margin-top: 10px; padding: 11px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; }
-.account h3 { margin: 0; font-size: 14px; font-weight: 550; }
-.account .engine { color: var(--faint); font: 11.5px 'JetBrains Mono', ui-monospace, Consolas, monospace; }
-ul { list-style: none; margin: 8px 0 0; padding: 0; border-top: 1px solid var(--line); }
-li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-li .label { flex: 1 1 180px; overflow-wrap: anywhere; }
-li .id { color: var(--faint); font: 11.5px 'JetBrains Mono', ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
-.badge { padding: 2px 7px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--soft); font-size: 11px; }
-.badge.ready { border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); color: var(--ok); }
-.badge.signed_out { color: var(--faint); }
-.badge.disabled { color: var(--danger); }
-.note { margin: 8px 0 0; color: var(--danger); overflow-wrap: anywhere; }
-@media (pointer: coarse) { button, input { min-height: 44px; } }
-@media (max-width: 520px) { main { padding: 18px 14px 34px; } header { align-items: stretch; } header .primary { width: 100%; } }
+button.primary:hover:not(:disabled) { background: var(--accent-deep); color: var(--on-accent); }
+button.ghost-sm {
+  min-height: 25px;
+  padding: 0 8px;
+  font-size: 11.5px;
+}
+button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+button:disabled { opacity: 0.5; cursor: default; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+button[data-busy="true"] .icon { animation: spin 0.9s linear infinite; }
+
+:is(button, input, summary):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.pool-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 14px 28px;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.pool-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.pool-stat-label {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.pool-stat-val {
+  font: 600 18px/1.2 var(--sans);
+  color: var(--ink);
+}
+.pool-stat-val[data-tone="ok"] { color: var(--ok); }
+.pool-stat-val[data-tone="warn"] { color: var(--warn); }
+
+.setup-guide {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.setup-guide-text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.setup-guide-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.setup-guide-sub {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.seg button {
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  min-height: 28px;
+  padding: 0 10px;
+  background: transparent;
+}
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.search-wrap {
+  position: relative;
+  flex: 1 1 180px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.search-wrap .icon {
+  position: absolute;
+  left: 9px;
+  color: var(--ink-faint);
+  pointer-events: none;
+}
+
+.search-wrap input {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px 0 29px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  font: 12px/1.3 var(--sans);
+}
+.search-wrap input:focus { border-color: var(--accent); outline: none; }
+
+.engine-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.engine-sheet {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.engine-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.engine-head h2 {
+  margin: 0;
+  font: 600 13.5px/1.3 var(--sans);
+  color: var(--ink);
+}
+
+.engine-tag {
+  font: 11px/1.3 var(--mono);
+  color: var(--ink-faint);
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+.health-bar-wrap {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 11.5px/1 var(--mono);
+  color: var(--ink-soft);
+}
+
+.health-track {
+  display: block;
+  width: 64px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--line-strong);
+  overflow: hidden;
+}
+
+.health-fill {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+
+.acct-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.acct-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.acct-row:last-child { border-bottom: 0; }
+.acct-row[data-hidden-local="true"] { display: none; }
+
+.acct-main {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.acct-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.acct-label {
+  font-weight: 500;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.acct-id {
+  color: var(--ink-faint);
+  font: 11.5px/1.35 var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.acct-meta-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+
+.quota-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 11px/1 var(--mono);
+  color: var(--ink-soft);
+}
+
+.quota-track {
+  display: block;
+  width: 56px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--line-strong);
+  overflow: hidden;
+}
+
+.quota-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+}
+.quota-fill[data-low="true"] { background: var(--warn); }
+
+.acct-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-soft);
+}
+.badge.ready {
+  border-color: rgba(44, 110, 73, 0.35);
+  background: rgba(44, 110, 73, 0.08);
+  color: var(--ok);
+}
+.badge.signed_out {
+  border-color: rgba(138, 90, 25, 0.35);
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.badge.disabled {
+  border-color: rgba(166, 52, 41, 0.35);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.engine-empty {
+  padding: 14px;
+  color: var(--ink-faint);
+  font-size: 12.5px;
+}
+
+.engine-error {
+  padding: 10px 14px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+details.config-drawer {
+  margin-top: 20px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+details.config-drawer > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 500;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  user-select: none;
+}
+details.config-drawer > summary::-webkit-details-marker { display: none; }
+
+.summary-meta {
+  margin-left: auto;
+  font: 11.5px/1.2 var(--mono);
+  color: var(--ink-faint);
+}
+
+.chevron {
+  transition: transform 0.14s ease;
+  color: var(--ink-faint);
+}
+details.config-drawer[open] .chevron { transform: rotate(90deg); color: var(--ink); }
+
+.config-body {
+  padding: 4px 14px 14px;
+  border-top: 1px solid var(--line);
+}
+
+.configuration {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.config-field {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.config-field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 5px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  font: 12px/1.4 var(--mono);
+}
+.config-field input:focus { border-color: var(--accent); outline: none; }
+.config-field input:disabled { opacity: 0.55; }
+
+.config-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.config-status {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+.config-status.error { color: var(--danger); }
+.config-status.ok { color: var(--ok); }
+
+@media (max-width: 560px) {
+  main { padding: 14px 12px 36px; }
+  .head-actions { margin-left: 0; width: 100%; justify-content: space-between; }
+  .health-bar-wrap { margin-left: 0; }
+  .acct-row { grid-template-columns: minmax(0, 1fr); }
+  .acct-actions { justify-content: flex-start; }
+}
+
+@media (pointer: coarse) {
+  button, input, summary { min-height: 40px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
 </style>
 </head>
 <body>
 <main>
-  <header>
-    <div>
-      <h1>Cockpit OAuth</h1>
-      <p>Use a Cockpit account when adding an AGY or Codex instance.</p>
+  <header class="masthead">
+    <div class="title-wrap">
+      <h1 data-i18n="title">Cockpit OAuth</h1>
+      <span class="status-chip" id="statusBadge">
+        <span class="dot" id="statusDot"></span>
+        <span id="status" role="status" aria-live="polite">等待宿主…</span>
+      </span>
     </div>
-    <button class="primary" id="refresh" type="button">Refresh accounts</button>
+    <div class="head-actions">
+      <button type="button" id="maskToggle" aria-pressed="true">
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2 8s2.4-4 6-4 6 4 6 4-2.4 4-6 4-6-4-6-4z"/>
+          <circle cx="8" cy="8" r="1.75"/>
+        </svg>
+        <span id="maskToggleText">脱敏</span>
+      </button>
+      <button type="button" id="langToggle">EN</button>
+      <button class="primary" id="refresh" type="button">
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M13.5 8a5.5 5.5 0 1 1-1.45-3.72M13.5 2.75v2.75h-2.75"/>
+        </svg>
+        <span data-i18n="refreshBtn">刷新账号池</span>
+      </button>
+    </div>
   </header>
-  <p class="status" id="status" role="status" aria-live="polite">Waiting for Kiki.</p>
-  <hr class="rule">
-  <section>
-    <div class="section-head"><h2>Backend configuration</h2></div>
-    <div class="configuration" id="configuration" hidden>
-      <label class="config-field" for="backendPath"><span>Backend executable</span><input id="backendPath" type="text" autocomplete="off" spellcheck="false" placeholder="Absolute path to cockpit-harness-oauth"></label>
-      <label class="config-field" for="sidecarPath"><span>Cockpit sidecar</span><input id="sidecarPath" type="text" autocomplete="off" spellcheck="false" placeholder="Absolute path to the Cockpit sidecar"></label>
-      <label class="config-field" for="dataDir"><span>Data directory (optional)</span><input id="dataDir" type="text" autocomplete="off" spellcheck="false" placeholder="Cockpit default store"></label>
+
+  <section class="pool-summary" id="poolSummary" hidden>
+    <div class="pool-stat">
+      <span class="pool-stat-label" data-i18n="statReady">就绪账号</span>
+      <span class="pool-stat-val" id="statReadyVal" data-tone="ok">0</span>
     </div>
-    <div class="config-actions">
-      <button class="primary" id="save" type="button" disabled hidden>Save configuration</button>
-      <button id="retry-settings" type="button" hidden>Retry settings</button>
-      <p class="status" id="config-status" role="status" aria-live="polite">Loading settings…</p>
+    <div class="pool-stat">
+      <span class="pool-stat-label" data-i18n="statAttention">待重授权 / 停用</span>
+      <span class="pool-stat-val" id="statAttentionVal">0</span>
+    </div>
+    <div class="pool-stat">
+      <span class="pool-stat-label" data-i18n="statTotal">总计</span>
+      <span class="pool-stat-val" id="statTotalVal">0</span>
+    </div>
+    <div class="pool-stat" id="leaseStatWrap" hidden>
+      <span class="pool-stat-label" data-i18n="statLeases">活跃租约</span>
+      <span class="pool-stat-val" id="statLeasesVal">0</span>
     </div>
   </section>
-  <section>
-    <div class="section-head"><h2>Accounts</h2><span id="account-count"></span></div>
-    <div id="accounts"></div>
-  </section>
+
+  <div class="setup-guide" id="setupGuide" hidden>
+    <div class="setup-guide-text">
+      <span class="setup-guide-title" data-i18n="guideTitle">一步接入本地 Cockpit 账号池</span>
+      <span class="setup-guide-sub" data-i18n="guideSub">填写下方可执行程序与 Sidecar 绝对路径并保存，即可为 AGY 与 Codex 实例分配已授权账号。</span>
+    </div>
+    <button type="button" class="primary" id="focusSetupBtn" data-i18n="guideAction">填写路径</button>
+  </div>
+
+  <div class="toolbar" id="poolToolbar" hidden>
+    <div class="seg" role="group" aria-label="账号状态筛选">
+      <button type="button" data-filter="all" aria-pressed="true" data-i18n="filterAll">全部</button>
+      <button type="button" data-filter="ready" aria-pressed="false" data-i18n="filterReady">可用</button>
+      <button type="button" data-filter="attention" aria-pressed="false" data-i18n="filterAttention">待处理</button>
+    </div>
+    <div class="search-wrap">
+      <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="7" cy="7" r="4.5"/>
+        <path d="M10.5 10.5L14 14"/>
+      </svg>
+      <input type="search" id="searchInput" autocomplete="off" spellcheck="false" data-i18n-placeholder="searchPlaceholder" placeholder="搜索账号标签或 ID…">
+    </div>
+  </div>
+
+  <section class="engine-list" id="accounts"></section>
+
+  <details class="config-drawer" id="configDrawer" open>
+    <summary>
+      <svg class="icon chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8L6 12.5"/></svg>
+      <span data-i18n="configTitle">后端连接路径</span>
+      <span class="summary-meta" id="configSummaryMeta"></span>
+    </summary>
+    <div class="config-body">
+      <div class="configuration" id="configuration" hidden>
+        <label class="config-field" for="backendPath">
+          <span data-i18n="backendLabel">cockpit-harness-oauth 可执行文件</span>
+          <input id="backendPath" type="text" autocomplete="off" spellcheck="false" data-i18n-placeholder="backendPh" placeholder="例如 C:\Tools\cockpit-harness-oauth.exe">
+        </label>
+        <label class="config-field" for="sidecarPath">
+          <span data-i18n="sidecarLabel">Cockpit Sidecar 路径</span>
+          <input id="sidecarPath" type="text" autocomplete="off" spellcheck="false" data-i18n-placeholder="sidecarPh" placeholder="Cockpit Sidecar 绝对路径">
+        </label>
+        <label class="config-field" for="dataDir">
+          <span data-i18n="dataDirLabel">数据目录（可选）</span>
+          <input id="dataDir" type="text" autocomplete="off" spellcheck="false" data-i18n-placeholder="dataDirPh" placeholder="留空使用默认 Cockpit 存储目录">
+        </label>
+      </div>
+      <div class="config-actions">
+        <button class="primary" id="save" type="button" disabled hidden data-i18n="saveBtn">保存并重连</button>
+        <button id="retry-settings" type="button" hidden data-i18n="retryBtn">重试读取</button>
+        <p class="config-status" id="config-status" role="status" aria-live="polite">…</p>
+      </div>
+    </div>
+  </details>
 </main>
+
 <script>
 (() => {
   'use strict';
+
   const CHANNEL = 'kiki.panel.v1';
+  const keys = ['backendPath', 'sidecarPath', 'dataDir'];
+  const memStore = new Map();
+  const safeStorage = {
+    get(key) {
+      try {
+        const v = window.localStorage.getItem(key);
+        return v !== null ? v : (memStore.get(key) ?? null);
+      } catch {
+        return memStore.get(key) ?? null;
+      }
+    },
+    set(key, val) {
+      const s = String(val);
+      memStore.set(key, s);
+      try { window.localStorage.setItem(key, s); } catch {}
+    },
+  };
+
+  try {
+    const qTheme = new URLSearchParams(window.location.search).get('theme');
+    if (qTheme === 'dark' || qTheme === 'light') {
+      document.documentElement.setAttribute('data-theme', qTheme);
+    }
+  } catch {}
+
+  const COPY = {
+    zh: {
+      title: 'Cockpit OAuth 账号池',
+      langBtn: 'EN',
+      refreshBtn: '刷新状态',
+      maskOn: '已脱敏',
+      maskOff: '显示原名',
+      waiting: '等待宿主连接',
+      refreshing: '同步中…',
+      refreshed: '已同步',
+      unconfiguredStatus: '待配置路径',
+      partialErr: '部分引擎异常',
+      loadFailed: '读取失败',
+      statReady: '可用账号',
+      statAttention: '需处理',
+      statTotal: '账号总数',
+      statLeases: '活跃实例租约',
+      guideTitle: '一步接入本地 Cockpit 账号池',
+      guideSub: '填写下方可执行文件与 Sidecar 绝对路径并保存，即可为 AGY 与 Codex 实例分配账号。',
+      guideAction: '定位路径框',
+      filterAll: '全部',
+      filterReady: '可用',
+      filterAttention: '需处理',
+      searchPlaceholder: '过滤账号名或 ID…',
+      configTitle: '后端与存储路径',
+      configSet: '已配置',
+      configUnset: '未配置',
+      backendLabel: 'cockpit-harness-oauth 可执行文件',
+      backendPh: '服务器上的绝对路径，例如 /opt/cockpit/cockpit-harness-oauth',
+      sidecarLabel: 'Cockpit Sidecar 路径',
+      sidecarPh: '服务器上的 Cockpit Sidecar 绝对路径',
+      dataDirLabel: '数据目录（可选）',
+      dataDirPh: '留空使用 Cockpit 默认存储',
+      saveBtn: '保存并刷新',
+      retryBtn: '重试读取',
+      loadingSettings: '正在读取配置…',
+      savingSettings: '正在保存…',
+      savedSettings: '配置已保存',
+      status_ready: '可用',
+      status_signed_out: '需重授权',
+      status_reauth_required: '需重授权',
+      status_expired: '已过期',
+      status_quota_exhausted: '额度耗尽',
+      status_disabled: '已停用',
+      copyId: '复制 ID',
+      copied: '已复制',
+      recheck: '重检状态',
+      reauthHint: '在 Cockpit 客户端完成重授权或启用后点击重检',
+      emptyEngine: '尚未绑定该引擎账号。在 Cockpit 登录授权后点击「刷新状态」即可载入。',
+      noMatch: '当前筛选下无匹配账号。',
+      quotaPrefix: '余量',
+      expiresPrefix: '到期',
+    },
+    en: {
+      title: 'Cockpit OAuth Pool',
+      langBtn: '中文',
+      refreshBtn: 'Refresh',
+      maskOn: 'Redacted',
+      maskOff: 'Unmasked',
+      waiting: 'Waiting for Kiki',
+      refreshing: 'Syncing…',
+      refreshed: 'Synced',
+      unconfiguredStatus: 'Setup needed',
+      partialErr: 'Partial error',
+      loadFailed: 'Sync failed',
+      statReady: 'Ready',
+      statAttention: 'Attention',
+      statTotal: 'Total',
+      statLeases: 'Active leases',
+      guideTitle: 'Connect your local Cockpit pool in one step',
+      guideSub: 'Set the absolute paths for cockpit-harness-oauth and the Cockpit sidecar below to supply AGY and Codex accounts.',
+      guideAction: 'Configure paths',
+      filterAll: 'All',
+      filterReady: 'Ready',
+      filterAttention: 'Attention',
+      searchPlaceholder: 'Filter by label or account ID…',
+      configTitle: 'Backend paths',
+      configSet: 'Configured',
+      configUnset: 'Unconfigured',
+      backendLabel: 'cockpit-harness-oauth executable',
+      backendPh: 'Absolute server path to cockpit-harness-oauth',
+      sidecarLabel: 'Cockpit sidecar',
+      sidecarPh: 'Absolute server path to Cockpit sidecar',
+      dataDirLabel: 'Data directory (optional)',
+      dataDirPh: 'Leave blank for default Cockpit store',
+      saveBtn: 'Save & refresh',
+      retryBtn: 'Retry settings',
+      loadingSettings: 'Loading settings…',
+      savingSettings: 'Saving…',
+      savedSettings: 'Saved',
+      status_ready: 'Ready',
+      status_signed_out: 'Reauthorize',
+      status_reauth_required: 'Reauthorize',
+      status_expired: 'Expired',
+      status_quota_exhausted: 'Quota exhausted',
+      status_disabled: 'Disabled',
+      copyId: 'Copy ID',
+      copied: 'Copied',
+      recheck: 'Recheck',
+      reauthHint: 'Restore authorization or enable this account in Cockpit, then click Recheck',
+      emptyEngine: 'No accounts bound for this engine yet. Sign in within Cockpit and click Refresh.',
+      noMatch: 'No accounts match the active filter.',
+      quotaPrefix: 'Quota',
+      expiresPrefix: 'Expires',
+    },
+  };
+
   const pending = new Map();
   let sequence = 0;
+  let parentOrigin = '';
+  let lang = safeStorage.get('cockpit.lang') || ((navigator.language || 'en').toLowerCase().startsWith('zh') ? 'zh' : 'en');
+  let maskIds = safeStorage.get('cockpit.mask') !== '0';
+  let statusFilter = 'all';
+  let searchQuery = '';
   let refreshing = false;
   let saving = false;
   let settingsLoading = false;
   let settingsReady = false;
   let dirty = false;
   let settingsView = { values: {}, secretsConfigured: [] };
-  const keys = ['backendPath', 'sidecarPath', 'dataDir'];
+  let lastPayload = null;
+
   const $ = (id) => document.getElementById(id);
-  const statusLabel = (value) => ({ ready: 'Ready', signed_out: 'Signed out', disabled: 'Disabled' }[value] || String(value || 'Unknown'));
-  function note(message, tone) { $('status').textContent = message || ''; $('status').className = 'status' + (tone ? ' ' + tone : ''); }
-  function configNote(message, tone) { $('config-status').textContent = message || ''; $('config-status').className = 'status' + (tone ? ' ' + tone : ''); }
+  const tr = (k) => (COPY[lang] && COPY[lang][k]) || COPY.en[k] || k;
+
+  function svgIcon(paths) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.classList.add('icon');
+    for (const d of paths) {
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      p.setAttribute('d', d);
+      svg.append(p);
+    }
+    return svg;
+  }
+
+  function redactIdentity(raw) {
+    const str = String(raw || '');
+    if (!maskIds || !str) return str;
+    const emailMatch = /^([^@\s]{1,64})@([^\s@]+)$/.exec(str);
+    if (emailMatch) {
+      const local = emailMatch[1];
+      const domain = emailMatch[2];
+      const head = local.length <= 2 ? local[0] : local.slice(0, 2);
+      return `${head}***@${domain}`;
+    }
+    if (str.length > 14 && /^[A-Za-z0-9_.:-]+$/.test(str)) {
+      return `${str.slice(0, 6)}…${str.slice(-4)}`;
+    }
+    return str;
+  }
+
+  function fmtShortTime(iso) {
+    if (!iso) return '';
+    const ms = Date.parse(iso);
+    if (!Number.isFinite(ms)) return '';
+    const d = new Date(ms);
+    const pad = (v) => String(v).padStart(2, '0');
+    return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  async function copySafe(text, labelNode) {
+    const prev = labelNode.textContent;
+    const markCopied = () => {
+      labelNode.textContent = tr('copied');
+      setTimeout(() => { labelNode.textContent = prev; }, 1200);
+    };
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(text);
+        markCopied();
+        return;
+      }
+      throw new Error('no clipboard');
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-9999px';
+      ta.style.opacity = '0';
+      document.body.append(ta);
+      ta.select();
+      try { document.execCommand('copy'); markCopied(); } catch {}
+      ta.remove();
+    }
+  }
+
+  function applyPresentation(pres, topTheme) {
+    const root = document.documentElement;
+    const theme = (pres && pres.theme) || topTheme;
+    if (theme === 'dark' || theme === 'light') {
+      root.setAttribute('data-theme', theme);
+    }
+    if (!safeStorage.get('cockpit.lang') && pres && typeof pres.locale === 'string') {
+      lang = pres.locale.toLowerCase().startsWith('zh') ? 'zh' : 'en';
+    }
+    if (pres && pres.tokens && typeof pres.tokens === 'object') {
+      for (const [k, v] of Object.entries(pres.tokens)) {
+        if (typeof k === 'string' && k.startsWith('--color-') && typeof v === 'string' && v.trim()) {
+          root.style.setProperty(k, v.trim());
+        }
+      }
+    }
+  }
+
+  function applyLocaleStrings() {
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+    $('langToggle').textContent = tr('langBtn');
+    $('maskToggle').setAttribute('aria-pressed', maskIds ? 'true' : 'false');
+    $('maskToggleText').textContent = maskIds ? tr('maskOn') : tr('maskOff');
+    for (const node of document.querySelectorAll('[data-i18n]')) {
+      node.textContent = tr(node.dataset.i18n);
+    }
+    for (const node of document.querySelectorAll('[data-i18n-placeholder]')) {
+      node.placeholder = tr(node.dataset.i18nPlaceholder);
+    }
+    syncConfigSummary();
+    if (lastPayload) renderAccounts(lastPayload);
+  }
+
+  function setStatus(label, tone = '', tooltip = '') {
+    $('status').textContent = label || '';
+    $('statusDot').dataset.tone = tone;
+    $('statusBadge').dataset.tone = tone === 'error' ? 'error' : '';
+    $('statusBadge').title = tooltip || label || '';
+  }
+
+  function configNote(message, tone = '') {
+    const el = $('config-status');
+    el.textContent = message || '';
+    el.className = 'config-status' + (tone ? ' ' + tone : '');
+  }
+
+  function isConfigured() {
+    const v = settingsView?.values || {};
+    return Boolean(String(v.backendPath || '').trim() && String(v.sidecarPath || '').trim());
+  }
+
+  function syncConfigSummary() {
+    const ok = isConfigured();
+    $('configSummaryMeta').textContent = ok ? tr('configSet') : tr('configUnset');
+    $('setupGuide').hidden = ok || !settingsReady;
+  }
+
   function request(method, extra = {}) {
     const id = ++sequence;
+    const targetOrigin = !parentOrigin || parentOrigin === 'null' ? '*' : parentOrigin;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { pending.delete(id); reject(new Error('The Kiki panel did not receive a response.')); }, 12000);
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error('The Kiki panel did not receive a response.'));
+      }, 12000);
       pending.set(id, (message) => {
-        clearTimeout(timer); pending.delete(id);
-        if (!message || message.ok !== true) { reject(new Error(typeof message?.error === 'string' ? message.error : 'The plugin did not answer.')); return; }
+        clearTimeout(timer);
+        pending.delete(id);
+        if (!message || message.ok !== true) {
+          reject(new Error(typeof message?.error === 'string' && message.error ? message.error : 'The plugin did not answer.'));
+          return;
+        }
         resolve(message.result);
       });
-      try { window.parent.postMessage({ channel: CHANNEL, kind: 'request', id, method, ...extra }, '*'); }
-      catch (error) { clearTimeout(timer); pending.delete(id); reject(error); }
+      try {
+        window.parent.postMessage({ channel: CHANNEL, kind: 'request', id, method, ...extra }, targetOrigin);
+      } catch (error) {
+        clearTimeout(timer);
+        pending.delete(id);
+        reject(error);
+      }
     });
   }
+
   const call = (action, args) => request('plugin.call', { action, args: args || {} });
+
   function patchOf() {
     const patch = {};
     for (const key of keys) {
@@ -157,22 +1028,28 @@ li .id { color: var(--faint); font: 11.5px 'JetBrains Mono', ui-monospace, Conso
     }
     return patch;
   }
+
   function mark(next) {
     if (dirty === next) return;
     dirty = next;
-    /* The host rate-limits frame requests, so report only the boolean edge. */
     void request('plugin.dirty', { dirty: next }).catch(() => undefined);
   }
+
   function updateDirty() {
     const changed = settingsReady && Object.keys(patchOf()).length > 0;
     $('save').disabled = !settingsReady || settingsLoading || saving || refreshing || !changed;
     mark(changed);
   }
+
   function adoptSettings(next) {
     settingsView = next && typeof next === 'object' ? next : { values: {}, secretsConfigured: [] };
     for (const key of keys) $(key).value = String(settingsView?.values?.[key] ?? '');
+    const configured = isConfigured();
+    $('configDrawer').open = !configured;
+    syncConfigSummary();
     updateDirty();
   }
+
   async function loadSettings() {
     if (settingsLoading) return false;
     settingsLoading = true;
@@ -182,7 +1059,8 @@ li .id { color: var(--faint); font: 11.5px 'JetBrains Mono', ui-monospace, Conso
     $('retry-settings').hidden = true;
     $('retry-settings').disabled = true;
     for (const key of keys) $(key).disabled = true;
-    updateDirty(); configNote('Loading settings…');
+    updateDirty();
+    configNote(tr('loadingSettings'));
     try {
       const next = await request('plugin.settings.get');
       settingsReady = true;
@@ -192,7 +1070,7 @@ li .id { color: var(--faint); font: 11.5px 'JetBrains Mono', ui-monospace, Conso
       configNote('');
       return true;
     } catch (error) {
-      configNote(error?.message || 'Could not load settings.', 'error');
+      configNote(error?.message || tr('loadFailed'), 'error');
       $('retry-settings').hidden = false;
       return false;
     } finally {
@@ -202,83 +1080,357 @@ li .id { color: var(--faint); font: 11.5px 'JetBrains Mono', ui-monospace, Conso
       updateDirty();
     }
   }
-  window.addEventListener('message', (event) => {
-    if (event.source !== window.parent || !event.data || event.data.channel !== CHANNEL) return;
-    if (event.data.kind === 'response') pending.get(event.data.id)?.(event.data);
-    if (event.data.kind === 'init') void (async () => { await loadSettings(); await refresh(); })();
-  });
-  function renderAccounts(accounts) {
-    const root = $('accounts'); root.replaceChildren();
-    let total = 0;
-    for (const account of Array.isArray(accounts) ? accounts : []) {
-      const article = document.createElement('article'); article.className = 'account';
-      const heading = document.createElement('h3'); heading.textContent = account.label || account.engineId || 'Harness';
-      const engine = document.createElement('div'); engine.className = 'engine'; engine.textContent = account.engineId || '';
-      article.append(heading, engine);
-      const items = Array.isArray(account.items) ? account.items : [];
-      total += items.length;
-      if (items.length) {
-        const list = document.createElement('ul');
-        for (const item of items) {
-          const row = document.createElement('li');
-          const label = document.createElement('span'); label.className = 'label'; label.textContent = item.label || 'Unnamed account';
-          const id = document.createElement('span'); id.className = 'id'; id.textContent = item.id || '';
-          const badge = document.createElement('span'); badge.className = 'badge ' + (item.status || ''); badge.textContent = statusLabel(item.status);
-          row.append(label, id, badge); list.append(row);
-        }
-        article.append(list);
-      } else {
-        const empty = document.createElement('p'); empty.className = 'empty'; empty.textContent = account.error || 'No account metadata returned.'; article.append(empty);
+
+  function matchesAccountFilter(item, engineLabel) {
+    if (statusFilter === 'ready' && item.status !== 'ready') return false;
+    if (statusFilter === 'attention' && item.status === 'ready') return false;
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      String(item.label || '').toLowerCase().includes(q) ||
+      String(item.id || '').toLowerCase().includes(q) ||
+      String(engineLabel || '').toLowerCase().includes(q)
+    );
+  }
+
+  function renderAccounts(payload) {
+    lastPayload = payload;
+    const accounts = Array.isArray(payload?.accounts) ? payload.accounts : [];
+    const root = $('accounts');
+    root.replaceChildren();
+
+    let totalReady = 0;
+    let totalAttention = 0;
+    let totalAll = 0;
+
+    for (const group of accounts) {
+      const items = Array.isArray(group.items) ? group.items : [];
+      const readyInGroup = items.filter((it) => it.status === 'ready').length;
+      totalReady += readyInGroup;
+      totalAttention += items.length - readyInGroup;
+      totalAll += items.length;
+
+      const sheet = document.createElement('article');
+      sheet.className = 'engine-sheet';
+
+      const head = document.createElement('div');
+      head.className = 'engine-head';
+
+      const h2 = document.createElement('h2');
+      h2.textContent = group.label || group.engineId || 'Harness';
+
+      const tag = document.createElement('span');
+      tag.className = 'engine-tag';
+      tag.textContent = group.engineId || '';
+
+      const healthWrap = document.createElement('div');
+      healthWrap.className = 'health-bar-wrap';
+
+      if (items.length > 0) {
+        const track = document.createElement('span');
+        track.className = 'health-track';
+        const fill = document.createElement('span');
+        fill.className = 'health-fill';
+        fill.style.width = `${Math.round((readyInGroup / items.length) * 100)}%`;
+        track.append(fill);
+
+        const ratio = document.createElement('span');
+        ratio.textContent = `${readyInGroup}/${items.length}`;
+        healthWrap.append(track, ratio);
       }
-      if (account.error && items.length) { const error = document.createElement('p'); error.className = 'note'; error.textContent = account.error; article.append(error); }
-      root.append(article);
+
+      const engineRefreshBtn = document.createElement('button');
+      engineRefreshBtn.type = 'button';
+      engineRefreshBtn.className = 'ghost-sm';
+      engineRefreshBtn.title = `${tr('refreshBtn')} (${group.label || group.engineId})`;
+      engineRefreshBtn.disabled = refreshing;
+      engineRefreshBtn.append(svgIcon(['M13.5 8a5.5 5.5 0 1 1-1.45-3.72M13.5 2.75v2.75h-2.75']));
+      engineRefreshBtn.onclick = () => { void refresh(group.engineId); };
+      healthWrap.append(engineRefreshBtn);
+
+      head.append(h2, tag, healthWrap);
+      sheet.append(head);
+
+      if (items.length > 0) {
+        const visibleItems = items.filter((it) => matchesAccountFilter(it, group.label || group.engineId));
+        if (visibleItems.length === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'engine-empty';
+          empty.textContent = tr('noMatch');
+          sheet.append(empty);
+        } else {
+          const ul = document.createElement('ul');
+          ul.className = 'acct-rows';
+
+          for (const item of visibleItems) {
+            const li = document.createElement('li');
+            li.className = 'acct-row';
+
+            const mainCol = document.createElement('div');
+            mainCol.className = 'acct-main';
+
+            const titleLine = document.createElement('div');
+            titleLine.className = 'acct-title-line';
+
+            const dot = document.createElement('span');
+            dot.className = 'dot';
+            dot.dataset.tone = item.status === 'ready' ? 'ok' : item.status === 'signed_out' ? 'warn' : 'error';
+
+            const lbl = document.createElement('span');
+            lbl.className = 'acct-label';
+            lbl.textContent = redactIdentity(item.label || 'Account');
+
+            const idSpan = document.createElement('span');
+            idSpan.className = 'acct-id';
+            idSpan.textContent = redactIdentity(item.id || '');
+
+            titleLine.append(dot, lbl, idSpan);
+            mainCol.append(titleLine);
+
+            const hasQuota = typeof item.quotaRemaining === 'number';
+            const hasExpiry = Boolean(item.expiresAt);
+            const needsAction = item.status !== 'ready';
+
+            if (hasQuota || hasExpiry || needsAction) {
+              const metaLine = document.createElement('div');
+              metaLine.className = 'acct-meta-line';
+
+              if (hasQuota) {
+                const pct = Math.round(item.quotaRemaining * 100);
+                const qWrap = document.createElement('span');
+                qWrap.className = 'quota-meter';
+                const qTrack = document.createElement('span');
+                qTrack.className = 'quota-track';
+                const qFill = document.createElement('span');
+                qFill.className = 'quota-fill';
+                qFill.style.width = `${pct}%`;
+                qFill.dataset.low = pct <= 20 ? 'true' : 'false';
+                qTrack.append(qFill);
+                const qTxt = document.createElement('span');
+                qTxt.textContent = item.quotaLabel || `${tr('quotaPrefix')} ${pct}%`;
+                qWrap.append(qTrack, qTxt);
+                metaLine.append(qWrap);
+              }
+
+              if (hasExpiry) {
+                const exp = document.createElement('span');
+                exp.textContent = `${tr('expiresPrefix')} ${fmtShortTime(item.expiresAt)}`;
+                exp.title = item.expiresAt;
+                metaLine.append(exp);
+              }
+
+              if (needsAction) {
+                const hint = document.createElement('span');
+                hint.textContent = tr('reauthHint');
+                metaLine.append(hint);
+              }
+
+              mainCol.append(metaLine);
+            }
+
+            const actCol = document.createElement('div');
+            actCol.className = 'acct-actions';
+
+            const badge = document.createElement('span');
+            badge.className = 'badge ' + (item.status || '');
+            const statusKey = `status_${item.status}`;
+            const translated = tr(statusKey);
+            badge.textContent = translated !== statusKey ? translated : String(item.status || '').replace(/_/g, ' ');
+            actCol.append(badge);
+
+            if (item.status !== 'ready') {
+              const recheckBtn = document.createElement('button');
+              recheckBtn.type = 'button';
+              recheckBtn.className = 'ghost-sm';
+              recheckBtn.disabled = refreshing;
+              recheckBtn.textContent = tr('recheck');
+              recheckBtn.onclick = () => { void refresh(group.engineId); };
+              actCol.append(recheckBtn);
+            }
+
+            if (item.id) {
+              const copyBtn = document.createElement('button');
+              copyBtn.type = 'button';
+              copyBtn.className = 'ghost-sm';
+              const copyLbl = document.createElement('span');
+              copyLbl.textContent = tr('copyId');
+              copyBtn.append(
+                svgIcon(['M5.5 5.5h7v8h-7z', 'M3.5 10.5h-1v-8h7v1']),
+                copyLbl,
+              );
+              copyBtn.onclick = () => { void copySafe(item.id, copyLbl); };
+              actCol.append(copyBtn);
+            }
+
+            li.append(mainCol, actCol);
+            ul.append(li);
+          }
+          sheet.append(ul);
+        }
+      } else if (!group.error) {
+        const empty = document.createElement('div');
+        empty.className = 'engine-empty';
+        empty.textContent = tr('emptyEngine');
+        sheet.append(empty);
+      }
+
+      if (group.error) {
+        const err = document.createElement('div');
+        err.className = 'engine-error';
+        err.textContent = group.error;
+        sheet.append(err);
+      }
+
+      root.append(sheet);
     }
-    $('account-count').textContent = total ? total + ' account' + (total === 1 ? '' : 's') : '';
+
+    $('poolSummary').hidden = totalAll === 0 && !payload?.activeLeases;
+    $('poolToolbar').hidden = totalAll === 0;
+    $('statReadyVal').textContent = String(totalReady);
+    $('statAttentionVal').textContent = String(totalAttention);
+    $('statAttentionVal').dataset.tone = totalAttention > 0 ? 'warn' : '';
+    $('statTotalVal').textContent = String(totalAll);
+
+    const leases = Number(payload?.activeLeases) || 0;
+    $('leaseStatWrap').hidden = leases === 0;
+    $('statLeasesVal').textContent = String(leases);
   }
-  async function refresh() {
+
+  async function refresh(singleEngineId = '') {
     if (refreshing) return;
-    refreshing = true; $('refresh').disabled = true; note('Refreshing account metadata…'); updateDirty();
+    if (settingsReady && !isConfigured()) {
+      setStatus(tr('unconfiguredStatus'), 'warn');
+      syncConfigSummary();
+      return;
+    }
+    refreshing = true;
+    $('refresh').disabled = true;
+    $('refresh').dataset.busy = 'true';
+    setStatus(tr('refreshing'), 'busy');
+    updateDirty();
     try {
-      const result = await call('refresh');
-      renderAccounts(result?.accounts);
-      const failed = result?.accounts?.filter(account => account.error).length ?? 0;
-      if (failed) note(failed === result.accounts.length ? 'Could not load Cockpit accounts.' : 'Some accounts could not be loaded.', 'error');
-      else note('Accounts refreshed.', 'ok');
+      const result = await call('refresh', singleEngineId ? { engineId: singleEngineId } : {});
+      if (singleEngineId && lastPayload && Array.isArray(lastPayload.accounts) && Array.isArray(result?.accounts)) {
+        const merged = lastPayload.accounts.map((oldGroup) => {
+          const updated = result.accounts.find((g) => g.engineId === oldGroup.engineId);
+          return updated || oldGroup;
+        });
+        result.accounts = merged;
+      }
+      renderAccounts(result);
+      const failed = result?.accounts?.filter((a) => a.error).length ?? 0;
+      const tip = result?.refreshedAt ? `${tr('refreshed')} · ${fmtShortTime(result.refreshedAt)}` : '';
+      if (failed) {
+        setStatus(
+          failed === result.accounts.length ? tr('loadFailed') : tr('partialErr'),
+          failed === result.accounts.length ? 'error' : 'warn',
+          tip,
+        );
+      } else {
+        setStatus(tr('refreshed'), 'ok', tip);
+      }
     } catch (error) {
-      note(error?.message || 'The plugin did not answer.', 'error');
-    } finally { refreshing = false; $('refresh').disabled = false; updateDirty(); }
+      setStatus(tr('loadFailed'), 'error', error?.message || '');
+    } finally {
+      refreshing = false;
+      $('refresh').disabled = false;
+      $('refresh').dataset.busy = 'false';
+      updateDirty();
+      if (lastPayload) renderAccounts(lastPayload);
+    }
   }
+
   $('refresh').addEventListener('click', () => { void refresh(); });
   $('retry-settings').addEventListener('click', () => {
     void (async () => { if (await loadSettings()) await refresh(); })();
   });
+
+  $('focusSetupBtn').addEventListener('click', () => {
+    $('configDrawer').open = true;
+    $('backendPath').focus();
+  });
+
+  $('maskToggle').addEventListener('click', () => {
+    maskIds = !maskIds;
+    safeStorage.set('cockpit.mask', maskIds ? '1' : '0');
+    applyLocaleStrings();
+  });
+
+  $('langToggle').addEventListener('click', () => {
+    lang = lang === 'zh' ? 'en' : 'zh';
+    safeStorage.set('cockpit.lang', lang);
+    applyLocaleStrings();
+  });
+
+  for (const btn of document.querySelectorAll('.seg button[data-filter]')) {
+    btn.addEventListener('click', () => {
+      statusFilter = btn.dataset.filter || 'all';
+      for (const b of document.querySelectorAll('.seg button[data-filter]')) {
+        b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+      }
+      if (lastPayload) renderAccounts(lastPayload);
+    });
+  }
+
+  $('searchInput').addEventListener('input', (e) => {
+    searchQuery = e.target.value.trim();
+    if (lastPayload) renderAccounts(lastPayload);
+  });
+
   for (const key of keys) {
     $(key).addEventListener('input', () => { configNote(''); updateDirty(); });
     $(key).addEventListener('keydown', (event) => {
       if (event.key !== 'Enter') return;
-      event.preventDefault(); $('save').click();
+      event.preventDefault();
+      if (!$('save').disabled) $('save').click();
     });
   }
+
   $('save').addEventListener('click', async () => {
     if (saving) return;
     const values = patchOf();
     if (Object.keys(values).length === 0) return;
     saving = true;
     for (const key of keys) $(key).disabled = true;
-    updateDirty(); configNote('Saving configuration…');
+    updateDirty();
+    configNote(tr('savingSettings'));
     try {
       adoptSettings(await request('plugin.settings.patch', { values }));
-      configNote('Configuration saved. Refreshing accounts…', 'ok');
+      configNote(tr('savedSettings'), 'ok');
       await refresh();
-      configNote('Configuration saved.', 'ok');
     } catch (error) {
-      configNote(error?.message || 'Could not save configuration.', 'error');
+      configNote(error?.message || tr('loadFailed'), 'error');
     } finally {
       saving = false;
       for (const key of keys) $(key).disabled = false;
       updateDirty();
     }
   });
+
+  window.addEventListener('message', (event) => {
+    if (event.source !== window.parent || !event.data || event.data.channel !== CHANNEL) return;
+    if (parentOrigin && event.origin !== parentOrigin) return;
+    if (event.data.kind === 'presentation') {
+      applyPresentation(event.data.presentation, event.data.theme);
+      applyLocaleStrings();
+      return;
+    }
+    if (event.data.kind === 'response') {
+      pending.get(event.data.id)?.(event.data);
+      return;
+    }
+    if (event.data.kind === 'init') {
+      parentOrigin = event.origin;
+      applyPresentation(event.data.presentation, event.data.theme);
+      applyLocaleStrings();
+      void (async () => {
+        if (await loadSettings()) await refresh();
+      })();
+    }
+  });
+
+  applyLocaleStrings();
+  setStatus(tr('waiting'));
 })();
 </script>
 </body>

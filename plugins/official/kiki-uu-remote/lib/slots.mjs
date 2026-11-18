@@ -23,8 +23,8 @@ export function buildUuGuiSlots(pluginId = KIKI_UU_REMOTE_PLUGIN_ID, liveState =
         zh: '在右侧工作区打开 UU远程桌面实时预览与接管面板',
       },
       icon: 'monitor',
-      tone: 'neutral',
-      order: 36,
+      tone: selectedSession?.takeoverActive ? 'warning' : 'neutral',
+      order: 37,
       action: {
         kind: 'open_plugin_panel',
         panelId: 'preview',
@@ -46,20 +46,6 @@ export function buildUuGuiSlots(pluginId = KIKI_UU_REMOTE_PLUGIN_ID, liveState =
         kind: 'open_plugin_panel',
         panelId: 'preview',
       },
-    },
-    {
-      slot: 'inspector-tab',
-      pluginId,
-      id: 'uu-preview-inspector',
-      title: {
-        default: 'UU Remote',
-        en: 'UU Remote',
-        zh: 'UU远程',
-      },
-      panelId: 'preview',
-      icon: 'monitor',
-      bridge: 'kiki.panel.v1',
-      order: 41,
     },
     {
       slot: 'tool-card-renderer',

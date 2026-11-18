@@ -39,6 +39,14 @@ const server = createServer(async (req, res) => {
       for await (const chunk of req) { body += chunk; if (body.length > 100000) throw new Error('fixture payload too large'); }
       const data = JSON.parse(body);
       if (data.method === 'plugin.call' && data.action === 'catalog') { json({ ok: true, result: await handlePanelRequest('catalog', {}, { settings }) }); return; }
+      if (data.method === 'plugin.call' && data.action === 'inspect') {
+        const result = await handlePanelRequest('inspect', data.args, {
+          settings,
+          fetchImpl: async () => new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } }),
+        });
+        json({ ok: true, result });
+        return;
+      }
       if (data.method === 'plugin.settings.get') { json({ ok: true, result: settingsWire() }); return; }
       if (data.method === 'plugin.models.list') {
         if (failConnections) { failConnections = false; json({ ok: false, error: 'Synthetic connection catalog failure' }); return; }

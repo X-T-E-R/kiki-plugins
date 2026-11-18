@@ -42,11 +42,31 @@ export const CONTROL_MSG = Object.freeze({
 export const ANDROID_KEYCODE = Object.freeze({
   HOME: 3,
   BACK: 4,
+  DPAD_UP: 19,
+  UP: 19,
+  DPAD_DOWN: 20,
+  DOWN: 20,
+  DPAD_LEFT: 21,
+  LEFT: 21,
+  DPAD_RIGHT: 22,
+  RIGHT: 22,
   VOLUME_UP: 24,
   VOLUME_DOWN: 25,
   POWER: 26,
+  TAB: 61,
+  SPACE: 62,
   ENTER: 66,
+  DEL: 67,
+  BACKSPACE: 67,
   MENU: 82,
+  PAGE_UP: 92,
+  PAGE_DOWN: 93,
+  ESCAPE: 111,
+  ESC: 111,
+  FORWARD_DEL: 112,
+  DELETE: 112,
+  MOVE_HOME: 122,
+  MOVE_END: 123,
   APP_SWITCH: 187,
   RECENTS: 187,
   WAKEUP: 224,
@@ -643,6 +663,10 @@ function createControlActions(writePacket, getDimensions) {
       await sleep(Math.max(4, stepDelay));
       writeRaw(encodeTouchEvent({ action: 1, x: x2, y: y2, screenWidth: width, screenHeight: height }));
     },
+    async scroll(x, y, hScroll, vScroll, fallbackSize) {
+      const { width, height } = getDimensions(fallbackSize);
+      writeRaw(encodeScrollEvent({ x, y, screenWidth: width, screenHeight: height, hScroll, vScroll }));
+    },
     async pressKeycode(keycode) {
       writeRaw(encodeKeycodeEvent({ action: 0, keycode }));
       writeRaw(encodeKeycodeEvent({ action: 1, keycode }));
@@ -1106,12 +1130,14 @@ export function createScrcpyManager({
           if (!msg || typeof msg !== 'object') return;
           switch (msg.type) {
             case 'button':
-              void control.pressButton(msg.button);
+            case 'key':
+              void control.pressButton(msg.button || msg.key);
               break;
             case 'keycode':
               if (Number.isInteger(msg.keycode)) void control.pressKeycode(msg.keycode);
               break;
             case 'text':
+            case 'paste':
               void control.injectText(msg.text, { pasteUnicode: true });
               break;
             case 'power':

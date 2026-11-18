@@ -36,6 +36,29 @@ export function normalizePointerToDevice(
   screenHeight: number,
 ): { x: number; y: number };
 
+export function computeContainedRect(
+  containerWidth: number,
+  containerHeight: number,
+  contentWidth?: number,
+  contentHeight?: number,
+): { x: number; y: number; width: number; height: number; scale: number };
+
+export function mapContainedPointToDevice(
+  offsetX: number,
+  offsetY: number,
+  containerWidth: number,
+  containerHeight: number,
+  screenWidth?: number,
+  screenHeight?: number,
+): {
+  inside: boolean;
+  normX: number;
+  normY: number;
+  x: number;
+  y: number;
+  rect: { x: number; y: number; width: number; height: number; scale: number };
+};
+
 export function buildMobilewrightLocatorHint(node: Partial<FlattenedViewNode>): string;
 
 export function flattenViewHierarchy(
@@ -52,6 +75,8 @@ export function createPhonePreviewService(options?: {
   scrcpyManager?: Record<string, (...args: unknown[]) => unknown>;
   metadataTtlMs?: number;
 }): {
+  activate(context?: Record<string, unknown>): Promise<void>;
+  peekState(options?: { settings?: Record<string, unknown>; maxAgeMs?: number; waitBudgetMs?: number }): Promise<Record<string, unknown>>;
   listState(options?: { settings?: Record<string, unknown>; fast?: boolean }): Promise<Record<string, unknown>>;
   captureFrame(options?: Record<string, unknown>): Promise<Record<string, unknown>>;
   inspectHierarchy(options?: Record<string, unknown>): Promise<Record<string, unknown>>;

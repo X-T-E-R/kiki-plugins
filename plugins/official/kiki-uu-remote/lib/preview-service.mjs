@@ -27,6 +27,12 @@ export function packStreamPngFrame({
 export function createUuPreviewService({ uuService, ensureProviderBus = async () => null } = {}) {
   const activeStreams = new Set();
 
+  function nudgeStreams(sessionId = null, delayMs = 35) {
+    for (const subscriber of activeStreams) {
+      subscriber.nudge(sessionId, delayMs);
+    }
+  }
+
   async function listState(args = {}, context = {}) {
     await ensureProviderBus(context);
     const [sessionSummary, statusSummary] = await Promise.all([
@@ -98,7 +104,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
         return await uuService.manageSessions({ action: 'select', sessionId: input.sessionId }, context);
       }
       if (kind === 'takeover') {
-        return await uuService.manageSessions(
+        const res = await uuService.manageSessions(
           {
             action: 'takeover',
             sessionId: input.sessionId,
@@ -107,12 +113,16 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
           },
           context,
         );
+        nudgeStreams(res.sessionId || input.sessionId, 20);
+        return res;
       }
       if (kind === 'rescueOffscreen') {
-        return await uuService.launchAction(
+        const res = await uuService.launchAction(
           { action: 'recover_offscreen', sessionId: input.sessionId },
           context,
         );
+        nudgeStreams(input.sessionId || null, 45);
+        return res;
       }
       if (kind === 'openClient') {
         return await uuService.launchAction({ action: 'open_client', waitForWindowMs: 1500 }, context);
@@ -130,7 +140,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
         );
       }
       if (kind === 'restore' || kind === 'focus') {
-        return await uuService.controlSession(
+        const res = await uuService.controlSession(
           {
             sessionId: input.sessionId,
             action: kind,
@@ -139,12 +149,30 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
           },
           context,
         );
+        nudgeStreams(res.sessionId || input.sessionId, 45);
+        return res;
       }
       if (kind === 'input') {
-        return await uuService.controlSession(
+        const fromHumanPanel = input.fromHumanPanel !== false;
+        if (fromHumanPanel) {
+          await uuService
+            .setTakeover(
+              {
+                sessionId: input.sessionId,
+                active: true,
+                holder: 'human',
+                reason: 'Interactive input from UU Remote workspace panel',
+              },
+              context,
+            )
+            .catch(() => {});
+        }
+        const normalizedSubAction = input.subAction === 'paste' ? 'type' : input.subAction;
+        const normalizedMode = input.subAction === 'paste' ? 'clipboard' : input.mode;
+        const res = await uuService.controlSession(
           {
             sessionId: input.sessionId,
-            action: input.subAction,
+            action: normalizedSubAction,
             actions: input.actions,
             coordinateMode: input.coordinateMode || 'normalized_1000',
             x: input.x,
@@ -155,19 +183,22 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
             endY: input.endY,
             button: input.button,
             count: input.count,
+            modifiers: input.modifiers,
             deltaX: input.deltaX,
             deltaY: input.deltaY,
             durationMs: input.durationMs,
             text: input.text,
             submit: input.submit,
-            mode: input.mode,
+            mode: normalizedMode,
             key: input.key,
             keys: input.keys,
             observeAfter: false,
-            overrideHumanTakeover: input.fromHumanPanel !== false,
+            overrideHumanTakeover: fromHumanPanel,
           },
           context,
         );
+        nudgeStreams(res.sessionId || input.sessionId, 35);
+        return res;
       }
       return { ok: false, error: `Unsupported UU Remote panel action: ${String(kind)}` };
     } catch (error) {
@@ -186,6 +217,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
     let maxHeight = Math.max(240, Math.min(1600, Number(args?.maxHeight) || 900));
     let fps = Math.max(1, Math.min(20, Number(args?.fps) || 10));
     let paused = false;
+    let forceSingleFrame = false;
     let closed = false;
     let timer = null;
     let inFlight = false;
@@ -194,19 +226,39 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
     const initialSession = await uuService.resolveTargetSession(targetSessionId, topo, context);
     targetSessionId = initialSession.id;
 
-    const cleanup = () => {
+    const scheduleNext = (delayMs) => {
       if (closed) return;
-      closed = true;
-      activeStreams.delete(cleanup);
       if (timer) {
         clearTimeout(timer);
         timer = null;
       }
+      timer = setTimeout(pumpFrame, delayMs);
+      timer.unref?.();
     };
-    activeStreams.add(cleanup);
 
-    streamSession.onClose?.(cleanup);
-    streamSession.signal?.addEventListener?.('abort', cleanup, { once: true });
+    const subscriber = {
+      stop() {
+        if (closed) return;
+        closed = true;
+        activeStreams.delete(subscriber);
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      },
+      nudge(sessionId = null, delayMs = 35) {
+        if (closed) return;
+        if (sessionId && targetSessionId && sessionId !== targetSessionId) return;
+        forceSingleFrame = true;
+        if (!inFlight) {
+          scheduleNext(Math.max(10, delayMs));
+        }
+      },
+    };
+    activeStreams.add(subscriber);
+
+    streamSession.onClose?.(subscriber.stop);
+    streamSession.signal?.addEventListener?.('abort', subscriber.stop, { once: true });
 
     streamSession.onText?.((rawText) => {
       let msg;
@@ -221,7 +273,14 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
         if (Number.isFinite(msg.maxWidth)) maxWidth = Math.max(320, Math.min(2560, msg.maxWidth));
         if (Number.isFinite(msg.maxHeight)) maxHeight = Math.max(240, Math.min(1600, msg.maxHeight));
         if (Number.isFinite(msg.fps)) fps = Math.max(1, Math.min(20, msg.fps));
-        if (typeof msg.paused === 'boolean') paused = msg.paused;
+        if (typeof msg.paused === 'boolean') {
+          paused = msg.paused;
+          if (!paused && !inFlight) scheduleNext(15);
+        }
+        return;
+      }
+      if (msg.type === 'nudge') {
+        subscriber.nudge(msg.sessionId || targetSessionId, 20);
         return;
       }
       if (msg.type === 'input') {
@@ -237,19 +296,15 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
       }
     });
 
-    const scheduleNext = (delayMs) => {
-      if (closed) return;
-      timer = setTimeout(pumpFrame, delayMs);
-      timer.unref?.();
-    };
-
     const pumpFrame = async () => {
       if (closed) return;
       const intervalMs = Math.round(1000 / Math.max(1, fps));
-      if (paused || inFlight) {
+      const runForced = forceSingleFrame;
+      if ((paused && !runForced) || inFlight) {
         scheduleNext(intervalMs);
         return;
       }
+      forceSingleFrame = false;
       if (typeof streamSession.bufferedAmount === 'function' && streamSession.bufferedAmount() > MAX_BUFFERED_BYTES) {
         scheduleNext(intervalMs);
         return;
@@ -328,8 +383,8 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
   }
 
   async function dispose() {
-    for (const stopStream of [...activeStreams]) {
-      stopStream();
+    for (const subscriber of [...activeStreams]) {
+      subscriber.stop();
     }
     activeStreams.clear();
   }

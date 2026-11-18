@@ -102,6 +102,32 @@ function metadataList(value) {
   });
 }
 
+function panelMetadataList(value) {
+  const base = metadataList(value);
+  return base.map((entry, idx) => {
+    const raw = value[idx];
+    const out = { ...entry };
+    if (typeof raw?.quotaRemaining === 'number' && Number.isFinite(raw.quotaRemaining)) {
+      const q = raw.quotaRemaining > 1 ? raw.quotaRemaining / 100 : raw.quotaRemaining;
+      out.quotaRemaining = Math.max(0, Math.min(1, Number(q.toFixed(4))));
+    }
+    if (typeof raw?.quotaLabel === 'string' && raw.quotaLabel.trim() && raw.quotaLabel.length <= 64 && !/secret|token|key|bearer/i.test(raw.quotaLabel)) {
+      out.quotaLabel = raw.quotaLabel.trim();
+    }
+    if (typeof raw?.expiresAt === 'string' && raw.expiresAt.length <= 64) {
+      const ts = Date.parse(raw.expiresAt);
+      if (Number.isFinite(ts)) out.expiresAt = new Date(ts).toISOString();
+    } else if (typeof raw?.expiresAt === 'number' && Number.isFinite(raw.expiresAt) && raw.expiresAt > 0) {
+      out.expiresAt = new Date(raw.expiresAt < 1e11 ? raw.expiresAt * 1000 : raw.expiresAt).toISOString();
+    }
+    if (typeof raw?.updatedAt === 'string' && raw.updatedAt.length <= 64) {
+      const ts = Date.parse(raw.updatedAt);
+      if (Number.isFinite(ts)) out.updatedAt = new Date(ts).toISOString();
+    }
+    return out;
+  });
+}
+
 function preparedConnection(value) {
   if (!isRecord(value) || !isRecord(value.connection)) {
     throw new Error('cockpit-harness-oauth returned an invalid lease.');
@@ -265,20 +291,40 @@ export class CockpitHarnessService {
     }
   }
 
-  async panel(action, _args, context) {
+  async #panelList(engineId, context) {
+    const signal = signalOrNever(context?.signal);
+    checkAborted(signal);
+    const backend = await this.#backend(context, signal);
+    this.inFlight++;
+    try {
+      const result = await backend.request('list', { engineId }, { signal });
+      return panelMetadataList(result);
+    } finally {
+      this.inFlight--;
+    }
+  }
+
+  async panel(action, args, context) {
     if (action === 'configuration') return { schemaVersion: 1, configuration: configView(context?.settings) };
     if (action !== 'refresh' && action !== 'status' && action !== 'accounts') throw new Error('Unknown Cockpit OAuth panel action.');
     const configuration = configView(context?.settings);
-    const engines = [...ENGINE_IDS];
+    const targetEngine = typeof args?.engineId === 'string' && ENGINE_IDS.includes(args.engineId) ? args.engineId : '';
+    const engines = targetEngine ? [targetEngine] : [...ENGINE_IDS];
     const accounts = [];
     for (const engineId of engines) {
       try {
-        accounts.push({ engineId, label: ENGINE_LABELS[engineId], items: await this.list({ engineId }, context) });
+        accounts.push({ engineId, label: ENGINE_LABELS[engineId], items: await this.#panelList(engineId, context) });
       } catch (error) {
         accounts.push({ engineId, label: ENGINE_LABELS[engineId], items: [], error: error instanceof Error ? error.message : String(error) });
       }
     }
-    return { schemaVersion: 1, configuration, accounts };
+    return {
+      schemaVersion: 1,
+      configuration,
+      accounts,
+      activeLeases: this.activeLeases.size,
+      refreshedAt: new Date().toISOString(),
+    };
   }
 
   async deactivate() {

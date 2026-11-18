@@ -34,6 +34,55 @@ export function normalizePointerToDevice(normX, normY, screenWidth, screenHeight
   };
 }
 
+export function computeContainedRect(containerWidth, containerHeight, contentWidth, contentHeight) {
+  const cw = Math.max(0, Number(containerWidth) || 0);
+  const ch = Math.max(0, Number(containerHeight) || 0);
+  const iw = Math.max(1, Number(contentWidth) || cw || 1080);
+  const ih = Math.max(1, Number(contentHeight) || ch || 2400);
+  if (cw <= 0 || ch <= 0) {
+    return { x: 0, y: 0, width: 0, height: 0, scale: 0 };
+  }
+  const scale = Math.min(cw / iw, ch / ih);
+  const width = iw * scale;
+  const height = ih * scale;
+  return {
+    x: (cw - width) / 2,
+    y: (ch - height) / 2,
+    width,
+    height,
+    scale,
+  };
+}
+
+export function mapContainedPointToDevice(
+  offsetX,
+  offsetY,
+  containerWidth,
+  containerHeight,
+  screenWidth = 1080,
+  screenHeight = 2400,
+) {
+  const w = Math.max(1, Math.round(Number(screenWidth) || 1080));
+  const h = Math.max(1, Math.round(Number(screenHeight) || 2400));
+  const rect = computeContainedRect(containerWidth, containerHeight, w, h);
+  if (rect.width <= 0 || rect.height <= 0) {
+    return { inside: false, normX: 0, normY: 0, x: 0, y: 0, rect };
+  }
+  const ox = Number(offsetX) || 0;
+  const oy = Number(offsetY) || 0;
+  const inside = ox >= rect.x && ox <= rect.x + rect.width && oy >= rect.y && oy <= rect.y + rect.height;
+  const normX = Math.min(1, Math.max(0, (ox - rect.x) / rect.width));
+  const normY = Math.min(1, Math.max(0, (oy - rect.y) / rect.height));
+  return {
+    inside,
+    normX,
+    normY,
+    x: w <= 1 ? 0 : Math.min(w - 1, Math.max(0, Math.round(normX * (w - 1)))),
+    y: h <= 1 ? 0 : Math.min(h - 1, Math.max(0, Math.round(normY * (h - 1)))),
+    rect,
+  };
+}
+
 function escapeQuote(value) {
   return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
@@ -326,7 +375,25 @@ export function createPhonePreviewService({
 
   const FAST_STATE_TTL_MS = 15_000;
   const FAST_PROBE_TIMEOUT_MS = 1_500;
+  const PEEK_WAIT_BUDGET_MS = 450;
   let cachedProbe = { key: '', at: 0, allDevices: null, diagnostics: null };
+  let cachedStateSnapshot = { key: '', at: 0, value: null };
+  const stateRefreshFlights = new Map();
+
+  function emptyStateSnapshot() {
+    return {
+      ok: true,
+      selected: undefined,
+      devices: [],
+      groups: { android: [], ios: [] },
+      diagnostics: {
+        runtimeInstalled: false,
+        hostPlatform,
+        android: { available: false, adbPath: null, reason: null },
+        ios: { available: false, simulatorsSupported: hostPlatform === 'darwin', reason: null },
+      },
+    };
+  }
 
   async function discoverSimulatorsDarwin(timeoutMs = 8_000) {
     if (hostPlatform !== 'darwin') return { available: false, reason: 'Xcode iOS Simulator requires macOS; physical iOS devices can connect via mobilecli / USB bridge.', devices: [] };
@@ -488,7 +555,7 @@ export function createPhonePreviewService({
       await writeSelectedDevice(dataDir, selected).catch(() => {});
     }
 
-    return {
+    const snapshot = {
       ok: true,
       selected,
       devices: allDevices,
@@ -498,6 +565,46 @@ export function createPhonePreviewService({
       },
       diagnostics,
     };
+    cachedStateSnapshot = { key: cacheKey, at: Date.now(), value: snapshot };
+    return snapshot;
+  }
+
+  function triggerBackgroundStateRefresh(settings = {}) {
+    const cacheKey = String(settings?.adbPath ?? '');
+    let flight = stateRefreshFlights.get(cacheKey);
+    if (!flight) {
+      flight = listState({ settings, fast: true }).finally(() => {
+        if (stateRefreshFlights.get(cacheKey) === flight) {
+          stateRefreshFlights.delete(cacheKey);
+        }
+      });
+      flight.catch(() => {});
+      stateRefreshFlights.set(cacheKey, flight);
+    }
+    return flight;
+  }
+
+  async function peekState({ settings = {}, maxAgeMs = FAST_STATE_TTL_MS, waitBudgetMs = PEEK_WAIT_BUDGET_MS } = {}) {
+    const cacheKey = String(settings?.adbPath ?? '');
+    const hasCached = cachedStateSnapshot.value !== null && cachedStateSnapshot.key === cacheKey;
+    if (hasCached && Date.now() - cachedStateSnapshot.at < maxAgeMs) {
+      return cachedStateSnapshot.value;
+    }
+    const flight = triggerBackgroundStateRefresh(settings);
+    if (hasCached || waitBudgetMs <= 0) {
+      return hasCached ? cachedStateSnapshot.value : emptyStateSnapshot();
+    }
+    try {
+      return await raceTimeout(flight, waitBudgetMs, 'phone peek budget elapsed');
+    } catch {
+      return cachedStateSnapshot.key === cacheKey && cachedStateSnapshot.value !== null
+        ? cachedStateSnapshot.value
+        : emptyStateSnapshot();
+    }
+  }
+
+  async function activate(context = {}) {
+    triggerBackgroundStateRefresh(context?.settings ?? {});
   }
 
   async function resolveTarget({ deviceId, platform, settings = {} }) {
@@ -839,7 +946,7 @@ export function createPhonePreviewService({
       const meta = ensureMetaEntry(target.platform, target.id);
       const effectiveSize = meta.effectiveSize;
 
-      if (target.platform === 'android' && ['tap', 'doubleTap', 'longPress', 'swipe', 'button'].includes(action)) {
+      if (target.platform === 'android' && ['tap', 'doubleTap', 'longPress', 'swipe', 'scroll', 'button', 'key', 'pasteText'].includes(action)) {
         const fastCtrl = await resolveFastScrcpyControl(target, effectiveSize, settings);
         if (fastCtrl) {
           try {
@@ -876,10 +983,25 @@ export function createPhonePreviewService({
               await fastCtrl.swipe(start.x, start.y, end.x, end.y, duration, effectiveSize);
               return { ok: true, action, start, end, duration, channel: 'scrcpy' };
             }
-            if (action === 'button') {
-              const btn = String(input.button || 'HOME').toUpperCase();
+            if (action === 'scroll' && typeof fastCtrl.scroll === 'function') {
+              const pt = input.normX !== undefined && input.normY !== undefined
+                ? normalizePointerToDevice(input.normX, input.normY, effectiveSize.width, effectiveSize.height)
+                : { x: Math.round(effectiveSize.width / 2), y: Math.round(effectiveSize.height / 2) };
+              const hScroll = Math.max(-8, Math.min(8, -(Number(input.deltaX) || 0) / 80));
+              const vScroll = Math.max(-8, Math.min(8, -(Number(input.deltaY) || 0) / 80));
+              await fastCtrl.scroll(pt.x, pt.y, hScroll, vScroll, effectiveSize);
+              return { ok: true, action, point: pt, channel: 'scrcpy' };
+            }
+            if (action === 'button' || action === 'key') {
+              const btn = String(input.button || input.key || 'HOME').toUpperCase();
               const handled = await fastCtrl.pressButton(btn);
-              if (handled) return { ok: true, action, button: btn, channel: 'scrcpy' };
+              if (handled) return { ok: true, action, button: btn, key: btn, channel: 'scrcpy' };
+            }
+            if (action === 'pasteText' && typeof fastCtrl.injectText === 'function') {
+              const text = String(input.text ?? '');
+              if (text && await fastCtrl.injectText(text, { pasteUnicode: true })) {
+                return { ok: true, action, length: text.length, channel: 'scrcpy' };
+              }
             }
           } catch {}
         }
@@ -930,29 +1052,64 @@ export function createPhonePreviewService({
             const duration = Math.min(3000, Math.max(80, Math.round(Number(input.durationMs) || 260)));
             if (typeof session.driver.call === 'function') {
               await session.driver.call('device.io.swipe', { x1: start.x, y1: start.y, x2: end.x, y2: end.y, duration });
-            } else if (target.platform === 'android' && session.adbBinary) {
-              await runAndroidShell(session.adbBinary, target.id, ['input', 'swipe', String(start.x), String(start.y), String(end.x), String(end.y), String(duration)]);
-            } else {
+            } else if (typeof session.driver.swipe === 'function') {
               const dx = end.x - start.x;
               const dy = end.y - start.y;
               const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
               await session.driver.swipe(dir, { startX: start.x, startY: start.y, distance: Math.round(Math.hypot(dx, dy)), duration });
+            } else if (target.platform === 'android' && session.adbBinary) {
+              await runAndroidShell(session.adbBinary, target.id, ['input', 'swipe', String(start.x), String(start.y), String(end.x), String(end.y), String(duration)]);
             }
             return { ok: true, action, start, end, duration };
           }
+          case 'scroll': {
+            const pt = input.normX !== undefined && input.normY !== undefined
+              ? normalizePointerToDevice(input.normX, input.normY, curSize.width, curSize.height)
+              : { x: Math.round(curSize.width / 2), y: Math.round(curSize.height / 2) };
+            const rawDx = Number(input.deltaX) || 0;
+            const rawDy = Number(input.deltaY) || 0;
+            const maxSpanY = Math.round(curSize.height * 0.36);
+            const maxSpanX = Math.round(curSize.width * 0.36);
+            const moveY = Math.max(-maxSpanY, Math.min(maxSpanY, -Math.round(rawDy * 2.2)));
+            const moveX = Math.max(-maxSpanX, Math.min(maxSpanX, -Math.round(rawDx * 2.2)));
+            const end = {
+              x: Math.min(curSize.width - 1, Math.max(0, pt.x + moveX)),
+              y: Math.min(curSize.height - 1, Math.max(0, pt.y + moveY)),
+            };
+            const duration = 180;
+            if (typeof session.driver.call === 'function') {
+              await session.driver.call('device.io.swipe', { x1: pt.x, y1: pt.y, x2: end.x, y2: end.y, duration });
+            } else if (typeof session.driver.swipe === 'function') {
+              const dir = Math.abs(moveX) > Math.abs(moveY) ? (moveX > 0 ? 'right' : 'left') : (moveY > 0 ? 'down' : 'up');
+              await session.driver.swipe(dir, { startX: pt.x, startY: pt.y, distance: Math.max(60, Math.round(Math.hypot(moveX, moveY))), duration });
+            } else if (target.platform === 'android' && session.adbBinary) {
+              await runAndroidShell(session.adbBinary, target.id, ['input', 'swipe', String(pt.x), String(pt.y), String(end.x), String(end.y), String(duration)]);
+            }
+            return { ok: true, action, point: pt, end, duration };
+          }
+          case 'key':
           case 'button': {
-            const btn = String(input.button || 'HOME').toUpperCase();
+            const btn = String(input.button || input.key || 'HOME').toUpperCase();
             if (btn === 'HOME' || btn === 'POWER' || btn === 'VOLUME_UP' || btn === 'VOLUME_DOWN') {
               await session.driver.pressButton(btn);
             } else if (target.platform === 'android' && session.adbBinary) {
-              const codeMap = { BACK: '4', RECENTS: '187', APP_SWITCH: '187', ENTER: '66', MENU: '82' };
+              const codeMap = {
+                BACK: '4', RECENTS: '187', APP_SWITCH: '187', ENTER: '66', MENU: '82',
+                BACKSPACE: '67', DEL: '67', DELETE: '112', FORWARD_DEL: '112', TAB: '61',
+                SPACE: '62', ESCAPE: '111', ESC: '111',
+                UP: '19', DPAD_UP: '19', DOWN: '20', DPAD_DOWN: '20',
+                LEFT: '21', DPAD_LEFT: '21', RIGHT: '22', DPAD_RIGHT: '22',
+                MOVE_HOME: '122', MOVE_END: '123', PAGE_UP: '92', PAGE_DOWN: '93',
+              };
               const keycode = codeMap[btn];
-              if (!keycode) throw new Error(`Unsupported button: ${btn}`);
+              if (!keycode) throw new Error(`Unsupported button or key: ${btn}`);
               await runAndroidShell(session.adbBinary, target.id, ['input', 'keyevent', keycode]);
+            } else if (typeof session.driver.pressKeys === 'function') {
+              await session.driver.pressKeys([btn]);
             } else {
               throw new Error(`Button ${btn} is only available on Android.`);
             }
-            return { ok: true, action, button: btn };
+            return { ok: true, action, button: btn, key: btn };
           }
           case 'wake': {
             if (target.platform === 'android' && session.adbBinary) {
@@ -1004,6 +1161,7 @@ export function createPhonePreviewService({
             }
             throw new Error('Appearance toggle requires Android ADB or macOS iOS Simulator.');
           }
+          case 'pasteText':
           case 'typeText': {
             const text = String(input.text ?? '');
             if (!text) return { ok: false, error: 'Text cannot be empty.' };
@@ -1104,6 +1262,8 @@ export function createPhonePreviewService({
   }
 
   return {
+    activate,
+    peekState,
     listState,
     captureFrame,
     inspectHierarchy,

@@ -5,7 +5,7 @@
       "id": "kiki-output-layer",
       "tier": "official",
       "displayName": "Kiki Output Layer",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "description": "Stream translations and plain-language rewrites without changing the conversation.",
       "keywords": [
         "translation",
@@ -31,7 +31,7 @@
       "id": "kiki-cloudflare",
       "tier": "official",
       "displayName": "Cloudflare Tunnel",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "description": "Connect an existing Cloudflare Tunnel and manage its Kiki-owned connector.",
       "keywords": [
         "cloudflare",
@@ -101,7 +101,7 @@
       "id": "kiki-writing",
       "tier": "official",
       "displayName": "Kiki Writing",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "description": "A focused manuscript panel and draft command.",
       "keywords": [
         "writing",
@@ -198,7 +198,7 @@
       "id": "kiki-media",
       "tier": "official",
       "displayName": "Kiki Media",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "description": "One media plugin with OpenAI, Google, Ark, xAI, MiniMax, StepFun, Novita, Agnes, NewAPI and ComfyUI sources. Configure or disable each service inside Media, or add your own local script. Requires a Kiki host with grouped media sources and script-source management. Cloud generation requires media API access and can incur charges.",
       "keywords": [
         "media",
@@ -250,7 +250,7 @@
       "id": "kiki-task-board",
       "tier": "official",
       "displayName": "Task board",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Persistent requirement cards for a workspace.",
       "keywords": [
         "tasks",
@@ -330,7 +330,7 @@
       "id": "kiki-sites",
       "tier": "official",
       "displayName": "Kiki Sites",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "description": "Connect code hosting and deploy sites or apps through official service CLIs and APIs.",
       "keywords": [
         "sites",
@@ -357,7 +357,7 @@
       "id": "kiki-bilibili",
       "tier": "official",
       "displayName": "Kiki Bilibili",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "description": "Search and understand Bilibili videos, manage comments and notifications, and publish through bili-agent.",
       "keywords": [
         "bilibili",
@@ -418,7 +418,7 @@
       "id": "kiki-phone",
       "tier": "official",
       "displayName": "Kiki Phone",
-      "version": "0.2.1",
+      "version": "0.3.4",
       "description": "Prepare the runtime, then use Mobilewright semantic scripts or Mobile MCP to operate a connected Android or iOS phone. Rooted Android also supports su commands.",
       "keywords": [
         "phone",
@@ -449,7 +449,7 @@
       "id": "kiki-everything",
       "tier": "official",
       "displayName": "Everything Search",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "description": "Find files and folders on Windows by name, path, size or date with the Everything index.",
       "keywords": [
         "search",
@@ -477,7 +477,7 @@
       "id": "kiki-qq",
       "tier": "official",
       "displayName": "QQ",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "description": "Connect an official QQ Bot or OneBot 11 channel to exchange messages and media in Kiki.",
       "keywords": [
         "qq",
@@ -505,7 +505,7 @@
       "id": "kiki-mail",
       "tier": "official",
       "displayName": "Mail",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "description": "Search mail across Open Archiver sources, or read and send through your IMAP and SMTP accounts.",
       "keywords": [
         "mail",
@@ -533,7 +533,7 @@
       "id": "kiki-cua",
       "tier": "official",
       "displayName": "Kiki Computer Use",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Operate local multi-DPI desktops and registered remote display/input target providers with native zoom cropping, human-takeover protection and live workspace preview.",
       "keywords": [
         "computer-use",
@@ -563,7 +563,7 @@
       "id": "kiki-uu-remote",
       "tier": "official",
       "displayName": "UU Remote",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Connect, preview and operate NetEase UU Remote desktop sessions via official uuyc-cli and background swapchain capture, and bridge active sessions into Kiki Computer Use.",
       "keywords": [
         "uu-remote",

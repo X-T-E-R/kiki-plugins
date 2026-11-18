@@ -206,14 +206,16 @@ export function createUuRemoteService({
       const norm = normalizeSessionId(requestedId);
       const found = sessions.find((s) => s.id === norm);
       if (!found) {
-        throw new Error(`UU Remote session "${norm}" is not open. Call uu_sessions to list open sessions.`);
+        throw new Error(
+          `UU Remote session "${norm}" is not open. Call uu_sessions(action="list") to inspect open windows or uu_launch(action="connect_device", deviceId="<id>") to reconnect.`,
+        );
       }
       return found;
     }
     const chosenId = pickSelectedSession(sessions);
     if (!chosenId) {
       throw new Error(
-        'No active UU Remote streaming window is open. Launch UU Remote or connect a paired device via uu_launch.',
+        'No active UU Remote streaming window is open. Call uu_sessions(action="list") to find paired devices, then uu_launch(action="connect_device", deviceId="<id>") or uu_launch(action="open_client").',
       );
     }
     return sessions.find((s) => s.id === chosenId);
@@ -222,7 +224,9 @@ export function createUuRemoteService({
   async function observeSession(session, options = {}, context = {}) {
     const settings = context?.settings ?? {};
     if (session.state === 'minimized') {
-      throw new Error(`Session ${session.id} ("${session.label}") is minimized. Run uu_control with action="restore" first.`);
+      throw new Error(
+        `Session ${session.id} ("${session.label}") is minimized and cannot render PrintWindow frames. Call uu_control(sessionId="${session.id}", action="restore") first.`,
+      );
     }
     const rawCapture = await systemDriver.captureSessionStage({
       hwnd: session.hwnd,
@@ -302,7 +306,7 @@ export function createUuRemoteService({
       return {
         blocked: true,
         code: 'human_takeover_active',
-        message: `Human takeover is active on ${session.id}${existing.reason ? ` (${existing.reason})` : ''}. Release takeover before sending agent input.`,
+        message: `Human takeover is active on ${session.id}${existing.reason ? ` (${existing.reason})` : ''}. Stop immediately and yield to the user; wait until takeover is released via the UU Remote panel or uu_sessions(action="takeover", sessionId="${session.id}", active=false).`,
         takeoverActive: true,
         controlledBy: existing.controlledBy || 'human',
       };
@@ -385,7 +389,9 @@ export function createUuRemoteService({
 
     const onlyRestore = actions.length === 1 && actions[0]?.kind === 'restore';
     if (session.state === 'minimized' && !onlyRestore && !actions.some((a) => a.kind === 'restore')) {
-      throw new Error(`Session ${session.id} is minimized. Run action="restore" before sending input.`);
+      throw new Error(
+        `Session ${session.id} ("${session.label}") is minimized. Call uu_control(sessionId="${session.id}", action="restore") before sending input.`,
+      );
     }
 
     let geometry = null;

@@ -1,6 +1,6 @@
 {
   "name": "@kiki/phone-business",
-  "version": "0.3.0",
+  "version": "0.3.4",
   "description": "Host-independent Kiki Phone business implementation",
   "type": "module",
   "license": "MIT",
@@ -23,6 +23,8 @@
     "lib/*.mjs",
     "types/*.d.ts",
     "skills/phone-control/SKILL.md",
+    "skills/phone-control/references/*.md",
+    "skills/phone-control/agents/*.yaml",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md"
   ],

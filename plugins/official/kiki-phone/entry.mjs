@@ -32,6 +32,10 @@ export async function openPanelStream(stream, args, session, context) {
   return previewService.openPanelStream(stream, args, session, context);
 }
 
+export async function activate(context) {
+  return previewService.activate(context);
+}
+
 export async function deactivate() {
   await previewService.dispose();
 }

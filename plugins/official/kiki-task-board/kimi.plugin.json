@@ -1,6 +1,6 @@
 {
   "name": "kiki-task-board",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Optional task board for persistent requirement cards. Cards stay at their original Own Work addresses.",
   "license": "MIT",
   "icon": "./icon.svg",

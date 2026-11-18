@@ -224,4 +224,194 @@ test('the panel no longer prints the address sentence', () => {
   assert.equal(html.includes('id="lead"'), false);
   assert.equal(html.includes('Requirement cards stay at their original addresses.'), false);
   assert.equal(html.includes('需求卡片仍在原来的地址。'), false);
+  assert.equal(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(html), false);
+  assert.match(html, /--bg:\s*#f6f4ef/i);
+  assert.match(html, /--bg:\s*#141413/i);
+  assert.match(html, /--accent:\s*#2c5e4f/i);
+  assert.match(html, /--accent:\s*#58a88f/i);
+});
+
+test('survives opaque sandbox SecurityError on localStorage and supports Enter create, capsule flow, drag drop, inline edit, search, and theme sync', async () => {
+  const elements = new Map();
+  class RichEl {
+    constructor(tag) {
+      this.tag = tag;
+      this.tagName = tag.toUpperCase();
+      this.children = [];
+      this.textContent = '';
+      this.className = '';
+      this.disabled = false;
+      this.hidden = false;
+      this.dataset = {};
+      this.listeners = {};
+      this.attributes = {};
+      this.firstChild = { textContent: '' };
+      this.style = {};
+      this._value = '';
+    }
+    get options() { return this.children; }
+    get value() {
+      if (this.tag !== 'select') return this._value;
+      if (this.children.some((option) => option.value === this._value)) return this._value;
+      return this.children[0]?.value ?? '';
+    }
+    set value(next) { this._value = next; }
+    addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); }
+    setAttribute(name, value) { this.attributes[name] = value; }
+    append(...nodes) { this.children.push(...nodes); }
+    replaceChildren(...nodes) { this.children = [...nodes]; }
+    focus() {}
+    remove() {}
+    querySelectorAll() { return []; }
+  }
+  for (const id of [
+    'title', 'board-summary', 'search', 'clear-search', 'workspace-label', 'workspace',
+    'mobile-mode', 'lang', 'title-label', 'priority-label', 'detail-label', 'toggle-detail',
+    'detail-wrap', 'save', 'status', 'mobile-bar', 'columns', 'card-title', 'detail', 'priority',
+  ]) {
+    const tag = id === 'workspace' || id === 'priority' ? 'select' : 'div';
+    elements.set(id, new RichEl(tag));
+  }
+  elements.get('priority')._value = 'P1';
+  elements.get('priority').children = [{ value: 'P1' }, { value: 'P0' }, { value: 'P2' }, { value: 'P3' }];
+
+  const patches = [];
+  const creates = [];
+  const cards = [
+    {
+      id: 'card-alpha',
+      workspaceId: 'wd-1',
+      storage: { root: '/tmp/store', storageId: 'st-1', kind: 'embedded' },
+      title: 'Alpha draft',
+      description: 'First card',
+      priority: 'P1',
+      status: 'active',
+      revision: 3,
+    },
+  ];
+  const windowListeners = [];
+  const windowObj = {
+    addEventListener(type, fn) { (windowListeners[type] ??= []).push(fn); },
+    parent: { postMessage(msg) { deliver(msg); } },
+  };
+  Object.defineProperty(windowObj, 'localStorage', {
+    get() { throw new Error('SecurityError: opaque origin'); },
+  });
+  const docRoot = { lang: 'en', dataset: {}, style: { setProperty() {} } };
+  const doc = {
+    documentElement: docRoot,
+    body: new RichEl('body'),
+    getElementById: (id) => elements.get(id),
+    createElement: (tag) => new RichEl(tag),
+    createElementNS: (_ns, tag) => new RichEl(tag),
+    execCommand: () => true,
+    querySelectorAll: () => [],
+  };
+  const ctx = vm.createContext({
+    window: windowObj,
+    document: doc,
+    location: { search: '?theme=dark' },
+    URLSearchParams,
+    navigator: { language: 'zh-CN' },
+    Map, Set, Promise, Error, Object, Date, Array, String, Number, Boolean, JSON,
+    setTimeout: () => 1,
+    clearTimeout: () => {},
+  });
+  function emit(data) {
+    for (const fn of windowListeners.message ?? []) fn({ source: windowObj.parent, data });
+  }
+  function deliver(msg) {
+    queueMicrotask(() => {
+      if (msg.action === 'workspaces') {
+        emit({ channel: 'kiki.panel.v1', kind: 'response', id: msg.id, ok: true, result: { ok: true, value: { workspaces: [{ id: 'wd-1', name: 'Studio' }] } } });
+      } else if (msg.action === 'read') {
+        emit({ channel: 'kiki.panel.v1', kind: 'response', id: msg.id, ok: true, result: { ok: true, value: { cards: cards.map((c) => ({ ...c })) } } });
+      } else if (msg.action === 'write' && msg.args.action === 'create') {
+        creates.push(msg.args);
+        cards.push({
+          id: 'card-beta',
+          workspaceId: msg.args.workspaceId,
+          storage: { root: '/tmp/store', storageId: 'st-1', kind: 'embedded' },
+          title: msg.args.title,
+          description: msg.args.description || '',
+          priority: msg.args.priority || 'P1',
+          status: 'active',
+          revision: 1,
+        });
+        emit({ channel: 'kiki.panel.v1', kind: 'response', id: msg.id, ok: true, result: { ok: true, value: { id: 'card-beta' } } });
+      } else if (msg.action === 'write' && msg.args.action === 'update') {
+        patches.push(msg.args);
+        const found = cards.find((c) => c.id === msg.args.id);
+        if (found) {
+          Object.assign(found, msg.args.patch);
+          found.revision += 1;
+        }
+        emit({ channel: 'kiki.panel.v1', kind: 'response', id: msg.id, ok: true, result: { ok: true, value: found } });
+      }
+    });
+  }
+  async function flush() {
+    for (let i = 0; i < 12; i += 1) await new Promise((r) => setImmediate(r));
+  }
+
+  vm.runInContext(source, ctx, { filename: 'panel.html' });
+  assert.equal(docRoot.dataset.theme, 'dark');
+
+  emit({ channel: 'kiki.panel.v1', kind: 'init', presentation: { theme: 'light', locale: 'en' } });
+  await flush();
+  assert.equal(docRoot.dataset.theme, 'light');
+
+  // Enter-to-create in #card-title
+  const titleInput = elements.get('card-title');
+  titleInput.value = 'Quick keyboard task';
+  titleInput.listeners.keydown[0]({ key: 'Enter', isComposing: false, preventDefault() {} });
+  await flush();
+  assert.equal(creates.length, 1);
+  assert.equal(creates[0].title, 'Quick keyboard task');
+  assert.equal(titleInput.value, '');
+
+  // Find active lane and first card
+  const findNodes = (root, pred, acc = []) => {
+    if (pred(root)) acc.push(root);
+    for (const ch of root.children || []) findNodes(ch, pred, acc);
+    return acc;
+  };
+  const columns = elements.get('columns');
+  const firstCard = findNodes(columns, (n) => n.dataset?.card === 'card-alpha')[0];
+  assert.ok(firstCard);
+
+  // One-click status capsule flow (active -> in_progress)
+  const flowBtn = findNodes(firstCard, (n) => n.dataset?.action === 'flow')[0];
+  assert.ok(flowBtn);
+  flowBtn.listeners.click[0]();
+  await flush();
+  assert.deepEqual({ ...patches.at(-1).patch }, { status: 'in_progress' });
+
+  // Drag-and-drop card-beta onto done lane
+  const betaCard = findNodes(columns, (n) => n.dataset?.card === 'card-beta')[0];
+  betaCard.listeners.dragstart[0]({ dataTransfer: { setData() {} } });
+  const doneLane = findNodes(columns, (n) => n.dataset?.lane === 'done')[0];
+  doneLane.listeners.drop[0]({ preventDefault() {}, dataTransfer: { getData: () => 'card-beta' } });
+  await flush();
+  assert.deepEqual({ ...patches.at(-1).patch }, { status: 'done' });
+
+  // Double-click title -> inline edit title & priority -> Enter to save
+  const refreshedAlpha = findNodes(columns, (n) => n.dataset?.card === 'card-alpha')[0];
+  const heading = findNodes(refreshedAlpha, (n) => n.tag === 'h3')[0];
+  heading.listeners.dblclick[0]();
+  const editingCard = findNodes(columns, (n) => n.dataset?.card === 'card-alpha')[0];
+  const editInput = findNodes(editingCard, (n) => n.tag === 'input')[0];
+  const editSelect = findNodes(editingCard, (n) => n.tag === 'select')[0];
+  editInput.value = 'Alpha refined';
+  editSelect.value = 'P0';
+  editInput.listeners.keydown[0]({ key: 'Enter', preventDefault() {} });
+  await flush();
+  assert.deepEqual({ ...patches.at(-1).patch }, { title: 'Alpha refined', priority: 'P0' });
+
+  // Search filter narrows visible cards
+  const search = elements.get('search');
+  search.value = 'refined';
+  search.listeners.input[0]();
+  assert.equal(findNodes(columns, (n) => n.dataset?.card === 'card-alpha').length, 1);
+  assert.equal(findNodes(columns, (n) => n.dataset?.card === 'card-beta').length, 0);
 });

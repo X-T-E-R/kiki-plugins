@@ -244,6 +244,15 @@ export class CloudflareService {
     if (action === 'tunnels') return this.tunnels();
     if (action === 'accounts') return { items: await this.account().accounts() };
     if (action === 'selectTunnel') return this.selectTunnel(args.id);
+    if (action === 'zones') return { items: await this.account().zones() };
+    if (action === 'dnsRecords') return { items: await this.account().dnsRecords(args.zoneId) };
+    if (action === 'zoneOverview') {
+      const acct = this.account();
+      const [records, workerRoutes] = await Promise.all([acct.dnsRecords(args.zoneId), acct.workerRoutes(args.zoneId)]);
+      return { records, workerRoutes };
+    }
+    if (action === 'saveDnsRecord') return { record: await this.account().saveDnsRecord(args.zoneId, args.record) };
+    if (action === 'deleteDnsRecord') return this.account().deleteDnsRecord(args.zoneId, args.recordId);
     throw new Error('Unknown Cloudflare action.');
   }
 }

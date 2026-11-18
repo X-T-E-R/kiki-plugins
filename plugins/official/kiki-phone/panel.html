@@ -17,6 +17,8 @@
     --line-strong: rgba(27, 26, 23, 0.22);
     --accent: #2c5e4f;
     --accent-soft: rgba(44, 94, 79, 0.12);
+    --amber: #b85d19;
+    --amber-soft: rgba(184, 93, 25, 0.14);
     --danger: #b53d2e;
     --ok: #297a54;
     --bezel: #161618;
@@ -37,6 +39,8 @@
       --line-strong: rgba(237, 234, 226, 0.24);
       --accent: #58a88f;
       --accent-soft: rgba(88, 168, 143, 0.16);
+      --amber: #e5934a;
+      --amber-soft: rgba(229, 147, 74, 0.18);
       --danger: #e26c5c;
       --ok: #4cb782;
       --bezel: #0b0b0c;
@@ -55,11 +59,16 @@
     --line-strong: rgba(237, 234, 226, 0.24);
     --accent: #58a88f;
     --accent-soft: rgba(88, 168, 143, 0.16);
+    --amber: #e5934a;
+    --amber-soft: rgba(229, 147, 74, 0.18);
     --danger: #e26c5c;
     --ok: #4cb782;
     --bezel: #0b0b0c;
     --bezel-edge: #38383f;
     --shadow: 0 22px 48px -18px rgba(0, 0, 0, 0.72), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
@@ -76,10 +85,7 @@
     -webkit-font-smoothing: antialiased;
     user-select: none;
   }
-  button, input, select {
-    font: inherit;
-    color: inherit;
-  }
+  button, input, select { font: inherit; color: inherit; }
   .shell {
     display: flex;
     flex-direction: column;
@@ -89,7 +95,7 @@
   .topbar {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 7px;
     height: 42px;
     padding: 0 12px;
     background: var(--paper);
@@ -110,19 +116,22 @@
     border-radius: 999px;
     background: var(--ink-faint);
     flex-shrink: 0;
+    transition: background 140ms ease;
   }
   .status-dot.online { background: var(--ok); }
+  .status-dot.interactive { background: var(--amber); }
   .status-dot.warn { background: var(--danger); }
   .device-select {
     appearance: none;
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: 7px;
-    padding: 4px 26px 4px 9px;
-    font-size: 12.5px;
+    height: 27px;
+    padding: 0 25px 0 9px;
+    font-size: 12px;
     font-weight: 500;
-    max-width: 240px;
-    min-width: 120px;
+    max-width: 210px;
+    min-width: 106px;
     text-overflow: ellipsis;
     overflow: hidden;
     white-space: nowrap;
@@ -132,13 +141,13 @@
   .device-select:focus-visible { border-color: var(--accent); }
   .select-chevron {
     pointer-events: none;
-    margin-left: -22px;
-    margin-right: 6px;
+    margin-left: -21px;
+    margin-right: 4px;
     color: var(--ink-faint);
     display: flex;
   }
   .platform-pill {
-    font-size: 10.5px;
+    font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.03em;
     text-transform: uppercase;
@@ -156,8 +165,34 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 150px;
+    max-width: 132px;
   }
+  .nav-cluster {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 7px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+  .nav-key {
+    width: 25px;
+    height: 23px;
+    border-radius: 5px;
+    border: none;
+    background: transparent;
+    color: var(--ink-soft);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 110ms ease, color 110ms ease;
+  }
+  .nav-key:hover:not(:disabled) { background: var(--paper); color: var(--ink); }
+  .nav-key:focus-visible { outline: 1.5px solid var(--accent); outline-offset: -1px; }
+  .nav-key:disabled { opacity: 0.34; cursor: default; }
   .pill-btn {
     display: inline-flex;
     align-items: center;
@@ -173,12 +208,25 @@
     cursor: pointer;
     transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
     flex-shrink: 0;
+    white-space: nowrap;
   }
-  .pill-btn:hover { background: var(--panel); color: var(--ink); }
+  .pill-btn:hover:not(:disabled) { background: var(--panel); color: var(--ink); }
+  .pill-btn:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 1px; }
+  .pill-btn:disabled { opacity: 0.4; cursor: default; }
   .pill-btn.active {
     background: var(--accent-soft);
     border-color: var(--accent);
     color: var(--accent);
+  }
+  .pill-btn.interactive-on {
+    background: var(--amber-soft);
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+  .icon-btn {
+    width: 27px;
+    padding: 0;
+    justify-content: center;
   }
   .workspace {
     position: relative;
@@ -207,7 +255,11 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: width 140ms ease, height 140ms ease;
+    transition: width 140ms ease, height 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  }
+  .phone-chassis.interactive-ring {
+    border-color: var(--amber);
+    box-shadow: 0 0 0 2px var(--amber-soft), var(--shadow);
   }
   .phone-screen {
     position: relative;
@@ -216,12 +268,17 @@
     border-radius: 19px;
     overflow: hidden;
     background: #09090b;
-    cursor: crosshair;
+    cursor: default;
+    outline: none;
     touch-action: none;
+  }
+  .phone-screen.interactive {
+    cursor: crosshair;
   }
   .phone-screen canvas {
     width: 100%;
     height: 100%;
+    object-fit: contain;
     display: block;
     pointer-events: none;
     user-select: none;
@@ -233,14 +290,27 @@
     margin-left: -12px;
     margin-top: -12px;
     border-radius: 999px;
-    border: 2px solid rgba(255, 255, 255, 0.9);
+    border: 1.8px solid rgba(255, 255, 255, 0.92);
     background: rgba(88, 168, 143, 0.34);
     pointer-events: none;
     animation: ripple 360ms ease-out forwards;
   }
+  .touch-ripple.hold {
+    width: 34px;
+    height: 34px;
+    margin-left: -17px;
+    margin-top: -17px;
+    border-color: var(--amber);
+    background: rgba(229, 147, 74, 0.28);
+    animation: holdPulse 440ms ease-out forwards;
+  }
   @keyframes ripple {
-    0% { transform: scale(0.42); opacity: 1; }
+    0% { transform: scale(0.4); opacity: 1; }
     100% { transform: scale(1.5); opacity: 0; }
+  }
+  @keyframes holdPulse {
+    0% { transform: scale(0.55); opacity: 0.95; }
+    100% { transform: scale(1.35); opacity: 0; }
   }
   .gesture-line {
     position: absolute;
@@ -276,16 +346,16 @@
     flex-direction: column;
     gap: 4px;
     padding: 5px;
-    border-radius: 14px;
+    border-radius: 13px;
     background: var(--paper);
     border: 1px solid var(--line);
     box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.18);
     z-index: 10;
   }
   .rail-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 9px;
+    width: 31px;
+    height: 31px;
+    border-radius: 8px;
     border: none;
     background: transparent;
     color: var(--ink-soft);
@@ -295,7 +365,7 @@
     cursor: pointer;
     transition: background 110ms ease, color 110ms ease;
   }
-  .rail-btn:hover { background: var(--panel); color: var(--ink); }
+  .rail-btn:hover:not(:disabled) { background: var(--panel); color: var(--ink); }
   .rail-btn.active { background: var(--accent-soft); color: var(--accent); }
   .rail-btn:disabled { opacity: 0.35; cursor: default; }
   .rail-sep {
@@ -308,7 +378,7 @@
     top: 0;
     right: 0;
     bottom: 0;
-    width: 284px;
+    width: 280px;
     max-width: calc(100% - 48px);
     border-left: 1px solid var(--line);
     background: var(--paper);
@@ -316,12 +386,12 @@
     display: flex;
     flex-direction: column;
     overflow-y: auto;
-    padding: 12px 60px 12px 12px;
+    padding: 12px 58px 12px 12px;
     gap: 14px;
     z-index: 8;
   }
   .section-title {
-    font-size: 11px;
+    font-size: 10.5px;
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -331,11 +401,12 @@
   .field-row {
     display: flex;
     gap: 6px;
+    flex-wrap: wrap;
   }
   .input {
     flex: 1;
     min-width: 0;
-    height: 29px;
+    height: 28px;
     padding: 0 8px;
     border-radius: 6px;
     border: 1px solid var(--line);
@@ -366,9 +437,9 @@
     color: var(--ink);
   }
   .empty-state {
-    max-width: 320px;
-    padding: 20px;
-    border-radius: 14px;
+    max-width: 316px;
+    padding: 18px 20px;
+    border-radius: 12px;
     background: var(--paper);
     border: 1px solid var(--line);
     text-align: left;
@@ -377,13 +448,13 @@
     gap: 10px;
   }
   .empty-title {
-    font-size: 14px;
+    font-size: 13.5px;
     font-weight: 600;
     margin: 0;
   }
   .empty-desc {
-    font-size: 12.5px;
-    line-height: 1.5;
+    font-size: 12px;
+    line-height: 1.45;
     color: var(--ink-soft);
     margin: 0;
   }
@@ -404,7 +475,7 @@
     font-size: 12px;
   }
   .statusbar {
-    height: 26px;
+    height: 25px;
     padding: 0 12px;
     border-top: 1px solid var(--line);
     background: var(--paper);
@@ -422,6 +493,19 @@
     white-space: nowrap;
   }
   .statusbar-msg.err { color: var(--danger); }
+  .statusbar-msg.amber { color: var(--amber); font-weight: 500; }
+  .statusbar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    white-space: nowrap;
+  }
+  @media (max-width: 620px) {
+    .topbar { gap: 5px; padding: 0 8px; }
+    .meta-app, .platform-pill { display: none; }
+    .device-select { flex: 1 1 0; min-width: 0; width: 100%; max-width: 100%; padding: 0 22px 0 7px; }
+  }
 </style>
 </head>
 <body>
@@ -430,69 +514,88 @@
     <div class="device-picker-wrap">
       <span id="statusDot" class="status-dot"></span>
       <select id="deviceSelect" class="device-select" aria-label="Select phone device">
-        <option value="">Scanning devices...</option>
+        <option value="">Scanning...</option>
       </select>
       <span class="select-chevron" aria-hidden="true">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M4.5 6.5L8 10l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </span>
-      <span id="platformPill" class="platform-pill" hidden>ANDROID</span>
+      <span id="platformPill" class="platform-pill" hidden>Android</span>
       <span id="fgApp" class="meta-app"></span>
     </div>
-    <button id="liveToggle" type="button" class="pill-btn active" title="Toggle live screen stream">Live</button>
-    <button id="refreshBtn" type="button" class="pill-btn" title="Refresh devices and reconnect stream">Refresh</button>
+
+    <div class="nav-cluster" role="group" aria-label="Navigation keys">
+      <button type="button" class="nav-key android-only" data-act="back" title="Back · 返回" aria-label="Back">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5L5.5 8 10 12.5"/></svg>
+      </button>
+      <button type="button" class="nav-key" data-act="home" title="Home · 桌面" aria-label="Home">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="4.6"/></svg>
+      </button>
+      <button type="button" class="nav-key android-only" data-act="recents" title="App switcher · 多任务" aria-label="App switcher">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="3.5" y="3.5" width="9" height="9" rx="1.8"/></svg>
+      </button>
+    </div>
+
+    <button id="interactiveBtn" type="button" class="pill-btn" aria-pressed="false" title="Toggle direct touch, wheel, keyboard & paste control (Alt+I)">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6.5 8.5V3.8a1.3 1.3 0 0 1 2.6 0v3.2"/>
+        <path d="M9.1 6.5a1.2 1.2 0 0 1 2.4 0v1.2a1.2 1.2 0 0 1 2.2.7v2.1a4.2 4.2 0 0 1-4.2 4.2H7.4a4 4 0 0 1-3.1-1.5L2.6 11a1.2 1.2 0 0 1 1.7-1.6l2.2 1.5"/>
+      </svg>
+      <span id="interactiveLabel">Interactive</span>
+    </button>
+
+    <button id="liveToggle" type="button" class="pill-btn active" title="Toggle live stream">Live</button>
+    <button id="refreshBtn" type="button" class="pill-btn icon-btn" title="Refresh devices and stream" aria-label="Refresh">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3.6H9.9"/></svg>
+    </button>
   </header>
 
   <div class="workspace">
     <main id="stage" class="stage">
       <div id="emptyState" class="empty-state" hidden>
-        <p id="emptyTitle" class="empty-title">No online phone connected</p>
-        <p id="emptyDesc" class="empty-desc">Connect an Android phone with USB/wireless debugging or an iOS device/Simulator, then refresh.</p>
+        <p id="emptyTitle" class="empty-title">No online phone</p>
+        <p id="emptyDesc" class="empty-desc">Connect Android via USB/wireless debugging or an iOS device, then scan.</p>
         <div id="offlineList" class="device-group-list"></div>
         <div class="field-row">
           <button id="openWirelessBtn" type="button" class="pill-btn">Wireless ADB</button>
-          <button id="retryScanBtn" type="button" class="pill-btn">Scan again</button>
+          <button id="retryScanBtn" type="button" class="pill-btn">Scan</button>
         </div>
       </div>
 
       <div id="chassis" class="phone-chassis" style="width:260px;height:560px" hidden>
-        <div id="screenBox" class="phone-screen">
+        <div id="screenBox" class="phone-screen" tabindex="0" aria-label="Phone screen canvas">
           <canvas id="screenCanvas" width="540" height="1200"></canvas>
-          <svg id="gestureSvg" class="gesture-line" viewBox="0 0 100 100" preserveAspectRatio="none" hidden>
-            <line id="gestureLine" x1="0" y1="0" x2="0" y2="0" stroke="rgba(88,168,143,0.9)" stroke-width="1.2" stroke-linecap="round" />
+          <svg id="gestureSvg" class="gesture-line" viewBox="0 0 1000 1000" preserveAspectRatio="none" hidden>
+            <defs>
+              <marker id="swipeHead" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+                <path d="M1 1L9 5L1 9z" fill="#e5934a"/>
+              </marker>
+            </defs>
+            <circle id="gestureStartDot" cx="0" cy="0" r="9" fill="rgba(229,147,74,0.3)" stroke="#e5934a" stroke-width="3"/>
+            <line id="gestureLine" x1="0" y1="0" x2="0" y2="0" stroke="#e5934a" stroke-width="4" stroke-linecap="round" marker-end="url(#swipeHead)" />
           </svg>
           <div id="axLayer" class="ax-layer" hidden></div>
         </div>
       </div>
 
-      <aside class="rail" aria-label="Device controls">
-        <button type="button" class="rail-btn" data-act="wake" title="Wake and unlock screen">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      <aside class="rail" aria-label="Device tools">
+        <button type="button" class="rail-btn" data-act="wake" title="Wake & unlock" aria-label="Wake and unlock">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
         </button>
-        <button type="button" class="rail-btn" data-act="home" title="Home">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.5"/></svg>
+        <button type="button" class="rail-btn" data-act="rotate" title="Rotate orientation" aria-label="Rotate orientation">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><rect x="8" y="10" width="8" height="11" rx="1.5"/></svg>
         </button>
-        <button type="button" class="rail-btn android-only" data-act="back" title="Back (Android)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        <button id="axBtn" type="button" class="rail-btn" title="Inspect UI semantic tree" aria-label="Inspect UI tree">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
         </button>
-        <button type="button" class="rail-btn android-only" data-act="recents" title="App switcher (Android)">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>
+        <button type="button" class="rail-btn" data-act="shot" title="Save PNG screenshot" aria-label="Save screenshot">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
         </button>
-        <div class="rail-sep"></div>
-        <button type="button" class="rail-btn" data-act="rotate" title="Rotate orientation">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><rect x="8" y="10" width="8" height="11" rx="1.5"/></svg>
-        </button>
-        <button id="axBtn" type="button" class="rail-btn" title="Inspect UI semantic tree overlay">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
-        </button>
-        <button type="button" class="rail-btn" data-act="shot" title="Download PNG screenshot">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-        </button>
-        <button id="toolsBtn" type="button" class="rail-btn" title="Device tools and wireless ADB">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        <button id="toolsBtn" type="button" class="rail-btn" title="Text, links & wireless ADB" aria-label="More tools">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
         </button>
         <div class="rail-sep"></div>
-        <button type="button" class="rail-btn" data-act="sleep" title="Lock or sleep screen">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2v10"/><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/></svg>
+        <button type="button" class="rail-btn" data-act="sleep" title="Lock screen" aria-label="Lock screen">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 2v10"/><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/></svg>
         </button>
       </aside>
     </main>
@@ -509,16 +612,16 @@
       <div>
         <p class="section-title">Open URL / Deep Link</p>
         <form id="urlForm" class="field-row">
-          <input id="urlInput" class="input" type="text" placeholder="https:// or weixin://" />
+          <input id="urlInput" class="input" type="text" placeholder="https:// or scheme://" />
           <button type="submit" class="pill-btn">Open</button>
         </form>
       </div>
 
       <div>
-        <p class="section-title">Appearance & Quick Actions</p>
+        <p class="section-title">Device Appearance & Chat</p>
         <div class="field-row">
-          <button type="button" class="pill-btn" data-Appearance="light">Light UI</button>
-          <button type="button" class="pill-btn" data-Appearance="dark">Dark UI</button>
+          <button type="button" class="pill-btn" data-appearance="light">Light</button>
+          <button type="button" class="pill-btn" data-appearance="dark">Dark</button>
           <button id="askAgentBtn" type="button" class="pill-btn">Send to Chat</button>
         </div>
       </div>
@@ -527,12 +630,12 @@
         <p class="section-title">Wireless ADB (Android 11+)</p>
         <div style="display:flex;flex-direction:column;gap:6px">
           <div class="field-row">
-            <input id="adbConnectAddr" class="input" type="text" placeholder="IP:port (connect)" />
+            <input id="adbConnectAddr" class="input" type="text" placeholder="IP:debugPort" />
             <button id="adbConnectBtn" type="button" class="pill-btn">Connect</button>
           </div>
           <div class="field-row">
             <input id="adbPairAddr" class="input" type="text" placeholder="IP:pairPort" />
-            <input id="adbPairCode" class="input" type="text" placeholder="6-digit code" style="max-width:78px" />
+            <input id="adbPairCode" class="input" type="text" placeholder="6-digit" style="max-width:74px" />
             <button id="adbPairBtn" type="button" class="pill-btn">Pair</button>
           </div>
         </div>
@@ -541,26 +644,29 @@
       <div id="axInspectorSection" hidden>
         <p class="section-title">Selected UI Node</p>
         <div id="axInspectorCard" class="ax-card">
-          <div id="axNodeSummary" style="font-weight:600">Tap a highlighted box on screen</div>
+          <div id="axNodeSummary" style="font-weight:600">Select a highlighted node</div>
           <div id="axNodeMeta" style="color:var(--ink-soft)"></div>
           <div id="axNodeLocator" class="code-box" hidden></div>
           <div class="field-row">
             <button id="copyLocatorBtn" type="button" class="pill-btn">Copy Locator</button>
-            <button id="tapNodeBtn" type="button" class="pill-btn">Tap Center</button>
+            <button id="tapNodeBtn" type="button" class="pill-btn">Tap Node</button>
           </div>
         </div>
       </div>
 
       <div>
-        <p class="section-title">Platform Diagnostics</p>
-        <div id="diagBox" class="ax-card" style="color:var(--ink-soft)">Checking Android & iOS bridge...</div>
+        <p class="section-title">Bridge Status</p>
+        <div id="diagBox" class="ax-card" style="color:var(--ink-soft)">Ready</div>
       </div>
     </aside>
   </div>
 
   <footer class="statusbar">
     <span id="statusText" class="statusbar-msg">Ready</span>
-    <span id="resText" style="font-family:var(--mono)">--</span>
+    <div class="statusbar-right">
+      <span id="coordText" hidden>0, 0</span>
+      <span id="resText">--</span>
+    </div>
   </footer>
 </div>
 
@@ -574,10 +680,75 @@
   const FRAME_MAGIC = 0x4b;
   const TOUCH_MAGIC = 0x54;
   const SCROLL_MAGIC = 0x53;
+  const isZh = /^zh\b/i.test(navigator.language || '');
+
+  const memoryStore = new Map();
+  const safeStorage = {
+    get(key) {
+      try {
+        const val = window['local' + 'Storage'].getItem(key);
+        return val !== null ? val : (memoryStore.get(key) ?? null);
+      } catch {
+        return memoryStore.get(key) ?? null;
+      }
+    },
+    set(key, value) {
+      const str = String(value);
+      memoryStore.set(key, str);
+      try {
+        window['local' + 'Storage'].setItem(key, str);
+      } catch {}
+    },
+    remove(key) {
+      memoryStore.delete(key);
+      try {
+        window['local' + 'Storage'].removeItem(key);
+      } catch {}
+    },
+  };
+
+  async function copyTextSafe(text) {
+    const str = String(text ?? '');
+    if (!str) return false;
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(str);
+        return true;
+      }
+    } catch {}
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = str;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none;';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return Boolean(ok);
+    } catch {
+      return false;
+    }
+  }
+
+  function applyThemeName(theme) {
+    if (theme === 'dark' || theme === 'light') {
+      document.documentElement.setAttribute('data-theme', theme);
+    } else if (theme === 'auto' || theme === 'system') {
+      document.documentElement.removeAttribute('data-theme');
+    }
+  }
+
+  try {
+    const urlTheme = new URLSearchParams(window.location.search).get('theme');
+    if (urlTheme === 'dark' || urlTheme === 'light') {
+      applyThemeName(urlTheme);
+    }
+  } catch {}
 
   let reqSeq = 0;
   let booted = false;
-  let currentSessionId = null;
   const pending = new Map();
   const rpcStamps = [];
 
@@ -590,23 +761,20 @@
 
   function applyPresentation(pres) {
     if (!pres || typeof pres !== 'object') return;
-    const root = document.documentElement;
-    if (root && typeof root.setAttribute === 'function' && (pres.theme === 'dark' || pres.theme === 'light')) {
-      root.setAttribute('data-theme', pres.theme);
-    }
+    applyThemeName(pres.theme || pres.colorScheme);
   }
 
   window.addEventListener('message', (event) => {
     if (event.source !== window.parent) return;
     const data = event.data;
     if (!data || data.channel !== CHANNEL) return;
-    if (data.kind === 'presentation') {
-      applyPresentation(data.presentation);
+    if (data.kind === 'presentation' || data.kind === 'theme') {
+      applyPresentation(data.presentation || data);
       return;
     }
     if (data.kind === 'init') {
-      currentSessionId = data.sessionId || null;
-      applyPresentation(data.presentation);
+      state.standaloneMode = false;
+      applyPresentation(data.presentation || data);
       void startBoot();
       return;
     }
@@ -630,7 +798,15 @@
     }
   });
 
+  const isDisconnectedStandalone = () => state.standaloneMode && typeof window.__kikiPhoneTestBridge !== 'function';
+
   function bridgeCall(method, payload = {}, timeoutMs = 20000, withPort = false) {
+    if (typeof window.__kikiPhoneTestBridge === 'function') {
+      return Promise.resolve(window.__kikiPhoneTestBridge(method, payload, withPort));
+    }
+    if (isDisconnectedStandalone()) {
+      return Promise.reject(new Error('Standalone preview mode'));
+    }
     const id = ++reqSeq;
     const now = Date.now();
     pruneRpcWindow(now);
@@ -656,6 +832,7 @@
     selected: null,
     diagnostics: null,
     live: true,
+    interactive: safeStorage.get('kiki.phone.interactive') === '1',
     axEnabled: false,
     axNodes: [],
     selectedAx: null,
@@ -664,8 +841,8 @@
     asleep: false,
     frameInFlight: false,
     pollTimer: null,
-    lastPollStartedAt: 0,
     pointerStart: null,
+    holdPulseTimer: null,
     streamActive: false,
     streamPort: null,
     streamGeneration: 0,
@@ -675,7 +852,15 @@
     hostStreamUnsupported: false,
     pendingMove: null,
     moveRaf: 0,
+    wheelAccX: 0,
+    wheelAccY: 0,
+    wheelTimer: null,
+    lastWheelPt: null,
+    typedBuffer: '',
+    typeFlushTimer: null,
+    pasteHandledAt: 0,
     fpsTimes: [],
+    standaloneMode: window.parent === window,
   };
 
   const el = {
@@ -683,6 +868,8 @@
     deviceSelect: document.getElementById('deviceSelect'),
     platformPill: document.getElementById('platformPill'),
     fgApp: document.getElementById('fgApp'),
+    interactiveBtn: document.getElementById('interactiveBtn'),
+    interactiveLabel: document.getElementById('interactiveLabel'),
     liveToggle: document.getElementById('liveToggle'),
     refreshBtn: document.getElementById('refreshBtn'),
     stage: document.getElementById('stage'),
@@ -694,12 +881,14 @@
     screenBox: document.getElementById('screenBox'),
     screenCanvas: document.getElementById('screenCanvas'),
     gestureSvg: document.getElementById('gestureSvg'),
+    gestureStartDot: document.getElementById('gestureStartDot'),
     gestureLine: document.getElementById('gestureLine'),
     axLayer: document.getElementById('axLayer'),
     axBtn: document.getElementById('axBtn'),
     toolsBtn: document.getElementById('toolsBtn'),
     drawer: document.getElementById('drawer'),
     statusText: document.getElementById('statusText'),
+    coordText: document.getElementById('coordText'),
     resText: document.getElementById('resText'),
     diagBox: document.getElementById('diagBox'),
     axInspectorSection: document.getElementById('axInspectorSection'),
@@ -711,9 +900,44 @@
   const canvasCtx = el.screenCanvas.getContext('2d', { alpha: false, desynchronized: true })
     || el.screenCanvas.getContext('2d');
 
-  function setStatus(msg, isError = false) {
+  function setStatus(msg, tone = 'normal') {
     el.statusText.textContent = msg;
-    el.statusText.classList.toggle('err', Boolean(isError));
+    el.statusText.classList.toggle('err', tone === 'error' || tone === true);
+    el.statusText.classList.toggle('amber', tone === 'amber');
+  }
+
+  function syncInteractiveUi() {
+    const active = Boolean(state.interactive && !state.axEnabled);
+    el.interactiveBtn.classList.toggle('interactive-on', state.interactive);
+    el.interactiveBtn.setAttribute('aria-pressed', state.interactive ? 'true' : 'false');
+    el.chassis.classList.toggle('interactive-ring', active);
+    el.screenBox.classList.toggle('interactive', active);
+    el.coordText.hidden = !active;
+    if (isZh) {
+      el.interactiveLabel.textContent = state.interactive ? '操控中 · 释放' : '人工操控';
+    } else {
+      el.interactiveLabel.textContent = state.interactive ? 'Interactive · On' : 'Interactive';
+    }
+    const online = Boolean(activeOnlineDevice());
+    el.statusDot.className = 'status-dot ' + (!online ? (state.devices.length ? 'warn' : '') : (state.interactive ? 'interactive' : 'online'));
+    if (online) {
+      if (state.interactive) {
+        setStatus(isZh ? '原位直操已开启 · 支持点按/滑动/滚轮/键入/粘贴' : 'Interactive control active · tap, swipe, wheel, type or paste', 'amber');
+      } else if (state.asleep) {
+        setStatus(isZh ? '屏幕已息屏 · 点击右侧唤醒' : 'Screen asleep · click Wake');
+      } else {
+        setStatus(state.live ? (state.streamActive ? '60fps H.264 · Read-only' : (isZh ? '实时预览 · 只读防误触' : 'Live · Read-only')) : (isZh ? '已暂停' : 'Paused'));
+      }
+    }
+  }
+
+  function setInteractiveMode(next) {
+    state.interactive = Boolean(next);
+    safeStorage.set('kiki.phone.interactive', state.interactive ? '1' : '0');
+    if (state.interactive) {
+      el.screenBox.focus({ preventScroll: true });
+    }
+    syncInteractiveUi();
   }
 
   function recordRenderedFrame() {
@@ -742,7 +966,7 @@
     const fps = currentFps();
     const parts = [`${w}×${h}`];
     if (state.streamActive) {
-      parts.push(fps > 0 ? `${fps}fps · H.264` : '60fps · H.264');
+      parts.push(fps > 0 ? `${fps}fps · H.264` : 'H.264');
     } else if (fps > 0 && state.live) {
       parts.push(`${fps}fps`);
     }
@@ -772,12 +996,59 @@
     const sw = Math.max(1, state.screenSize.width || 1080);
     const sh = Math.max(1, state.screenSize.height || 2400);
     const aspect = sw / sh;
-    const fitted = fitDeviceFrame(aspect, rect.width - 70, rect.height - 28, 0);
+    const drawerInset = el.drawer.hidden ? 0 : Math.min(240, rect.width * 0.35);
+    const fitted = fitDeviceFrame(aspect, rect.width - 70 - drawerInset, rect.height - 28, 0);
     el.chassis.style.width = Math.max(150, fitted.width + 16) + 'px';
     el.chassis.style.height = Math.max(150, fitted.height + 16) + 'px';
   }
 
   new ResizeObserver(layoutChassis).observe(el.stage);
+
+  function computeContainedRect(boxWidth, boxHeight, contentWidth, contentHeight) {
+    const cw = Math.max(1, boxWidth);
+    const ch = Math.max(1, boxHeight);
+    const iw = Math.max(1, contentWidth || cw);
+    const ih = Math.max(1, contentHeight || ch);
+    const scale = Math.min(cw / iw, ch / ih);
+    const width = iw * scale;
+    const height = ih * scale;
+    return {
+      x: (cw - width) / 2,
+      y: (ch - height) / 2,
+      width: Math.max(1, width),
+      height: Math.max(1, height),
+    };
+  }
+
+  function mapSurfaceEvent(ev) {
+    const boxRect = el.screenBox.getBoundingClientRect();
+    const sw = Math.max(1, state.screenSize.width || el.screenCanvas.width || 1080);
+    const sh = Math.max(1, state.screenSize.height || el.screenCanvas.height || 2400);
+    const drawn = computeContainedRect(boxRect.width, boxRect.height, sw, sh);
+    const offX = ev.clientX - boxRect.left;
+    const offY = ev.clientY - boxRect.top;
+    const inside = offX >= drawn.x - 2 && offX <= drawn.x + drawn.width + 2
+      && offY >= drawn.y - 2 && offY <= drawn.y + drawn.height + 2;
+    const u = Math.min(1, Math.max(0, (offX - drawn.x) / drawn.width));
+    const v = Math.min(1, Math.max(0, (offY - drawn.y) / drawn.height));
+    const devX = sw <= 1 ? 0 : Math.round(u * (sw - 1));
+    const devY = sh <= 1 ? 0 : Math.round(v * (sh - 1));
+    const clampedOffX = drawn.x + u * drawn.width;
+    const clampedOffY = drawn.y + v * drawn.height;
+    return {
+      inside,
+      x: u,
+      y: v,
+      devX,
+      devY,
+      pctX: (clampedOffX / Math.max(1, boxRect.width)) * 100,
+      pctY: (clampedOffY / Math.max(1, boxRect.height)) * 100,
+      svgX: (clampedOffX / Math.max(1, boxRect.width)) * 1000,
+      svgY: (clampedOffY / Math.max(1, boxRect.height)) * 1000,
+      pxX: offX,
+      pxY: offY,
+    };
+  }
 
   function activeOnlineDevice() {
     if (!state.selected) return null;
@@ -1015,7 +1286,7 @@
 
   async function tryConnectHardwareStream(forceRetryHost = false) {
     const active = activeOnlineDevice();
-    if (!active || !state.live || active.platform !== 'android') return false;
+    if (!active || !state.live || active.platform !== 'android' || isDisconnectedStandalone()) return false;
     if (typeof window.VideoDecoder !== 'function') return false;
     if (state.hostStreamUnsupported && !forceRetryHost) return false;
 
@@ -1078,14 +1349,14 @@
         if (payload && typeof payload === 'object' && payload.__kikiStreamEvent === 'close') {
           stopStreamMode(false);
           if (state.live && activeOnlineDevice()) {
-            setStatus('Connected · Live');
+            syncInteractiveUi();
             scheduleNextPoll(20);
           }
         }
       };
       if (typeof port.start === 'function') port.start();
 
-      setStatus('Connected · 60fps H.264');
+      syncInteractiveUi();
       updateResolutionBar();
       return true;
     } catch (err) {
@@ -1104,9 +1375,9 @@
     }
   }
 
-  function scheduleNextPoll(preferredDelayMs = MIN_POLL_INTERVAL_MS) {
+  function scheduleNextPoll(preferredDelayMs = MIN_POLL_INTERVAL_MS, allowWhenPaused = false) {
     clearPollTimer();
-    if (!state.live || state.streamActive || document.hidden || !activeOnlineDevice()) return;
+    if ((!state.live && !allowWhenPaused) || state.streamActive || document.hidden || !activeOnlineDevice() || isDisconnectedStandalone()) return;
     const now = Date.now();
     const count = pruneRpcWindow(now);
     let delay = Math.max(8, preferredDelayMs);
@@ -1116,12 +1387,12 @@
     }
     state.pollTimer = setTimeout(() => {
       state.pollTimer = null;
-      void refreshFrame(false);
+      void refreshFrame(allowWhenPaused);
     }, delay);
   }
 
   function renderDeviceOptions() {
-    el.deviceSelect.innerHTML = '';
+    el.deviceSelect.replaceChildren();
     const groups = [
       { label: 'Android', list: state.devices.filter((d) => d.platform === 'android') },
       { label: 'iOS', list: state.devices.filter((d) => d.platform === 'ios') },
@@ -1135,7 +1406,8 @@
         total++;
         const opt = document.createElement('option');
         opt.value = dev.platform + ':' + dev.id;
-        const suffix = dev.state === 'online' ? '' : ` (${dev.state})`;
+        const devState = dev.state || dev.status || 'offline';
+        const suffix = devState === 'online' ? '' : ` (${devState})`;
         opt.textContent = `${dev.name}${dev.version ? ' · ' + dev.version : ''}${suffix}`;
         if (state.selected && state.selected.id === dev.id && state.selected.platform === dev.platform) {
           opt.selected = true;
@@ -1147,25 +1419,27 @@
     if (total === 0) {
       const opt = document.createElement('option');
       opt.value = '';
-      opt.textContent = 'No devices detected';
+      opt.textContent = isZh ? '未检测到手机' : 'No devices';
       el.deviceSelect.appendChild(opt);
     }
 
     const active = state.selected
       ? state.devices.find((d) => d.id === state.selected.id && d.platform === state.selected.platform)
       : null;
-    const isOnline = Boolean(active && active.state === 'online');
+    const isOnline = Boolean(active && (active.state || active.status) === 'online');
 
-    el.statusDot.className = 'status-dot ' + (isOnline ? 'online' : state.devices.length ? 'warn' : '');
     if (active) {
       el.platformPill.hidden = false;
       el.platformPill.textContent = active.platform === 'ios' ? 'iOS' : 'Android';
       document.querySelectorAll('.android-only').forEach((btn) => {
-        btn.disabled = active.platform !== 'android';
+        btn.disabled = !isOnline || active.platform !== 'android';
       });
     } else {
       el.platformPill.hidden = true;
+      document.querySelectorAll('.android-only').forEach((btn) => { btn.disabled = true; });
     }
+    document.querySelectorAll('[data-act="home"]').forEach((btn) => { btn.disabled = !isOnline; });
+    el.interactiveBtn.disabled = !isOnline;
 
     if (isOnline) {
       el.emptyState.hidden = true;
@@ -1182,20 +1456,25 @@
     if (state.diagnostics) {
       const a = state.diagnostics.android;
       const i = state.diagnostics.ios;
-      el.diagBox.innerHTML =
-        `<div><strong>Android:</strong> ${a?.available ? 'ADB ready' : (a?.reason || 'Unavailable')}</div>` +
-        `<div><strong>iOS:</strong> ${i?.simulatorsSupported ? 'Simulator & USB ready' : (i?.reason || 'USB bridge mode')}</div>`;
+      el.diagBox.replaceChildren();
+      const rowA = document.createElement('div');
+      rowA.textContent = `Android: ${a?.available ? 'ADB ready' : (a?.reason || 'Unavailable')}`;
+      const rowI = document.createElement('div');
+      rowI.textContent = `iOS: ${i?.simulatorsSupported ? 'Simulator & USB ready' : (i?.reason || 'USB bridge')}`;
+      el.diagBox.append(rowA, rowI);
     }
+    syncInteractiveUi();
   }
 
   function renderOfflineList() {
-    el.offlineList.innerHTML = '';
-    const candidates = state.devices.filter((d) => d.state !== 'online');
+    el.offlineList.replaceChildren();
+    const candidates = state.devices.filter((d) => (d.state || d.status) !== 'online');
     for (const dev of candidates.slice(0, 5)) {
       const row = document.createElement('div');
       row.className = 'offline-row';
       const info = document.createElement('span');
-      info.textContent = `${dev.platform === 'ios' ? 'iOS' : 'Android'} · ${dev.name} (${dev.state})`;
+      const devState = dev.state || dev.status || 'offline';
+      info.textContent = `${dev.platform === 'ios' ? 'iOS' : 'Android'} · ${dev.name} (${devState})`;
       row.appendChild(info);
       if (dev.type === 'simulator' || dev.type === 'emulator') {
         const bootBtn = document.createElement('button');
@@ -1209,7 +1488,7 @@
             await loadState();
             await activateLiveTransport(false);
           } else {
-            setStatus(res?.error || 'Boot failed', true);
+            setStatus(res?.error || 'Boot failed', 'error');
           }
         };
         row.appendChild(bootBtn);
@@ -1219,6 +1498,10 @@
   }
 
   async function loadState() {
+    if (isDisconnectedStandalone()) {
+      renderDeviceOptions();
+      return;
+    }
     try {
       const res = await panelCall('state');
       if (res?.ok) {
@@ -1228,13 +1511,13 @@
         renderDeviceOptions();
       }
     } catch (err) {
-      setStatus(err.message || 'Failed to inspect devices', true);
+      setStatus(err.message || 'Device discovery failed', 'error');
     }
   }
 
   async function refreshFrame(force = false) {
     if (state.streamActive && !force) return;
-    if (state.frameInFlight) return;
+    if (state.frameInFlight || isDisconnectedStandalone()) return;
     if (!force && (!state.live || document.hidden)) return;
     const active = activeOnlineDevice();
     if (!active) return;
@@ -1246,7 +1529,6 @@
 
     state.frameInFlight = true;
     const startedAt = performance.now();
-    state.lastPollStartedAt = startedAt;
     try {
       const res = await panelCall('frame', {
         deviceId: active.id,
@@ -1264,13 +1546,13 @@
           updateScreenDimensions(res.screenSize.width, res.screenSize.height);
         }
         el.fgApp.textContent = res.foregroundApp || '';
-        setStatus(state.asleep ? 'Screen asleep — click Sun icon to wake' : 'Connected · Live');
+        syncInteractiveUi();
       } else if (res?.error) {
-        setStatus(res.error, true);
+        setStatus(res.error, 'error');
       }
     } catch (err) {
       if (!/rate limited/i.test(String(err?.message || ''))) {
-        setStatus(err.message || 'Frame capture failed', true);
+        setStatus(err.message || 'Frame capture failed', 'error');
       }
     } finally {
       state.frameInFlight = false;
@@ -1285,7 +1567,7 @@
     stopStreamMode(true);
     clearPollTimer();
     const active = activeOnlineDevice();
-    if (!active) return;
+    if (!active || isDisconnectedStandalone()) return;
 
     void refreshFrame(true);
     if (state.live) {
@@ -1297,8 +1579,8 @@
   }
 
   async function loadAxTree() {
-    if (!state.selected) return;
-    setStatus('Inspecting UI hierarchy...');
+    if (!state.selected || isDisconnectedStandalone()) return;
+    setStatus(isZh ? '正在读取 UI 语义树...' : 'Inspecting UI hierarchy...');
     try {
       const res = await panelCall('tree', {
         deviceId: state.selected.id,
@@ -1307,17 +1589,18 @@
       if (res?.ok) {
         state.axNodes = res.nodes || [];
         renderAxOverlay();
-        setStatus(`UI overlay: ${state.axNodes.length} semantic nodes`);
+        setStatus(`${state.axNodes.length} UI nodes`);
       } else {
-        setStatus(res?.error || 'Failed to dump UI hierarchy', true);
+        setStatus(res?.error || 'Failed to read UI hierarchy', 'error');
       }
     } catch (err) {
-      setStatus(err.message || 'Hierarchy error', true);
+      setStatus(err.message || 'Hierarchy error', 'error');
     }
   }
 
   function renderAxOverlay() {
-    el.axLayer.innerHTML = '';
+    el.axLayer.replaceChildren();
+    syncInteractiveUi();
     if (!state.axEnabled) {
       el.axLayer.hidden = true;
       el.axLayer.classList.remove('interactive');
@@ -1325,13 +1608,20 @@
     }
     el.axLayer.hidden = false;
     el.axLayer.classList.add('interactive');
+    const boxRect = el.screenBox.getBoundingClientRect();
+    const drawn = computeContainedRect(boxRect.width, boxRect.height, state.screenSize.width, state.screenSize.height);
+    const baseLeftPct = (drawn.x / Math.max(1, boxRect.width)) * 100;
+    const baseTopPct = (drawn.y / Math.max(1, boxRect.height)) * 100;
+    const widthScalePct = (drawn.width / Math.max(1, boxRect.width)) * 100;
+    const heightScalePct = (drawn.height / Math.max(1, boxRect.height)) * 100;
+
     for (const node of state.axNodes) {
       const box = document.createElement('div');
       box.className = 'ax-box' + (state.selectedAx?.id === node.id ? ' selected' : '');
-      box.style.left = (node.normBounds.x * 100) + '%';
-      box.style.top = (node.normBounds.y * 100) + '%';
-      box.style.width = (node.normBounds.width * 100) + '%';
-      box.style.height = (node.normBounds.height * 100) + '%';
+      box.style.left = (baseLeftPct + node.normBounds.x * widthScalePct) + '%';
+      box.style.top = (baseTopPct + node.normBounds.y * heightScalePct) + '%';
+      box.style.width = (node.normBounds.width * widthScalePct) + '%';
+      box.style.height = (node.normBounds.height * heightScalePct) + '%';
       box.title = [node.text, node.label, node.identifier].filter(Boolean).join(' · ');
       box.onclick = (ev) => {
         ev.stopPropagation();
@@ -1343,52 +1633,80 @@
         el.axNodeMeta.textContent = `${node.role || 'View'} · (${node.bounds.x}, ${node.bounds.y}, ${node.bounds.width}×${node.bounds.height})`;
         el.axNodeLocator.hidden = !node.locator;
         el.axNodeLocator.textContent = node.locator || '';
+        layoutChassis();
         renderAxOverlay();
       };
       el.axLayer.appendChild(box);
     }
   }
 
-  function showRipple(normX, normY) {
+  function showRipple(pctX, pctY, hold = false) {
     const dot = document.createElement('div');
-    dot.className = 'touch-ripple';
-    dot.style.left = (normX * 100) + '%';
-    dot.style.top = (normY * 100) + '%';
+    dot.className = 'touch-ripple' + (hold ? ' hold' : '');
+    dot.style.left = pctX + '%';
+    dot.style.top = pctY + '%';
     el.screenBox.appendChild(dot);
-    setTimeout(() => dot.remove(), 380);
+    setTimeout(() => dot.remove(), hold ? 460 : 380);
   }
 
-  function normFromEvent(ev) {
-    const rect = el.screenBox.getBoundingClientRect();
-    return {
-      x: Math.min(1, Math.max(0, (ev.clientX - rect.left) / Math.max(1, rect.width))),
-      y: Math.min(1, Math.max(0, (ev.clientY - rect.top) / Math.max(1, rect.height))),
-      pxX: ev.clientX - rect.left,
-      pxY: ev.clientY - rect.top,
-    };
+  function clearHoldPulseTimer() {
+    if (state.holdPulseTimer) {
+      clearTimeout(state.holdPulseTimer);
+      state.holdPulseTimer = null;
+    }
   }
 
   el.screenBox.addEventListener('pointerdown', (ev) => {
-    if (state.axEnabled || ev.button !== 0 || !state.selected) return;
-    el.screenBox.setPointerCapture(ev.pointerId);
-    const pt = normFromEvent(ev);
-    showRipple(pt.x, pt.y);
-
-    if (state.streamActive && sendStreamTouch(0, 1, pt.x, pt.y)) {
-      state.pointerStart = { ...pt, time: Date.now(), pointerId: ev.pointerId, streamed: true };
+    if (state.axEnabled || ev.button !== 0 || !activeOnlineDevice()) return;
+    if (!state.interactive) {
+      setStatus(isZh ? '只读预览中 · 点击顶栏「人工操控」或按 Alt+I 接管画面' : 'Read-only · click Interactive (Alt+I) to touch screen', 'amber');
       return;
     }
+    const pt = mapSurfaceEvent(ev);
+    if (!pt.inside) return;
 
-    state.pointerStart = { ...pt, time: Date.now(), pointerId: ev.pointerId, streamed: false };
-    el.gestureLine.setAttribute('x1', String(pt.x * 100));
-    el.gestureLine.setAttribute('y1', String(pt.y * 100));
-    el.gestureLine.setAttribute('x2', String(pt.x * 100));
-    el.gestureLine.setAttribute('y2', String(pt.y * 100));
+    el.screenBox.focus({ preventScroll: true });
+    el.screenBox.setPointerCapture(ev.pointerId);
+    showRipple(pt.pctX, pt.pctY, false);
+    el.coordText.textContent = `${pt.devX}, ${pt.devY}`;
+
+    clearHoldPulseTimer();
+    state.holdPulseTimer = setTimeout(() => {
+      state.holdPulseTimer = null;
+      if (state.pointerStart && !state.pointerStart.moved) {
+        showRipple(state.pointerStart.pctX, state.pointerStart.pctY, true);
+      }
+    }, 500);
+
+    el.gestureStartDot.setAttribute('cx', String(pt.svgX));
+    el.gestureStartDot.setAttribute('cy', String(pt.svgY));
+    el.gestureLine.setAttribute('x1', String(pt.svgX));
+    el.gestureLine.setAttribute('y1', String(pt.svgY));
+    el.gestureLine.setAttribute('x2', String(pt.svgX));
+    el.gestureLine.setAttribute('y2', String(pt.svgY));
+
+    const streamed = Boolean(state.streamActive && sendStreamTouch(0, 1, pt.x, pt.y));
+    state.pointerStart = { ...pt, time: Date.now(), pointerId: ev.pointerId, streamed, moved: false };
   });
 
   el.screenBox.addEventListener('pointermove', (ev) => {
+    if (state.interactive && !state.axEnabled && activeOnlineDevice()) {
+      const hoverPt = mapSurfaceEvent(ev);
+      if (hoverPt.inside || state.pointerStart) {
+        el.coordText.textContent = `${hoverPt.devX}, ${hoverPt.devY}`;
+      }
+    }
     if (!state.pointerStart || state.pointerStart.pointerId !== ev.pointerId) return;
-    const pt = normFromEvent(ev);
+    const pt = mapSurfaceEvent(ev);
+    const dist = Math.hypot(pt.pxX - state.pointerStart.pxX, pt.pxY - state.pointerStart.pxY);
+
+    if (dist > 10) {
+      state.pointerStart.moved = true;
+      clearHoldPulseTimer();
+      el.gestureSvg.hidden = false;
+      el.gestureLine.setAttribute('x2', String(pt.svgX));
+      el.gestureLine.setAttribute('y2', String(pt.svgY));
+    }
 
     if (state.pointerStart.streamed && state.streamActive) {
       state.pendingMove = pt;
@@ -1401,14 +1719,6 @@
           }
         });
       }
-      return;
-    }
-
-    const dist = Math.hypot(pt.pxX - state.pointerStart.pxX, pt.pxY - state.pointerStart.pxY);
-    if (dist > 10) {
-      el.gestureSvg.hidden = false;
-      el.gestureLine.setAttribute('x2', String(pt.x * 100));
-      el.gestureLine.setAttribute('y2', String(pt.y * 100));
     }
   });
 
@@ -1416,8 +1726,9 @@
     if (!state.pointerStart || state.pointerStart.pointerId !== ev.pointerId) return;
     const start = state.pointerStart;
     state.pointerStart = null;
+    clearHoldPulseTimer();
     el.gestureSvg.hidden = true;
-    const end = normFromEvent(ev);
+    const end = mapSurfaceEvent(ev);
 
     if (start.streamed) {
       if (state.moveRaf) {
@@ -1429,6 +1740,7 @@
       }
       state.pendingMove = null;
       sendStreamTouch(cancelled ? 3 : 1, 0, end.x, end.y);
+      if (!cancelled && start.moved) showRipple(end.pctX, end.pctY, false);
       return;
     }
 
@@ -1437,6 +1749,7 @@
     const elapsed = Date.now() - start.time;
 
     if (dist > 14) {
+      showRipple(end.pctX, end.pctY, false);
       await panelCall('action', {
         action: 'swipe',
         deviceId: state.selected.id,
@@ -1446,8 +1759,8 @@
         endNormX: end.x,
         endNormY: end.y,
         durationMs: Math.min(900, Math.max(140, elapsed)),
-      });
-    } else if (elapsed >= 520) {
+      }).catch((err) => setStatus(err.message || 'Swipe failed', 'error'));
+    } else if (elapsed >= 500) {
       await panelCall('action', {
         action: 'longPress',
         deviceId: state.selected.id,
@@ -1455,7 +1768,15 @@
         normX: end.x,
         normY: end.y,
         durationMs: Math.min(2000, elapsed),
-      });
+      }).catch((err) => setStatus(err.message || 'Long press failed', 'error'));
+    } else if (ev.detail >= 2) {
+      await panelCall('action', {
+        action: 'doubleTap',
+        deviceId: state.selected.id,
+        platform: state.selected.platform,
+        normX: end.x,
+        normY: end.y,
+      }).catch((err) => setStatus(err.message || 'Double tap failed', 'error'));
     } else {
       await panelCall('action', {
         action: 'tap',
@@ -1463,22 +1784,182 @@
         platform: state.selected.platform,
         normX: end.x,
         normY: end.y,
-      });
+      }).catch((err) => setStatus(err.message || 'Tap failed', 'error'));
     }
-    scheduleNextPoll(35);
+    scheduleNextPoll(35, true);
   }
 
   el.screenBox.addEventListener('pointerup', (ev) => { void finishPointerGesture(ev, false); });
   el.screenBox.addEventListener('pointercancel', (ev) => { void finishPointerGesture(ev, true); });
 
   el.screenBox.addEventListener('wheel', (ev) => {
-    if (!state.streamActive || state.axEnabled) return;
+    if (!state.interactive || state.axEnabled || !activeOnlineDevice()) return;
+    const pt = mapSurfaceEvent(ev);
+    if (!pt.inside) return;
     ev.preventDefault();
-    const pt = normFromEvent(ev);
-    const vx = Math.max(-4, Math.min(4, -ev.deltaX / 80));
-    const vy = Math.max(-4, Math.min(4, -ev.deltaY / 80));
-    if (vx !== 0 || vy !== 0) sendStreamScroll(pt.x, pt.y, vx, vy);
+
+    if (state.streamActive) {
+      const vx = Math.max(-4, Math.min(4, -ev.deltaX / 80));
+      const vy = Math.max(-4, Math.min(4, -ev.deltaY / 80));
+      if (vx !== 0 || vy !== 0) sendStreamScroll(pt.x, pt.y, vx, vy);
+      return;
+    }
+
+    state.wheelAccX += ev.deltaX;
+    state.wheelAccY += ev.deltaY;
+    state.lastWheelPt = pt;
+    if (!state.wheelTimer) {
+      state.wheelTimer = setTimeout(async () => {
+        state.wheelTimer = null;
+        const dx = state.wheelAccX;
+        const dy = state.wheelAccY;
+        const anchor = state.lastWheelPt;
+        state.wheelAccX = 0;
+        state.wheelAccY = 0;
+        if (!state.selected || !anchor || (dx === 0 && dy === 0)) return;
+        await panelCall('action', {
+          action: 'scroll',
+          deviceId: state.selected.id,
+          platform: state.selected.platform,
+          normX: anchor.x,
+          normY: anchor.y,
+          deltaX: Math.round(dx),
+          deltaY: Math.round(dy),
+        }).catch(() => {});
+        scheduleNextPoll(45, true);
+      }, 110);
+    }
   }, { passive: false });
+
+  async function sendPastedTextToPhone(rawText) {
+    const text = String(rawText ?? '');
+    if (!text || !state.selected) return;
+    if (state.streamActive && sendStreamJson({ type: 'paste', text })) {
+      setStatus(isZh ? `已粘贴 ${text.length} 字符到手机` : `Pasted ${text.length} chars to phone`);
+      return;
+    }
+    const res = await panelCall('action', {
+      action: 'pasteText',
+      deviceId: state.selected.id,
+      platform: state.selected.platform,
+      text,
+    }).catch((err) => ({ ok: false, error: err.message }));
+    if (res?.ok) {
+      setStatus(isZh ? `已发送 ${text.length} 字符` : `Sent ${text.length} chars`);
+      scheduleNextPoll(65, true);
+    } else if (res?.error) {
+      setStatus(res.error, 'error');
+    }
+  }
+
+  function flushTypedChars() {
+    if (state.typeFlushTimer) {
+      clearTimeout(state.typeFlushTimer);
+      state.typeFlushTimer = null;
+    }
+    const text = state.typedBuffer;
+    state.typedBuffer = '';
+    if (!text || !state.selected) return;
+    if (state.streamActive && sendStreamJson({ type: 'text', text })) {
+      return;
+    }
+    void panelCall('action', {
+      action: 'typeText',
+      deviceId: state.selected.id,
+      platform: state.selected.platform,
+      text,
+      submit: false,
+    }).then(() => scheduleNextPoll(65, true)).catch((err) => setStatus(err.message || 'Type failed', 'error'));
+  }
+
+  async function dispatchKeyToPhone(keyName) {
+    flushTypedChars();
+    if (!state.selected) return;
+    if (state.streamActive && sendStreamJson({ type: 'key', key: keyName })) {
+      return;
+    }
+    await panelCall('action', {
+      action: 'key',
+      deviceId: state.selected.id,
+      platform: state.selected.platform,
+      key: keyName,
+    }).catch((err) => setStatus(err.message || 'Key action failed', 'error'));
+    scheduleNextPoll(65, true);
+  }
+
+  el.screenBox.addEventListener('keydown', (ev) => {
+    if (!state.interactive || state.axEnabled || !activeOnlineDevice()) return;
+    if (ev.key === 'Shift' || ev.key === 'Control' || ev.key === 'Alt' || ev.key === 'Meta') return;
+
+    if ((ev.ctrlKey || ev.metaKey) && !ev.altKey && ev.key.toLowerCase() === 'v') {
+      const stamp = Date.now();
+      setTimeout(async () => {
+        if (state.pasteHandledAt >= stamp) return;
+        try {
+          if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+            const clip = await navigator.clipboard.readText();
+            if (clip) await sendPastedTextToPhone(clip);
+          }
+        } catch {}
+      }, 45);
+      return;
+    }
+    if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
+
+    const specialMap = {
+      Enter: 'ENTER',
+      Backspace: 'BACKSPACE',
+      Delete: 'DELETE',
+      Tab: 'TAB',
+      Escape: 'BACK',
+      ArrowUp: 'UP',
+      ArrowDown: 'DOWN',
+      ArrowLeft: 'LEFT',
+      ArrowRight: 'RIGHT',
+      Home: 'MOVE_HOME',
+      End: 'MOVE_END',
+      PageUp: 'PAGE_UP',
+      PageDown: 'PAGE_DOWN',
+    };
+
+    if (specialMap[ev.key]) {
+      ev.preventDefault();
+      void dispatchKeyToPhone(specialMap[ev.key]);
+      return;
+    }
+
+    if (ev.key.length === 1) {
+      ev.preventDefault();
+      state.typedBuffer += ev.key;
+      if (!state.typeFlushTimer) {
+        state.typeFlushTimer = setTimeout(flushTypedChars, 38);
+      }
+    }
+  });
+
+  window.addEventListener('paste', (ev) => {
+    if (!state.interactive || state.axEnabled || !activeOnlineDevice()) return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    const text = ev.clipboardData?.getData('text/plain');
+    if (!text) return;
+    ev.preventDefault();
+    state.pasteHandledAt = Date.now();
+    void sendPastedTextToPhone(text);
+  });
+
+  window.addEventListener('keydown', (ev) => {
+    if (ev.altKey && !ev.ctrlKey && !ev.metaKey && ev.key.toLowerCase() === 'i') {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      ev.preventDefault();
+      if (!el.interactiveBtn.disabled) setInteractiveMode(!state.interactive);
+    }
+  });
+
+  el.interactiveBtn.addEventListener('click', () => {
+    setInteractiveMode(!state.interactive);
+  });
 
   el.deviceSelect.addEventListener('change', async () => {
     const val = el.deviceSelect.value;
@@ -1487,7 +1968,7 @@
     const id = rest.join(':');
     state.selected = { id, platform };
     state.fpsTimes = [];
-    await panelCall('action', { action: 'select', deviceId: id, platform });
+    await panelCall('action', { action: 'select', deviceId: id, platform }).catch(() => {});
     renderDeviceOptions();
     await activateLiveTransport(false);
     if (state.axEnabled) await loadAxTree();
@@ -1503,12 +1984,12 @@
       stopStreamMode(true);
       clearPollTimer();
       updateResolutionBar();
-      setStatus('Paused');
+      syncInteractiveUi();
     }
   });
 
   el.refreshBtn.addEventListener('click', async () => {
-    setStatus('Refreshing...');
+    setStatus(isZh ? '正在刷新...' : 'Refreshing...');
     await loadState();
     await activateLiveTransport(true);
     if (state.axEnabled) await loadAxTree();
@@ -1518,6 +1999,7 @@
   document.getElementById('openWirelessBtn').addEventListener('click', () => {
     el.drawer.hidden = false;
     el.toolsBtn.classList.add('active');
+    layoutChassis();
     document.getElementById('adbConnectAddr').focus();
   });
 
@@ -1533,6 +2015,7 @@
     el.drawer.hidden = nextHidden;
     el.toolsBtn.classList.toggle('active', !nextHidden);
     layoutChassis();
+    if (state.axEnabled) renderAxOverlay();
   });
 
   document.querySelectorAll('[data-act]').forEach((btn) => {
@@ -1540,20 +2023,20 @@
       const act = btn.getAttribute('data-act');
       if (!state.selected) return;
       if (act === 'shot') {
-        setStatus('Capturing lossless PNG...');
+        setStatus(isZh ? '正在保存 PNG...' : 'Capturing PNG...');
         const res = await panelCall('frame', {
           deviceId: state.selected.id,
           platform: state.selected.platform,
           format: 'png',
-        }, 25000);
+        }, 25000).catch((err) => ({ ok: false, error: err.message }));
         if (res?.ok && res.dataUrl) {
           const a = document.createElement('a');
           a.href = res.dataUrl;
-          a.download = `phone-${state.selected.id}-${Date.now()}.png`;
+          a.download = `phone-${Date.now()}.png`;
           a.click();
-          setStatus('Saved PNG screenshot');
+          setStatus(isZh ? '已导出 PNG 截图' : 'Saved PNG screenshot');
         } else {
-          setStatus(res?.error || 'Screenshot failed', true);
+          setStatus(res?.error || 'Screenshot failed', 'error');
         }
         return;
       }
@@ -1567,14 +2050,13 @@
       const payload = mapButton[act]
         ? { action: 'button', button: mapButton[act] }
         : { action: act };
-      setStatus(`Running ${act}...`);
       const res = await panelCall('action', {
         ...payload,
         deviceId: state.selected.id,
         platform: state.selected.platform,
-      });
-      if (!res?.ok && res?.error) setStatus(res.error, true);
-      if (!state.streamActive) scheduleNextPoll(80);
+      }).catch((err) => ({ ok: false, error: err.message }));
+      if (!res?.ok && res?.error) setStatus(res.error, 'error');
+      if (!state.streamActive) scheduleNextPoll(75, true);
     });
   });
 
@@ -1583,19 +2065,18 @@
     const input = document.getElementById('typeInput');
     const text = input.value;
     if (!text || !state.selected) return;
-    setStatus('Sending text...');
     const res = await panelCall('action', {
       action: 'typeText',
       deviceId: state.selected.id,
       platform: state.selected.platform,
       text,
       submit: true,
-    });
+    }).catch((err) => ({ ok: false, error: err.message }));
     if (res?.ok) {
       input.value = '';
-      setStatus(state.streamActive ? 'Connected · 60fps H.264' : 'Connected · Live');
-      if (!state.streamActive) scheduleNextPoll(80);
-    } else setStatus(res?.error || 'Text input failed', true);
+      syncInteractiveUi();
+      if (!state.streamActive) scheduleNextPoll(75, true);
+    } else setStatus(res?.error || 'Text input failed', 'error');
   });
 
   document.getElementById('urlForm').addEventListener('submit', async (ev) => {
@@ -1603,29 +2084,28 @@
     const input = document.getElementById('urlInput');
     const url = input.value.trim();
     if (!url || !state.selected) return;
-    setStatus('Opening link...');
     const res = await panelCall('action', {
       action: 'openUrl',
       deviceId: state.selected.id,
       platform: state.selected.platform,
       url,
-    });
-    if (res?.ok && !state.streamActive) scheduleNextPoll(180);
-    else if (!res?.ok) setStatus(res?.error || 'Open URL failed', true);
+    }).catch((err) => ({ ok: false, error: err.message }));
+    if (res?.ok && !state.streamActive) scheduleNextPoll(160, true);
+    else if (!res?.ok) setStatus(res?.error || 'Open URL failed', 'error');
   });
 
-  document.querySelectorAll('[data-Appearance]').forEach((btn) => {
+  document.querySelectorAll('[data-appearance]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       if (!state.selected) return;
-      const mode = btn.getAttribute('data-Appearance');
+      const mode = btn.getAttribute('data-appearance');
       const res = await panelCall('action', {
         action: 'appearance',
         deviceId: state.selected.id,
         platform: state.selected.platform,
         mode,
-      });
-      if (res?.ok && !state.streamActive) scheduleNextPoll(180);
-      else if (!res?.ok) setStatus(res?.error || 'Appearance switch unsupported', true);
+      }).catch((err) => ({ ok: false, error: err.message }));
+      if (res?.ok && !state.streamActive) scheduleNextPoll(160, true);
+      else if (!res?.ok) setStatus(res?.error || 'Appearance toggle unsupported', 'error');
     });
   });
 
@@ -1634,9 +2114,9 @@
     const text = `Check my connected ${state.selected.platform} phone (${state.selected.id}) and help me operate the current screen.`;
     try {
       await bridgeCall('session.sendMessage', { text });
-      setStatus('Sent request to current conversation');
+      setStatus(isZh ? '已发送到当前会话' : 'Sent to conversation');
     } catch (err) {
-      setStatus(err.message || 'Requires an active session to send message', true);
+      setStatus(err.message || 'Active session required', 'error');
     }
   });
 
@@ -1644,8 +2124,8 @@
     const address = document.getElementById('adbConnectAddr').value.trim();
     if (!address) return;
     setStatus(`Connecting ${address}...`);
-    const res = await panelCall('action', { action: 'adbConnection', subAction: 'connect', address });
-    setStatus(res?.ok ? (res.stdout || 'Connected') : (res?.error || 'Connect failed'), !res?.ok);
+    const res = await panelCall('action', { action: 'adbConnection', subAction: 'connect', address }).catch((err) => ({ ok: false, error: err.message }));
+    setStatus(res?.ok ? (res.stdout || 'Connected') : (res?.error || 'Connect failed'), res?.ok ? 'normal' : 'error');
     await loadState();
     await activateLiveTransport(false);
   });
@@ -1655,18 +2135,14 @@
     const code = document.getElementById('adbPairCode').value.trim();
     if (!address || !code) return;
     setStatus(`Pairing ${address}...`);
-    const res = await panelCall('action', { action: 'adbConnection', subAction: 'pair', address, code });
-    setStatus(res?.ok ? (res.stdout || 'Paired') : (res?.error || 'Pair failed'), !res?.ok);
+    const res = await panelCall('action', { action: 'adbConnection', subAction: 'pair', address, code }).catch((err) => ({ ok: false, error: err.message }));
+    setStatus(res?.ok ? (res.stdout || 'Paired') : (res?.error || 'Pair failed'), res?.ok ? 'normal' : 'error');
   });
 
   document.getElementById('copyLocatorBtn').addEventListener('click', async () => {
     if (!state.selectedAx?.locator) return;
-    try {
-      await navigator.clipboard.writeText(state.selectedAx.locator);
-      setStatus('Copied Mobilewright locator');
-    } catch {
-      setStatus(state.selectedAx.locator);
-    }
+    const copied = await copyTextSafe(state.selectedAx.locator);
+    setStatus(copied ? (isZh ? '已复制定位器' : 'Copied locator') : state.selectedAx.locator);
   });
 
   document.getElementById('tapNodeBtn').addEventListener('click', async () => {
@@ -1680,11 +2156,11 @@
       platform: state.selected.platform,
       normX: nx,
       normY: ny,
-    });
+    }).catch(() => {});
     setTimeout(async () => {
       if (!state.streamActive) await refreshFrame(true);
       if (state.axEnabled) await loadAxTree();
-    }, 240);
+    }, 220);
   });
 
   document.addEventListener('visibilitychange', () => {
@@ -1713,7 +2189,7 @@
     await activateLiveTransport(false);
   }
 
-  setTimeout(() => { if (!booted) void startBoot(); }, 250);
+  setTimeout(() => { if (!booted) void startBoot(); }, 200);
 })();
 </script>
 </body>

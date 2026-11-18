@@ -53,9 +53,9 @@ export async function runAdb(name, args, context = {}, execute = executeFile) {
       output: JSON.stringify({
         exitCode: typeof error.code === 'number' ? error.code : null,
         code: typeof error.code === 'string' ? error.code : undefined,
-        message: missing ? 'ADB executable not found. Install Android platform-tools and put adb on the Kiki process PATH, or set this plugin’s adbPath for connection/shell tools.'
-          : error.killed || error.name === 'AbortError' ? 'ADB command interrupted; inspect device state before repeating a modifying command.'
-            : error.stderr?.trim() || (typeof error.code === 'number' ? 'ADB command failed; inspect stdout and stderr.' : error.message),
+        message: missing ? 'ADB executable not found (ENOENT). Run phone_prepare({ download: true }) after user consent, install official Android platform-tools on PATH, or set plugin setting adbPath.'
+          : error.killed || error.name === 'AbortError' ? 'ADB command interrupted; inspect device state via android_connection({ action: "devices" }) before repeating a modifying command.'
+            : error.stderr?.trim() || (typeof error.code === 'number' ? 'ADB command failed; inspect stdout/stderr and run android_connection({ action: "devices" }) if the transport dropped.' : error.message),
         stdout: error.stdout ?? '', stderr: error.stderr ?? '',
       }),
     };

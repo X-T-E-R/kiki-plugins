@@ -7,7 +7,7 @@ import { handlePanelRequest } from '../entry.mjs';
 
 test('ships a settings panel and a catalog of real provider ids', async () => {
   const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.version, '0.2.3');
+  assert.equal(manifest.version, '0.2.4');
   assert.equal(manifest['x-kiki'].engines.kiki, '>=0.4.3');
   assert.equal(manifest['x-kiki'].permissions.uiPanel, true);
   const panel = manifest['x-kiki'].panels.find((item) => item.id === 'settings');
@@ -123,7 +123,7 @@ test('carries Chinese text for every field, and the panel reads it per locale', 
   const html = await readFile(new URL('../settings.html', import.meta.url), 'utf8');
   assert.match(html, /function localizedText\(property, field\)/);
   assert.match(html, /let text = localizations\[locale\]/);
-  assert.match(html, /name\.textContent = localizedText\(property, 'title'\) \?\? key\.slice\(source\.prefix\.length\)/);
+  assert.match(html, /name\.textContent = localizedText\(property, 'title'\) \?\? \(source \? key\.slice\(source\.prefix\.length\) : key\)/);
   assert.match(html, /help\.textContent = localizedText\(property, 'description'\)/);
   assert.match(html, /switchRow\(key, localizedText\(property, 'title'\)/);
   assert.match(html, /function sourceLabel\(source\)/);
@@ -688,4 +688,52 @@ test('secret clear and replacement are explicit patches and never reveal the sto
   h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: replacing.id, ok: true, result: view });
   await replacingSave;
   assert.equal(h.elements.get('openai__apiKey').value, '');
+});
+
+test('supports sandbox safeStorage, secret eye reveal toggle, Ctrl+S shortcut, and inline provider status & voice inspect without leaking secrets', async () => {
+  const html = await readFile(new URL('../settings.html', import.meta.url), 'utf8');
+  assert.equal(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(html), false);
+  assert.match(html, /--bg:\s*#f6f4ef/i);
+  assert.match(html, /--bg:\s*#141413/i);
+  assert.match(html, /--accent:\s*#2c5e4f/i);
+  assert.match(html, /--accent:\s*#58a88f/i);
+
+  const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
+  const catalog = await handlePanelRequest('catalog');
+  const inspectRes = await handlePanelRequest('inspect', { sourceId: 'openai', probeNetwork: true }, {
+    settings: { openai__apiKey: 'fixture-secret-openai', openai__baseUrl: 'https://api.example.test/v1' },
+    fetchImpl: async () => new Response(JSON.stringify({ data: [] }), { status: 200 }),
+  });
+  assert.equal(inspectRes.probe.state, 'ok');
+  assert.ok(inspectRes.voices.some((v) => v.id === 'alloy'));
+  assert.equal(JSON.stringify(inspectRes).includes('fixture-secret-openai'), false);
+
+  const view = {
+    schema: manifest['x-kiki'].settings,
+    values: { openai__enabled: true, openai__baseUrl: 'https://own.example.test/v1' },
+    secretsConfigured: ['openai__apiKey'],
+  };
+  const h = await bootWithConnections(html, catalog, view, []);
+
+  // Eye toggle flips password <-> text while keeping draft intact
+  const secretInput = h.elements.get('openai__apiKey');
+  secretInput.value = 'draft-secret-123';
+  secretInput.oninput();
+  assert.equal(secretInput.type, 'password');
+  const eyeBtn = h.elements.get('content').querySelectorAll('button').find((b) => b.dataset.secretToggle === 'openai__apiKey');
+  assert.ok(eyeBtn);
+  eyeBtn.onclick();
+  assert.equal(h.elements.get('openai__apiKey').type, 'text');
+  assert.equal(h.elements.get('openai__apiKey').value, 'draft-secret-123');
+
+  // Inline inspect button renders probe-box and voice chips
+  const probeBtn = h.elements.get('probe-btn');
+  assert.ok(probeBtn);
+  probeBtn.onclick();
+  const inspectCall = h.postedMessages.find((m) => m.method === 'plugin.call' && m.action === 'inspect');
+  assert.ok(inspectCall);
+  h.dispatchMessage({ channel: 'kiki.panel.v1', kind: 'response', id: inspectCall.id, ok: true, result: inspectRes });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.ok(h.elements.get('probe-box'));
+  assert.ok(h.elements.get('probe-box').querySelectorAll('button').some((b) => b.dataset.voiceId === 'alloy'));
 });

@@ -5,53 +5,87 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Media settings</title>
 <style>
-  /* Kiki paper-and-ink tokens, mirrored from the host's index.css so the panel
-   * reads as the same settings page. The host may pass live token values in the
-   * init presentation (skins, future palette shifts); these are the fallback. */
   :root {
-    --color-paper: #fbfaf6;
-    --color-panel: #fffdfa;
-    --color-hairline: #e4ddd0;
-    --color-hairline-strong: #cdc3b1;
-    --color-ink: #1b1a17;
-    --color-ink-soft: #4b453e;
-    --color-ink-faint: #665e54;
-    --color-accent: #c8401a;
-    --color-accent-deep: #9c3012;
-    --color-on-accent: #ffffff;
-    --color-selected: #dfe8f0;
-    --color-selected-ink: #1d4d6d;
-    --color-success: #2f6b45;
-    --color-danger: #b0261e;
-    --motion-quick: 160ms;
-    color-scheme: light;
+    font-synthesis: none;
+    --bg: #f6f4ef;
+    --paper: #fcfbf8;
+    --panel: #efece4;
+    --ink: #1b1a17;
+    --ink-soft: #5c5850;
+    --ink-faint: #8c867b;
+    --line: rgba(27, 26, 23, 0.10);
+    --line-strong: rgba(27, 26, 23, 0.20);
+    --accent: #2c5e4f;
+    --accent-soft: rgba(44, 94, 79, 0.11);
+
+    --color-paper: var(--bg);
+    --color-panel: var(--paper);
+    --color-hairline: var(--line);
+    --color-hairline-strong: var(--line-strong);
+    --color-ink: var(--ink);
+    --color-ink-soft: var(--ink-soft);
+    --color-ink-faint: var(--ink-faint);
+    --color-accent: var(--accent);
+    --color-accent-deep: #21493d;
+    --color-on-accent: #fcfbf8;
+    --color-selected: rgba(44, 94, 79, 0.13);
+    --color-selected-ink: #2c5e4f;
+    --color-success: #2c5e4f;
+    --color-warn: #8c581c;
+    --color-danger: #a1352b;
+    --motion-quick: 150ms;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      --bg: #141413;
+      --paper: #1c1b19;
+      --panel: #252320;
+      --ink: #edeae2;
+      --ink-soft: #b2aca0;
+      --ink-faint: #7b766c;
+      --line: rgba(237, 234, 226, 0.10);
+      --line-strong: rgba(237, 234, 226, 0.22);
+      --accent: #58a88f;
+      --accent-soft: rgba(88, 168, 143, 0.15);
+      --color-accent-deep: #6ec0a7;
+      --color-on-accent: #141413;
+      --color-selected: rgba(88, 168, 143, 0.18);
+      --color-selected-ink: #58a88f;
+      --color-success: #58a88f;
+      --color-warn: #deb068;
+      --color-danger: #e28379;
+      color-scheme: dark;
+    }
   }
   [data-theme='dark'] {
-    --color-paper: #1B2226;
-    --color-panel: #252D31;
-    --color-hairline: #354047;
-    --color-hairline-strong: #596870;
-    --color-ink: #EEEAE2;
-    --color-ink-soft: #C1C5C5;
-    --color-ink-faint: #A2ACAF;
-    --color-accent: #EB946F;
-    --color-accent-deep: #F4B08F;
-    --color-on-accent: #261A14;
-    --color-selected: #24323B;
-    --color-selected-ink: #A3CBDE;
-    --color-success: #9AC6AE;
-    --color-danger: #F1A29A;
+    --bg: #141413;
+    --paper: #1c1b19;
+    --panel: #252320;
+    --ink: #edeae2;
+    --ink-soft: #b2aca0;
+    --ink-faint: #7b766c;
+    --line: rgba(237, 234, 226, 0.10);
+    --line-strong: rgba(237, 234, 226, 0.22);
+    --accent: #58a88f;
+    --accent-soft: rgba(88, 168, 143, 0.15);
+    --color-accent-deep: #6ec0a7;
+    --color-on-accent: #141413;
+    --color-selected: rgba(88, 168, 143, 0.18);
+    --color-selected-ink: #58a88f;
+    --color-success: #58a88f;
+    --color-warn: #deb068;
+    --color-danger: #e28379;
     color-scheme: dark;
   }
+  [data-theme='light'] { color-scheme: light; }
   * { box-sizing: border-box; }
+  html { scroll-padding-bottom: 76px; }
   body {
     margin: 0;
+    overflow-x: clip;
     background: var(--color-paper);
     color: var(--color-ink);
-    /* The host's sans stack. Instrument Sans is a bundled webfont of the host
-     * document and cannot load inside this opaque sandbox, so the stack
-     * deliberately lands on the same system/CJK faces the host itself falls
-     * back to. */
     font-family: 'Instrument Sans Variable', 'Instrument Sans', ui-sans-serif, system-ui, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
     font-size: 13px;
     line-height: 1.5;
@@ -61,69 +95,293 @@
     position: absolute; width: 1px; height: 1px; margin: -1px;
     padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
   }
-  /* The frame scrolls its own document; keep focused fields clear of the dock. */
-  html { scroll-padding-bottom: 72px; }
-  /* 2px side/top gutter keeps the keyboard ring from clipping at the frame edge. */
-  main { min-width: 0; padding: 2px 2px 20px; }
-  main > section + section { margin-top: 20px; }
-  .section-label { margin: 0 0 8px; font-size: 12px; font-weight: 500; color: var(--color-ink-soft); }
-  .field { margin: 0 0 12px; min-width: 0; max-width: 36rem; }
-  .field:last-child { margin-bottom: 0; }
-  .defaults { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: 12px; min-width: 0; }
+  main { max-width: 760px; margin: 0 auto; min-width: 0; padding: 14px 16px 28px; }
+  main > section + section { margin-top: 24px; }
+  .section-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .section-label {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--color-ink-soft);
+  }
+  .summary-meta {
+    font-size: 11.5px;
+    color: var(--color-ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .defaults {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+    gap: 12px;
+    min-width: 0;
+    padding: 14px;
+    background: var(--color-panel);
+    border: 1px solid var(--color-hairline);
+    border-radius: 10px;
+  }
   .defaults .field { margin: 0; max-width: none; }
-  label.f-label { display: block; font-size: 13px; font-weight: 500; color: var(--color-ink); margin-bottom: 4px; }
+  .field { margin: 0 0 14px; min-width: 0; max-width: 40rem; }
+  .field:last-child { margin-bottom: 0; }
+  label.f-label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--color-ink);
+    margin-bottom: 5px;
+  }
   input[type='text'], input[type='password'], input[type='url'], select, textarea {
     width: 100%; max-width: 100%; min-width: 0;
-    height: 32px; padding: 0 12px;
-    font: inherit; font-size: 12px; color: var(--color-ink);
-    background: var(--color-paper);
+    height: 34px; padding: 0 11px;
+    font: inherit; font-size: 12.5px; color: var(--color-ink);
+    background: var(--color-panel);
     border: 1px solid var(--color-hairline);
     border-radius: 8px;
     outline: none;
-    transition: border-color var(--motion-quick) ease-out;
+    transition: border-color var(--motion-quick) ease-out, background-color var(--motion-quick) ease-out;
   }
+  .defaults select { background-color: var(--color-paper); }
   input:hover, select:hover, textarea:hover { border-color: var(--color-hairline-strong); }
   input:focus, select:focus, textarea:focus { border-color: var(--color-accent); }
   input::placeholder, textarea::placeholder { color: var(--color-ink-faint); }
-  input.mono { font-family: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', monospace; font-feature-settings: 'liga' 0, 'calt' 0; }
+  input.mono, textarea.mono {
+    font-family: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, 'PingFang SC', 'Noto Sans SC', monospace;
+    font-feature-settings: 'liga' 0, 'calt' 0;
+    font-variant-numeric: tabular-nums;
+  }
   select {
     appearance: none;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23665e54' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%238c867b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
     background-repeat: no-repeat;
     background-position: right 10px center;
-    background-size: 12px;
-    padding-right: 30px;
+    background-size: 11px;
+    padding-right: 28px;
   }
-  [data-theme='dark'] select {
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23A2ACAF' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>");
-  }
-  textarea { min-height: 4.5rem; height: auto; padding: 6px 12px; }
-  .help { margin: 6px 0 0; max-width: 62ch; font-size: 12px; line-height: 1.4; color: var(--color-ink-faint); }
-  /* Secret value + its Clear/Undo action on one row, like the generic form. */
-  .secret-row { display: flex; gap: 8px; align-items: center; min-width: 0; }
-  .secret-row input { flex: 1; min-width: 0; }
-  .secret-row .btn { flex-shrink: 0; }
-  input:disabled, select:disabled, textarea:disabled { opacity: 0.55; cursor: not-allowed; }
-  /* Source tabs: the same quiet bordered chips the generic settings form uses. */
-  .chips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; margin-bottom: 16px; }
+  textarea { min-height: 5rem; height: auto; padding: 8px 11px; resize: vertical; line-height: 1.5; }
+  .help { margin: 5px 0 0; max-width: 60ch; font-size: 12px; line-height: 1.45; color: var(--color-ink-faint); }
+
+  /* Source chips with subtle status dots */
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; margin-bottom: 16px; }
   .chip {
-    height: 28px; padding: 0 8px;
+    position: relative;
+    height: 30px; padding: 0 10px 0 21px;
     font: inherit; font-size: 12px;
     color: var(--color-ink-soft);
-    background: transparent;
+    background: var(--color-panel);
     border: 1px solid var(--color-hairline);
-    border-radius: 6px;
+    border-radius: 7px;
     cursor: pointer;
-    transition: color var(--motion-quick) ease-out, border-color var(--motion-quick) ease-out;
+    transition: color var(--motion-quick) ease-out, border-color var(--motion-quick) ease-out, background-color var(--motion-quick) ease-out;
   }
+  .chip::before {
+    content: '';
+    position: absolute;
+    left: 9px;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    margin-top: -3px;
+    border-radius: 50%;
+    background: var(--color-ink-faint);
+    opacity: 0.45;
+  }
+  .chip[data-state='ready']::before { background: var(--color-success); opacity: 1; }
+  .chip[data-state='partial']::before { background: var(--color-warn); opacity: 0.9; }
   .chip:hover { color: var(--color-ink); border-color: var(--color-hairline-strong); }
-  .chip[aria-selected='true'] { color: var(--color-ink); border-color: var(--color-ink); }
-  /* The Kiki switch: tinted track + solid knob; ON takes the ink-blue
-   * "selected" role. The real checkbox stays focusable and shows its ring on
-   * the track. */
+  .chip[aria-selected='true'] {
+    color: var(--color-ink);
+    border-color: var(--color-accent);
+    background: var(--accent-soft);
+    font-weight: 500;
+  }
+
+  /* Source Sheet */
+  .source-sheet {
+    background: var(--color-panel);
+    border: 1px solid var(--color-hairline);
+    border-radius: 10px;
+    padding: 16px;
+    min-width: 0;
+  }
+  .source-topbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 14px;
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--color-hairline);
+  }
+  .source-topbar .switch { margin-bottom: 0; width: auto; gap: 10px; font-weight: 500; }
+  .source-bar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .state-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--color-paper);
+    border: 1px solid var(--color-hairline);
+    color: var(--color-ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+  .state-pill[data-tone='ok'] { color: var(--color-success); border-color: color-mix(in srgb, var(--color-success) 35%, transparent); }
+  .state-pill[data-tone='warn'] { color: var(--color-warn); }
+
+  /* Breathing subgroups */
+  .subgroup {
+    padding-top: 14px;
+    margin-top: 14px;
+    border-top: 1px solid var(--color-hairline);
+  }
+  .subgroup:first-of-type {
+    padding-top: 0;
+    margin-top: 0;
+    border-top: 0;
+  }
+  .subgroup-title {
+    margin: 0 0 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: var(--color-ink-faint);
+  }
+  .model-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+    gap: 12px;
+  }
+  .model-grid .field { margin: 0; }
+
+  details.adv-details {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--color-hairline);
+  }
+  details.adv-details > summary {
+    cursor: pointer;
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-ink-soft);
+    padding: 2px 0;
+    user-select: none;
+  }
+  details.adv-details > summary::-webkit-details-marker { display: none; }
+  details.adv-details > summary::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform var(--motion-quick) ease;
+  }
+  details.adv-details[open] > summary::before { transform: rotate(45deg); }
+  details.adv-details[open] > summary { margin-bottom: 12px; color: var(--color-ink); }
+
+  /* Inline probe & voice preview panel */
+  .probe-panel {
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: var(--color-paper);
+    border: 1px solid var(--color-hairline);
+    display: grid;
+    gap: 8px;
+  }
+  .probe-panel[hidden] { display: none; }
+  .probe-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .probe-verdict { font-weight: 500; color: var(--color-ink); }
+  .probe-verdict[data-tone='ok'] { color: var(--color-success); }
+  .probe-verdict[data-tone='err'] { color: var(--color-danger); }
+  .cap-row, .voice-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+  .cap-tag {
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 5px;
+    background: var(--panel);
+    color: var(--color-ink-soft);
+    font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  }
+  .voice-chip {
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 999px;
+    border: 1px solid var(--color-hairline);
+    background: var(--color-panel);
+    color: var(--color-ink-soft);
+    font-size: 11.5px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .voice-chip:hover { border-color: var(--color-accent); color: var(--color-ink); }
+
+  /* Secret row: input + eye reveal + paste + clear/undo */
+  .secret-row { display: flex; gap: 6px; align-items: center; min-width: 0; flex-wrap: wrap; }
+  .secret-input-wrap {
+    position: relative;
+    flex: 1 1 180px;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+  }
+  .secret-input-wrap input { padding-right: 34px; }
+  .icon-btn {
+    position: absolute;
+    right: 4px;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-ink-faint);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .icon-btn:hover:not(:disabled) { color: var(--color-ink); background: var(--panel); }
+  .icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .secret-row .btn { flex-shrink: 0; }
+  input:disabled, select:disabled, textarea:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  /* Kiki switch */
   .switch {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    min-height: 28px; max-width: 36rem; margin-bottom: 12px;
+    min-height: 28px; max-width: 40rem; margin-bottom: 12px;
     font-size: 13px; color: var(--color-ink);
     cursor: pointer;
   }
@@ -131,7 +389,7 @@
   .switch .track {
     position: relative; flex-shrink: 0;
     width: 32px; height: 18px; border-radius: 999px;
-    background: var(--color-hairline);
+    background: var(--panel);
     box-shadow: 0 0 0 1px var(--color-hairline-strong);
     transition: background-color var(--motion-quick) ease-out, box-shadow var(--motion-quick) ease-out;
   }
@@ -141,50 +399,66 @@
     background: var(--color-ink-faint);
     transition: transform var(--motion-quick) ease-out, background-color var(--motion-quick) ease-out;
   }
-  .switch input:checked + .track { background: var(--color-selected); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-selected-ink) 45%, transparent); }
+  .switch input:checked + .track { background: var(--color-selected); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-selected-ink) 50%, transparent); }
   .switch input:checked + .track .knob { transform: translateX(14px); background: var(--color-selected-ink); }
   .switch input:focus-visible + .track { outline: 2px solid var(--color-selected-ink); outline-offset: 2px; }
-  .restore-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 36rem; }
+
+  .restore-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 40rem; }
   .restore-row[hidden] { display: none; }
   .restore-row p { margin: 0; min-width: 0; flex: 1; font-size: 13px; color: var(--color-ink); }
+
   .btn {
-    height: 32px; padding: 0 12px;
+    height: 32px; padding: 0 11px;
     font: inherit; font-size: 12px;
-    border: 1px solid transparent; border-radius: 6px;
+    border: 1px solid transparent; border-radius: 7px;
     cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+    white-space: nowrap;
     transition: background-color var(--motion-quick) ease-out, border-color var(--motion-quick) ease-out, color var(--motion-quick) ease-out;
   }
   .btn-primary { background: var(--color-accent); color: var(--color-on-accent); font-weight: 600; }
   .btn-primary:hover:not(:disabled) { background: var(--color-accent-deep); }
-  .btn-primary:disabled { background: var(--color-hairline); color: var(--color-ink-faint); cursor: not-allowed; }
+  .btn-primary:disabled { background: var(--panel); color: var(--color-ink-faint); cursor: not-allowed; }
   .btn-secondary { background: var(--color-paper); border-color: var(--color-hairline); color: var(--color-ink-soft); }
   .btn-secondary:hover:not(:disabled) { border-color: var(--color-hairline-strong); color: var(--color-ink); }
   .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
-  /* The transaction dock: invisible while clean; when a draft exists it sticks
-   * to the bottom of the frame's own viewport so Save is never below the fold
-   * of a tall source. After a save it carries the transient ✓ Saved, then
-   * disappears. */
+
+  /* Sticky dirty transaction dock */
   .dock {
     position: sticky; bottom: 0;
-    margin-top: 16px; padding: 12px 2px 8px;
-    background: var(--color-paper);
-    border-top: 1px solid var(--color-hairline);
+    margin-top: 16px; padding: 10px 12px;
+    background: var(--color-panel);
+    border: 1px solid var(--color-hairline-strong);
+    border-radius: 10px;
   }
   .dock[hidden] { display: none; }
   .savebar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .savebar[hidden] { display: none; }
-  .status { font-size: 12px; color: var(--color-ink-faint); }
-  .saved-line { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; color: var(--color-success); }
+  .status { font-size: 12px; color: var(--color-ink-soft); margin-right: auto; }
+  .kbd-hint {
+    font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+    font-size: 11px;
+    color: var(--color-ink-faint);
+    padding: 1px 5px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 4px;
+  }
+  .saved-line { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; color: var(--color-success); }
   .saved-line[hidden] { display: none; }
   .error { margin: 0 0 8px; font-size: 12px; line-height: 1.4; color: var(--color-danger); }
   .error[hidden] { display: none; }
   .loading { margin: 0; font-size: 12px; color: var(--color-ink-faint); }
-  button:focus-visible, .chip:focus-visible { outline: 2px solid var(--color-selected-ink); outline-offset: 2px; }
+  button:focus-visible, .chip:focus-visible, summary:focus-visible { outline: 2px solid var(--color-selected-ink); outline-offset: 2px; }
   @keyframes kiki-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-  .anim-enter { animation: kiki-enter 200ms ease-out both; }
+  .anim-enter { animation: kiki-enter 180ms ease-out both; }
+  @media (max-width: 480px) {
+    main { padding: 10px 10px 24px; }
+    .source-sheet { padding: 12px; }
+    .defaults { padding: 12px; }
+  }
   @media (pointer: coarse) {
-    .btn, .chip, input, select, textarea { min-height: 44px; }
-    .switch { min-height: 44px; }
+    .btn, .chip, input, select, textarea { min-height: 42px; }
+    .switch { min-height: 42px; }
   }
   @media (prefers-reduced-motion: reduce) {
     .anim-enter { animation: none; }
@@ -202,19 +476,32 @@
   </div>
   <div id="content" hidden>
     <section aria-labelledby="defaults-label">
-      <h2 class="section-label" id="defaults-label"></h2>
+      <div class="section-head">
+        <h2 class="section-label" id="defaults-label"></h2>
+        <span class="summary-meta" id="sources-summary"></span>
+      </div>
       <div id="defaults" class="defaults"></div>
     </section>
-    <section>
+    <section aria-labelledby="sources-heading">
+      <div class="section-head">
+        <h2 class="section-label" id="sources-heading"></h2>
+      </div>
       <div id="chips" class="chips" role="tablist"></div>
-      <div id="source"></div>
+      <div id="source" class="source-sheet"></div>
+    </section>
+    <section id="global-advanced-wrap" hidden>
+      <details id="global-advanced" class="adv-details">
+        <summary id="global-advanced-summary"></summary>
+        <div id="global-advanced-body"></div>
+      </details>
     </section>
     <div class="dock" id="dock" hidden>
       <p id="error" class="error" role="alert" hidden></p>
       <div class="savebar" id="savebar" hidden>
-        <button id="save" class="btn btn-primary" type="button"></button>
-        <button id="discard" class="btn btn-secondary" type="button"></button>
         <span id="status" class="status" role="status"></span>
+        <span class="kbd-hint" aria-hidden="true">Ctrl+S</span>
+        <button id="discard" class="btn btn-secondary" type="button"></button>
+        <button id="save" class="btn btn-primary" type="button"></button>
       </div>
       <span id="saved" class="saved-line" role="status" hidden>
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5 4.8 9 10 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -226,6 +513,76 @@
 <script>
 const CHANNEL = 'kiki.panel.v1';
 const lifecycle = new Set(['enabled', 'removed', 'cleared']);
+
+const memStore = new Map();
+const safeStorage = {
+  get(key) {
+    try {
+      const store = window.localStorage;
+      if (!store) throw new Error('unavailable');
+      const v = store.getItem(key);
+      return v === null ? (memStore.has(key) ? memStore.get(key) : null) : v;
+    } catch {
+      return memStore.has(key) ? memStore.get(key) : null;
+    }
+  },
+  set(key, value) {
+    const str = String(value);
+    memStore.set(key, str);
+    try {
+      const store = window.localStorage;
+      if (store) store.setItem(key, str);
+    } catch {}
+  },
+};
+
+async function copyText(str) {
+  try {
+    if (typeof navigator === 'object' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      await navigator.clipboard.writeText(str);
+      return true;
+    }
+  } catch {}
+  try {
+    if (!document.body || typeof document.execCommand !== 'function') return false;
+    const area = document.createElement('textarea');
+    area.value = str;
+    if (area.style) {
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      area.style.pointerEvents = 'none';
+    }
+    document.body.append(area);
+    if (typeof area.select === 'function') area.select();
+    const ok = document.execCommand('copy');
+    if (typeof area.remove === 'function') area.remove();
+    return Boolean(ok);
+  } catch {
+    return false;
+  }
+}
+
+function makeSvg(paths, size = 14) {
+  if (typeof document.createElementNS !== 'function') return document.createElement('span');
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('width', String(size));
+  svg.setAttribute('height', String(size));
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.5');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  for (const d of paths) {
+    const p = document.createElementNS(ns, 'path');
+    p.setAttribute('d', d);
+    svg.append(p);
+  }
+  return svg;
+}
+
 let seq = 1;
 const waiting = new Map();
 let catalog = { sources: [], providers: [] };
@@ -235,7 +592,10 @@ let connectionError = '';
 let view = { schema: { schema: { properties: {} } }, values: {}, secretsConfigured: [] };
 let draft = {};
 let secrets = {};
-let sourceId = '';
+const revealedSecrets = new Set();
+const probeResults = new Map();
+let probingSource = '';
+let sourceId = safeStorage.get('kiki.media.sourceId') || '';
 let dirty = false;
 let saving = false;
 let booted = false;
@@ -243,9 +603,20 @@ let savedTimer = 0;
 
 const STRINGS = {
   en: {
-    title: 'Media settings', defaults: 'Default providers', image: 'Image', video: 'Video', speech: 'Speech',
+    title: 'Media settings', defaults: 'Default routing', image: 'Image', video: 'Video', speech: 'Speech',
     sources: 'Media sources', enabled: 'Enabled', restore: 'Restore', loading: 'Loading…', retry: 'Retry',
     save: 'Save', saving: 'Saving…', discard: 'Discard changes', unsaved: 'Unsaved changes', saved: 'Saved',
+    groupCore: 'Core connection', groupModels: 'Default models', groupAdvanced: 'Advanced parameters',
+    globalScripts: 'Custom media scripts (advanced)',
+    readyCount: (ready, total) => `${ready}/${total} ready`,
+    stateReady: 'Ready', stateConnection: 'Via Kiki connection', stateMissing: 'Credentials needed', stateDisabled: 'Disabled',
+    probeBtn: 'Check status & voices', probing: 'Checking…',
+    probeOk: (ms) => `Connected (${ms}ms)`,
+    probeConnManaged: (id) => `Managed by Kiki connection "${id}"`,
+    probeUnconfigured: 'Set API key or select a Kiki connection first',
+    probeFailed: (detail) => `Check failed: ${detail}`,
+    voicesLabel: 'Voices (click to copy ID):', voiceCopied: (id) => `Copied "${id}"`,
+    revealSecret: 'Show secret', hideSecret: 'Hide secret', pasteSecret: 'Paste', clearInput: 'Clear input',
     secretSet: 'Saved in Kiki credentials', secretUnset: 'Not set', secretReplace: 'Type a new value to replace', secretNew: 'Paste a value',
     secretClear: 'Clear', secretUndo: 'Undo', secretClearPending: 'Will be removed when you save',
     loadError: 'Could not load settings', saveError: 'Could not save', timeoutError: 'Connection timed out',
@@ -254,9 +625,20 @@ const STRINGS = {
     connectionActive: 'The selected Kiki connection supplies the endpoint and credentials. Saved local values are kept but not used.',
   },
   zh: {
-    title: '媒体设置', defaults: '默认提供方', image: '图像', video: '视频', speech: '语音',
+    title: '媒体设置', defaults: '默认路由策略', image: '图像', video: '视频', speech: '语音',
     sources: '媒体来源', enabled: '启用', restore: '恢复', loading: '加载中…', retry: '重试',
     save: '保存', saving: '正在保存…', discard: '放弃更改', unsaved: '有未保存的更改', saved: '已保存',
+    groupCore: '核心连接', groupModels: '默认模型策略', groupAdvanced: '高级参数',
+    globalScripts: '自定义媒体脚本（高级）',
+    readyCount: (ready, total) => `${ready}/${total} 已就绪`,
+    stateReady: '已配置密钥', stateConnection: 'Kiki 连接托管', stateMissing: '待填凭据', stateDisabled: '已停用',
+    probeBtn: '连通与音色速查', probing: '检测中…',
+    probeOk: (ms) => `连通正常（${ms}ms）`,
+    probeConnManaged: (id) => `由 Kiki 连接「${id}」托管认证`,
+    probeUnconfigured: '请先填写密钥或选择 Kiki 连接',
+    probeFailed: (detail) => `未连通：${detail}`,
+    voicesLabel: '可用音色（点击复制 ID）：', voiceCopied: (id) => `已复制「${id}」`,
+    revealSecret: '显示密钥', hideSecret: '隐藏密钥', pasteSecret: '粘贴', clearInput: '清空输入',
     secretSet: '已保存在 Kiki 凭据中', secretUnset: '未设置', secretReplace: '输入新值以替换', secretNew: '粘贴值',
     secretClear: '清除', secretUndo: '撤销', secretClearPending: '保存后将移除',
     loadError: '无法加载设置', saveError: '保存失败', timeoutError: '连接超时',
@@ -268,9 +650,6 @@ const STRINGS = {
 let locale = typeof navigator === 'object' && String(navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
 function t(key) { return (STRINGS[locale] ?? STRINGS.en)[key] ?? STRINGS.en[key] ?? key; }
 
-/* Host-supplied presentation (all fields optional): the panel keeps working
- * with none — theme falls back to the OS query, locale to the navigator, and
- * tokens to the mirrored defaults above. */
 const TOKEN_KEYS = ['--color-paper', '--color-panel', '--color-hairline', '--color-hairline-strong',
   '--color-ink', '--color-ink-soft', '--color-ink-faint', '--color-accent', '--color-accent-deep',
   '--color-on-accent', '--color-selected', '--color-selected-ink', '--color-success', '--color-danger'];
@@ -288,19 +667,27 @@ function applyPresentation(presentation) {
   if (presentation.tokens && typeof presentation.tokens === 'object') {
     for (const key of TOKEN_KEYS) {
       const value = presentation.tokens[key];
-      /* Colors only: a token that could smuggle a url() or script never applies. */
       if (typeof value === 'string' && value.length < 120 && /^(#[0-9a-fA-F]{3,9}|rgba?\(|hsla?\(|color-mix\(|[a-zA-Z ]+$)/.test(value.trim())) {
         document.documentElement.style.setProperty(key, value.trim());
       }
     }
   }
 }
-if (typeof matchMedia === 'function') {
+try {
+  if (typeof URLSearchParams !== 'undefined' && typeof location === 'object' && location && location.search) {
+    const qTheme = new URLSearchParams(location.search).get('theme');
+    if (qTheme === 'dark' || qTheme === 'light') {
+      hostTheme = qTheme;
+      document.documentElement.dataset.theme = qTheme;
+    }
+  }
+} catch {}
+if (!hostTheme && typeof matchMedia === 'function') {
   const osDark = matchMedia('(prefers-color-scheme: dark)');
   const followOs = () => { if (!hostTheme) document.documentElement.dataset.theme = osDark.matches ? 'dark' : 'light'; };
   followOs();
   if (typeof osDark.addEventListener === 'function') osDark.addEventListener('change', followOs);
-} else {
+} else if (!hostTheme) {
   document.documentElement.dataset.theme = 'light';
 }
 document.documentElement.lang = locale === 'zh' ? 'zh-CN' : 'en';
@@ -325,10 +712,7 @@ function ask(method, extra, timeoutMs = 10000) {
   });
 }
 function properties() { return view.schema?.schema?.properties ?? {}; }
-/* Manifest text follows the host form's rule: a property's own text for the
- * reader's language wins field by field, and anything the package did not
- * translate keeps the string it wrote. The host sends the locale in the init
- * presentation, so this page and the generic form name a field the same way. */
+
 function localizedText(property, field) {
   if (!property) return undefined;
   const localizations = property.localizations;
@@ -353,8 +737,6 @@ function mark(next) {
     setError(null);
   }
   renderSaveBar();
-  /* The host rate-limits frame requests, so the guard only hears about the
-   * boolean edge — a long value typed in one go must not crowd out the save. */
   if (transitioned) void ask('plugin.dirty', { dirty: next }).catch(() => undefined);
 }
 function valueOf(key, property) {
@@ -369,14 +751,10 @@ function providersFor(kind) {
 function selectedSource() {
   return catalog.sources.find((source) => source.id === sourceId) ?? catalog.sources[0];
 }
-
-/* A source's heading is the same manifest group title the host form shows on
- * its tab, so both settings routes name one group the same way. */
 function sourceLabel(source) {
   const property = properties()[source.prefix + 'enabled'];
   return localizedText(property, 'groupTitle') ?? property?.groupTitle ?? source.label;
 }
-
 function hasSelectedConnection(source) {
   const key = source.prefix + 'connectionId';
   return properties()[key] !== undefined && String(valueOf(key, properties()[key]) ?? '').trim() !== '';
@@ -384,6 +762,28 @@ function hasSelectedConnection(source) {
 function connectionLocked(key, source) {
   return hasSelectedConnection(source) && [source.prefix + 'apiKey', source.prefix + 'baseUrl'].includes(key);
 }
+function sourceReadiness(source) {
+  const props = properties();
+  if (valueOf(source.prefix + 'removed', { type: 'boolean' }) === true) return 'off';
+  if (valueOf(source.prefix + 'enabled', props[source.prefix + 'enabled']) === false) return 'off';
+  if (hasSelectedConnection(source)) return 'connection';
+  const reqs = Array.isArray(source.required) ? source.required : [];
+  for (const r of reqs) {
+    const full = source.prefix + r;
+    const prop = props[full];
+    if (prop?.secret) {
+      const configured = (view.secretsConfigured ?? []).includes(full);
+      const pending = Object.prototype.hasOwnProperty.call(secrets, full) ? secrets[full] : undefined;
+      const hasSecret = pending === null ? false : typeof pending === 'string' ? pending.length > 0 : configured;
+      if (!hasSecret) return 'partial';
+    } else {
+      const val = String(valueOf(full, prop) || prop?.default || '').trim();
+      if (!val) return 'partial';
+    }
+  }
+  return 'ready';
+}
+
 function connectionControl(key) {
   const wrap = document.createElement('div');
   const select = document.createElement('select');
@@ -452,6 +852,33 @@ async function loadConnections() {
   }
   if (booted) render();
 }
+async function runInspect(source) {
+  if (!source || probingSource) return;
+  probingSource = source.id;
+  render();
+  const overrides = {};
+  for (const [k, v] of Object.entries(draft)) {
+    if (k.startsWith(source.prefix) && properties()[k]?.secret !== true) overrides[k] = v;
+  }
+  try {
+    const res = await ask('plugin.call', {
+      action: 'inspect',
+      args: { sourceId: source.id, probeNetwork: true, overrides },
+    }, 8000);
+    probeResults.set(source.id, res);
+  } catch (err) {
+    probeResults.set(source.id, {
+      sourceId: source.id,
+      probe: { state: 'failed', detail: err.message || t('timeoutError') },
+      capabilities: [],
+      voices: [],
+    });
+  } finally {
+    probingSource = '';
+    render();
+  }
+}
+
 function modelDatalist(source, key) {
   const kind = key.endsWith('imageModel') ? 'image' : key.endsWith('videoModel') ? 'video' : key.endsWith('speechModel') ? 'tts' : '';
   if (!kind) return undefined;
@@ -480,7 +907,7 @@ function switchRow(key, labelText, checked) {
   input.id = key;
   input.type = 'checkbox';
   input.checked = checked;
-  input.onchange = () => { draft[key] = input.checked; mark(true); };
+  input.onchange = () => { draft[key] = input.checked; mark(true); render(); };
   const track = document.createElement('span');
   track.className = 'track';
   const knob = document.createElement('span');
@@ -488,6 +915,164 @@ function switchRow(key, labelText, checked) {
   track.append(knob);
   wrap.append(text, input, track);
   return wrap;
+}
+
+function buildField(key, property, source) {
+  const field = document.createElement('div');
+  field.className = 'field';
+  const name = document.createElement('label');
+  name.className = 'f-label';
+  name.htmlFor = key;
+  name.textContent = localizedText(property, 'title') ?? (source ? key.slice(source.prefix.length) : key);
+  field.append(name);
+
+  if (source && key === source.prefix + 'connectionId') {
+    field.append(connectionControl(key));
+  } else if (property.secret === true) {
+    const configured = (view.secretsConfigured ?? []).includes(key);
+    const pending = Object.prototype.hasOwnProperty.call(secrets, key) ? secrets[key] : undefined;
+    const clearing = pending === null;
+    const revealed = revealedSecrets.has(key);
+    const lockedByConn = source ? connectionLocked(key, source) : false;
+
+    const row = document.createElement('div');
+    row.className = 'secret-row';
+    const inputWrap = document.createElement('div');
+    inputWrap.className = 'secret-input-wrap';
+
+    const input = document.createElement('input');
+    input.id = key;
+    input.type = revealed ? 'text' : 'password';
+    input.autocomplete = 'off';
+    input.placeholder = clearing ? t('secretClearPending') : configured ? t('secretReplace') : t('secretNew');
+    if (clearing) input.dataset.locked = '1';
+    if (lockedByConn) input.dataset.connectionLocked = '1';
+    if (typeof pending === 'string') input.value = pending;
+    input.oninput = () => {
+      if (input.value === '') delete secrets[key]; else secrets[key] = input.value;
+      mark(true);
+    };
+
+    const eyeBtn = document.createElement('button');
+    eyeBtn.type = 'button';
+    eyeBtn.className = 'icon-btn';
+    eyeBtn.dataset.secretToggle = key;
+    eyeBtn.setAttribute('aria-label', revealed ? t('hideSecret') : t('revealSecret'));
+    eyeBtn.setAttribute('title', revealed ? t('hideSecret') : t('revealSecret'));
+    if (clearing) eyeBtn.dataset.locked = '1';
+    if (lockedByConn) eyeBtn.dataset.connectionLocked = '1';
+    eyeBtn.append(revealed
+      ? makeSvg(['M2 2l12 12', 'M6.5 6.5a2 2 0 0 0 2.8 2.8', 'M1.5 8s2.5-4.5 6.5-4.5c1.3 0 2.5.5 3.5 1.2M14.5 8s-1.2 2.2-3.2 3.5'])
+      : makeSvg(['M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8s-2.5 4.5-6.5 4.5S1.5 8 1.5 8Z', 'M8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z']));
+    eyeBtn.onclick = () => {
+      if (revealedSecrets.has(key)) revealedSecrets.delete(key);
+      else revealedSecrets.add(key);
+      render();
+    };
+    inputWrap.append(input, eyeBtn);
+    row.append(inputWrap);
+
+    if (!clearing && !lockedByConn) {
+      const pasteBtn = document.createElement('button');
+      pasteBtn.type = 'button';
+      pasteBtn.className = 'btn btn-secondary';
+      pasteBtn.dataset.secretPaste = key;
+      pasteBtn.textContent = t('pasteSecret');
+      pasteBtn.onclick = async () => {
+        try {
+          if (typeof navigator === 'object' && navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+            const clip = (await navigator.clipboard.readText()).trim();
+            if (clip) {
+              secrets[key] = clip;
+              mark(true);
+              render();
+              return;
+            }
+          }
+        } catch {}
+        if (typeof input.focus === 'function') input.focus();
+      };
+      row.append(pasteBtn);
+    }
+
+    if (clearing) {
+      const undo = document.createElement('button');
+      undo.type = 'button';
+      undo.className = 'btn btn-secondary';
+      undo.textContent = t('secretUndo');
+      if (lockedByConn) undo.dataset.connectionLocked = '1';
+      undo.onclick = () => { delete secrets[key]; mark(true); render(); };
+      row.append(undo);
+    } else if (configured) {
+      const clear = document.createElement('button');
+      clear.type = 'button';
+      clear.className = 'btn btn-secondary';
+      clear.dataset.secretClear = key;
+      clear.textContent = t('secretClear');
+      if (lockedByConn) clear.dataset.connectionLocked = '1';
+      clear.onclick = () => { secrets[key] = null; mark(true); render(); };
+      row.append(clear);
+    } else if (typeof pending === 'string' && pending !== '') {
+      const drop = document.createElement('button');
+      drop.type = 'button';
+      drop.className = 'btn btn-secondary';
+      drop.textContent = t('clearInput');
+      if (lockedByConn) drop.dataset.connectionLocked = '1';
+      drop.onclick = () => { delete secrets[key]; mark(Object.keys(patchOf()).length > 0); render(); };
+      row.append(drop);
+    }
+    field.append(row);
+    const state = document.createElement('p');
+    state.className = 'help';
+    state.textContent = (configured ? t('secretSet') : t('secretUnset')) + (clearing ? ' · ' + t('secretClearPending') : '');
+    field.append(state);
+  } else if (property.type === 'boolean') {
+    field.replaceChildren();
+    field.append(switchRow(key, localizedText(property, 'title') ?? (source ? key.slice(source.prefix.length) : key), valueOf(key, property) === true));
+  } else if (Array.isArray(property.enum) && property.enum.length > 0) {
+    const select = document.createElement('select');
+    select.id = key;
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = t('notSet');
+    select.append(empty);
+    for (const choice of property.enum) {
+      const option = document.createElement('option');
+      option.value = choice;
+      option.textContent = choice;
+      select.append(option);
+    }
+    select.value = valueOf(key, property);
+    select.onchange = () => { draft[key] = select.value; mark(true); };
+    field.append(select);
+  } else if (property.multiline === true) {
+    const input = document.createElement('textarea');
+    input.id = key;
+    input.className = 'mono';
+    input.value = valueOf(key, property);
+    input.oninput = () => { draft[key] = input.value; mark(true); };
+    field.append(input);
+  } else {
+    const input = document.createElement('input');
+    input.id = key;
+    input.type = 'text';
+    if (property.type === 'number' || key.endsWith('Model') || key.endsWith('Url')) input.className = 'mono';
+    input.value = valueOf(key, property);
+    input.placeholder = property.default === undefined ? '' : String(property.default);
+    input.oninput = () => { draft[key] = input.value; mark(true); };
+    if (source && connectionLocked(key, source)) input.dataset.connectionLocked = '1';
+    const models = source ? modelDatalist(source, key) : undefined;
+    if (models) input.setAttribute('list', models.id);
+    field.append(input);
+    if (models) field.append(models);
+  }
+  if (localizedText(property, 'description') !== undefined) {
+    const help = document.createElement('p');
+    help.className = 'help';
+    help.textContent = localizedText(property, 'description');
+    field.append(help);
+  }
+  return field;
 }
 
 function renderDefaults() {
@@ -526,16 +1111,109 @@ function renderDefaults() {
   }
 }
 
+function renderProbeBox(source) {
+  const data = probeResults.get(source.id);
+  if (!data) return null;
+  const panel = document.createElement('div');
+  panel.className = 'probe-panel';
+  panel.id = 'probe-box';
+
+  const head = document.createElement('div');
+  head.className = 'probe-head';
+  const verdict = document.createElement('span');
+  verdict.className = 'probe-verdict';
+  const p = data.probe || {};
+  if (p.state === 'ok') {
+    verdict.dataset.tone = 'ok';
+    verdict.textContent = t('probeOk')(p.latencyMs ?? 0);
+  } else if (p.state === 'connection_managed') {
+    verdict.dataset.tone = 'ok';
+    verdict.textContent = t('probeConnManaged')(p.connectionId || '');
+  } else if (p.state === 'unconfigured') {
+    verdict.textContent = t('probeUnconfigured');
+  } else {
+    verdict.dataset.tone = 'err';
+    verdict.textContent = t('probeFailed')(p.detail || 'Error');
+  }
+  head.append(verdict);
+  panel.append(head);
+
+  if (Array.isArray(data.capabilities) && data.capabilities.length > 0) {
+    const capRow = document.createElement('div');
+    capRow.className = 'cap-row';
+    for (const cap of data.capabilities) {
+      const modelIds = (cap.models ?? []).map((m) => m.id).slice(0, 4).join(', ');
+      const tag = document.createElement('span');
+      tag.className = 'cap-tag';
+      tag.textContent = `${cap.id}${modelIds ? ' · ' + modelIds : ''}`;
+      capRow.append(tag);
+    }
+    panel.append(capRow);
+  }
+
+  if (Array.isArray(data.voices) && data.voices.length > 0) {
+    const vRow = document.createElement('div');
+    vRow.className = 'voice-row';
+    const label = document.createElement('span');
+    label.className = 'help';
+    label.style.margin = '0';
+    label.textContent = t('voicesLabel');
+    vRow.append(label);
+    for (const voice of data.voices) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'voice-chip';
+      chip.dataset.voiceId = voice.id;
+      chip.textContent = voice.label && voice.label !== voice.id ? `${voice.label} (${voice.id})` : voice.id;
+      chip.onclick = async () => {
+        const ok = await copyText(voice.id);
+        if (ok) {
+          verdict.dataset.tone = 'ok';
+          verdict.textContent = t('voiceCopied')(voice.id);
+        }
+      };
+      vRow.append(chip);
+    }
+    panel.append(vRow);
+  }
+  return panel;
+}
+
+function renderGlobalAdvanced() {
+  const wrap = document.getElementById('global-advanced-wrap');
+  const summary = document.getElementById('global-advanced-summary');
+  const body = document.getElementById('global-advanced-body');
+  if (!wrap || !summary || !body) return;
+  const scriptProp = properties().scriptSources;
+  if (!scriptProp) { wrap.hidden = true; return; }
+  wrap.hidden = false;
+  summary.textContent = localizedText(scriptProp, 'title') ?? t('globalScripts');
+  body.replaceChildren(buildField('scriptSources', scriptProp, null));
+}
+
 function render() {
   document.getElementById('title').textContent = t('title');
   document.getElementById('defaults-label').textContent = t('defaults');
+  const sourcesHeading = document.getElementById('sources-heading');
+  if (sourcesHeading) sourcesHeading.textContent = t('sources');
   document.getElementById('chips').setAttribute('aria-label', t('sources'));
   document.getElementById('save').textContent = saving ? t('saving') : t('save');
   document.getElementById('discard').textContent = t('discard');
   document.getElementById('saved-text').textContent = t('saved');
+
   renderDefaults();
+  renderGlobalAdvanced();
+
   const source = selectedSource();
   sourceId = source?.id ?? '';
+  if (sourceId) safeStorage.set('kiki.media.sourceId', sourceId);
+
+  const summaryEl = document.getElementById('sources-summary');
+  if (summaryEl && catalog.sources.length > 0) {
+    const readyCnt = catalog.sources.filter((s) => ['ready', 'connection'].includes(sourceReadiness(s))).length;
+    summaryEl.textContent = t('readyCount')(readyCnt, catalog.sources.length);
+  }
+
   const chips = document.getElementById('chips');
   chips.replaceChildren();
   for (const item of catalog.sources) {
@@ -543,15 +1221,23 @@ function render() {
     button.type = 'button';
     button.role = 'tab';
     button.className = 'chip';
+    const state = sourceReadiness(item);
+    button.dataset.state = state === 'connection' ? 'ready' : state;
     button.textContent = sourceLabel(item);
     button.setAttribute('aria-selected', item.id === sourceId ? 'true' : 'false');
-    button.onclick = () => { sourceId = item.id; render(); };
+    button.onclick = () => {
+      sourceId = item.id;
+      safeStorage.set('kiki.media.sourceId', sourceId);
+      render();
+    };
     chips.append(button);
   }
+
   const body = document.getElementById('source');
   body.replaceChildren();
   renderSaveBar();
   if (!source) { applyBusy(); return; }
+
   const removedKey = source.prefix + 'removed';
   if (valueOf(removedKey, { type: 'boolean' }) === true) {
     const row = document.createElement('div');
@@ -568,115 +1254,99 @@ function render() {
     applyBusy();
     return;
   }
+
   const enabledKey = source.prefix + 'enabled';
-  body.append(switchRow(enabledKey, t('enabled'), valueOf(enabledKey, properties()[enabledKey]) !== false));
+  const isEnabled = valueOf(enabledKey, properties()[enabledKey]) !== false;
+  const readiness = sourceReadiness(source);
+
+  const topbar = document.createElement('div');
+  topbar.className = 'source-topbar';
+  topbar.append(switchRow(enabledKey, t('enabled'), isEnabled));
+
+  const barActions = document.createElement('div');
+  barActions.className = 'source-bar-actions';
+  const pill = document.createElement('span');
+  pill.className = 'state-pill';
+  if (!isEnabled) {
+    pill.textContent = t('stateDisabled');
+  } else if (readiness === 'connection') {
+    pill.dataset.tone = 'ok';
+    pill.textContent = t('stateConnection');
+  } else if (readiness === 'ready') {
+    pill.dataset.tone = 'ok';
+    pill.textContent = t('stateReady');
+  } else {
+    pill.dataset.tone = 'warn';
+    pill.textContent = t('stateMissing');
+  }
+  const probeBtn = document.createElement('button');
+  probeBtn.type = 'button';
+  probeBtn.id = 'probe-btn';
+  probeBtn.className = 'btn btn-secondary';
+  probeBtn.textContent = probingSource === source.id ? t('probing') : t('probeBtn');
+  if (probingSource === source.id) probeBtn.dataset.locked = '1';
+  probeBtn.onclick = () => void runInspect(source);
+  barActions.append(pill, probeBtn);
+  topbar.append(barActions);
+  body.append(topbar);
+
+  const probeBox = renderProbeBox(source);
+  if (probeBox) body.append(probeBox);
+
+  const coreFields = [];
+  const modelFields = [];
+  const advFields = [];
+
   for (const [key, property] of Object.entries(properties())) {
     if (!key.startsWith(source.prefix) || lifecycle.has(key.slice(source.prefix.length)) || property.hidden === true) continue;
-    const field = document.createElement('div');
-    field.className = 'field';
-    const name = document.createElement('label');
-    name.className = 'f-label';
-    name.htmlFor = key;
-    name.textContent = localizedText(property, 'title') ?? key.slice(source.prefix.length);
-    field.append(name);
-    if (key === source.prefix + 'connectionId') {
-      field.append(connectionControl(key));
-    } else if (property.secret === true) {
-      /* Write-only, same contract as the generic form's SecretField: a stored
-       * value is only ever reported as configured; a draft is the typist's own
-       * value and survives re-renders; Clear stages a null patch, Undo drops it. */
-      const configured = (view.secretsConfigured ?? []).includes(key);
-      const pending = Object.prototype.hasOwnProperty.call(secrets, key) ? secrets[key] : undefined;
-      const clearing = pending === null;
-      const row = document.createElement('div');
-      row.className = 'secret-row';
-      const input = document.createElement('input');
-      input.id = key;
-      input.type = 'password';
-      input.autocomplete = 'off';
-      input.placeholder = clearing ? t('secretClearPending') : configured ? t('secretReplace') : t('secretNew');
-      if (clearing) input.dataset.locked = '1';
-      if (typeof pending === 'string') input.value = pending;
-      input.oninput = () => {
-        if (input.value === '') delete secrets[key]; else secrets[key] = input.value;
-        mark(true);
-      };
-      row.append(input);
-      if (clearing) {
-        const undo = document.createElement('button');
-        undo.type = 'button';
-        undo.className = 'btn btn-secondary';
-        undo.textContent = t('secretUndo');
-        undo.onclick = () => { delete secrets[key]; mark(true); render(); };
-        row.append(undo);
-      } else if (configured) {
-        const clear = document.createElement('button');
-        clear.type = 'button';
-        clear.className = 'btn btn-secondary';
-        clear.dataset.secretClear = key;
-        clear.textContent = t('secretClear');
-        clear.onclick = () => { secrets[key] = null; mark(true); render(); };
-        row.append(clear);
-      }
-      if (connectionLocked(key, source)) for (const control of row.children) control.dataset.connectionLocked = '1';
-      field.append(row);
-      const state = document.createElement('p');
-      state.className = 'help';
-      state.textContent = (configured ? t('secretSet') : t('secretUnset')) + (clearing ? ' · ' + t('secretClearPending') : '');
-      field.append(state);
-    } else if (property.type === 'boolean') {
-      field.replaceChildren();
-      field.append(switchRow(key, localizedText(property, 'title') ?? key.slice(source.prefix.length), valueOf(key, property) === true));
-    } else if (Array.isArray(property.enum) && property.enum.length > 0) {
-      const select = document.createElement('select');
-      select.id = key;
-      const empty = document.createElement('option');
-      empty.value = '';
-      empty.textContent = t('notSet');
-      select.append(empty);
-      for (const choice of property.enum) {
-        const option = document.createElement('option');
-        option.value = choice;
-        option.textContent = choice;
-        select.append(option);
-      }
-      select.value = valueOf(key, property);
-      select.onchange = () => { draft[key] = select.value; mark(true); };
-      field.append(select);
-    } else if (property.multiline === true) {
-      const input = document.createElement('textarea');
-      input.id = key;
-      input.value = valueOf(key, property);
-      input.oninput = () => { draft[key] = input.value; mark(true); };
-      field.append(input);
+    const local = key.slice(source.prefix.length);
+    const node = buildField(key, property, source);
+    if (['connectionId', 'apiKey', 'baseUrl'].includes(local) || property.secret === true) {
+      coreFields.push(node);
+    } else if (local.endsWith('Model')) {
+      modelFields.push(node);
     } else {
-      const input = document.createElement('input');
-      input.id = key;
-      input.type = 'text';
-      if (property.type === 'number') input.className = 'mono';
-      input.value = valueOf(key, property);
-      input.placeholder = property.default === undefined ? '' : String(property.default);
-      input.oninput = () => { draft[key] = input.value; mark(true); };
-      if (connectionLocked(key, source)) input.dataset.connectionLocked = '1';
-      const models = modelDatalist(source, key);
-      if (models) input.setAttribute('list', models.id);
-      field.append(input);
-      if (models) field.append(models);
+      advFields.push(node);
     }
-    if (localizedText(property, 'description') !== undefined) {
-      const help = document.createElement('p');
-      help.className = 'help';
-      help.textContent = localizedText(property, 'description');
-      field.append(help);
-    }
-    body.append(field);
   }
+
+  if (coreFields.length > 0) {
+    const sec = document.createElement('div');
+    sec.className = 'subgroup';
+    const h = document.createElement('h3');
+    h.className = 'subgroup-title';
+    h.textContent = t('groupCore');
+    sec.append(h, ...coreFields);
+    body.append(sec);
+  }
+  if (modelFields.length > 0) {
+    const sec = document.createElement('div');
+    sec.className = 'subgroup';
+    const h = document.createElement('h3');
+    h.className = 'subgroup-title';
+    h.textContent = t('groupModels');
+    const grid = document.createElement('div');
+    grid.className = 'model-grid';
+    grid.append(...modelFields);
+    sec.append(h, grid);
+    body.append(sec);
+  }
+  if (advFields.length > 0) {
+    const details = document.createElement('details');
+    details.className = 'adv-details';
+    const maxKey = source.prefix + 'maxConcurrentRequests';
+    if (Object.prototype.hasOwnProperty.call(draft, maxKey)) details.open = true;
+    const sum = document.createElement('summary');
+    sum.textContent = t('groupAdvanced');
+    const advBody = document.createElement('div');
+    advBody.append(...advFields);
+    details.append(sum, advBody);
+    body.append(details);
+  }
+
   applyBusy();
 }
 
-/* A save in flight owns the form: every control locks so the async patch can
- * never swallow an edit made after it was read. Local credentials also stay
- * locked while a Kiki connection is selected, without clearing their drafts. */
 function applyBusy() {
   const controls = document.querySelectorAll('#content input, #content select, #content textarea, #content button');
   for (const control of controls) control.disabled = saving || control.dataset.locked === '1' || control.dataset.connectionLocked === '1';
@@ -788,7 +1458,7 @@ async function boot() {
   }
 }
 
-document.getElementById('save').onclick = async () => {
+async function performSave() {
   const values = patchOf();
   setError(null);
   if (Object.keys(values).length === 0) { mark(false); return; }
@@ -808,11 +1478,34 @@ document.getElementById('save').onclick = async () => {
     setError(error.message || t('saveError'));
     render();
   }
+}
+
+document.getElementById('save').onclick = () => performSave();
+document.getElementById('discard').onclick = () => {
+  draft = {};
+  secrets = {};
+  revealedSecrets.clear();
+  setError(null);
+  mark(false);
+  render();
 };
-document.getElementById('discard').onclick = () => { draft = {}; secrets = {}; setError(null); mark(false); render(); };
+
+if (typeof window.addEventListener === 'function') {
+  window.addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 's') {
+      event.preventDefault();
+      if (dirty && !saving) void performSave();
+    }
+  });
+}
+
 window.addEventListener('message', (event) => {
   const data = event.data;
   if (!data || data.channel !== CHANNEL) return;
+  if (data.theme === 'light' || data.theme === 'dark') {
+    hostTheme = data.theme;
+    document.documentElement.dataset.theme = data.theme;
+  }
   if (data.kind === 'init') {
     applyPresentation(data.presentation);
     document.getElementById('loading').textContent = t('loading');
@@ -821,7 +1514,7 @@ window.addEventListener('message', (event) => {
     else render();
     return;
   }
-  if (data.kind === 'presentation') {
+  if (data.kind === 'presentation' || data.kind === 'theme') {
     applyPresentation(data.presentation);
     if (booted) render();
     return;

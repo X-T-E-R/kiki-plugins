@@ -328,7 +328,7 @@ export function createCuaService({
     }
 
     if (!target) {
-      throw new Error(`Unknown or offline CUA target "${wantedId}". Run cua_targets({ action: "list" }) to inspect available targets.`);
+      throw new Error(`Unknown or offline CUA target "${wantedId}". Run cua_targets({ action: "list" }) to inspect available local displays and active remote providers.`);
     }
 
     const ledgerKey = canonicalLedgerKey(target.id, inventory.primaryMonitorId);
@@ -1007,7 +1007,7 @@ export function createCuaService({
               processName: stepRes.processName,
               pid: stepRes.pid,
             },
-            message: stepRes.message,
+            message: `${stepRes.message} Ask the user to complete this step in the elevated window, relaunch the target app without elevation, or switch focus via cua_windows.`,
           }, null, 2),
         };
       }
@@ -1149,33 +1149,49 @@ export function createCuaService({
     if (kind === 'click') {
       actions = [{
         kind: 'click',
-        x: Number(body.normX) || 0,
-        y: Number(body.normY) || 0,
+        x: Number(body.normX ?? body.x) || 0,
+        y: Number(body.normY ?? body.y) || 0,
         button: body.button || 'left',
         count: body.count || 1,
+        ...(Array.isArray(body.modifiers) && body.modifiers.length > 0 ? { modifiers: body.modifiers } : {}),
       }];
     } else if (kind === 'drag') {
       actions = [{
         kind: 'drag',
-        startX: Number(body.startNormX) || 0,
-        startY: Number(body.startNormY) || 0,
-        endX: Number(body.endNormX) || 0,
-        endY: Number(body.endNormY) || 0,
+        startX: Number(body.startNormX ?? body.startX) || 0,
+        startY: Number(body.startNormY ?? body.startY) || 0,
+        endX: Number(body.endNormX ?? body.endX) || 0,
+        endY: Number(body.endNormY ?? body.endY) || 0,
         button: body.button || 'left',
         durationMs: body.durationMs || 180,
       }];
     } else if (kind === 'scroll') {
       actions = [{
         kind: 'scroll',
-        x: Number(body.normX) || 500,
-        y: Number(body.normY) || 500,
+        x: Number(body.normX ?? body.x ?? 500),
+        y: Number(body.normY ?? body.y ?? 500),
         deltaX: Number(body.deltaX) || 0,
         deltaY: Number(body.deltaY) || 0,
       }];
     } else if (kind === 'key') {
-      actions = [{ kind: 'key', key: String(body.key || '') }];
+      actions = [{
+        kind: 'key',
+        ...(body.keys !== undefined ? { keys: body.keys } : { key: String(body.key || '') }),
+      }];
+    } else if (kind === 'paste') {
+      actions = [{
+        kind: 'type',
+        text: String(body.text || ''),
+        mode: 'clipboard',
+        submit: Boolean(body.submit),
+      }];
     } else if (kind === 'type') {
-      actions = [{ kind: 'type', text: String(body.text || ''), submit: Boolean(body.submit) }];
+      actions = [{
+        kind: 'type',
+        text: String(body.text || ''),
+        mode: body.mode || 'auto',
+        submit: Boolean(body.submit),
+      }];
     }
 
     const logicalSize = { width: target.dimensions.width, height: target.dimensions.height };
@@ -1203,6 +1219,7 @@ export function createCuaService({
             screenY: act.resolvedPoint.screenY,
             button: act.button,
             count: act.count,
+            modifiers: act.modifiers || [],
           });
         } else if (act.kind === 'drag') {
           await drv.mouseDrag({
@@ -1221,9 +1238,9 @@ export function createCuaService({
             deltaY: act.deltaY,
           });
         } else if (act.kind === 'key') {
-          await drv.keyChord(act.key);
+          await drv.keyChord(act.keys !== undefined ? act.keys : act.key);
         } else if (act.kind === 'type') {
-          await drv.typeText({ text: act.text, submit: act.submit });
+          await drv.typeText({ text: act.text, mode: act.mode || 'auto', submit: act.submit });
         }
       }
     }
@@ -1238,6 +1255,11 @@ export function createCuaService({
         atMs: Date.now(),
       };
       broadcastStreamEvent({ type: 'action', targetId: target.id, lastAction: ledger.lastAction });
+    }
+    for (const sub of liveStreamSubscribers) {
+      try {
+        sub.nudgeFrame?.(target.id);
+      } catch {}
     }
 
     return {
@@ -1353,6 +1375,15 @@ export function createCuaService({
       sendMeta(meta) {
         if (closed) return;
         session.sendText(meta);
+      },
+      nudgeFrame(targetId) {
+        if (closed || (targetId && targetId !== currentTargetId)) return;
+        if (loopTimer) {
+          clearTimeout(loopTimer);
+          loopTimer = null;
+        }
+        loopTimer = setTimeout(pushFrameOnce, 35);
+        loopTimer.unref?.();
       },
     };
     liveStreamSubscribers.add(subscriber);

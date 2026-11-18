@@ -1,9 +1,19 @@
 {
   "name": "kiki-writing",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A focused writing panel and a declarative draft command.",
   "license": "MIT",
   "icon": "./icon.svg",
+  "interface": {
+    "displayName": "Manuscript",
+    "shortDescription": "Focused writing desk and draft review",
+    "localization": {
+      "zh-CN": {
+        "displayName": "写作台",
+        "shortDescription": "沉静纸墨写作、大纲跳转与改稿对比"
+      }
+    }
+  },
   "x-kiki": {
     "engines": { "kiki": "^0.4.0" },
     "permissions": { "uiPanel": true },

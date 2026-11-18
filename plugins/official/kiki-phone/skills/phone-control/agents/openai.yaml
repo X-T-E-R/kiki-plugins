@@ -1,4 +1,4 @@
 interface:
   display_name: "Phone Control"
-  short_description: "Connect phones and operate Android or iOS apps"
+  short_description: "Connect and operate Android or iOS phones safely"
   default_prompt: "Use $phone-control to connect my phone, inspect its current screen and perform the requested operation."

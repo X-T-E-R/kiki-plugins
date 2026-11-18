@@ -7,90 +7,104 @@
 <style>
 :root {
   color-scheme: light dark;
-  --canvas: var(--color-canvas, #f2efe8);
-  --paper: var(--color-paper, #fbfaf6);
-  --panel: var(--color-panel, #fffdfa);
+  font-synthesis: none;
+  --bg: var(--color-canvas, #f6f4ef);
+  --paper: var(--color-paper, #fcfbf8);
+  --panel: var(--color-panel, #efece4);
   --ink: var(--color-ink, #1b1a17);
-  --ink-soft: var(--color-ink-soft, #4b453e);
-  --ink-faint: var(--color-ink-faint, #6d6459);
-  --hairline: var(--color-hairline, #e4ddd0);
-  --hairline-strong: var(--color-hairline-strong, #cdc3b1);
-  --accent: var(--color-accent, #c8401a);
-  --accent-deep: var(--color-accent-deep, #9c3012);
-  --on-accent: var(--color-on-accent, #ffffff);
-  --selected: var(--color-selected, #e7e1d5);
-  --selected-ink: var(--color-selected-ink, #1b1a17);
-  --ok: var(--color-success, #2f6b45);
-  --warn: var(--color-amber-ink, #87480b);
-  --warn-bg: var(--color-amber-card, #f8eedd);
-  --danger: var(--color-danger, #b0261e);
-  --wash: rgb(27 26 23 / 0.038);
+  --ink-soft: var(--color-ink-soft, #5c5850);
+  --ink-faint: var(--color-ink-faint, #8c867b);
+  --line: var(--color-hairline, rgba(27, 26, 23, 0.10));
+  --line-strong: var(--color-hairline-strong, rgba(27, 26, 23, 0.18));
+  --accent: var(--color-accent, #2c5e4f);
+  --accent-deep: var(--color-accent-deep, #22493d);
+  --accent-soft: rgba(44, 94, 79, 0.10);
+  --on-accent: var(--color-on-accent, #fcfbf8);
+  --ok: var(--color-success, #2c6e49);
+  --warn: var(--color-amber-ink, #8a5a19);
+  --warn-bg: var(--color-amber-card, rgba(138, 90, 25, 0.11));
+  --danger: var(--color-danger, #a63429);
+  --danger-bg: rgba(166, 52, 41, 0.09);
+  --wash: rgba(27, 26, 23, 0.04);
   --sans: "Instrument Sans", ui-sans-serif, system-ui, "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
-  --display: "Newsreader", Georgia, "Iowan Old Style", "Songti SC", "Noto Serif SC", serif;
+  --display: "Newsreader", Georgia, "Songti SC", "Noto Serif SC", serif;
   --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
   --radius: 6px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --canvas: var(--color-canvas, #13191c);
-    --paper: var(--color-paper, #1b2226);
-    --panel: var(--color-panel, #232b30);
-    --ink: var(--color-ink, #eeeae2);
-    --ink-soft: var(--color-ink-soft, #c1c5c5);
-    --ink-faint: var(--color-ink-faint, #98a2a6);
-    --hairline: var(--color-hairline, #323c43);
-    --hairline-strong: var(--color-hairline-strong, #536169);
-    --accent: var(--color-accent, #eb946f);
-    --accent-deep: var(--color-accent-deep, #f4b08f);
-    --on-accent: var(--color-on-accent, #261a14);
-    --selected: var(--color-selected, #2a353c);
-    --selected-ink: var(--color-selected-ink, #eeeae2);
-    --ok: var(--color-success, #9ac6ae);
-    --warn: var(--color-amber-ink, #f4ae8d);
-    --warn-bg: var(--color-amber-card, #33271e);
-    --danger: var(--color-danger, #f1a29a);
-    --wash: rgb(238 234 226 / 0.05);
+    --bg: var(--color-canvas, #141413);
+    --paper: var(--color-paper, #1c1b19);
+    --panel: var(--color-panel, #252320);
+    --ink: var(--color-ink, #edeae2);
+    --ink-soft: var(--color-ink-soft, #b2aca0);
+    --ink-faint: var(--color-ink-faint, #7b766c);
+    --line: var(--color-hairline, rgba(237, 234, 226, 0.10));
+    --line-strong: var(--color-hairline-strong, rgba(237, 234, 226, 0.18));
+    --accent: var(--color-accent, #58a88f);
+    --accent-deep: var(--color-accent-deep, #6ebe9f);
+    --accent-soft: rgba(88, 168, 143, 0.15);
+    --on-accent: var(--color-on-accent, #141413);
+    --ok: var(--color-success, #6bbf8e);
+    --warn: var(--color-amber-ink, #dca056);
+    --warn-bg: var(--color-amber-card, rgba(220, 160, 86, 0.14));
+    --danger: var(--color-danger, #e27a6e);
+    --danger-bg: rgba(226, 122, 110, 0.14);
+    --wash: rgba(237, 234, 226, 0.05);
   }
 }
 
 :root[data-theme="dark"] {
-  --canvas: var(--color-canvas, #13191c);
-  --paper: var(--color-paper, #1b2226);
-  --panel: var(--color-panel, #232b30);
-  --ink: var(--color-ink, #eeeae2);
-  --ink-soft: var(--color-ink-soft, #c1c5c5);
-  --ink-faint: var(--color-ink-faint, #98a2a6);
-  --hairline: var(--color-hairline, #323c43);
-  --hairline-strong: var(--color-hairline-strong, #536169);
-  --accent: var(--color-accent, #eb946f);
-  --accent-deep: var(--color-accent-deep, #f4b08f);
-  --on-accent: var(--color-on-accent, #261a14);
-  --selected: var(--color-selected, #2a353c);
-  --selected-ink: var(--color-selected-ink, #eeeae2);
-  --ok: var(--color-success, #9ac6ae);
-  --warn: var(--color-amber-ink, #f4ae8d);
-  --warn-bg: var(--color-amber-card, #33271e);
-  --danger: var(--color-danger, #f1a29a);
-  --wash: rgb(238 234 226 / 0.05);
+  --bg: var(--color-canvas, #141413);
+  --paper: var(--color-paper, #1c1b19);
+  --panel: var(--color-panel, #252320);
+  --ink: var(--color-ink, #edeae2);
+  --ink-soft: var(--color-ink-soft, #b2aca0);
+  --ink-faint: var(--color-ink-faint, #7b766c);
+  --line: var(--color-hairline, rgba(237, 234, 226, 0.10));
+  --line-strong: var(--color-hairline-strong, rgba(237, 234, 226, 0.18));
+  --accent: var(--color-accent, #58a88f);
+  --accent-deep: var(--color-accent-deep, #6ebe9f);
+  --accent-soft: rgba(88, 168, 143, 0.15);
+  --on-accent: var(--color-on-accent, #141413);
+  --ok: var(--color-success, #6bbf8e);
+  --warn: var(--color-amber-ink, #dca056);
+  --warn-bg: var(--color-amber-card, rgba(220, 160, 86, 0.14));
+  --danger: var(--color-danger, #e27a6e);
+  --danger-bg: rgba(226, 122, 110, 0.14);
+  --wash: rgba(237, 234, 226, 0.05);
 }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 
-body {
+html, body {
   margin: 0;
-  background: var(--paper);
+  padding: 0;
+  overflow-x: hidden;
+  background: var(--bg);
   color: var(--ink);
-  font: 13px/1.5 var(--sans);
+  font: 13px/1.55 var(--sans);
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
 
 main {
-  max-width: 880px;
+  max-width: 900px;
   margin: 0 auto;
-  padding: 24px 24px 56px;
+  padding: 22px 24px 56px;
+}
+
+.icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  flex: none;
 }
 
 .masthead {
@@ -99,29 +113,33 @@ main {
   gap: 12px;
   flex-wrap: wrap;
   padding-bottom: 14px;
-  border-bottom: 1px solid var(--hairline-strong);
+  border-bottom: 1px solid var(--line-strong);
 }
 
 .title-group {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
 }
 
 h1 {
   margin: 0;
-  font: 500 22px/1.2 var(--display);
-  letter-spacing: -0.01em;
+  font: 500 21px/1.28 var(--display);
+  letter-spacing: 0;
 }
 
-.scan-meta {
+.pulse-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--ink-faint);
-  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  line-height: 1.2;
 }
 
 .dot {
@@ -140,21 +158,21 @@ h1 {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .seg {
   display: inline-flex;
-  border: 1px solid var(--hairline-strong);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   overflow: hidden;
-  background: var(--panel);
+  background: var(--paper);
 }
 
 .seg button {
   border: 0;
-  border-right: 1px solid var(--hairline);
+  border-right: 1px solid var(--line);
   border-radius: 0;
   min-height: 30px;
   padding: 0 11px;
@@ -164,16 +182,19 @@ h1 {
   cursor: pointer;
 }
 .seg button:last-child { border-right: 0; }
-.seg button:hover:not([aria-pressed="true"]):not(:disabled) { background: var(--wash); }
+.seg button:hover:not([aria-pressed="true"]):not(:disabled) { background: var(--wash); color: var(--ink); }
 .seg button[aria-pressed="true"] {
-  background: var(--selected);
-  color: var(--selected-ink);
+  background: var(--accent-soft);
+  color: var(--accent);
   font-weight: 600;
 }
 
 button.action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   min-height: 30px;
-  padding: 0 13px;
+  padding: 0 12px;
   border-radius: var(--radius);
   border: 1px solid transparent;
   background: var(--accent);
@@ -183,120 +204,199 @@ button.action {
   transition: background-color 0.14s ease;
 }
 button.action:hover:not(:disabled) { background: var(--accent-deep); }
-button.action:disabled, .seg button:disabled { opacity: 0.55; cursor: default; }
+button.action:disabled, .seg button:disabled, button.ghost:disabled { opacity: 0.5; cursor: default; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+button.action[data-busy="true"] .icon { animation: spin 0.9s linear infinite; }
 
 button.ghost {
-  min-height: 24px;
-  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 0 9px;
   border-radius: var(--radius);
-  border: 1px solid var(--hairline-strong);
-  background: transparent;
+  border: 1px solid var(--line-strong);
+  background: var(--paper);
   color: var(--ink-soft);
   font: 500 11.5px/1 var(--sans);
   cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
-button.ghost:hover { background: var(--wash); color: var(--ink); }
+button.ghost:hover:not(:disabled) { background: var(--panel); color: var(--ink); }
+button.ghost[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 
-button:focus-visible, .sig-head:focus-visible, .tool-row:focus-visible {
+:is(button, input, .sig-head, .tool-row):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.metrics-strip {
+.telemetry-ribbon {
   display: flex;
   flex-wrap: wrap;
-  gap: 28px 36px;
-  padding: 18px 0;
-  border-bottom: 1px solid var(--hairline);
+  align-items: baseline;
+  gap: 16px 32px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
 }
 
-.metric {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.stat-unit {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
 }
 
-.metric-label {
-  font-size: 11.5px;
+.stat-label {
+  font-size: 12px;
   color: var(--ink-faint);
 }
 
-.metric-val {
-  font: 600 20px/1.2 var(--sans);
-  letter-spacing: -0.02em;
+.stat-val {
+  font: 600 19px/1.2 var(--sans);
   color: var(--ink);
 }
-.metric-val[data-tone="danger"] { color: var(--accent); }
-.metric-val[data-tone="warn"] { color: var(--warn); }
+.stat-val[data-tone="danger"] { color: var(--danger); }
+.stat-val[data-tone="warn"] { color: var(--warn); }
 
-.metric-sub {
-  font-weight: 400;
-  font-size: 12.5px;
+.stat-sub {
+  font: 500 12px/1 var(--mono);
   color: var(--ink-faint);
-  margin-left: 5px;
 }
 
 .notice {
-  margin: 14px 0 0;
-  padding: 9px 12px;
-  border-left: 2px solid var(--accent);
-  background: var(--wash);
-  color: var(--ink-soft);
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+  color: var(--danger);
   font-size: 12.5px;
 }
 
+.toast {
+  margin: 10px 0 0;
+  padding: 7px 11px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.triage-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.search-box {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.search-box .icon-search {
+  position: absolute;
+  left: 10px;
+  color: var(--ink-faint);
+  pointer-events: none;
+}
+
+.search-box input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 30px 0 32px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  font: 12.5px/1.3 var(--sans);
+}
+.search-box input::placeholder { color: var(--ink-faint); }
+.search-box input:focus { border-color: var(--accent); outline: none; }
+
+.clear-search {
+  position: absolute;
+  right: 5px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-faint);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.clear-search:hover { background: var(--wash); color: var(--ink); }
+
+.kbd-hint {
+  margin-left: auto;
+  color: var(--ink-faint);
+  font: 11px/1.3 var(--mono);
+  white-space: nowrap;
+}
+
 .section {
-  padding-top: 26px;
+  padding-top: 22px;
 }
 
 .sec-head {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 h2 {
   margin: 0;
-  font: 600 12.5px/1.3 var(--sans);
+  font: 600 12px/1.35 var(--sans);
   letter-spacing: 0.02em;
   color: var(--ink-soft);
 }
 
 .sec-count {
-  font-size: 12px;
+  font: 11.5px/1.2 var(--mono);
   color: var(--ink-faint);
 }
 
 .filter-pill {
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   padding: 2px 9px;
-  border: 1px solid var(--hairline-strong);
+  border: 1px solid var(--accent);
   border-radius: 999px;
-  background: var(--panel);
-  color: var(--ink);
+  background: var(--accent-soft);
+  color: var(--accent);
   font: 500 11.5px/1.4 var(--mono);
   cursor: pointer;
 }
-.filter-pill:hover { border-color: var(--accent); color: var(--accent); }
+.filter-pill:hover { background: var(--panel); }
 
 .tools-ledger {
-  border-top: 1px solid var(--hairline);
+  border-top: 1px solid var(--line);
 }
 
 .tool-row {
   display: grid;
-  grid-template-columns: minmax(130px, 1.4fr) minmax(90px, 1.2fr) auto;
+  grid-template-columns: minmax(120px, 1.4fr) minmax(80px, 1.1fr) auto;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   width: 100%;
-  padding: 9px 6px;
+  padding: 8px 6px;
   border: 0;
-  border-bottom: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--line);
   background: transparent;
   color: inherit;
   text-align: left;
@@ -304,10 +404,13 @@ h2 {
   cursor: pointer;
 }
 .tool-row:hover { background: var(--wash); }
-.tool-row[aria-current="true"] { background: var(--selected); }
+.tool-row[aria-current="true"] {
+  background: var(--accent-soft);
+  border-radius: 4px;
+}
 
 .tool-name {
-  font: 500 12.5px/1.35 var(--mono);
+  font: 500 12px/1.35 var(--mono);
   color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -317,8 +420,8 @@ h2 {
 .bar-track {
   display: block;
   width: 100%;
-  height: 4px;
-  background: var(--hairline);
+  height: 3px;
+  background: var(--line);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -326,33 +429,33 @@ h2 {
 .bar-fill {
   display: block;
   height: 100%;
-  background: var(--ink-soft);
+  background: var(--ink-faint);
   border-radius: 2px;
 }
-.bar-fill[data-high="true"] { background: var(--accent); }
+.bar-fill[data-high="true"] { background: var(--danger); }
 
 .tool-stats {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   justify-content: flex-end;
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--ink-soft);
   white-space: nowrap;
 }
 
 .rate {
-  min-width: 46px;
+  min-width: 44px;
   text-align: right;
   font-family: var(--mono);
-  font-size: 12px;
 }
-.rate[data-high="true"] { color: var(--accent); font-weight: 600; }
+.rate[data-high="true"] { color: var(--danger); font-weight: 600; }
 
 .tag-streak {
   display: inline-flex;
   align-items: center;
-  padding: 1px 7px;
+  gap: 4px;
+  padding: 1px 6px;
   border-radius: 4px;
   background: var(--warn-bg);
   color: var(--warn);
@@ -364,28 +467,40 @@ h2 {
   display: inline-flex;
   align-items: center;
   padding: 1px 6px;
-  border: 1px solid var(--hairline-strong);
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
-  background: var(--panel);
+  background: var(--paper);
   color: var(--ink-soft);
   font: 500 11px/1.4 var(--mono);
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .sig-list {
-  border-top: 1px solid var(--hairline);
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
 }
 
 .sig-item {
-  border-bottom: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--line);
+}
+.sig-item:last-child { border-bottom: 0; }
+.sig-item[data-focused="true"] > .sig-head {
+  background: var(--accent-soft);
+}
+.sig-item[data-open="true"] {
+  background: var(--paper);
 }
 
 .sig-head {
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) auto;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
   align-items: baseline;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
-  padding: 12px 6px;
+  padding: 11px 12px;
   border: 0;
   background: transparent;
   color: inherit;
@@ -396,8 +511,8 @@ h2 {
 .sig-head:hover { background: var(--wash); }
 
 .sig-count {
-  font: 600 15px/1.2 var(--mono);
-  color: var(--accent);
+  font: 600 14.5px/1.25 var(--mono);
+  color: var(--danger);
 }
 
 .sig-body {
@@ -409,12 +524,12 @@ h2 {
 .sig-meta-line {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   flex-wrap: wrap;
 }
 
 .sig-time {
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--ink-faint);
 }
 
@@ -422,77 +537,142 @@ h2 {
   font: 400 12.5px/1.45 var(--mono);
   color: var(--ink);
   overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .chevron {
   width: 14px;
   height: 14px;
   color: var(--ink-faint);
-  transition: transform 0.15s ease;
+  transition: transform 0.14s ease;
   align-self: center;
 }
 .sig-item[data-open="true"] .chevron { transform: rotate(90deg); color: var(--ink); }
 
 .sig-drawer {
-  padding: 4px 10px 16px 64px;
+  padding: 2px 14px 14px 60px;
+  border-top: 1px dashed var(--line);
 }
 
 .drawer-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 8px;
+  padding: 8px 0 10px;
   color: var(--ink-faint);
   font-size: 11.5px;
 }
 
+.drawer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.streak-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.streak-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  font: 11.5px/1.35 var(--mono);
+}
+
 .sample-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .sample-row {
   padding: 9px 11px;
-  border-left: 2px solid var(--hairline-strong);
-  background: var(--panel);
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--bg);
+  display: grid;
+  gap: 5px;
 }
 
 .sample-head {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 10px;
   color: var(--ink-faint);
-  font: 11.5px/1.4 var(--mono);
-  margin-bottom: 4px;
+  font: 11px/1.35 var(--mono);
 }
 
-.sample-line {
-  font: 12px/1.45 var(--mono);
-  color: var(--ink);
-  overflow-wrap: anywhere;
+.arg-kv-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
 }
 
-.sample-args {
-  font: 11.5px/1.4 var(--mono);
+.arg-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--panel);
   color: var(--ink-soft);
-  margin-bottom: 3px;
+  font: 11px/1.4 var(--mono);
+  max-width: 100%;
   overflow-wrap: anywhere;
+}
+.arg-chip b {
+  font-weight: 600;
+  color: var(--ink-faint);
+}
+
+.sample-trace {
+  margin: 0;
+  padding: 6px 8px;
+  border-left: 2px solid var(--accent);
+  background: var(--paper);
+  font: 11.5px/1.5 var(--mono);
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .empty-state {
-  padding: 28px 4px;
+  padding: 28px 16px;
   color: var(--ink-faint);
-  font-size: 13px;
+  font-size: 12.5px;
+  text-align: center;
 }
 
 @media (max-width: 620px) {
-  main { padding: 16px 14px 40px; }
+  main { padding: 14px 12px 40px; }
   .controls { margin-left: 0; width: 100%; justify-content: space-between; }
+  .telemetry-ribbon { gap: 12px 20px; padding: 12px 0; }
+  .kbd-hint { display: none; }
   .tool-row { grid-template-columns: minmax(0, 1fr) auto; }
   .bar-track { display: none; }
-  .sig-head { grid-template-columns: 42px minmax(0, 1fr) auto; }
-  .sig-drawer { padding-left: 10px; }
+  .sig-head { grid-template-columns: 38px minmax(0, 1fr) auto; padding: 10px 8px; gap: 8px; }
+  .sig-drawer { padding: 4px 10px 12px 10px; }
+}
+
+@media (pointer: coarse) {
+  button.action, .seg button, button.ghost, .search-box input { min-height: 38px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 </style>
 </head>
@@ -501,9 +681,9 @@ h2 {
   <header class="masthead">
     <div class="title-group">
       <h1>报错雷达</h1>
-      <span class="scan-meta">
+      <span class="pulse-chip" id="scanBadge" title="等待宿主连接">
         <span class="dot" id="statusDot"></span>
-        <span id="scanStatus">等待宿主连接…</span>
+        <span id="scanStatus">就绪</span>
       </span>
     </div>
     <div class="controls">
@@ -512,34 +692,60 @@ h2 {
         <button type="button" data-hours="168" aria-pressed="true">7d</button>
         <button type="button" data-hours="720" aria-pressed="false">30d</button>
       </div>
-      <button type="button" class="action" id="refreshBtn">增量刷新</button>
+      <button type="button" class="action" id="refreshBtn">
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M13.5 8a5.5 5.5 0 1 1-1.45-3.72M13.5 2.75v2.75h-2.75"/>
+        </svg>
+        <span>增量刷新</span>
+      </button>
     </div>
   </header>
 
   <div class="notice" id="errorBanner" hidden role="alert"></div>
+  <div class="toast" id="toastBanner" hidden role="status" aria-live="polite"></div>
 
-  <section class="metrics-strip" aria-label="时间窗概览">
-    <div class="metric">
-      <span class="metric-label">工具调用</span>
-      <span class="metric-val" id="mCalls">0</span>
+  <section class="telemetry-ribbon" aria-label="时间窗概览">
+    <div class="stat-unit">
+      <span class="stat-label">报错 / 错率</span>
+      <span class="stat-val" id="mErrors">0</span>
+      <span class="stat-sub" id="mRate">0%</span>
     </div>
-    <div class="metric">
-      <span class="metric-label">工具报错 · 错率</span>
-      <span class="metric-val" id="mErrors">0<span class="metric-sub" id="mRate">0%</span></span>
+    <div class="stat-unit">
+      <span class="stat-label">调用</span>
+      <span class="stat-val" id="mCalls">0</span>
     </div>
-    <div class="metric">
-      <span class="metric-label">连环撞墙</span>
-      <span class="metric-val" id="mStreaks">0</span>
+    <div class="stat-unit">
+      <span class="stat-label">连环重试</span>
+      <span class="stat-val" id="mStreaks">0</span>
     </div>
-    <div class="metric">
-      <span class="metric-label">轮次与子代理异常</span>
-      <span class="metric-val" id="mLifecycle">0</span>
+    <div class="stat-unit">
+      <span class="stat-label">生命周期异常</span>
+      <span class="stat-val" id="mLifecycle">0</span>
     </div>
   </section>
 
-  <section class="section" id="toolsSection">
+  <div class="triage-bar">
+    <div class="search-box">
+      <svg class="icon icon-search" viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="7" cy="7" r="4.5"/>
+        <path d="M10.5 10.5L14 14"/>
+      </svg>
+      <input type="search" id="searchInput" autocomplete="off" spellcheck="false" placeholder="搜索错误签名、退出码或工具名…" aria-label="搜索错误签名或工具名">
+      <button type="button" class="clear-search" id="clearSearchBtn" hidden aria-label="清空搜索">
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg>
+      </button>
+    </div>
+    <button type="button" class="ghost" id="streakOnlyBtn" aria-pressed="false">
+      <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 2L4 9h4l-1 5 5-7H8l1-5z"/></svg>
+      <span>仅连撞</span>
+    </button>
+    <button type="button" class="filter-pill" id="clearFilterBtn" hidden></button>
+    <span class="kbd-hint" aria-hidden="true">↑↓ 浏览 · Enter 展开 · / 搜索</span>
+  </div>
+
+  <section class="section" id="toolsSection" hidden>
     <div class="sec-head">
-      <h2>高错率工具榜</h2>
+      <h2>异常工具分布</h2>
       <span class="sec-count" id="toolsCount"></span>
     </div>
     <div class="tools-ledger" id="toolsRoot"></div>
@@ -547,29 +753,61 @@ h2 {
 
   <section class="section">
     <div class="sec-head">
-      <h2>Top 报错指纹排行</h2>
+      <h2>报错签名分诊</h2>
       <span class="sec-count" id="sigsCount"></span>
-      <button type="button" class="filter-pill" id="clearFilterBtn" hidden></button>
     </div>
-    <div class="sig-list" id="sigsRoot"></div>
+    <div class="sig-list" id="sigsRoot" role="list"></div>
   </section>
 </main>
 
 <script>
 (() => {
   'use strict';
+
   const CHANNEL = 'kiki.panel.v1';
   const RPC_TIMEOUT_MS = 20000;
+  const memStore = new Map();
+  const safeStorage = {
+    get(key) {
+      try {
+        const v = window.localStorage.getItem(key);
+        return v !== null ? v : (memStore.get(key) ?? null);
+      } catch {
+        return memStore.get(key) ?? null;
+      }
+    },
+    set(key, value) {
+      const str = String(value);
+      memStore.set(key, str);
+      try { window.localStorage.setItem(key, str); } catch {}
+    },
+  };
+
+  try {
+    const urlTheme = new URLSearchParams(window.location.search).get('theme');
+    if (urlTheme === 'dark' || urlTheme === 'light') {
+      document.documentElement.setAttribute('data-theme', urlTheme);
+    }
+  } catch {}
+
   const pending = new Map();
   const sampleCache = new Map();
+  const sigDomMap = new Map();
 
   let seq = 0;
   let parentOrigin = '';
-  let windowHours = 168;
+  let sessionId = '';
+  const savedHours = Number(safeStorage.get('pulse.windowHours'));
+  let windowHours = [24, 168, 720].includes(savedHours) ? savedHours : 168;
   let toolFilter = '';
+  let queryText = '';
+  let streakOnly = false;
   let expandedSigId = '';
+  let focusedSigId = '';
   let busy = false;
   let viewEpoch = 0;
+  let latestReport = null;
+  let toastTimer = 0;
 
   const $ = (id) => document.getElementById(id);
   const numFmt = new Intl.NumberFormat('zh-CN');
@@ -597,20 +835,33 @@ h2 {
     if (!ts) return '';
     const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
     if (diffSec < 60) return '刚刚';
-    if (diffSec < 3600) return `${Math.floor(diffSec / 60)} 分钟前`;
-    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} 小时前`;
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m 前`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h 前`;
     const d = new Date(ts);
     const pad = (v) => String(v).padStart(2, '0');
     return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
-  function applyPresentation(pres) {
-    if (!pres || typeof pres !== 'object') return;
-    const root = document.documentElement;
-    if (pres.theme === 'light' || pres.theme === 'dark') {
-      root.setAttribute('data-theme', pres.theme);
+  function svgIcon(paths) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.classList.add('icon');
+    for (const d of paths) {
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      p.setAttribute('d', d);
+      svg.append(p);
     }
-    if (pres.tokens && typeof pres.tokens === 'object') {
+    return svg;
+  }
+
+  function applyPresentation(pres, topTheme) {
+    const root = document.documentElement;
+    const theme = (pres && pres.theme) || topTheme;
+    if (theme === 'light' || theme === 'dark') {
+      root.setAttribute('data-theme', theme);
+    }
+    if (pres && pres.tokens && typeof pres.tokens === 'object') {
       for (const [k, v] of Object.entries(pres.tokens)) {
         if (typeof k === 'string' && k.startsWith('--color-') && typeof v === 'string' && v.trim()) {
           root.style.setProperty(k, v.trim());
@@ -619,36 +870,42 @@ h2 {
     }
   }
 
-  function setStatus(text, tone = '') {
-    $('scanStatus').textContent = text;
+  function setStatus(label, tone = '', tooltip = '') {
+    $('scanStatus').textContent = label;
     $('statusDot').dataset.tone = tone;
+    const badge = $('scanBadge');
+    badge.title = tooltip || label;
+    badge.setAttribute('aria-label', tooltip || label);
   }
 
   function setError(message) {
     const node = $('errorBanner');
-    if (!message) {
-      node.hidden = true;
-      node.textContent = '';
-      return;
-    }
-    node.textContent = message;
-    node.hidden = false;
+    node.hidden = !message;
+    node.textContent = message || '';
   }
 
-  function call(action, args = {}) {
+  function showToast(message) {
+    clearTimeout(toastTimer);
+    const node = $('toastBanner');
+    node.textContent = message;
+    node.hidden = false;
+    toastTimer = setTimeout(() => { node.hidden = true; }, 2400);
+  }
+
+  function bridgeRequest(method, extra = {}) {
     const id = ++seq;
     const targetOrigin = !parentOrigin || parentOrigin === 'null' ? '*' : parentOrigin;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id);
-        reject(new Error('面板请求超时，请稍后重试。'));
+        reject(new Error('请求超时，请重试。'));
       }, RPC_TIMEOUT_MS);
 
       pending.set(id, (msg) => {
         clearTimeout(timer);
         pending.delete(id);
         if (!msg || msg.ok !== true) {
-          reject(new Error(typeof msg?.error === 'string' && msg.error ? msg.error : '面板请求未完成。'));
+          reject(new Error(typeof msg?.error === 'string' && msg.error ? msg.error : '请求未完成。'));
           return;
         }
         if (msg.result && msg.result.ok === false) {
@@ -659,7 +916,7 @@ h2 {
       });
 
       try {
-        window.parent.postMessage({ channel: CHANNEL, kind: 'request', id, method: 'plugin.call', action, args }, targetOrigin);
+        window.parent.postMessage({ channel: CHANNEL, kind: 'request', id, method, ...extra }, targetOrigin);
       } catch (err) {
         clearTimeout(timer);
         pending.delete(id);
@@ -668,74 +925,117 @@ h2 {
     });
   }
 
+  const call = (action, args = {}) => bridgeRequest('plugin.call', { action, args });
+
+  async function copyTextSafe(text, buttonEl, labelEl) {
+    const done = () => {
+      const target = labelEl || buttonEl;
+      const prev = target.textContent;
+      target.textContent = '已复制';
+      setTimeout(() => { target.textContent = prev; }, 1200);
+    };
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(text);
+        done();
+        return;
+      }
+      throw new Error('clipboard unavailable');
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-9999px';
+      ta.style.opacity = '0';
+      document.body.append(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        done();
+      } catch {}
+      ta.remove();
+    }
+  }
+
+  async function sendTriageToSession(sigItem, detail) {
+    const sample = Array.isArray(detail?.samples) && detail.samples[0] ? detail.samples[0] : null;
+    const lines = [
+      `请排查近期高频报错指纹（${windowHours}h 窗口共 ${sigItem.count} 次${sigItem.streaks > 0 ? `，连环重试 ${sigItem.streaks} 次` : ''}）：`,
+      `- 工具：\`${sigItem.tool}\``,
+      `- 签名：\`${sigItem.signature}\``,
+    ];
+    if (sample) {
+      if (sample.workspace || sample.sessionId) {
+        lines.push(`- 最近现场：${sample.workspace || 'default'} · ${sample.sessionId || '-'}`);
+      }
+      if (sample.argsPreview) lines.push(`- 参数摘要：\`${sample.argsPreview}\``);
+      if (sample.errorPreview && sample.errorPreview !== sigItem.signature) {
+        lines.push(`- 错误摘录：\`${sample.errorPreview}\``);
+      }
+    }
+    const text = lines.join('\n');
+    try {
+      await bridgeRequest('session.sendMessage', { ...(sessionId ? { sessionId } : {}), text });
+      showToast('已将排查指令发送至当前会话');
+    } catch {
+      await copyTextSafe(text, document.createElement('span'));
+      showToast('当前无活跃会话，排查指令已复制到剪贴板');
+    }
+  }
+
   function describeScanStatus(report) {
     const scan = report?.lastScan;
     if (!report?.indexed || !scan) {
-      return { text: '尚未扫描日志，点击增量刷新建立索引', tone: 'warn' };
+      return { label: '待建立索引', tone: 'warn', tooltip: '点击「增量刷新」扫描近期会话日志' };
     }
     const ms = Math.round(Number(scan.scanDurationMs) || 0);
     const skipped = fmtInt(scan.filesSkippedUnchanged || 0);
-    const parts = [`${ms}ms`];
-    if (scan.bytesRead > 0) parts.push(`增量读取 ${fmtBytes(scan.bytesRead)}`);
-    parts.push(`跳过 ${skipped} 个未变文件`);
-    if (scan.budgetPaused) parts.push('已达单轮字节上限');
+    const detailParts = [
+      scan.at ? `更新于 ${fmtTimeAgo(scan.at)}` : '',
+      `耗时 ${ms}ms`,
+      scan.bytesRead > 0 ? `增量读取 ${fmtBytes(scan.bytesRead)}` : '无新增字节',
+      `跳过 ${skipped} 个未变文件`,
+      scan.budgetPaused ? '已达单轮字节上限，再次刷新可继续追平' : '',
+    ].filter(Boolean);
     return {
-      text: parts.join(' · '),
+      label: scan.budgetPaused ? '部分追平' : (scan.at ? fmtTimeAgo(scan.at) : `${ms}ms`),
       tone: scan.budgetPaused ? 'warn' : 'ok',
+      tooltip: detailParts.join(' · '),
     };
   }
 
-  function copyTextSafe(text, buttonEl) {
-    const done = () => {
-      const prev = buttonEl.textContent;
-      buttonEl.textContent = '已复制';
-      setTimeout(() => { buttonEl.textContent = prev; }, 1200);
-    };
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-      navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
-    } else {
-      fallbackCopy(text, done);
+  function parseStructuredArgs(argsPreview) {
+    if (!argsPreview) return [];
+    const trimmed = argsPreview.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        const obj = JSON.parse(trimmed);
+        if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+          return Object.entries(obj).slice(0, 6).map(([k, v]) => [
+            k,
+            typeof v === 'string' ? v : JSON.stringify(v),
+          ]);
+        }
+      } catch {}
     }
+    return [['args', trimmed]];
   }
 
-  function fallbackCopy(text, onDone) {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.append(ta);
-    ta.select();
-    try { document.execCommand('copy'); onDone(); } catch {}
-    ta.remove();
-  }
-
-  function createChevronSvg() {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 16 16');
-    svg.setAttribute('fill', 'none');
-    svg.setAttribute('aria-hidden', 'true');
-    svg.classList.add('chevron');
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', 'M6 3.5L10.5 8L6 12.5');
-    path.setAttribute('stroke', 'currentColor');
-    path.setAttribute('stroke-width', '1.5');
-    path.setAttribute('stroke-linecap', 'round');
-    path.setAttribute('stroke-linejoin', 'round');
-    svg.append(path);
-    return svg;
+  function formatTraceLines(rawPreview) {
+    if (!rawPreview) return '';
+    return String(rawPreview)
+      .replace(/\s+(at\s+[^\s(]+(?:\s*\([^)]+\))?)/g, '\n  $1')
+      .replace(/\s+(File\s+"[^"]+",\s+line\s+\d+)/g, '\n  $1')
+      .replace(/\s+(Exit code:\s*-?\d+)/gi, '\n$1');
   }
 
   function renderSummaryMetrics(totals = {}) {
     $('mCalls').textContent = fmtInt(totals.calls || 0);
-
     const errNode = $('mErrors');
-    errNode.replaceChildren();
-    errNode.append(document.createTextNode(fmtInt(totals.errors || 0)));
-    const sub = document.createElement('span');
-    sub.className = 'metric-sub';
-    sub.textContent = fmtPercent(totals.errorRate || 0);
-    errNode.append(sub);
+    errNode.textContent = fmtInt(totals.errors || 0);
     errNode.dataset.tone = (totals.errors || 0) > 0 ? 'danger' : '';
+    $('mRate').textContent = fmtPercent(totals.errorRate || 0);
 
     const streakNode = $('mStreaks');
     streakNode.textContent = fmtInt(totals.streaks || 0);
@@ -746,10 +1046,14 @@ h2 {
     lfNode.dataset.tone = (totals.lifecycleErrors || 0) > 0 ? 'danger' : '';
   }
 
+  function matchesLocalQuery(toolName, signatureText) {
+    if (!queryText) return true;
+    const q = queryText.toLowerCase();
+    return String(toolName || '').toLowerCase().includes(q) || String(signatureText || '').toLowerCase().includes(q);
+  }
+
   function renderTools(tools = [], lifecycleFailures = []) {
     const root = $('toolsRoot');
-    root.replaceChildren();
-
     const merged = [...tools];
     for (const lf of lifecycleFailures) {
       if (lf.count > 0) {
@@ -764,22 +1068,34 @@ h2 {
       }
     }
 
-    const withErrors = merged.filter((item) => item.errors > 0);
-    const list = withErrors.length > 0 ? withErrors : merged.slice(0, 6);
-    $('toolsSection').hidden = list.length === 0;
-    $('toolsCount').textContent = list.length > 0 ? `${list.length} 项` : '';
+    const filtered = merged.filter((item) => {
+      if (streakOnly && !(item.streaks > 0)) return false;
+      if (queryText && !String(item.tool || '').toLowerCase().includes(queryText.toLowerCase())) {
+        // Keep tool rows that match active signatures too
+        const hasSig = (latestReport?.topSignatures || []).some(
+          (s) => s.tool === item.tool && matchesLocalQuery(s.tool, s.signature),
+        );
+        if (!hasSig) return false;
+      }
+      return true;
+    });
 
+    const withErrors = filtered.filter((item) => item.errors > 0);
+    const list = (withErrors.length > 0 ? withErrors : filtered).slice(0, 8);
+    $('toolsSection').hidden = list.length === 0;
+    $('toolsCount').textContent = list.length > 0 ? `${list.length}` : '';
+
+    root.replaceChildren();
     const maxErrors = list.reduce((acc, item) => Math.max(acc, item.errors || 0), 1);
 
     for (const item of list) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'tool-row';
-      const selected = toolFilter && toolFilter.toLowerCase() === item.tool.toLowerCase();
+      const selected = Boolean(toolFilter && toolFilter.toLowerCase() === item.tool.toLowerCase());
       btn.setAttribute('aria-current', selected ? 'true' : 'false');
       btn.onclick = () => {
         toolFilter = selected ? '' : item.tool;
-        expandedSigId = '';
         void loadState();
       };
 
@@ -808,18 +1124,23 @@ h2 {
 
       const ratioText = document.createElement('span');
       ratioText.textContent = item.isLifecycle
-        ? `${fmtInt(item.errors)} 次异常`
-        : `${fmtInt(item.errors)} / ${fmtInt(item.calls)}`;
+        ? `${fmtInt(item.errors)} 次`
+        : `${fmtInt(item.errors)}/${fmtInt(item.calls)}`;
 
       const rate = document.createElement('span');
       rate.className = 'rate';
       rate.dataset.high = item.errorRate >= 0.2 && item.errors > 0 ? 'true' : 'false';
-      rate.textContent = item.isLifecycle ? '生命周期' : fmtPercent(item.errorRate);
+      rate.textContent = item.isLifecycle ? '事件' : fmtPercent(item.errorRate);
 
       stats.append(ratioText, rate);
       btn.append(name, track, stats);
       root.append(btn);
     }
+  }
+
+  function matchingStreaksForSig(sigId) {
+    const episodes = latestReport?.topStreaks || [];
+    return episodes.filter((ep) => ep && ep.signatureId === sigId);
   }
 
   function renderSampleDrawer(drawerEl, sigItem, detail) {
@@ -830,22 +1151,61 @@ h2 {
     const streakNote = document.createElement('span');
     streakNote.textContent =
       sigItem.streaks > 0
-        ? `连环撞墙 ${fmtInt(sigItem.streaks)} 次 · 单轮最高连续报错 ${fmtInt(detail?.maxStreakLength || sigItem.maxStreakLength || 2)} 次`
-        : `最近脱敏样本（最多保留 5 条）`;
+        ? `连环重试 ${fmtInt(sigItem.streaks)} 轮 · 单轮峰值连续失败 ${fmtInt(detail?.maxStreakLength || sigItem.maxStreakLength || 2)} 次`
+        : `脱敏现场样本（近 ${fmtInt((detail?.samples || []).length)} 条）`;
+
+    const actions = document.createElement('div');
+    actions.className = 'drawer-actions';
 
     const copyBtn = document.createElement('button');
     copyBtn.type = 'button';
     copyBtn.className = 'ghost';
-    copyBtn.textContent = '复制指纹';
-    copyBtn.onclick = () => copyTextSafe(`${sigItem.tool}: ${sigItem.signature}`, copyBtn);
-    bar.append(streakNote, copyBtn);
+    const copyLabel = document.createElement('span');
+    copyLabel.textContent = '复制签名';
+    copyBtn.append(
+      svgIcon(['M5.5 5.5h7v8h-7z', 'M3.5 10.5h-1v-8h7v1']),
+      copyLabel,
+    );
+    copyBtn.onclick = () => {
+      void copyTextSafe(`${sigItem.tool}: ${sigItem.signature}`, copyBtn, copyLabel);
+    };
+
+    const sendBtn = document.createElement('button');
+    sendBtn.type = 'button';
+    sendBtn.className = 'ghost';
+    const sendLabel = document.createElement('span');
+    sendLabel.textContent = '发送排查指令';
+    sendBtn.append(
+      svgIcon(['M14 2L7 9', 'M14 2l-4.5 12-2.5-5-5-2.5L14 2z']),
+      sendLabel,
+    );
+    sendBtn.title = sessionId ? '发送结构化排查指令至当前会话' : '发回活跃会话（无会话时自动复制）';
+    sendBtn.onclick = () => {
+      void sendTriageToSession(sigItem, detail);
+    };
+
+    actions.append(copyBtn, sendBtn);
+    bar.append(streakNote, actions);
     drawerEl.append(bar);
+
+    const episodes = matchingStreaksForSig(sigItem.signatureId);
+    if (episodes.length > 0) {
+      const strip = document.createElement('div');
+      strip.className = 'streak-strip';
+      for (const ep of episodes.slice(0, 3)) {
+        const pill = document.createElement('span');
+        pill.className = 'streak-pill';
+        pill.textContent = `连续 ${fmtInt(ep.length)} 次 · ${ep.workspace || 'default'} · ${fmtTimeAgo(ep.timestamp)}`;
+        strip.append(pill);
+      }
+      drawerEl.append(strip);
+    }
 
     const samples = Array.isArray(detail?.samples) ? detail.samples : [];
     if (samples.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'sample-head';
-      empty.textContent = '暂无保存的样本明细。';
+      empty.textContent = '暂无样本明细。';
       drawerEl.append(empty);
       return;
     }
@@ -862,51 +1222,42 @@ h2 {
       loc.textContent = `${s.workspace || 'default'} · ${s.sessionId || '-'} · ${s.agentId || 'main'}`;
       const ts = document.createElement('span');
       ts.textContent = fmtTimeAgo(s.timestamp);
+      if (s.timestamp) ts.title = new Date(s.timestamp).toISOString();
       head.append(loc, ts);
       row.append(head);
 
-      if (s.argsPreview) {
-        const args = document.createElement('div');
-        args.className = 'sample-args';
-        args.textContent = `参数: ${s.argsPreview}`;
-        row.append(args);
+      const kvPairs = parseStructuredArgs(s.argsPreview);
+      if (kvPairs.length > 0) {
+        const kvWrap = document.createElement('div');
+        kvWrap.className = 'arg-kv-list';
+        for (const [k, v] of kvPairs) {
+          const chip = document.createElement('span');
+          chip.className = 'arg-chip';
+          const keyNode = document.createElement('b');
+          keyNode.textContent = `${k}=`;
+          chip.append(keyNode, document.createTextNode(String(v).slice(0, 120)));
+          kvWrap.append(chip);
+        }
+        row.append(kvWrap);
       }
 
-      const err = document.createElement('div');
-      err.className = 'sample-line';
-      err.textContent = s.errorPreview || sigItem.signature;
-      row.append(err);
+      const trace = document.createElement('pre');
+      trace.className = 'sample-trace';
+      trace.textContent = formatTraceLines(s.errorPreview || sigItem.signature);
+      row.append(trace);
       list.append(row);
     }
     drawerEl.append(list);
   }
 
-  async function toggleSignature(itemEl, drawerEl, sigItem) {
-    const isOpen = itemEl.dataset.open === 'true';
-    if (isOpen) {
-      itemEl.dataset.open = 'false';
-      drawerEl.hidden = true;
-      expandedSigId = '';
+  async function loadSamplesIntoDrawer(drawerEl, sigItem, forceReload = false) {
+    if (!forceReload && sampleCache.has(sigItem.signatureId)) {
+      renderSampleDrawer(drawerEl, sigItem, sampleCache.get(sigItem.signatureId));
       return;
     }
-
-    for (const openEl of document.querySelectorAll('.sig-item[data-open="true"]')) {
-      openEl.dataset.open = 'false';
-      const d = openEl.querySelector('.sig-drawer');
-      if (d) d.hidden = true;
+    if (!drawerEl.hasChildNodes()) {
+      drawerEl.textContent = '正在读取脱敏样本…';
     }
-
-    expandedSigId = sigItem.signatureId;
-    itemEl.dataset.open = 'true';
-    drawerEl.hidden = false;
-
-    const cached = sampleCache.get(sigItem.signatureId);
-    if (cached) {
-      renderSampleDrawer(drawerEl, sigItem, cached);
-      return;
-    }
-
-    drawerEl.textContent = '加载样本中…';
     try {
       const detail = await call('samples', {
         signatureId: sigItem.signatureId,
@@ -917,120 +1268,260 @@ h2 {
         renderSampleDrawer(drawerEl, sigItem, detail);
       }
     } catch (err) {
-      if (expandedSigId === sigItem.signatureId) {
+      if (expandedSigId === sigItem.signatureId && !drawerEl.children.length) {
         drawerEl.textContent = err?.message || '无法读取样本。';
       }
     }
   }
 
-  function renderSignatures(signatures = [], indexed = true) {
-    const root = $('sigsRoot');
-    root.replaceChildren();
+  async function toggleSignature(sigId) {
+    const record = sigDomMap.get(sigId);
+    if (!record) return;
+    const { wrapper, drawer, getItem } = record;
+    const sigItem = getItem();
+    const isOpen = wrapper.dataset.open === 'true';
 
+    if (isOpen) {
+      wrapper.dataset.open = 'false';
+      wrapper.querySelector('.sig-head')?.setAttribute('aria-expanded', 'false');
+      drawer.hidden = true;
+      expandedSigId = '';
+      return;
+    }
+
+    for (const [otherId, otherRec] of sigDomMap.entries()) {
+      if (otherId !== sigId && otherRec.wrapper.dataset.open === 'true') {
+        otherRec.wrapper.dataset.open = 'false';
+        otherRec.wrapper.querySelector('.sig-head')?.setAttribute('aria-expanded', 'false');
+        otherRec.drawer.hidden = true;
+      }
+    }
+
+    expandedSigId = sigId;
+    setFocusedSignature(sigId, false);
+    wrapper.dataset.open = 'true';
+    wrapper.querySelector('.sig-head')?.setAttribute('aria-expanded', 'true');
+    drawer.hidden = false;
+    await loadSamplesIntoDrawer(drawer, sigItem, false);
+  }
+
+  function setFocusedSignature(sigId, scroll = true) {
+    focusedSigId = sigId;
+    for (const [id, rec] of sigDomMap.entries()) {
+      const active = id === sigId;
+      rec.wrapper.dataset.focused = active ? 'true' : 'false';
+      if (active && scroll) {
+        rec.wrapper.scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }
+
+  function updateSignatureEntryDom(record, sigItem) {
+    record.currentItem = sigItem;
+    record.countEl.textContent = fmtInt(sigItem.count);
+    record.toolTagEl.textContent = sigItem.tool;
+
+    if (sigItem.streaks > 0) {
+      record.streakTagEl.hidden = false;
+      record.streakTagEl.textContent = `连撞 ${fmtInt(sigItem.streaks)}`;
+    } else {
+      record.streakTagEl.hidden = true;
+    }
+
+    if (sigItem.lastSeenAt) {
+      record.timeEl.hidden = false;
+      record.timeEl.textContent = fmtTimeAgo(sigItem.lastSeenAt);
+      record.timeEl.title = new Date(sigItem.lastSeenAt).toISOString();
+    } else {
+      record.timeEl.hidden = true;
+    }
+
+    record.codeEl.textContent = sigItem.signature;
+  }
+
+  function createSignatureEntryDom(sigItem) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'sig-item';
+    wrapper.setAttribute('role', 'listitem');
+    wrapper.dataset.sigId = sigItem.signatureId;
+    wrapper.dataset.open = 'false';
+    wrapper.dataset.focused = 'false';
+
+    const head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'sig-head';
+    head.setAttribute('aria-expanded', 'false');
+
+    const countEl = document.createElement('span');
+    countEl.className = 'sig-count';
+
+    const body = document.createElement('span');
+    body.className = 'sig-body';
+
+    const metaLine = document.createElement('span');
+    metaLine.className = 'sig-meta-line';
+
+    const toolTagEl = document.createElement('span');
+    toolTagEl.className = 'tag-tool';
+
+    const streakTagEl = document.createElement('span');
+    streakTagEl.className = 'tag-streak';
+    streakTagEl.hidden = true;
+
+    const timeEl = document.createElement('span');
+    timeEl.className = 'sig-time';
+    timeEl.hidden = true;
+
+    metaLine.append(toolTagEl, streakTagEl, timeEl);
+
+    const codeEl = document.createElement('span');
+    codeEl.className = 'sig-code';
+
+    body.append(metaLine, codeEl);
+
+    const chevron = svgIcon(['M6 3.5L10.5 8L6 12.5']);
+    chevron.classList.add('chevron');
+
+    head.append(countEl, body, chevron);
+
+    const drawer = document.createElement('div');
+    drawer.className = 'sig-drawer';
+    drawer.hidden = true;
+
+    const record = {
+      wrapper,
+      head,
+      drawer,
+      countEl,
+      toolTagEl,
+      streakTagEl,
+      timeEl,
+      codeEl,
+      currentItem: sigItem,
+      getItem: () => record.currentItem,
+    };
+
+    head.onclick = () => {
+      void toggleSignature(sigItem.signatureId);
+    };
+
+    wrapper.append(head, drawer);
+    updateSignatureEntryDom(record, sigItem);
+    return record;
+  }
+
+  function visibleSignaturesFromReport(report) {
+    const raw = Array.isArray(report?.topSignatures) ? report.topSignatures : [];
+    return raw.filter((s) => {
+      if (streakOnly && !(s.streaks > 0)) return false;
+      return matchesLocalQuery(s.tool, s.signature);
+    });
+  }
+
+  function reconcileSignatures(signatures = [], indexed = true, refreshExpandedSamples = false) {
+    const root = $('sigsRoot');
     const filterBtn = $('clearFilterBtn');
     if (toolFilter) {
       filterBtn.hidden = false;
-      filterBtn.textContent = `筛选: ${toolFilter} ×`;
+      filterBtn.textContent = `${toolFilter} ×`;
       filterBtn.onclick = () => {
         toolFilter = '';
-        expandedSigId = '';
         void loadState();
       };
     } else {
       filterBtn.hidden = true;
     }
 
-    $('sigsCount').textContent = signatures.length > 0 ? `${signatures.length} 类归一化指纹` : '';
+    $('sigsCount').textContent = signatures.length > 0 ? `${signatures.length}` : '';
 
     if (signatures.length === 0) {
+      sigDomMap.clear();
+      root.replaceChildren();
       const empty = document.createElement('div');
       empty.className = 'empty-state';
       empty.textContent = !indexed
-        ? '尚未生成本地统计索引，点击右上角「增量刷新」即可读取近期会话日志。'
-        : toolFilter
-          ? `当前时间窗内「${toolFilter}」无报错记录。`
+        ? '点击右上角「增量刷新」建立近期会话报错索引。'
+        : queryText || streakOnly || toolFilter
+          ? '当前筛选条件下无匹配报错。'
           : '当前时间窗内无报错记录。';
       root.append(empty);
       return;
     }
 
+    // Remove placeholder empty state if present
+    for (const child of [...root.children]) {
+      if (!child.dataset || !child.dataset.sigId) child.remove();
+    }
+
+    const nextIds = new Set(signatures.map((s) => s.signatureId));
+    for (const [existingId, rec] of sigDomMap.entries()) {
+      if (!nextIds.has(existingId)) {
+        rec.wrapper.remove();
+        sigDomMap.delete(existingId);
+      }
+    }
+
+    let cursorNode = root.firstElementChild;
     for (const sigItem of signatures) {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'sig-item';
-      wrapper.dataset.open = 'false';
-
-      const head = document.createElement('button');
-      head.type = 'button';
-      head.className = 'sig-head';
-
-      const count = document.createElement('span');
-      count.className = 'sig-count';
-      count.textContent = fmtInt(sigItem.count);
-
-      const body = document.createElement('span');
-      body.className = 'sig-body';
-
-      const metaLine = document.createElement('span');
-      metaLine.className = 'sig-meta-line';
-
-      const toolTag = document.createElement('span');
-      toolTag.className = 'tag-tool';
-      toolTag.textContent = sigItem.tool;
-      metaLine.append(toolTag);
-
-      if (sigItem.streaks > 0) {
-        const streakTag = document.createElement('span');
-        streakTag.className = 'tag-streak';
-        streakTag.textContent = `连环撞墙 ${fmtInt(sigItem.streaks)} 次`;
-        metaLine.append(streakTag);
+      let rec = sigDomMap.get(sigItem.signatureId);
+      if (!rec) {
+        rec = createSignatureEntryDom(sigItem);
+        sigDomMap.set(sigItem.signatureId, rec);
+      } else {
+        updateSignatureEntryDom(rec, sigItem);
       }
 
-      if (sigItem.lastSeenAt) {
-        const timeSpan = document.createElement('span');
-        timeSpan.className = 'sig-time';
-        timeSpan.textContent = fmtTimeAgo(sigItem.lastSeenAt);
-        metaLine.append(timeSpan);
+      if (rec.wrapper !== cursorNode) {
+        root.insertBefore(rec.wrapper, cursorNode);
+      } else {
+        cursorNode = cursorNode.nextElementSibling;
       }
 
-      const code = document.createElement('span');
-      code.className = 'sig-code';
-      code.textContent = sigItem.signature;
-
-      body.append(metaLine, code);
-      head.append(count, body, createChevronSvg());
-
-      const drawer = document.createElement('div');
-      drawer.className = 'sig-drawer';
-      drawer.hidden = true;
-
-      head.onclick = () => {
-        void toggleSignature(wrapper, drawer, sigItem);
-      };
-
-      wrapper.append(head, drawer);
-      root.append(wrapper);
-
-      if (expandedSigId && expandedSigId === sigItem.signatureId) {
-        void toggleSignature(wrapper, drawer, sigItem);
+      const shouldOpen = expandedSigId === sigItem.signatureId;
+      rec.wrapper.dataset.open = shouldOpen ? 'true' : 'false';
+      rec.head.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+      rec.drawer.hidden = !shouldOpen;
+      if (shouldOpen && (refreshExpandedSamples || !rec.drawer.hasChildNodes())) {
+        void loadSamplesIntoDrawer(rec.drawer, sigItem, refreshExpandedSamples);
       }
+    }
+
+    if (focusedSigId && !nextIds.has(focusedSigId)) {
+      focusedSigId = signatures[0]?.signatureId || '';
+    }
+    setFocusedSignature(focusedSigId, false);
+  }
+
+  function applyReport(report, { refreshExpandedSamples = false } = {}) {
+    const prevScrollY = window.scrollY;
+    latestReport = report;
+    const status = describeScanStatus(report);
+    setStatus(status.label, status.tone, status.tooltip);
+    renderSummaryMetrics(report?.totals || {});
+    renderTools(report?.highErrorTools || [], report?.lifecycleFailures || []);
+    reconcileSignatures(visibleSignaturesFromReport(report), report?.indexed !== false, refreshExpandedSamples);
+    if (Math.abs(window.scrollY - prevScrollY) > 2) {
+      window.scrollTo(0, prevScrollY);
     }
   }
 
-  function applyReport(report) {
-    const status = describeScanStatus(report);
-    setStatus(status.text, status.tone);
-    renderSummaryMetrics(report?.totals || {});
-    renderTools(report?.highErrorTools || [], report?.lifecycleFailures || []);
-    renderSignatures(report?.topSignatures || [], report?.indexed !== false);
+  function rerenderLocalFilters() {
+    if (!latestReport) return;
+    renderTools(latestReport?.highErrorTools || [], latestReport?.lifecycleFailures || []);
+    reconcileSignatures(visibleSignaturesFromReport(latestReport), latestReport?.indexed !== false, false);
   }
 
   function syncControls() {
-    $('refreshBtn').disabled = busy;
-    for (const btn of document.querySelectorAll('.seg button[data-hours]')) {
-      const h = Number(btn.dataset.hours);
-      btn.setAttribute('aria-pressed', h === windowHours ? 'true' : 'false');
-      btn.disabled = busy;
+    const btn = $('refreshBtn');
+    btn.disabled = busy;
+    btn.dataset.busy = busy ? 'true' : 'false';
+    for (const segBtn of document.querySelectorAll('.seg button[data-hours]')) {
+      const h = Number(segBtn.dataset.hours);
+      segBtn.setAttribute('aria-pressed', h === windowHours ? 'true' : 'false');
+      segBtn.disabled = busy;
     }
+    $('streakOnlyBtn').setAttribute('aria-pressed', streakOnly ? 'true' : 'false');
+    $('clearSearchBtn').hidden = !queryText;
   }
 
   async function loadState() {
@@ -1040,13 +1531,13 @@ h2 {
       const report = await call('state', {
         windowHours,
         ...(toolFilter ? { toolFilter } : {}),
-        limit: 25,
+        limit: 35,
       });
       if (epoch !== viewEpoch) return;
-      applyReport(report);
+      applyReport(report, { refreshExpandedSamples: false });
     } catch (err) {
       if (epoch !== viewEpoch) return;
-      setStatus('读取索引失败', 'danger');
+      setStatus('读取失败', 'danger', err?.message || '');
       setError(err?.message || '无法读取报错索引。');
     }
   }
@@ -1057,20 +1548,20 @@ h2 {
     const epoch = ++viewEpoch;
     syncControls();
     setError('');
-    setStatus('正在增量扫描新增日志…', 'busy');
+    setStatus('扫描中…', 'busy', '正在增量读取新增会话日志');
     sampleCache.clear();
     try {
       const report = await call('scan_now', {
         windowHours,
         ...(toolFilter ? { toolFilter } : {}),
-        limit: 25,
+        limit: 35,
       });
       if (epoch === viewEpoch) {
-        applyReport(report);
+        applyReport(report, { refreshExpandedSamples: true });
       }
     } catch (err) {
       if (epoch === viewEpoch) {
-        setStatus('增量扫描未完成', 'danger');
+        setStatus('扫描未完成', 'danger', err?.message || '');
         setError(err?.message || '增量扫描失败。');
       }
     } finally {
@@ -1079,11 +1570,12 @@ h2 {
     }
   }
 
-  for (const btn of document.querySelectorAll('.seg button[data-hours]')) {
-    btn.addEventListener('click', () => {
-      const next = Number(btn.dataset.hours);
+  for (const segBtn of document.querySelectorAll('.seg button[data-hours]')) {
+    segBtn.addEventListener('click', () => {
+      const next = Number(segBtn.dataset.hours);
       if (!next || next === windowHours) return;
       windowHours = next;
+      safeStorage.set('pulse.windowHours', next);
       syncControls();
       void loadState();
     });
@@ -1093,17 +1585,80 @@ h2 {
     void runIncrementalScan();
   });
 
+  $('searchInput').addEventListener('input', (e) => {
+    queryText = e.target.value.trim();
+    syncControls();
+    rerenderLocalFilters();
+  });
+
+  $('clearSearchBtn').addEventListener('click', () => {
+    $('searchInput').value = '';
+    queryText = '';
+    syncControls();
+    rerenderLocalFilters();
+    $('searchInput').focus();
+  });
+
+  $('streakOnlyBtn').addEventListener('click', () => {
+    streakOnly = !streakOnly;
+    syncControls();
+    rerenderLocalFilters();
+  });
+
+  window.addEventListener('keydown', (event) => {
+    const activeEl = document.activeElement;
+    const inSearch = activeEl === $('searchInput');
+    const inInput = activeEl && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeEl.tagName);
+
+    if (event.key === '/' && !inInput && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault();
+      $('searchInput').focus();
+      $('searchInput').select();
+      return;
+    }
+
+    if (event.key === 'Escape' && inSearch && queryText) {
+      event.preventDefault();
+      $('clearSearchBtn').click();
+      return;
+    }
+
+    const orderedIds = [...sigDomMap.keys()];
+    if (orderedIds.length === 0) return;
+
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (inInput && !inSearch) return;
+      event.preventDefault();
+      const idx = orderedIds.indexOf(focusedSigId);
+      let nextIdx;
+      if (event.key === 'ArrowDown') {
+        nextIdx = idx < 0 ? 0 : Math.min(orderedIds.length - 1, idx + 1);
+      } else {
+        nextIdx = idx <= 0 ? 0 : idx - 1;
+      }
+      setFocusedSignature(orderedIds[nextIdx], true);
+      return;
+    }
+
+    if (event.key === 'Enter' && focusedSigId && (inSearch || !inInput && activeEl?.tagName !== 'BUTTON')) {
+      event.preventDefault();
+      void toggleSignature(focusedSigId);
+    }
+  });
+
   window.addEventListener('message', (event) => {
     if (event.source !== window.parent || !event.data || event.data.channel !== CHANNEL) return;
     if (parentOrigin && event.origin !== parentOrigin) return;
 
     if (event.data.kind === 'presentation') {
-      applyPresentation(event.data.presentation);
+      applyPresentation(event.data.presentation, event.data.theme);
       return;
     }
     if (event.data.kind === 'init') {
       parentOrigin = event.origin;
-      applyPresentation(event.data.presentation);
+      sessionId = typeof event.data.sessionId === 'string' ? event.data.sessionId : '';
+      applyPresentation(event.data.presentation, event.data.theme);
+      syncControls();
       void loadState();
       return;
     }
@@ -1111,6 +1666,8 @@ h2 {
       pending.get(event.data.id)?.(event.data);
     }
   });
+
+  syncControls();
 })();
 </script>
 </body>

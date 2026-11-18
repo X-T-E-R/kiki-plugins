@@ -182,6 +182,54 @@ export function targetPixelsToNormalized1000(targetX, targetY, logicalSize) {
   };
 }
 
+export function computeContainedRect(containerWidth, containerHeight, contentWidth, contentHeight) {
+  const cw = Math.max(0, Number(containerWidth) || 0);
+  const ch = Math.max(0, Number(containerHeight) || 0);
+  const iw = Math.max(1, Number(contentWidth) || cw || 1920);
+  const ih = Math.max(1, Number(contentHeight) || ch || 1080);
+  if (cw <= 0 || ch <= 0) {
+    return { x: 0, y: 0, width: 0, height: 0, scale: 0 };
+  }
+  const scale = Math.min(cw / iw, ch / ih);
+  const width = iw * scale;
+  const height = ih * scale;
+  return {
+    x: (cw - width) / 2,
+    y: (ch - height) / 2,
+    width,
+    height,
+    scale,
+  };
+}
+
+/**
+ * Inverse-map a client offset (offsetX, offsetY) inside an `object-fit: contain` surface
+ * (deducting letterbox/pillarbox margins) onto target logical pixels and normalized_1000.
+ */
+export function mapContainedClientToTarget(
+  offsetX,
+  offsetY,
+  containerWidth,
+  containerHeight,
+  logicalSize = { width: 1920, height: 1080 },
+) {
+  const targetW = Math.max(1, Math.round(Number(logicalSize?.width) || 1920));
+  const targetH = Math.max(1, Math.round(Number(logicalSize?.height) || 1080));
+  const rect = computeContainedRect(containerWidth, containerHeight, targetW, targetH);
+  if (rect.width <= 0 || rect.height <= 0) {
+    return { inside: false, u: 0, v: 0, targetX: 0, targetY: 0, normX: 0, normY: 0, rect };
+  }
+  const ox = Number(offsetX) || 0;
+  const oy = Number(offsetY) || 0;
+  const inside = ox >= rect.x && ox <= rect.x + rect.width && oy >= rect.y && oy <= rect.y + rect.height;
+  const u = clamp((ox - rect.x) / rect.width, 0, 1);
+  const v = clamp((oy - rect.y) / rect.height, 0, 1);
+  const targetX = targetW <= 1 ? 0 : Math.round(u * (targetW - 1));
+  const targetY = targetH <= 1 ? 0 : Math.round(v * (targetH - 1));
+  const { normX, normY } = targetPixelsToNormalized1000(targetX, targetY, { width: targetW, height: targetH });
+  return { inside, u, v, targetX, targetY, normX, normY, rect };
+}
+
 /**
  * Exact Win32 SendInput MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK normalization
  * using Int64 (BigInt) arithmetic and (vw - 1) / (vh - 1) fence-post denominator with

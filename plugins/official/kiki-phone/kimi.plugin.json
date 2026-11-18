@@ -1,6 +1,6 @@
 {
   "name": "kiki-phone",
-  "version": "0.3.0",
+  "version": "0.3.4",
   "description": "Prepare, preview and operate Android or iOS phones with live workspace screen streaming, Mobilewright semantic scripts, snapshots and screenshots, plus the complete Mobile MCP toolset and optional Android su commands.",
   "license": "MIT",
   "icon": "./icon.svg",
@@ -20,7 +20,7 @@
   "skills": [
     "./skills"
   ],
-  "systemPrompt": "Use the phone-control skill for phone tasks. Prefer phone_run with Mobilewright device/screen semantic locators, snapshot() and screenshot(); prepare the runtime only when needed. Preserve observed text, type, id, label and value; refresh after actions before deciding success or repeating input. For advanced Mobile MCP operations, use phone_help for one exact schema, then phone_call with the original mobile_* name and arguments. android_connection and android_shell handle Android connection/root tasks. Remote/cloud allocation requires an explicit user request and any applicable cost authorization.",
+  "systemPrompt": "Use the phone-control skill for phone tasks. Prefer phone_run with Mobilewright device/screen (screen.tap/swipe and locator.tap apply humanized touch by default; use semantic locators + snapshot() on standard apps, or pure screenshot() + screen.humanTap(box)/humanSwipe() without snapshot()/getBy* on strict anti-bot apps); prepare the runtime only when needed. Preserve observed text, type, id, label and value; refresh after actions before deciding success or repeating input. For advanced Mobile MCP operations, use phone_help for one exact schema, then phone_call with the original mobile_* name and arguments. android_connection and android_shell handle Android connection/root tasks. Remote/cloud allocation requires an explicit user request and any applicable cost authorization.",
   "mcpServers": {
     "mobile": {
       "command": "node",
@@ -40,6 +40,7 @@
       "kiki": "^0.4.0"
     },
     "entry": "./entry.mjs",
+    "activation": "app",
     "slots": [
       "E5:prompt-context",
       "E8:tool-pipeline",
@@ -56,7 +57,7 @@
         "schemaVersion": 1,
         "id": "preview",
         "label": "Phone Preview",
-        "slot": "sidebar",
+        "slot": "workspace",
         "path": "./panel.html"
       }
     ],
@@ -109,13 +110,13 @@
       {
         "schemaVersion": 1,
         "name": "phone_run",
-        "description": "Preferred phone interface: run async JavaScript with existing Mobilewright device, screen and expect, plus snapshot(), screenshot() that returns an image to Kiki, Android device.wake()/unlock()/sleep()/screenState(), and screen.typeText(). Use semantic screen.getByText/getByLabel/getByRole locators and their tap/fill/check methods. No script lists online devices. The chosen device persists across calls. If the runtime is missing, use phone_prepare. Scripts execute as trusted local code; observe an unclear modifying outcome before repeating it.",
+        "description": "Preferred phone interface: run async JavaScript with Mobilewright device, screen and expect, plus snapshot(), screenshot(), Android device.wake()/unlock()/sleep()/screenState()/ensureCleanIme(), device.humanDelay(), and screen.typeText()/humanTap()/humanSwipe(). screen.tap/swipe and locator.tap use humanized touch by default ({ raw: true } for raw input); on strict anti-bot apps avoid snapshot()/getBy* and use screenshot() + screen.humanTap(box). No script lists online devices; chosen device persists. Observe unclear outcomes before repeating.",
         "parameters": {
           "type": "object",
           "properties": {
             "script": {
               "type": "string",
-              "description": "Async JavaScript body. Example: await device.wake(); console.log(await snapshot()); await screenshot(); Native device/screen/expect are Mobilewright 0.0.67 APIs plus Android power/lock helpers; console output is returned."
+              "description": "Async JavaScript body. Example: await device.wake(); console.log(await snapshot()); await screenshot(); Native device/screen/expect are Mobilewright 0.0.67 APIs with humanized touch by default ({ raw: true } or KIKI_PHONE_RAW_INPUT=1 for raw input) plus Android power/lock/IME helpers and humanTap/humanSwipe/humanDelay; console output is returned."
             },
             "device": {
               "type": "string",

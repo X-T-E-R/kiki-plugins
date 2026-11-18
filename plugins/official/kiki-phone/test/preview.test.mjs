@@ -7,6 +7,8 @@ import { join } from 'node:path';
 import {
   fitDeviceFrame,
   normalizePointerToDevice,
+  computeContainedRect,
+  mapContainedPointToDevice,
   flattenViewHierarchy,
   createPhonePreviewService,
 } from '../lib/preview-service.mjs';
@@ -34,9 +36,27 @@ test('fitDeviceFrame preserves aspect ratio across tall and narrow containers', 
   assert.deepEqual(fitDeviceFrame(9 / 19.5, 40, 500, 60), { width: 0, height: 0 });
 });
 
-test('normalizePointerToDevice clamps normalized [0,1] canvas coordinates onto screen bounds', () => {
+test('normalizePointerToDevice and mapContainedPointToDevice map contained canvas rects onto exact device pixels', () => {
   assert.deepEqual(normalizePointerToDevice(0.5, 0.25, 1080, 2400), { x: 540, y: 600 });
   assert.deepEqual(normalizePointerToDevice(-0.2, 1.4, 1179, 2556), { x: 0, y: 2555 });
+
+  // Wide container (600x480) displaying a 1080x2400 portrait screen -> 216x480 centered with 192px pillarbox bars
+  const rect = computeContainedRect(600, 480, 1080, 2400);
+  assert.deepEqual({ x: rect.x, y: rect.y, width: rect.width, height: rect.height }, { x: 192, y: 0, width: 216, height: 480 });
+
+  const outsideLeftBar = mapContainedPointToDevice(80, 240, 600, 480, 1080, 2400);
+  assert.equal(outsideLeftBar.inside, false);
+  assert.equal(outsideLeftBar.x, 0);
+
+  const exactCenter = mapContainedPointToDevice(300, 240, 600, 480, 1080, 2400);
+  assert.equal(exactCenter.inside, true);
+  assert.equal(exactCenter.normX, 0.5);
+  assert.equal(exactCenter.normY, 0.5);
+  assert.deepEqual({ x: exactCenter.x, y: exactCenter.y }, { x: Math.round(0.5 * 1079), y: Math.round(0.5 * 2399) });
+
+  const bottomRight = mapContainedPointToDevice(192 + 216, 480, 600, 480, 1080, 2400);
+  assert.equal(bottomRight.inside, true);
+  assert.deepEqual({ x: bottomRight.x, y: bottomRight.y }, { x: 1079, y: 2399 });
 });
 
 test('flattenViewHierarchy extracts visible semantic nodes and Mobilewright locator hints', () => {
@@ -119,6 +139,7 @@ test('preview service supports Android + iOS discovery, frame streaming, normali
     }
     async tap(x, y) { events.push(['tap', this.platform, x, y]); }
     async longPress(x, y, duration) { events.push(['longPress', this.platform, x, y, duration]); }
+    async swipe(dir, opts) { events.push(['swipe', this.platform, dir, opts]); }
     async pressButton(btn) { events.push(['button', this.platform, btn]); }
     async typeText(text) { events.push(['typeText', this.platform, text]); }
     async pressKeys(keys) { events.push(['pressKeys', this.platform, keys]); }
@@ -191,11 +212,61 @@ test('preview service supports Android + iOS discovery, frame streaming, normali
 
     const described = await slotHandlers['E12:server-gui-slots']({ kind: 'describe' });
     assert.equal(described.routes.length, PHONE_HTTP_ROUTES.length);
-    assert.ok(described.guiSlots.some((s) => s.slot === 'sidebar-panel' && s.panelId === 'preview'));
-    assert.ok(described.guiSlots.some((s) => s.slot === 'composer-toolbar' && s.icon === 'smartphone'));
-    assert.ok(described.guiSlots.some((s) => s.slot === 'slash-command' && s.command === 'phone-preview'));
+    assert.equal(described.guiSlots.some((s) => s.slot === 'sidebar-panel'), false);
+    assert.equal(described.guiSlots.some((s) => s.slot === 'sidebar-nav'), false);
+    assert.equal(described.guiSlots.some((s) => s.slot === 'inspector-tab'), false);
+    assert.ok(described.guiSlots.some((s) => s.slot === 'composer-toolbar' && s.icon === 'smartphone' && s.action?.panelId === 'preview'));
+    assert.ok(described.guiSlots.some((s) => s.slot === 'slash-command' && s.command === 'phone-preview' && s.action?.panelId === 'preview'));
     assert.ok(described.guiSlots.some((s) => s.slot === 'tool-card-renderer' && s.actionVerb.default === 'Phone Control'));
-    assert.ok(described.guiSlots.some((s) => s.slot === 'status-capsule' && s.label.default === 'iPhone 16 Pro' && s.dotTone === 'ok'));
+    assert.ok(described.guiSlots.some((s) => s.slot === 'status-capsule' && s.label.default === 'iPhone 16 Pro' && s.dotTone === 'ok' && s.action?.panelId === 'preview'));
+
+    // Direct canvas HTTP route actions: scroll, key, pasteText
+    const scrollRoute = await slotHandlers['E12:server-gui-slots']({
+      kind: 'http-route',
+      method: 'POST',
+      subpath: 'preview/action',
+      body: {
+        action: 'scroll',
+        deviceId: 'ca03b197',
+        platform: 'android',
+        normX: 0.5,
+        normY: 0.6,
+        deltaX: 0,
+        deltaY: 160,
+      },
+    });
+    assert.equal(scrollRoute.status, 200);
+    assert.equal(scrollRoute.data.ok, true);
+
+    const keyRoute = await slotHandlers['E12:server-gui-slots']({
+      kind: 'http-route',
+      method: 'POST',
+      subpath: 'preview/action',
+      body: {
+        action: 'key',
+        deviceId: '00008130-IOS',
+        platform: 'ios',
+        key: 'ENTER',
+      },
+    });
+    assert.equal(keyRoute.status, 200);
+    assert.equal(keyRoute.data.ok, true);
+    assert.ok(events.some((e) => e[0] === 'pressKeys' && e[1] === 'ios' && e[2][0] === 'ENTER'));
+
+    const pasteRoute = await slotHandlers['E12:server-gui-slots']({
+      kind: 'http-route',
+      method: 'POST',
+      subpath: 'preview/action',
+      body: {
+        action: 'pasteText',
+        deviceId: '00008130-IOS',
+        platform: 'ios',
+        text: '验证码 849201',
+      },
+    });
+    assert.equal(pasteRoute.status, 200);
+    assert.equal(pasteRoute.data.ok, true);
+    assert.ok(events.some((e) => e[0] === 'typeText' && e[1] === 'ios' && e[2] === '验证码 849201'));
 
     const httpRes = await slotHandlers['E12:server-gui-slots']({
       kind: 'http-route',
@@ -628,6 +699,12 @@ test('E5 and E12 describe use fast bounded state cache without blocking on hung 
     const cached = await slots['E12:server-gui-slots']({ kind: 'describe' });
     assert.equal(calls, 1);
     assert.ok(cached.guiSlots.some((s) => s.slot === 'status-capsule' && s.label.default === 'Pixel 9'));
+
+    const t0 = Date.now();
+    const staleSwr = await preview.peekState({ maxAgeMs: 0, waitBudgetMs: 150 });
+    const elapsedMs = Date.now() - t0;
+    assert.ok(elapsedMs < 100, `stale peekState should return immediately without awaiting 4s probe, took ${elapsedMs}ms`);
+    assert.equal(staleSwr.devices[0]?.name, 'Pixel 9');
   } finally {
     await preview.dispose();
     await rm(dataDir, { recursive: true, force: true });
@@ -645,9 +722,16 @@ test('panel.html stays within the Kiki 256 KiB single-file srcDoc limit, speaks 
   assert.match(html, /EncodedVideoChunk/);
   assert.match(html, /createImageBitmap/);
   assert.match(html, /screenCanvas/);
-  assert.match(html, /__kikiStreamEvent/);
-  assert.match(html, /__kikiStreamControl/);
-  assert.doesNotMatch(html, /protocol:\s*'kiki\.panel\.v1'/);
-  assert.doesNotMatch(html, /[\u{1F300}-\u{1FAFF}]/u);
-  assert.ok(SCRCPY_SERVER_SHA256.length === 64);
+    assert.match(html, /__kikiStreamEvent/);
+    assert.match(html, /__kikiStreamControl/);
+    assert.match(html, /safeStorage/);
+    assert.match(html, /execCommand\('copy'\)/);
+    assert.match(html, /interactiveBtn/);
+    assert.match(html, /object-fit:\s*contain/);
+    assert.match(html, /URLSearchParams\(window\.location\.search\)\.get\('theme'\)/);
+    assert.doesNotMatch(html, /\b(?:localStorage|sessionStorage)\./);
+    assert.doesNotMatch(html, /数据可能已过期|结果可能不完整|仅供预览|data may be stale|results may be incomplete/i);
+    assert.doesNotMatch(html, /protocol:\s*'kiki\.panel\.v1'/);
+    assert.doesNotMatch(html, /[\u{1F300}-\u{1FAFF}]/u);
+    assert.ok(SCRCPY_SERVER_SHA256.length === 64);
 });

@@ -1,11 +1,18 @@
 {
   "name": "cockpit-harness-oauth",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Optional Cockpit OAuth account source for AGY CLI and Codex app-server harnesses.",
   "license": "MIT",
+  "icon": "./icon.svg",
   "interface": {
     "displayName": "Cockpit OAuth",
-    "shortDescription": "Use configured Cockpit OAuth accounts with AGY and Codex"
+    "shortDescription": "Use configured Cockpit OAuth accounts with AGY and Codex",
+    "localization": {
+      "zh-CN": {
+        "displayName": "Cockpit OAuth 账号池",
+        "shortDescription": "为 AGY 与 Codex 实例接入本地 Cockpit OAuth 账号池"
+      }
+    }
   },
   "x-kiki": {
     "engines": { "kiki": ">=0.4.2" },

@@ -11,7 +11,7 @@ test('output layer package contains no model tools and provides editable default
   const root = fileURLToPath(new URL('../plugins/official/kiki-output-layer/', import.meta.url));
   const manifest = JSON.parse(await readFile(new URL('../plugins/official/kiki-output-layer/kimi.plugin.json', import.meta.url), 'utf8'));
   const catalog = JSON.parse(await readFile(new URL('../plugins/marketplace.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.version, '0.1.2');
+  assert.equal(manifest.version, '0.1.3');
   assert.equal(catalog.plugins.find(item => item.id === manifest.name).version, manifest.version);
   assert.equal(manifest['x-kiki'].tools, undefined);
   assert.equal(manifest['x-kiki'].commands, undefined);

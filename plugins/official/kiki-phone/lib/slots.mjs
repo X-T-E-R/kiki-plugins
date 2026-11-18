@@ -10,20 +10,6 @@ export function buildPhoneGuiSlots(pluginId = KIKI_PHONE_PLUGIN_ID, liveSummary 
 
   const slots = [
     {
-      slot: 'sidebar-panel',
-      pluginId,
-      id: 'phone-preview-sidebar',
-      title: {
-        default: 'Phone Preview',
-        en: 'Phone Preview',
-        zh: '手机预览',
-      },
-      panelId: 'preview',
-      icon: 'smartphone',
-      bridge: 'kiki.panel.v1',
-      order: 25,
-    },
-    {
       slot: 'composer-toolbar',
       pluginId,
       id: 'phone-preview-toolbar',
@@ -61,20 +47,6 @@ export function buildPhoneGuiSlots(pluginId = KIKI_PHONE_PLUGIN_ID, liveSummary 
         kind: 'open_plugin_panel',
         panelId: 'preview',
       },
-    },
-    {
-      slot: 'inspector-tab',
-      pluginId,
-      id: 'phone-preview-inspector',
-      title: {
-        default: 'Phone',
-        en: 'Phone',
-        zh: '手机',
-      },
-      panelId: 'preview',
-      icon: 'smartphone',
-      bridge: 'kiki.panel.v1',
-      order: 40,
     },
     {
       slot: 'tool-card-renderer',
@@ -144,7 +116,10 @@ export function createPhoneSlotHandlers(previewService, { pluginId = KIKI_PHONE_
   return {
     async 'E5:prompt-context'(payload = {}, context = {}) {
       try {
-        const state = await previewService.listState({ settings: context.settings ?? payload?.settings ?? {}, fast: true });
+        const settings = context.settings ?? payload?.settings ?? {};
+        const state = typeof previewService.peekState === 'function'
+          ? await previewService.peekState({ settings, maxAgeMs: 15_000 })
+          : await previewService.listState({ settings, fast: true });
         const online = state.devices.filter((d) => d.state === 'online');
         if (online.length === 0) return { sections: [] };
         const summary = online
@@ -175,7 +150,9 @@ export function createPhoneSlotHandlers(previewService, { pluginId = KIKI_PHONE_
       if (kind === 'describe') {
         let liveSummary = null;
         try {
-          liveSummary = await previewService.listState({ settings, fast: true });
+          liveSummary = typeof previewService.peekState === 'function'
+            ? await previewService.peekState({ settings, maxAgeMs: 15_000 })
+            : await previewService.listState({ settings, fast: true });
         } catch {}
         return {
           guiSlots: buildPhoneGuiSlots(pluginId, liveSummary),

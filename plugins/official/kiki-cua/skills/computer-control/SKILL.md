@@ -5,34 +5,20 @@ description: Operate local desktop displays, windows, and cross-plugin remote co
 
 # Computer Control (`kiki-cua`)
 
-Operate local displays (`local:primary`, `local:monitor-0`, `local:monitor-1`, ...), pinned windows (`local:window:<hwnd>`), and companion Remote Display/Input Target Providers (such as `uu:*` targets registered over `kiki.cua.provider.v1`) through four orthogonal tools: `cua_targets`, `cua_observe`, `cua_act`, and `cua_windows`.
+## 1. Tool Selection & Pre-Checks
 
-## 1. Pick and Persist the Right Surface
+| Task | Tool | Notes |
+| --- | --- | --- |
+| Discover/select monitor or remote target; toggle Takeover | `cua_targets` | `list` inspects `local:primary`, `local:monitor-*`, `local:window:<hwnd>`, and remote `kiki.cua.provider.v1` targets (e.g. `uu:*`). `select` persists `targetId`. |
+| Screenshot, high-DPI zoom crop, grid/SoM overlay | `cua_observe` | Default coordinate space is `normalized_1000` (`0..1000`). Pass `zoom: { x, y, width, height }` to crop native full-res pixels before downscaling. |
+| Mouse, keyboard, drag, scroll, wait, clipboard | `cua_act` | Batch `1..16` deterministic actions on one screen (`observeAfter: true` returns the settled screenshot). |
+| Local window lookup, focus, restore, pin | `cua_windows` | `list` with `query` finds HWND/DPI/elevation; `focus`/`restore` with `pinTarget: true` registers `local:window:<hwnd>`. |
 
-1. Call `cua_targets({ action: "list" })` when starting a task involving multiple monitors or a remote desktop provider.
-2. Call `cua_targets({ action: "select", targetId })` once to bind the intended surface (`local:primary` vs `local:monitor-1` vs `uu:<id>`). The selected `targetId` persists across subsequent `cua_observe` and `cua_act` calls.
-3. For background or multi-window local desktop work, use `cua_windows({ action: "list", query: "..." })` to locate a window by title or process name, then `cua_windows({ action: "focus", hwnd, pinTarget: true })` to bring it forward or pin `local:window:<hwnd>` for window-scoped capture.
+## 2. Precision & Batching Rules
 
-## 2. Observe First and Zoom Dense High-DPI Controls
-
-- Default coordinate space is **`normalized_1000`** (`0..1000` along target width and height), independent of physical resolution, negative multi-monitor offsets, or downscaled PNG size.
-- Start with `cua_observe({})` to inspect the full surface (`maxWidth: 1280` default).
-- **High-DPI precision rule**: before clicking dense toolbar icons, timeline handles, table cells, or 4K/200%+ small controls, capture a native-resolution crop first:
-  ```json
-  {
-    "zoom": { "x": 720, "y": 40, "width": 260, "height": 180 },
-    "overlay": "grid"
-  }
-  ```
-  `zoom` crops directly from the full-resolution native framebuffer *before* bicubic scaling.
-- On the follow-up `cua_act`, either:
-  - pass `zoomRelative: true` to address `(0..1000, 0..1000)` *inside* that zoomed crop, OR
-  - keep `zoomRelative: false` (default) to address `(0..1000, 0..1000)` across the full target.
-- Use `overlay: "som"` or `includeAccessibility: true` when standard native controls expose UI Automation bounds and exact `[1]`, `[2]` badges speed up targeting.
-
-## 3. Batch Deterministic Micro-Actions
-
-Coalesce predictable same-screen sequences into one `cua_act` call (`1..16` actions) with `observeAfter: true` (default, `settleMs: 180`) so click + type + submit + verification screenshot complete in a single model turn:
+1. **Zoom dense high-DPI controls before clicking**: On 4K / 150%+ DPI displays, toolbars, timeline scrubbers, or dense tables, call `cua_observe({ zoom: { x, y, width, height }, overlay: "grid" })` first, then run `cua_act` with `zoomRelative: true` (or full-screen `zoomRelative: false`).
+2. **Coalesce predictable same-screen actions**: Combine click -> `Ctrl+A` -> `type` (`submit: true`) into one `cua_act` call (`settleMs: 180..250`). Stop the batch at dialog or page transitions and verify the returned screenshot before continuing.
+3. **Text entry**: `mode: "auto"` injects short ASCII via UTF-16 `KEYEVENTF_UNICODE` and uses `Win+V`-excluded clipboard backup/paste for multiline or CJK text.
 
 ```json
 {
@@ -46,12 +32,11 @@ Coalesce predictable same-screen sequences into one `cua_act` call (`1..16` acti
 }
 ```
 
-- `type` with `mode: "auto"` uses direct UTF-16 `KEYEVENTF_UNICODE` events for short ASCII strings and automatically switches to backup/restore clipboard paste (excluded from `Win+V` clipboard history and cloud sync) for multiline or CJK text.
-- Never chain blind clicks across screen transitions or modal dialogs that have not rendered yet; stop the batch at the transition boundary and inspect the returned post-action screenshot.
+## 3. Failure Recovery
 
-## 4. Respect Human Takeover & UIPI Boundaries
-
-- **`human_takeover_active`**: Triggered either when the user clicks **Takeover** / interacts directly inside the `Computer Preview` workspace panel, or when the physical OS mouse moves `> takeoverThresholdPx` (default `48px`) away from the last synthetic agent cursor position.
-  - **Stop immediately with `0` blind retries.** Inform the user what paused and wait for their go-ahead before releasing takeover (`cua_targets({ action: "takeover", takeoverActive: false })`) or passing `overrideHumanTakeover: true`.
-- **`uipi_elevated_window`**: On Windows, a standard-integrity process cannot inject `SendInput` into an elevated Administrator window (UIPI). Report the elevated window name/PID clearly rather than retrying clicks that the OS kernel will drop.
-- Do not submit irreversible financial payments, destructive deletions, or external publications without explicit user confirmation.
+- **`human_takeover_active`**: Engaged when the user turns on **Takeover Control** in the `Computer Preview` workspace panel or moves the physical mouse beyond `takeoverThresholdPx` (`48px` default).
+  - **Next step**: Stop immediately with `0` retries. Report what paused and wait for explicit user confirmation before calling `cua_targets({ action: "takeover", takeoverActive: false })` or setting `overrideHumanTakeover: true`.
+- **`uipi_elevated_window`**: Windows UIPI blocks standard-integrity `SendInput` into elevated Administrator windows.
+  - **Next step**: Do not retry clicks on that window. Report `window.title` / `processName` / `pid` and ask the user to complete the elevated prompt manually, relaunch the target app without elevation, or switch focus via `cua_windows`.
+- **Unknown or offline remote target (`uu:*`)**: Run `cua_targets({ action: "list" })`; if the remote provider session closed or minimized, restore/reconnect it via its provider tool (`uu_sessions` / `uu_launch` / `uu_control({ action: "restore" })`) before resuming `cua_observe`.
+- Never submit payments, destructive deletions, or external publications without explicit user confirmation.

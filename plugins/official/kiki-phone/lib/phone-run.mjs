@@ -6,8 +6,26 @@ import { formatWithOptions, promisify } from 'node:util';
 import { findAdb, phoneDataDir } from './environment.mjs';
 import { mobilecliBinary, runtimeInstalled, upstreamEnvironment } from './prepare.mjs';
 import { nodeExecutable } from './node-executable.mjs';
+import {
+  sampleGaussian,
+  samplePointInBox,
+  buildHumanTapKeyframes,
+  buildHumanSwipeKeyframes,
+  resolveDirectionEndpoints,
+  sampleHumanDelayMs,
+} from './human-input.mjs';
+
+export {
+  sampleGaussian,
+  samplePointInBox,
+  buildHumanTapKeyframes,
+  buildHumanSwipeKeyframes,
+  resolveDirectionEndpoints,
+  sampleHumanDelayMs,
+} from './human-input.mjs';
 
 const defaultExecuteAdb = promisify(execFile);
+const locatorTapHooks = new WeakMap();
 const defaultDelay = (ms, signal) => new Promise((resolve, reject) => {
   if (signal?.aborted) { reject(signal.reason ?? Object.assign(new Error('Aborted'), { name: 'AbortError' })); return; }
   const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, ms);
@@ -35,7 +53,88 @@ export function parseAndroidScreenState({ power = '', policy = '', wmSize = '', 
   return { awake, wakefulness, locked, showing, occluded, secure, width, height };
 }
 
-export function attachPhoneConvenienceApis(device, screen, { platform, serial, adbBinary, signal, executeAdb = defaultExecuteAdb, delay = defaultDelay } = {}) {
+export function attachPhoneConvenienceApis(device, screen, {
+  platform,
+  serial,
+  adbBinary,
+  signal,
+  executeAdb = defaultExecuteAdb,
+  delay = defaultDelay,
+  rng = Math.random,
+  env = process.env,
+} = {}) {
+  let cachedSize;
+  let lastTransitionAt = 0;
+  const TRANSITION_SETTLE_MS = 950;
+  const isRawInput = (opts) => Boolean(opts?.raw) || /^(1|true|yes)$/i.test(String(env?.KIKI_PHONE_RAW_INPUT ?? ''));
+  const rawScreenTap = typeof screen?.tap === 'function' ? screen.tap.bind(screen) : undefined;
+  const rawOriginalSwipe = typeof screen?.swipe === 'function' ? screen.swipe.bind(screen) : undefined;
+  const rawScreenGesture = typeof screen?.gesture === 'function' ? screen.gesture.bind(screen) : undefined;
+  const waitPostTransitionSettle = async () => {
+    if (!lastTransitionAt) return;
+    const elapsed = Date.now() - lastTransitionAt;
+    lastTransitionAt = 0;
+    if (elapsed >= 0 && elapsed < TRANSITION_SETTLE_MS) {
+      await delay(TRANSITION_SETTLE_MS - elapsed, signal);
+    }
+  };
+  if (rawScreenGesture && device && typeof device.launchApp === 'function' && !device.launchApp.__kikiSettlePatched) {
+    const rawLaunchApp = device.launchApp.bind(device);
+    const wrappedLaunchApp = async (...args) => {
+      const res = await rawLaunchApp(...args);
+      lastTransitionAt = Date.now();
+      return res;
+    };
+    wrappedLaunchApp.__kikiSettlePatched = true;
+    device.launchApp = wrappedLaunchApp;
+  }
+
+  const resolveScreenDimensions = async (opts = {}) => {
+    if (Number(opts?.screenWidth) > 0 && Number(opts?.screenHeight) > 0) {
+      return { width: Number(opts.screenWidth), height: Number(opts.screenHeight) };
+    }
+    if (cachedSize) return cachedSize;
+    if (typeof device?.screenSize === 'function') {
+      try {
+        const sz = await device.screenSize();
+        if (Number(sz?.width) > 0 && Number(sz?.height) > 0) {
+          cachedSize = { width: Number(sz.width), height: Number(sz.height) };
+          return cachedSize;
+        }
+      } catch {}
+    }
+    cachedSize = { width: 1080, height: 2400 };
+    return cachedSize;
+  };
+
+  const rawSwipe = async (directionOrX1, optsOrY1, x2, y2, duration) => {
+    if (typeof directionOrX1 === 'number' && typeof optsOrY1 === 'number' && typeof x2 === 'number' && typeof y2 === 'number') {
+      if (typeof device?.driver?.call === 'function') {
+        return device.driver.call('device.io.swipe', {
+          x1: Math.round(directionOrX1),
+          y1: Math.round(optsOrY1),
+          x2: Math.round(x2),
+          y2: Math.round(y2),
+          ...(typeof duration === 'number' ? { duration: Math.round(duration) } : {}),
+        });
+      }
+      if (platform === 'android') {
+        const args = ['-s', serial, 'shell', 'input', 'swipe', String(Math.round(directionOrX1)), String(Math.round(optsOrY1)), String(Math.round(x2)), String(Math.round(y2))];
+        if (typeof duration === 'number') args.push(String(Math.round(duration)));
+        await executeAdb(adbBinary || 'adb', args, { encoding: 'utf8', windowsHide: true, timeout: 15_000, signal });
+        return;
+      }
+    }
+    if (rawOriginalSwipe) {
+      if (optsOrY1 && typeof optsOrY1 === 'object' && 'raw' in optsOrY1) {
+        const { raw: _raw, ...cleanOpts } = optsOrY1;
+        return rawOriginalSwipe(directionOrX1, Object.keys(cleanOpts).length ? cleanOpts : undefined);
+      }
+      return rawOriginalSwipe(directionOrX1, optsOrY1);
+    }
+    throw new Error('No swipe transport available on screen.');
+  };
+
   if (screen && typeof screen.typeText !== 'function' && typeof device?.driver?.typeText === 'function') {
     screen.typeText = async (text, options = {}) => {
       await device.driver.typeText(String(text));
@@ -48,30 +147,167 @@ export function attachPhoneConvenienceApis(device, screen, { platform, serial, a
   if (screen && typeof screen.pressKeys !== 'function' && typeof device?.driver?.pressKeys === 'function') {
     screen.pressKeys = async (keys) => device.driver.pressKeys(keys);
   }
-  if (screen && typeof screen.swipe === 'function' && !screen.swipe.__kikiTuplePatched) {
-    const originalSwipe = screen.swipe.bind(screen);
-    const wrappedSwipe = async (directionOrX1, optsOrY1, x2, y2, duration) => {
-      if (typeof directionOrX1 === 'number' && typeof optsOrY1 === 'number' && typeof x2 === 'number' && typeof y2 === 'number') {
-        if (typeof device?.driver?.call === 'function') {
-          return device.driver.call('device.io.swipe', {
-            x1: Math.round(directionOrX1),
-            y1: Math.round(optsOrY1),
-            x2: Math.round(x2),
-            y2: Math.round(y2),
-            ...(typeof duration === 'number' ? { duration: Math.round(duration) } : {}),
-          });
+  if (screen && typeof screen.humanTap !== 'function') {
+    screen.humanTap = async (target, yOrOpts, maybeOpts) => {
+      let opts;
+      let point;
+      let localRng;
+      if (typeof target === 'number' && typeof yOrOpts === 'number') {
+        opts = maybeOpts ?? {};
+        localRng = opts.rng ?? rng;
+        const jitterPx = Math.max(0, Number(opts.jitterPx ?? 6));
+        point = jitterPx === 0
+          ? { x: Math.round(target), y: Math.round(yOrOpts) }
+          : samplePointInBox(
+            { x: target - jitterPx, y: yOrOpts - jitterPx, width: jitterPx * 2, height: jitterPx * 2 },
+            { insetRatio: 0, sigmaRatio: 0.28, maxOffsetPx: 0, rng: localRng },
+          );
+      } else if (typeof target?.boundingBox === 'function') {
+        opts = yOrOpts ?? {};
+        localRng = opts.rng ?? rng;
+        const box = await target.boundingBox(opts.timeout !== undefined ? { timeout: opts.timeout } : undefined);
+        if (!box) throw new Error('Locator did not resolve to a visible bounding box.');
+        point = samplePointInBox(box, { insetRatio: opts.insetRatio, sigmaRatio: opts.sigmaRatio, maxOffsetPx: opts.maxOffsetPx, rng: localRng });
+      } else if (target && typeof target === 'object') {
+        opts = yOrOpts ?? {};
+        localRng = opts.rng ?? rng;
+        const rawBox = target.bounds && typeof target.bounds === 'object' ? target.bounds : target;
+        if (!Number.isFinite(Number(rawBox?.x ?? rawBox?.left)) || !Number.isFinite(Number(rawBox?.y ?? rawBox?.top))) {
+          throw new TypeError('screen.humanTap expects (x, y), a { x, y, width, height } box, or a Mobilewright locator.');
         }
-        if (platform === 'android') {
-          const args = ['-s', serial, 'shell', 'input', 'swipe', String(Math.round(directionOrX1)), String(Math.round(optsOrY1)), String(Math.round(x2)), String(Math.round(y2))];
-          if (typeof duration === 'number') args.push(String(Math.round(duration)));
-          await executeAdb(adbBinary || 'adb', args, { encoding: 'utf8', windowsHide: true, timeout: 15_000, signal });
-          return;
-        }
+        point = samplePointInBox(rawBox, { insetRatio: opts.insetRatio, sigmaRatio: opts.sigmaRatio, maxOffsetPx: opts.maxOffsetPx, rng: localRng });
+      } else {
+        throw new TypeError('screen.humanTap expects (x, y), a { x, y, width, height } box, or a Mobilewright locator.');
       }
-      return originalSwipe(directionOrX1, optsOrY1);
+      const { width, height } = await resolveScreenDimensions(opts);
+      const tap = buildHumanTapKeyframes(point, { holdMs: opts.holdMs, screenWidth: width, screenHeight: height, rng: localRng });
+      signal?.throwIfAborted();
+      if (rawScreenGesture) {
+        await waitPostTransitionSettle();
+        await rawScreenGesture({ pointers: [tap.points] });
+      } else if (platform === 'android') {
+        const [p0, p1] = tap.points;
+        await executeAdb(adbBinary || 'adb', ['-s', serial, 'shell', 'input', 'swipe', String(p0.x), String(p0.y), String(p1.x), String(p1.y), String(tap.holdMs)], {
+          encoding: 'utf8', windowsHide: true, timeout: 15_000, signal,
+        });
+      } else if (rawScreenTap) {
+        await rawScreenTap(tap.x, tap.y);
+      } else {
+        throw new Error('No gesture or tap transport available on screen.');
+      }
+      return { x: tap.x, y: tap.y, holdMs: tap.holdMs };
+    };
+  }
+  if (screen && typeof screen.humanSwipe !== 'function') {
+    screen.humanSwipe = async (directionOrX1, optsOrY1, x2, y2, durationOrOpts, maybeOpts) => {
+      let opts;
+      let swipe;
+      if (typeof directionOrX1 === 'string') {
+        opts = (optsOrY1 && typeof optsOrY1 === 'object') ? optsOrY1 : (typeof optsOrY1 === 'number' ? { durationMs: optsOrY1 } : {});
+        const localRng = opts.rng ?? rng;
+        const { width, height } = await resolveScreenDimensions(opts);
+        const endpoints = resolveDirectionEndpoints(directionOrX1, {
+          width,
+          height,
+          startX: opts.startX,
+          startY: opts.startY,
+          distance: opts.distance,
+          distanceRatio: opts.distanceRatio,
+          rng: localRng,
+        });
+        swipe = buildHumanSwipeKeyframes(endpoints.x1, endpoints.y1, endpoints.x2, endpoints.y2, {
+          durationMs: opts.durationMs ?? opts.duration, jitterPx: opts.jitterPx, screenWidth: width, screenHeight: height, rng: localRng,
+        });
+      } else if (typeof directionOrX1 === 'number' && typeof optsOrY1 === 'number' && typeof x2 === 'number' && typeof y2 === 'number') {
+        opts = typeof durationOrOpts === 'number' ? { ...(maybeOpts ?? {}), durationMs: durationOrOpts } : (durationOrOpts ?? {});
+        const localRng = opts.rng ?? rng;
+        const { width, height } = await resolveScreenDimensions(opts);
+        swipe = buildHumanSwipeKeyframes(directionOrX1, optsOrY1, x2, y2, {
+          durationMs: opts.durationMs ?? opts.duration, jitterPx: opts.jitterPx, screenWidth: width, screenHeight: height, rng: localRng,
+        });
+      } else {
+        throw new TypeError('screen.humanSwipe expects (direction, opts?) or (x1, y1, x2, y2, durationOrOpts?).');
+      }
+      signal?.throwIfAborted();
+      if (rawScreenGesture) {
+        await waitPostTransitionSettle();
+        await rawScreenGesture({ pointers: [swipe.points] });
+      } else if (rawOriginalSwipe || typeof device?.driver?.call === 'function') {
+        await rawSwipe(swipe.x1, swipe.y1, swipe.x2, swipe.y2, swipe.durationMs);
+      } else if (platform === 'android') {
+        await executeAdb(adbBinary || 'adb', ['-s', serial, 'shell', 'input', 'swipe', String(swipe.x1), String(swipe.y1), String(swipe.x2), String(swipe.y2), String(swipe.durationMs)], {
+          encoding: 'utf8', windowsHide: true, timeout: 15_000, signal,
+        });
+      } else {
+        throw new Error('No gesture or swipe transport available on screen.');
+      }
+      return {
+        x1: swipe.x1,
+        y1: swipe.y1,
+        x2: swipe.x2,
+        y2: swipe.y2,
+        durationMs: swipe.durationMs,
+        steps: swipe.points.length - 1,
+      };
+    };
+  }
+  if (screen && rawScreenTap && !screen.tap.__kikiHumanPatched) {
+    const wrappedTap = async (x, y, opts) => {
+      if (!rawScreenGesture || isRawInput(opts)) {
+        return rawScreenTap(x, y);
+      }
+      return screen.humanTap(x, y, { jitterPx: 4, ...opts });
+    };
+    wrappedTap.__kikiHumanPatched = true;
+    screen.tap = wrappedTap;
+  }
+  if (screen && rawOriginalSwipe && !screen.swipe.__kikiTuplePatched) {
+    const wrappedSwipe = async (directionOrX1, optsOrY1, x2, y2, durationOrOpts, maybeOpts) => {
+      if (typeof directionOrX1 === 'number' && typeof optsOrY1 === 'number' && typeof x2 === 'number' && typeof y2 === 'number') {
+        const opts = (durationOrOpts && typeof durationOrOpts === 'object') ? durationOrOpts : (maybeOpts ?? {});
+        const durationVal = typeof durationOrOpts === 'number' ? durationOrOpts : (opts.duration ?? opts.durationMs);
+        if (!rawScreenGesture || isRawInput(opts)) {
+          return rawSwipe(directionOrX1, optsOrY1, x2, y2, durationVal);
+        }
+        return screen.humanSwipe(directionOrX1, optsOrY1, x2, y2, durationVal, opts);
+      }
+      const opts = (optsOrY1 && typeof optsOrY1 === 'object') ? optsOrY1 : undefined;
+      if (!rawScreenGesture || isRawInput(opts)) {
+        return rawSwipe(directionOrX1, optsOrY1);
+      }
+      return screen.humanSwipe(directionOrX1, optsOrY1);
     };
     wrappedSwipe.__kikiTuplePatched = true;
     screen.swipe = wrappedSwipe;
+  }
+  if (rawScreenGesture && screen?.root && screen?.driver && typeof screen.root.resolveActionable === 'function') {
+    locatorTapHooks.set(screen.driver, async (locator, opts) => {
+      if (isRawInput(opts)) return false;
+      const runStep = typeof locator._step === 'function' ? (fn) => locator._step('locator.tap()', fn) : (fn) => fn();
+      await runStep(async () => {
+        const node = await locator.resolveActionable(opts?.timeout);
+        await screen.humanTap(node.bounds, { maxOffsetPx: 52, ...opts });
+      });
+      return true;
+    });
+    const proto = Object.getPrototypeOf(screen.root);
+    if (proto && typeof proto.tap === 'function' && !proto.tap.__kikiHumanPatched) {
+      const rawProtoTap = proto.tap;
+      const patchedLocatorTap = async function (opts) {
+        const hook = this?.driver ? locatorTapHooks.get(this.driver) : undefined;
+        if (hook && await hook(this, opts)) return;
+        return rawProtoTap.call(this, opts);
+      };
+      patchedLocatorTap.__kikiHumanPatched = true;
+      proto.tap = patchedLocatorTap;
+    }
+  }
+  if (device && typeof device.humanDelay !== 'function') {
+    device.humanDelay = async (minMs = 450, maxMs = 1350) => {
+      const ms = sampleHumanDelayMs(minMs, maxMs, rng);
+      await delay(ms, signal);
+      return ms;
+    };
   }
   if (platform !== 'android') {
     const unsupported = (method) => async () => { throw new Error(`${method} is currently supported on Android devices only.`); };
@@ -79,6 +315,7 @@ export function attachPhoneConvenienceApis(device, screen, { platform, serial, a
     if (typeof device.wake !== 'function') device.wake = unsupported('device.wake()');
     if (typeof device.unlock !== 'function') device.unlock = unsupported('device.unlock()');
     if (typeof device.sleep !== 'function') device.sleep = unsupported('device.sleep()');
+    if (typeof device.ensureCleanIme !== 'function') device.ensureCleanIme = async () => ({ changed: false });
     return;
   }
   const adb = adbBinary || 'adb';
@@ -150,6 +387,23 @@ export function attachPhoneConvenienceApis(device, screen, { platform, serial, a
       return readScreenState();
     };
   }
+  if (typeof device.ensureCleanIme !== 'function') {
+    device.ensureCleanIme = async () => {
+      const current = (await runShell('settings', 'get', 'secure', 'default_input_method')).trim();
+      if (!/adbkeyboard|adbime/i.test(current)) {
+        return { changed: false, current };
+      }
+      const listOut = await runShell('ime', 'list', '-s');
+      const candidates = listOut.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+      const restored = candidates.find(id => !/adbkeyboard|adbime/i.test(id));
+      if (!restored) {
+        return { changed: false, previous: current, reason: 'no_alternative_ime' };
+      }
+      await runShell('ime', 'set', restored);
+      await runShell('ime', 'disable', current).catch(() => '');
+      return { changed: true, previous: current, restored };
+    };
+  }
 }
 
 export async function executePhoneScript({ script, device: requested, platform = 'android' }, context = {}, support = {}) {
@@ -160,7 +414,7 @@ export async function executePhoneScript({ script, device: requested, platform =
   const environmentKeys = ['PATH', 'ANDROID_HOME', 'ANDROID_SDK_ROOT', 'MOBILEMCP_DISABLE_TELEMETRY', 'npm_config_ignore_scripts', 'npm_config_cache'];
   const previousEnvironment = Object.fromEntries(environmentKeys.map(key => [key, process.env[key]]));
   try {
-    if (!support.sdk && !(await runtimeInstalled(dataDir))) throw new Error('Run phone_prepare first to install the fixed Mobilewright runtime.');
+    if (!support.sdk && !(await runtimeInstalled(dataDir))) throw new Error('Mobilewright runtime missing. Run phone_prepare first.');
     context.signal?.throwIfAborted();
     const adbBinary = context.settings?.adbPath || process.env.KIKI_PHONE_ADB_PATH || await findAdb({ dataDir });
     Object.assign(process.env, upstreamEnvironment(adbBinary, process.env, dataDir));
@@ -174,8 +428,11 @@ export async function executePhoneScript({ script, device: requested, platform =
     catch (error) { if (error.code !== 'ENOENT') throw error; }
     const selected = requested || (saved?.platform === platform ? saved.id : undefined) || (devices.length === 1 ? devices[0].id : undefined);
     if (!selected || !devices.some(item => item.id === selected)) {
-      const message = selected ? `Selected device ${selected} is not online. Inspect the device list; pass device explicitly to choose another phone.`
-        : devices.length ? 'Choose one device id and pass device to phone_run.' : 'No online device. Run phone_prepare to inspect Android connection state.';
+      const message = selected
+        ? `Selected device ${selected} is not online. Run android_connection({ action: "devices" }) to check USB/wireless state, or pass an online device id to phone_run.`
+        : devices.length
+          ? 'Multiple phones online. Choose one device id from devices[] and pass device to phone_run.'
+          : 'No online device. Run android_connection({ action: "devices" }) or phone_prepare to check USB/wireless debugging.';
       return { isError: Boolean(script || requested), output: JSON.stringify({ message, devices, selected, platform }) };
     }
     await writeFile(path.join(dataDir, 'selected-device.json'), JSON.stringify({ platform, id: selected }) + '\n');
@@ -189,6 +446,8 @@ export async function executePhoneScript({ script, device: requested, platform =
       signal: context.signal,
       executeAdb: support.executeAdb,
       delay: support.delay,
+      rng: support.rng,
+      env: support.env ?? process.env,
     });
     const log = (...values) => output.push({ type: 'text', text: formatWithOptions({ depth: null, maxArrayLength: null, maxStringLength: null, colors: false }, ...values) });
     const snapshot = async () => screen.viewTree();
@@ -206,7 +465,7 @@ export async function executePhoneScript({ script, device: requested, platform =
     output.unshift({ type: 'text', text: JSON.stringify({ device: selected, platform, result: result ?? null }) });
     return { output };
   } catch (error) {
-    output.unshift({ type: 'text', text: `Phone script failed: ${error.message || String(error)}. Observe before repeating any action whose result is unclear.` });
+    output.unshift({ type: 'text', text: `Phone script failed: ${error.message || String(error)}. Re-observe via snapshot() or screenshot() before retrying any modifying action.` });
     return { isError: true, output };
   } finally {
     try { if (device) await device.close(); else await driver?.dispose(); }

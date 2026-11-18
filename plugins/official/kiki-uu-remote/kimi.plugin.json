@@ -1,6 +1,6 @@
 {
   "name": "kiki-uu-remote",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Discover, preview, and operate NetEase UU Remote (GameViewer) desktop sessions with zero-focus background capture, symmetric black-bar trimming, uuyc-cli device management, Human Takeover lock, and kiki.cua.provider.v1 integration.",
   "license": "MIT",
   "icon": "./icon.svg",

@@ -23,7 +23,18 @@ const server = createServer(async (req, res) => {
       const data = JSON.parse(body);
       if (data.method === 'plugin.settings.get') { json(settingsWire()); return; }
       if (data.method === 'plugin.settings.patch') { manualPatches.push(Object.fromEntries(Object.entries(data.values).map(([key, value]) => [key, manifest['x-kiki'].settings.schema.properties[key]?.secret ? '<redacted>' : value]))); Object.assign(settings, data.values); activate(); json(settingsWire()); return; }
-      if (data.method === 'plugin.call') { json(await binding.panel(data.action, data.args, { settings: { ...settings } })); return; }
+      if (data.method === 'plugin.call') {
+        if (data.action === 'qq_probe') {
+          if (data.args?.target === 'onebot') {
+            json({ ok: true, target: 'onebot', accountId: settings.onebot__selfId || '204910', nickname: 'KikiBot', latencyMs: 18 });
+          } else {
+            json({ ok: true, target: 'official', appId: settings.official__appId || '82041957', expiresIn: 7200, latencyMs: 42 });
+          }
+          return;
+        }
+        json(await binding.panel(data.action, data.args, { settings: { ...settings } }));
+        return;
+      }
       throw new Error('unexpected fixture bridge method');
     }
     if (req.method === 'POST') {

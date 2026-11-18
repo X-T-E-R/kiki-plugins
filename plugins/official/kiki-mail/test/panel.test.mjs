@@ -13,6 +13,11 @@ test('mail panel saves, tests, and does not resend an uncertain message', { time
   const html = await readFile(new URL('../panel.html', import.meta.url), 'utf8');
   assert.equal(html.includes('Connected'), false);
   assert.equal(html.includes('OAuth connected'), false);
+  assert.equal(/\p{Extended_Pictographic}/u.test(html), false, 'panel.html must contain zero Emoji');
+  assert.match(html, /--bg:\s*var\(--color-canvas,\s*#f6f4ef\)/);
+  assert.match(html, /--accent:\s*var\(--color-accent,\s*#2c5e4f\)/);
+  assert.match(html, /safeStorage/);
+  assert.match(html, /execCommand\('copy'\)/);
   const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
   assert.ok(script);
   const fx = await startFixture({

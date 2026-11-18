@@ -25,6 +25,8 @@ Generic GUI bridge: `{channel:'kiki.panel.v1',kind:'request',id,method:'plugin.c
 - `tunnels {}`: use API token/account ID when configured, else the existing certificate with official CLI. Return `{items:[{id,name,status?}]}`.
 - `accounts {}`: API token required. Return `{items:[{id,name}]}`.
 - `selectTunnel {id}`: fetch the existing remotely-managed tunnel's connector token via account API or official CLI, save secret through Host settings and connect in one action. Does not create a tunnel or modify DNS.
+- `zones {}`: API token required. Return `{items:[{id,name,status,plan}]}` from Cloudflare v4 `/zones`.
+- `zoneOverview {zoneId}` / `dnsRecords {zoneId}` / `saveDnsRecord {zoneId,record}` / `deleteDnsRecord {zoneId,recordId}`: API token required (`Zone:Read` / `DNS:Edit`, plus optional `Workers Routes:Read` for route bindings). Operates in place on the selected Zone without exposing the API token; never implies that a `tunnelToken` can manage DNS or deploy Workers.
 
 Settings: `cloudflaredPath` (optional existing executable), `mode` (`token` default or `local`), `tunnelToken` (secret), `tokenFile` (existing token file, optional), `apiToken` (secret), `accountId`, `tunnelId` (UUID), `certificatePath` (optional, defaults to server user home `.cloudflared/cert.pem`), `configPath` (existing cloudflared config for local mode), `credentialsFile` (optional existing tunnel credentials JSON), `publicUrl` (HTTPS endpoint for the existing Kiki remote-space connection form), `autoStart` (boolean, default true).
 

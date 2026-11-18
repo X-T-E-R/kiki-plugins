@@ -100,6 +100,12 @@ test('manifest, sync-manifest, registration, icon budget, and zero-emoji panel c
 
   const panelHtml = await readFile(path.join(pluginRoot, 'panel.html'), 'utf8');
   assert.equal(/\p{Extended_Pictographic}/u.test(panelHtml), false, 'panel.html must contain zero Emoji');
+  assert.match(panelHtml, /--bg:\s*var\(--color-canvas,\s*#f6f4ef\)/);
+  assert.match(panelHtml, /--accent:\s*var\(--color-accent,\s*#2c5e4f\)/);
+  assert.match(panelHtml, /safeStorage/);
+  assert.match(panelHtml, /execCommand\('copy'\)/);
+  assert.match(panelHtml, /session\.sendMessage/);
+  assert.match(panelHtml, /ArrowDown/);
 
   const registered = [];
   register({

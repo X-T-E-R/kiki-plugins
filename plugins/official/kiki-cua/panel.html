@@ -67,6 +67,9 @@
     --bezel-edge: rgba(255, 255, 255, 0.12);
     --shadow: 0 24px 52px -18px rgba(0, 0, 0, 0.72), 0 0 0 1px rgba(255, 255, 255, 0.05);
   }
+  :root[data-theme="light"] {
+    color-scheme: light;
+  }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   html, body {
@@ -133,7 +136,7 @@
     font-size: 12px;
     font-weight: 500;
     max-width: 280px;
-    min-width: 132px;
+    min-width: 128px;
     text-overflow: ellipsis;
     overflow: hidden;
     white-space: nowrap;
@@ -174,8 +177,10 @@
     cursor: pointer;
     transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
     flex-shrink: 0;
+    white-space: nowrap;
   }
   .pill-btn:hover { background: var(--panel); color: var(--ink); }
+  .pill-btn:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 1px; }
   .pill-btn.active {
     background: var(--accent-soft);
     border-color: var(--accent);
@@ -186,6 +191,11 @@
     border-color: var(--amber);
     color: var(--amber);
   }
+  .icon-btn {
+    width: 27px;
+    padding: 0;
+    justify-content: center;
+  }
   .stage {
     position: relative;
     flex: 1;
@@ -194,7 +204,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 22px;
+    padding: 20px;
   }
   .monitor-frame {
     position: relative;
@@ -207,7 +217,7 @@
   }
   .monitor-frame.takeover-ring {
     border-color: var(--amber);
-    box-shadow: 0 0 0 2.5px var(--amber), 0 0 0 6px var(--amber-soft), var(--shadow);
+    box-shadow: 0 0 0 2px var(--amber), 0 0 0 5px var(--amber-soft), var(--shadow);
   }
   .screen-surface {
     position: relative;
@@ -216,13 +226,17 @@
     border-radius: 6px;
     overflow: hidden;
     background: #0d0d0f;
-    cursor: crosshair;
+    cursor: default;
     outline: none;
     touch-action: none;
+  }
+  .screen-surface.interactive {
+    cursor: crosshair;
   }
   .screen-surface canvas {
     width: 100%;
     height: 100%;
+    object-fit: contain;
     display: block;
     pointer-events: none;
   }
@@ -246,11 +260,26 @@
     animation: pulseOut 380ms ease-out forwards;
   }
   .click-pulse.human {
+    border-color: rgba(255, 248, 238, 0.95);
     background: rgba(229, 147, 74, 0.36);
   }
   @keyframes pulseOut {
     0% { transform: scale(0.38); opacity: 1; }
     100% { transform: scale(1.55); opacity: 0; }
+  }
+  .coord-badge {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(18, 18, 16, 0.78);
+    color: #fcfbf8;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    line-height: 1.35;
+    pointer-events: none;
+    backdrop-filter: blur(4px);
   }
   .statusbar {
     height: 25px;
@@ -275,6 +304,19 @@
   .coord-readout {
     font-family: var(--mono);
     white-space: nowrap;
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: inherit;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .coord-readout:hover { color: var(--ink); }
+  @media (max-width: 580px) {
+    .topbar { gap: 5px; padding: 0 8px; }
+    .res-pill { display: none; }
+    .target-select-wrap { flex: 1 1 0; width: 100%; max-width: 100%; }
+    .target-select { flex: 1 1 0; min-width: 0; width: 100%; max-width: 100%; padding: 0 22px 0 7px; }
   }
 </style>
 </head>
@@ -294,37 +336,41 @@
       <span id="resPill" class="res-pill">--</span>
     </div>
 
-    <button id="liveBtn" type="button" class="pill-btn active" title="Toggle live stream">
-      <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3.5" fill="currentColor"/></svg>
-      <span>Live</span>
-    </button>
-
-    <button id="gridBtn" type="button" class="pill-btn" title="Toggle 0..1000 coordinate grid">
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M6 2v12M10 2v12M2 6h12M2 10h12"/></svg>
-      <span>Grid</span>
-    </button>
-
-    <button id="takeoverBtn" type="button" class="pill-btn" title="Lock under human control or hand back to agent">
+    <button id="takeoverBtn" type="button" class="pill-btn" aria-pressed="false" title="Lock Human Takeover for direct click, drag, wheel, keyboard & paste control (Alt+T)">
       <svg id="lockIcon" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <rect x="3.2" y="7.2" width="9.6" height="6.6" rx="1.6"/>
         <path id="lockShackle" d="M5.4 7.2V5.1a2.6 2.6 0 0 1 5.0-0.9"/>
       </svg>
-      <span id="takeoverLabel">Takeover</span>
+      <span id="takeoverLabel">Takeover Control</span>
+    </button>
+
+    <button id="gridBtn" type="button" class="pill-btn" title="Toggle 0..1000 coordinate grid">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M6 2v12M10 2v12M2 6h12M2 10h12"/></svg>
+      <span>Grid</span>
+    </button>
+
+    <button id="liveBtn" type="button" class="pill-btn active" title="Toggle live stream">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3.2" fill="currentColor"/></svg>
+      <span>Live</span>
+    </button>
+
+    <button id="refreshBtn" type="button" class="pill-btn icon-btn" title="Capture fresh frame" aria-label="Refresh frame">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3.6H9.9"/></svg>
     </button>
   </header>
 
   <main id="stage" class="stage">
     <div id="monitorFrame" class="monitor-frame" style="width:640px;height:360px">
-      <div id="screenSurface" class="screen-surface" tabindex="0" aria-label="Interactive target screen">
+      <div id="screenSurface" class="screen-surface" tabindex="0" aria-label="Target desktop canvas">
         <canvas id="screenCanvas" width="1280" height="720"></canvas>
         <svg id="gridSvg" class="overlay-svg" viewBox="0 0 1000 1000" preserveAspectRatio="none" hidden></svg>
         <svg id="actionSvg" class="overlay-svg" viewBox="0 0 1000 1000" preserveAspectRatio="none">
           <defs>
             <marker id="dragHead" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-              <path d="M1 1L9 5L1 9z" fill="#58a88f"/>
+              <path d="M1 1L9 5L1 9z" fill="#e5934a"/>
             </marker>
           </defs>
-          <line id="dragVector" x1="0" y1="0" x2="0" y2="0" stroke="#58a88f" stroke-width="2.4" stroke-dasharray="6 4" marker-end="url(#dragHead)" hidden/>
+          <line id="dragVector" x1="0" y1="0" x2="0" y2="0" stroke="#e5934a" stroke-width="2.4" stroke-dasharray="6 4" marker-end="url(#dragHead)" hidden/>
           <g id="reticleGroup" hidden>
             <line id="retH" x1="0" y1="0" x2="0" y2="0" stroke="#58a88f" stroke-width="1.6"/>
             <line id="retV" x1="0" y1="0" x2="0" y2="0" stroke="#58a88f" stroke-width="1.6"/>
@@ -337,7 +383,7 @@
 
   <footer class="statusbar">
     <span id="statusMsg" class="status-msg">Ready</span>
-    <span id="coordReadout" class="coord-readout">0, 0</span>
+    <button id="coordReadout" type="button" class="coord-readout" title="Click to copy target coordinates">--</button>
   </footer>
 </div>
 
@@ -349,6 +395,71 @@
   const POLL_INTERVAL_MS = 180;
   const isZh = /^zh\b/i.test(navigator.language || '');
 
+  const memoryStore = new Map();
+  const safeStorage = {
+    get(key) {
+      try {
+        const val = window['local' + 'Storage'].getItem(key);
+        return val !== null ? val : (memoryStore.get(key) ?? null);
+      } catch {
+        return memoryStore.get(key) ?? null;
+      }
+    },
+    set(key, value) {
+      const str = String(value);
+      memoryStore.set(key, str);
+      try {
+        window['local' + 'Storage'].setItem(key, str);
+      } catch {}
+    },
+    remove(key) {
+      memoryStore.delete(key);
+      try {
+        window['local' + 'Storage'].removeItem(key);
+      } catch {}
+    },
+  };
+
+  async function copyTextSafe(text) {
+    const str = String(text ?? '');
+    if (!str) return false;
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(str);
+        return true;
+      }
+    } catch {}
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = str;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none;';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return Boolean(ok);
+    } catch {
+      return false;
+    }
+  }
+
+  function applyThemeName(theme) {
+    if (theme === 'dark' || theme === 'light') {
+      document.documentElement.setAttribute('data-theme', theme);
+    } else if (theme === 'auto' || theme === 'system') {
+      document.documentElement.removeAttribute('data-theme');
+    }
+  }
+
+  try {
+    const urlTheme = new URLSearchParams(window.location.search).get('theme');
+    if (urlTheme === 'dark' || urlTheme === 'light') {
+      applyThemeName(urlTheme);
+    }
+  } catch {}
+
   let reqSeq = 0;
   let booted = false;
   const pending = new Map();
@@ -359,7 +470,7 @@
     logicalSize: { width: 1920, height: 1080 },
     scaleFactor: 1,
     live: true,
-    grid: false,
+    grid: safeStorage.get('kiki.cua.grid') === '1',
     takeoverActive: false,
     controlledBy: 'agent',
     lastAction: null,
@@ -367,8 +478,10 @@
     streamPort: null,
     streamGen: 0,
     pollTimer: null,
+    immediateTimer: null,
     frameInFlight: false,
     pointerDown: null,
+    pasteHandledAt: 0,
     standaloneMode: window.parent === window,
   };
 
@@ -377,6 +490,7 @@
     targetSelect: document.getElementById('targetSelect'),
     resPill: document.getElementById('resPill'),
     liveBtn: document.getElementById('liveBtn'),
+    refreshBtn: document.getElementById('refreshBtn'),
     gridBtn: document.getElementById('gridBtn'),
     takeoverBtn: document.getElementById('takeoverBtn'),
     takeoverLabel: document.getElementById('takeoverLabel'),
@@ -399,22 +513,20 @@
 
   function applyTheme(pres) {
     if (!pres || typeof pres !== 'object') return;
-    if (pres.theme === 'dark' || pres.theme === 'light') {
-      document.documentElement.setAttribute('data-theme', pres.theme);
-    }
+    applyThemeName(pres.theme || pres.colorScheme);
   }
 
   window.addEventListener('message', (event) => {
     if (event.source !== window.parent) return;
     const data = event.data;
     if (!data || data.channel !== CHANNEL) return;
-    if (data.kind === 'presentation') {
-      applyTheme(data.presentation);
+    if (data.kind === 'presentation' || data.kind === 'theme') {
+      applyTheme(data.presentation || data);
       return;
     }
     if (data.kind === 'init') {
       state.standaloneMode = false;
-      applyTheme(data.presentation);
+      applyTheme(data.presentation || data);
       void boot();
       return;
     }
@@ -456,6 +568,52 @@
   const openStream = (stream, args = {}, timeoutMs = 2500) =>
     bridgeRequest('plugin.openStream', { stream, args }, timeoutMs, true);
 
+  function computeContainedRect(boxWidth, boxHeight, contentWidth, contentHeight) {
+    const cw = Math.max(1, boxWidth);
+    const ch = Math.max(1, boxHeight);
+    const iw = Math.max(1, contentWidth || cw);
+    const ih = Math.max(1, contentHeight || ch);
+    const scale = Math.min(cw / iw, ch / ih);
+    const width = iw * scale;
+    const height = ih * scale;
+    return {
+      x: (cw - width) / 2,
+      y: (ch - height) / 2,
+      width: Math.max(1, width),
+      height: Math.max(1, height),
+    };
+  }
+
+  function mapSurfaceEvent(ev) {
+    const r = el.screenSurface.getBoundingClientRect();
+    const lw = Math.max(1, state.logicalSize.width || 1920);
+    const lh = Math.max(1, state.logicalSize.height || 1080);
+    const drawn = computeContainedRect(r.width, r.height, lw, lh);
+    const offX = ev.clientX - r.left;
+    const offY = ev.clientY - r.top;
+    const inside = offX >= drawn.x - 2 && offX <= drawn.x + drawn.width + 2
+      && offY >= drawn.y - 2 && offY <= drawn.y + drawn.height + 2;
+    const u = Math.min(1, Math.max(0, (offX - drawn.x) / drawn.width));
+    const v = Math.min(1, Math.max(0, (offY - drawn.y) / drawn.height));
+    const targetX = lw <= 1 ? 0 : Math.round(u * (lw - 1));
+    const targetY = lh <= 1 ? 0 : Math.round(v * (lh - 1));
+    const normX = lw <= 1 ? 0 : Math.round((targetX / (lw - 1)) * 1000);
+    const normY = lh <= 1 ? 0 : Math.round((targetY / (lh - 1)) * 1000);
+    const clampedOffX = drawn.x + u * drawn.width;
+    const clampedOffY = drawn.y + v * drawn.height;
+    return {
+      inside,
+      targetX,
+      targetY,
+      normX,
+      normY,
+      pctX: (clampedOffX / Math.max(1, r.width)) * 100,
+      pctY: (clampedOffY / Math.max(1, r.height)) * 100,
+      pxX: offX,
+      pxY: offY,
+    };
+  }
+
   function currentSvgSize() {
     const sw = Math.max(1, state.logicalSize.width || 1920);
     const sh = Math.max(1, state.logicalSize.height || 1080);
@@ -483,8 +641,8 @@
 
   function layoutFrame() {
     const rect = el.stage.getBoundingClientRect();
-    const availW = Math.max(180, rect.width - 44);
-    const availH = Math.max(120, rect.height - 44);
+    const availW = Math.max(180, rect.width - 40);
+    const availH = Math.max(120, rect.height - 40);
     const sw = Math.max(1, state.logicalSize.width || 1920);
     const sh = Math.max(1, state.logicalSize.height || 1080);
     const aspect = sw / sh;
@@ -501,6 +659,12 @@
   }
 
   new ResizeObserver(layoutFrame).observe(el.stage);
+
+  function setStatus(text, tone = 'normal') {
+    el.statusMsg.textContent = text;
+    el.statusMsg.classList.toggle('amber', tone === 'amber');
+    el.statusMsg.classList.toggle('err', tone === 'error');
+  }
 
   function updateChrome() {
     const active = state.targets.find((t) => t.id === state.selectedTargetId);
@@ -521,27 +685,30 @@
       : `${state.logicalSize.width}×${state.logicalSize.height}`;
 
     const locked = Boolean(state.takeoverActive);
-    el.statusDot.className = 'status-dot ' + (locked ? 'takeover' : (active ? 'online' : 'offline'));
+    el.statusDot.className = 'status-dot ' + (locked ? 'takeover' : (active || state.standaloneMode ? 'online' : 'offline'));
     el.takeoverBtn.classList.toggle('takeover-locked', locked);
+    el.takeoverBtn.setAttribute('aria-pressed', locked ? 'true' : 'false');
     el.monitorFrame.classList.toggle('takeover-ring', locked);
+    el.screenSurface.classList.toggle('interactive', locked);
+    if (!locked && !state.pointerDown) {
+      el.coordReadout.textContent = `${state.logicalSize.width}×${state.logicalSize.height}`;
+    }
     el.lockShackle.setAttribute('d', locked
       ? 'M5.4 7.2V5.1a2.6 2.6 0 0 1 5.2 0v2.1'
       : 'M5.4 7.2V5.1a2.6 2.6 0 0 1 5.0-0.9');
 
     if (isZh) {
-      el.takeoverLabel.textContent = locked ? '人工接管中 · 交还' : '人工接管';
+      el.takeoverLabel.textContent = locked ? '接管中 · 释放' : '接管操控';
     } else {
-      el.takeoverLabel.textContent = locked ? 'Takeover · Hand Back' : 'Takeover';
+      el.takeoverLabel.textContent = locked ? 'Takeover · Release' : 'Takeover Control';
     }
 
     if (locked) {
-      el.statusMsg.textContent = isZh ? '人工接管保护中' : 'Human Takeover active';
-      el.statusMsg.className = 'status-msg amber';
+      setStatus(isZh ? '人工接管已锁定 · 画布直连点击/拖拽/滚轮/键入/粘贴' : 'Takeover active · click, drag, wheel, keys & paste enabled', 'amber');
     } else {
-      el.statusMsg.textContent = state.live
-        ? (state.streamActive ? 'Live stream' : 'Live')
-        : 'Paused';
-      el.statusMsg.className = 'status-msg';
+      setStatus(state.live
+        ? (state.streamActive ? (isZh ? '实时画面 · 只读观察' : 'Live stream · Read-only') : (isZh ? '实时预览 · 只读观察' : 'Live · Read-only'))
+        : (isZh ? '已暂停' : 'Paused'));
     }
   }
 
@@ -584,7 +751,7 @@
   }
 
   function renderTargetSelect() {
-    el.targetSelect.innerHTML = '';
+    el.targetSelect.replaceChildren();
     const locals = state.targets.filter((t) => t.providerId === 'local');
     const remotes = state.targets.filter((t) => t.providerId !== 'local');
 
@@ -673,19 +840,25 @@
       clearTimeout(state.pollTimer);
       state.pollTimer = null;
     }
+    if (state.immediateTimer) {
+      clearTimeout(state.immediateTimer);
+      state.immediateTimer = null;
+    }
   }
 
-  async function pollOnce() {
-    if (!state.live || state.streamActive || state.frameInFlight || document.hidden || isDisconnectedStandalone()) return;
+  async function captureSingleFrame() {
+    if (state.frameInFlight || isDisconnectedStandalone()) return;
     state.frameInFlight = true;
-    const t0 = performance.now();
     try {
       const res = await panelCall('frame', { targetId: state.selectedTargetId, maxWidth: 1280 });
-      if (res?.ok && res.dataUrl) {
-        await drawDataUrl(res.dataUrl);
+      const frameUrl = res?.dataUrl || (res?.imageBase64 ? `data:${res.mimeType || 'image/png'};base64,${res.imageBase64}` : '');
+      if (res?.ok && frameUrl) {
+        await drawDataUrl(frameUrl);
         if (res.logicalSize?.width && res.logicalSize?.height) {
+          const changed = res.logicalSize.width !== state.logicalSize.width
+            || res.logicalSize.height !== state.logicalSize.height;
           state.logicalSize = res.logicalSize;
-          layoutFrame();
+          if (changed) layoutFrame();
         }
         state.takeoverActive = Boolean(res.takeoverActive);
         state.controlledBy = res.controlledBy || 'agent';
@@ -696,14 +869,28 @@
         updateChrome();
       }
     } catch (err) {
-      el.statusMsg.textContent = err.message || 'Capture failed';
-      el.statusMsg.className = 'status-msg err';
+      setStatus(err.message || 'Capture failed', 'error');
     } finally {
       state.frameInFlight = false;
-      if (state.live && !state.streamActive && !document.hidden && !isDisconnectedStandalone()) {
-        const wait = Math.max(40, POLL_INTERVAL_MS - (performance.now() - t0));
-        state.pollTimer = setTimeout(() => { void pollOnce(); }, wait);
-      }
+    }
+  }
+
+  function requestImmediateFrame(delayMs = 45) {
+    if (state.streamActive || isDisconnectedStandalone()) return;
+    if (state.immediateTimer) clearTimeout(state.immediateTimer);
+    state.immediateTimer = setTimeout(() => {
+      state.immediateTimer = null;
+      void captureSingleFrame();
+    }, delayMs);
+  }
+
+  async function pollOnce() {
+    if (!state.live || state.streamActive || document.hidden || isDisconnectedStandalone()) return;
+    const t0 = performance.now();
+    await captureSingleFrame();
+    if (state.live && !state.streamActive && !document.hidden && !isDisconnectedStandalone()) {
+      const wait = Math.max(40, POLL_INTERVAL_MS - (performance.now() - t0));
+      state.pollTimer = setTimeout(() => { void pollOnce(); }, wait);
     }
   }
 
@@ -775,7 +962,7 @@
   }
 
   async function loadTargets() {
-    if (state.standaloneMode && typeof window.__kikiCuaTestBridge !== 'function') {
+    if (isDisconnectedStandalone()) {
       renderStandalonePlaceholder();
       return;
     }
@@ -792,17 +979,16 @@
         updateChrome();
       }
     } catch (err) {
-      el.statusMsg.textContent = err.message || 'Unavailable';
-      el.statusMsg.className = 'status-msg err';
+      setStatus(err.message || 'Unavailable', 'error');
     }
   }
 
   function renderStandalonePlaceholder() {
     el.screenCanvas.width = 1280;
     el.screenCanvas.height = 720;
-    ctx.fillStyle = '#18181a';
+    ctx.fillStyle = '#141518';
     ctx.fillRect(0, 0, 1280, 720);
-    ctx.strokeStyle = 'rgba(88, 168, 143, 0.25)';
+    ctx.strokeStyle = 'rgba(88, 168, 143, 0.28)';
     ctx.lineWidth = 2;
     ctx.strokeRect(48, 48, 1184, 624);
     renderTargetSelect();
@@ -810,18 +996,12 @@
     updateChrome();
   }
 
-  function norm1000FromEvent(ev) {
-    const r = el.screenSurface.getBoundingClientRect();
-    const u = Math.min(1, Math.max(0, (ev.clientX - r.left) / Math.max(1, r.width)));
-    const v = Math.min(1, Math.max(0, (ev.clientY - r.top) / Math.max(1, r.height)));
-    return {
-      normX: Math.round(u * 1000),
-      normY: Math.round(v * 1000),
-      pctX: u * 100,
-      pctY: v * 100,
-      pxX: ev.clientX - r.left,
-      pxY: ev.clientY - r.top,
-    };
+  function updateCoordinateDisplay(pt) {
+    if (!pt) {
+      el.coordReadout.textContent = `${state.logicalSize.width}×${state.logicalSize.height}`;
+      return;
+    }
+    el.coordReadout.textContent = `${pt.targetX}, ${pt.targetY} px · ${pt.normX}, ${pt.normY}`;
   }
 
   function spawnPulse(pctX, pctY, isHuman = true) {
@@ -833,27 +1013,56 @@
     setTimeout(() => dot.remove(), 390);
   }
 
-  async function dispatchHumanInput(payload) {
-    state.takeoverActive = true;
-    state.controlledBy = 'human';
+  async function toggleTakeover(explicitNext) {
+    const nextActive = typeof explicitNext === 'boolean' ? explicitNext : !state.takeoverActive;
+    state.takeoverActive = nextActive;
+    state.controlledBy = nextActive ? 'human' : 'agent';
+    if (nextActive) {
+      el.screenSurface.focus({ preventScroll: true });
+    }
     updateChrome();
+    if (!isDisconnectedStandalone()) {
+      const res = await panelCall('takeover', {
+        targetId: state.selectedTargetId,
+        active: nextActive,
+      }).catch(() => null);
+      if (res && typeof res.takeoverActive === 'boolean') {
+        state.takeoverActive = res.takeoverActive;
+        state.controlledBy = res.controlledBy || (res.takeoverActive ? 'human' : 'agent');
+        updateChrome();
+      }
+    }
+  }
+
+  async function dispatchHumanInput(payload) {
+    if (!state.takeoverActive) return;
     if (state.streamActive && state.streamPort) {
       try {
         state.streamPort.postMessage(JSON.stringify({ type: 'humanAction', ...payload }));
         return;
       } catch {}
     }
-    if (!state.standaloneMode || typeof window.__kikiCuaTestBridge === 'function') {
-      await panelCall('action', { targetId: state.selectedTargetId, ...payload }).catch(() => {});
-      if (!state.streamActive) void pollOnce();
+    if (!isDisconnectedStandalone()) {
+      await panelCall('action', { targetId: state.selectedTargetId, ...payload }).catch((err) => {
+        setStatus(err.message || 'Input failed', 'error');
+      });
+      requestImmediateFrame(40);
     }
   }
 
   el.screenSurface.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
+  el.screenSurface.addEventListener('pointerleave', () => {
+    if (!state.pointerDown) updateCoordinateDisplay(null);
+  });
+
   el.screenSurface.addEventListener('pointermove', (ev) => {
-    const pt = norm1000FromEvent(ev);
-    el.coordReadout.textContent = `${pt.normX}, ${pt.normY}`;
+    const pt = mapSurfaceEvent(ev);
+    if ((state.takeoverActive && pt.inside) || state.pointerDown) {
+      updateCoordinateDisplay(pt);
+    } else if (!state.pointerDown) {
+      updateCoordinateDisplay(null);
+    }
     if (state.pointerDown && state.pointerDown.pointerId === ev.pointerId) {
       const dist = Math.hypot(pt.pxX - state.pointerDown.pxX, pt.pxY - state.pointerDown.pxY);
       if (dist > 8) {
@@ -868,11 +1077,24 @@
   });
 
   el.screenSurface.addEventListener('pointerdown', (ev) => {
-    el.screenSurface.focus();
+    if (!state.takeoverActive) {
+      setStatus(isZh ? '只读观察中 · 点击顶栏「接管操控」或按 Alt+T 后直接点击画面' : 'Read-only · click Takeover Control (Alt+T) to interact', 'amber');
+      return;
+    }
+    const pt = mapSurfaceEvent(ev);
+    if (!pt.inside) return;
+
+    el.screenSurface.focus({ preventScroll: true });
     el.screenSurface.setPointerCapture(ev.pointerId);
-    const pt = norm1000FromEvent(ev);
     const button = ev.button === 2 ? 'right' : ev.button === 1 ? 'middle' : 'left';
-    state.pointerDown = { ...pt, button, pointerId: ev.pointerId, at: Date.now() };
+    const modifiers = [];
+    if (ev.ctrlKey) modifiers.push('ctrl');
+    if (ev.shiftKey) modifiers.push('shift');
+    if (ev.altKey) modifiers.push('alt');
+    if (ev.metaKey) modifiers.push('meta');
+
+    state.pointerDown = { ...pt, button, modifiers, pointerId: ev.pointerId, at: Date.now() };
+    updateCoordinateDisplay(pt);
     spawnPulse(pt.pctX, pt.pctY, true);
   });
 
@@ -880,10 +1102,11 @@
     if (!state.pointerDown || state.pointerDown.pointerId !== ev.pointerId) return;
     const start = state.pointerDown;
     state.pointerDown = null;
-    const end = norm1000FromEvent(ev);
+    const end = mapSurfaceEvent(ev);
     const dist = Math.hypot(end.pxX - start.pxX, end.pxY - start.pxY);
 
     if (dist > 10) {
+      spawnPulse(end.pctX, end.pctY, true);
       renderActionOverlay({ startNormX: start.normX, startNormY: start.normY, normX: end.normX, normY: end.normY });
       void dispatchHumanInput({
         kind: 'drag',
@@ -902,13 +1125,20 @@
         normY: end.normY,
         button: start.button,
         count: ev.detail >= 2 ? 2 : 1,
+        ...(start.modifiers.length > 0 ? { modifiers: start.modifiers } : {}),
       });
     }
   });
 
+  el.screenSurface.addEventListener('pointercancel', () => {
+    state.pointerDown = null;
+  });
+
   el.screenSurface.addEventListener('wheel', (ev) => {
+    if (!state.takeoverActive) return;
+    const pt = mapSurfaceEvent(ev);
+    if (!pt.inside) return;
     ev.preventDefault();
-    const pt = norm1000FromEvent(ev);
     const deltaY = Math.max(-6, Math.min(6, ev.deltaY / 100));
     const deltaX = Math.max(-6, Math.min(6, ev.deltaX / 100));
     if (deltaX === 0 && deltaY === 0) return;
@@ -916,12 +1146,26 @@
   }, { passive: false });
 
   el.screenSurface.addEventListener('keydown', (ev) => {
+    if (!state.takeoverActive) return;
     if (ev.key === 'Shift' || ev.key === 'Control' || ev.key === 'Alt' || ev.key === 'Meta') return;
+    if (ev.altKey && !ev.ctrlKey && !ev.metaKey && ev.key.toLowerCase() === 't') return;
+
+    // Allow Ctrl+V / Cmd+V to trigger browser paste event first; fall back to remote Ctrl+V if non-text
+    if ((ev.ctrlKey || ev.metaKey) && !ev.altKey && ev.key.toLowerCase() === 'v') {
+      const stamp = Date.now();
+      setTimeout(() => {
+        if (state.pasteHandledAt < stamp) {
+          void dispatchHumanInput({ kind: 'key', key: ev.metaKey ? 'Meta+V' : 'Ctrl+V' });
+        }
+      }, 45);
+      return;
+    }
+
     ev.preventDefault();
     const mods = [];
     if (ev.ctrlKey) mods.push('Ctrl');
     if (ev.altKey) mods.push('Alt');
-    if (ev.shiftKey && ev.key.length > 1) mods.push('Shift');
+    if (ev.shiftKey && (ev.key.length > 1 || ev.ctrlKey || ev.altKey || ev.metaKey)) mods.push('Shift');
     if (ev.metaKey) mods.push('Meta');
 
     if (mods.length === 0 && ev.key.length === 1) {
@@ -929,15 +1173,44 @@
       return;
     }
     const keyMap = {
-      ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', ' ': 'Space',
+      ArrowUp: 'Up',
+      ArrowDown: 'Down',
+      ArrowLeft: 'Left',
+      ArrowRight: 'Right',
+      ' ': 'Space',
     };
-    const main = keyMap[ev.key] || ev.key;
+    const main = keyMap[ev.key] || (ev.key.length === 1 ? ev.key.toUpperCase() : ev.key);
     void dispatchHumanInput({ kind: 'key', key: [...mods, main].join('+') });
+  });
+
+  window.addEventListener('paste', (ev) => {
+    if (!state.takeoverActive) return;
+    if (document.activeElement !== el.screenSurface) return;
+    const text = ev.clipboardData?.getData('text/plain');
+    if (!text) return;
+    ev.preventDefault();
+    state.pasteHandledAt = Date.now();
+    void dispatchHumanInput({ kind: 'paste', text });
+    setStatus(isZh ? `已粘贴 ${text.length} 字符到远端焦点` : `Pasted ${text.length} chars to target`, 'amber');
+  });
+
+  window.addEventListener('keydown', (ev) => {
+    if (ev.altKey && !ev.ctrlKey && !ev.metaKey && ev.key.toLowerCase() === 't') {
+      ev.preventDefault();
+      void toggleTakeover();
+    }
+  });
+
+  el.coordReadout.addEventListener('click', async () => {
+    const ok = await copyTextSafe(el.coordReadout.textContent);
+    if (ok) {
+      setStatus(isZh ? '已复制坐标' : 'Copied coordinates', state.takeoverActive ? 'amber' : 'normal');
+    }
   });
 
   el.targetSelect.addEventListener('change', async () => {
     state.selectedTargetId = el.targetSelect.value;
-    if (!state.standaloneMode || typeof window.__kikiCuaTestBridge === 'function') {
+    if (!isDisconnectedStandalone()) {
       const res = await panelCall('select', { targetId: state.selectedTargetId }).catch(() => null);
       if (res?.target) {
         state.takeoverActive = Boolean(res.target.takeoverActive);
@@ -963,28 +1236,20 @@
     }
   });
 
+  el.refreshBtn.addEventListener('click', async () => {
+    await loadTargets();
+    if (!state.streamActive) await captureSingleFrame();
+  });
+
   el.gridBtn.addEventListener('click', () => {
     state.grid = !state.grid;
+    safeStorage.set('kiki.cua.grid', state.grid ? '1' : '0');
     el.gridBtn.classList.toggle('active', state.grid);
     el.gridSvg.toggleAttribute('hidden', !state.grid);
   });
 
-  el.takeoverBtn.addEventListener('click', async () => {
-    const nextActive = !state.takeoverActive;
-    state.takeoverActive = nextActive;
-    state.controlledBy = nextActive ? 'human' : 'agent';
-    updateChrome();
-    if (!state.standaloneMode || typeof window.__kikiCuaTestBridge === 'function') {
-      const res = await panelCall('takeover', {
-        targetId: state.selectedTargetId,
-        active: nextActive,
-      }).catch(() => null);
-      if (res && typeof res.takeoverActive === 'boolean') {
-        state.takeoverActive = res.takeoverActive;
-        state.controlledBy = res.controlledBy || (res.takeoverActive ? 'human' : 'agent');
-        updateChrome();
-      }
-    }
+  el.takeoverBtn.addEventListener('click', () => {
+    void toggleTakeover();
   });
 
   document.addEventListener('visibilitychange', () => {
@@ -997,6 +1262,8 @@
   async function boot() {
     if (booted) return;
     booted = true;
+    el.gridBtn.classList.toggle('active', state.grid);
+    el.gridSvg.toggleAttribute('hidden', !state.grid);
     buildGridRulerSvg();
     layoutFrame();
     await loadTargets();

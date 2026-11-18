@@ -5,64 +5,1362 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>QQ</title>
 <style>
-:root{color-scheme:light dark;--paper:#fbfaf6;--panel:#fffdfa;--hairline:#e4ddd0;--hairline-strong:#cdc3b1;--ink:#1b1a17;--ink-soft:#4b453e;--ink-faint:#665e54;--accent:#c8401a;--accent-deep:#9c3012;--on-accent:#fff;--danger:#b0261e;--selected-ink:#1d4d6d}
-@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--paper:#1b2226;--panel:#252d31;--hairline:#354047;--hairline-strong:#596870;--ink:#eeeae2;--ink-soft:#c1c5c5;--ink-faint:#a2acaf;--accent:#eb946f;--accent-deep:#f4b08f;--on-accent:#261a14;--danger:#f1a29a;--selected-ink:#a3cbde}}
-:root[data-theme="dark"]{--paper:#1b2226;--panel:#252d31;--hairline:#354047;--hairline-strong:#596870;--ink:#eeeae2;--ink-soft:#c1c5c5;--ink-faint:#a2acaf;--accent:#eb946f;--accent-deep:#f4b08f;--on-accent:#261a14;--danger:#f1a29a;--selected-ink:#a3cbde}
-*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:13px/1.55 'Instrument Sans',ui-sans-serif,system-ui,'Segoe UI','PingFang SC','Noto Sans SC','Microsoft YaHei',sans-serif;-webkit-font-smoothing:antialiased}main{max-width:680px;margin:auto;padding:18px 16px 36px}h1{font-size:18px;font-weight:600;letter-spacing:-.01em;margin:0 0 20px}h2{font-size:14px;margin:0 0 6px;font-weight:600}p{margin:6px 0;color:var(--ink-soft)}.muted,.hint{color:var(--ink-faint);font-size:12px}.account{margin:0 0 18px;overflow-wrap:anywhere}.account strong,.appid{font-family:ui-monospace,'Cascadia Mono',Consolas,monospace;font-weight:500;color:var(--ink)}.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px}button,input{font:inherit;color:inherit;max-width:100%}button{min-height:34px;padding:5px 12px;border:1px solid var(--hairline);border-radius:6px;background:var(--panel);cursor:pointer;white-space:nowrap}button:hover:not(:disabled){border-color:var(--hairline-strong);color:var(--ink)}button.primary{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:500}button.primary:hover:not(:disabled){background:var(--accent-deep);border-color:var(--accent-deep);color:var(--on-accent)}button:active:not(:disabled){transform:translateY(1px)}button:disabled{opacity:.5;cursor:not-allowed}:is(button,input,summary):focus-visible{outline:2px solid var(--selected-ink);outline-offset:2px}input{width:100%;padding:7px 10px;border:1px solid var(--hairline);border-radius:6px;background:var(--panel)}input:hover{border-color:var(--hairline-strong)}label{display:block;font-size:12px;font-weight:500;color:var(--ink-soft);margin:0 0 5px}.field{min-width:0;margin-bottom:14px}.hint{margin:4px 0 0;overflow-wrap:anywhere}.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}.wide{grid-column:1/-1}#qr-area{display:grid;grid-template-columns:184px minmax(0,1fr);gap:20px;align-items:center;margin:18px 0}#qr{display:block;width:184px;height:184px;max-width:100%;background:#fff;border-radius:6px}#qr-link{display:inline-block;margin-top:8px;color:var(--selected-ink);text-underline-offset:3px}#candidate{margin:18px 0}#candidate .appid{font-size:20px;margin-top:4px;overflow-wrap:anywhere}#message{min-height:21px;margin-top:12px;color:var(--ink-soft)}#message.error,#manual-status.error{color:var(--danger)}details{margin-top:24px;padding-top:16px;border-top:1px solid var(--hairline)}summary{cursor:pointer;font-weight:500;color:var(--ink-soft)}details[open]>summary{margin-bottom:18px}fieldset{border:0;padding:0;margin:0 0 16px;min-width:0}legend{font-size:14px;font-weight:600;margin-bottom:12px;padding:0}#manual-status{font-size:12px;color:var(--ink-faint)}[hidden]{display:none!important}@media(max-width:767px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}#qr-area{grid-template-columns:1fr;gap:10px}#qr{width:200px;height:200px}main{padding:18px 16px 28px}}
+  :root {
+    color-scheme: light dark;
+    font-synthesis: none;
+    --bg: #f6f4ef;
+    --paper: #fcfbf8;
+    --panel: #efece4;
+    --ink: #1b1a17;
+    --ink-soft: #5c5850;
+    --ink-faint: #8c867b;
+    --line: rgba(27, 26, 23, 0.10);
+    --line-strong: rgba(27, 26, 23, 0.20);
+    --accent: #2c5e4f;
+    --accent-deep: #21493d;
+    --accent-soft: rgba(44, 94, 79, 0.11);
+    --on-accent: #fcfbf8;
+    --danger: #a1352b;
+    --warn: #8c581c;
+    --selected-ink: #2c5e4f;
+    --sans: 'Instrument Sans', ui-sans-serif, system-ui, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141413;
+      --paper: #1c1b19;
+      --panel: #252320;
+      --ink: #edeae2;
+      --ink-soft: #b2aca0;
+      --ink-faint: #7b766c;
+      --line: rgba(237, 234, 226, 0.10);
+      --line-strong: rgba(237, 234, 226, 0.22);
+      --accent: #58a88f;
+      --accent-deep: #6ec0a7;
+      --accent-soft: rgba(88, 168, 143, 0.15);
+      --on-accent: #141413;
+      --danger: #e28379;
+      --warn: #deb068;
+      --selected-ink: #58a88f;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #141413;
+    --paper: #1c1b19;
+    --panel: #252320;
+    --ink: #edeae2;
+    --ink-soft: #b2aca0;
+    --ink-faint: #7b766c;
+    --line: rgba(237, 234, 226, 0.10);
+    --line-strong: rgba(237, 234, 226, 0.22);
+    --accent: #58a88f;
+    --accent-deep: #6ec0a7;
+    --accent-soft: rgba(88, 168, 143, 0.15);
+    --on-accent: #141413;
+    --danger: #e28379;
+    --warn: #deb068;
+    --selected-ink: #58a88f;
+  }
+  :root[data-theme="light"] { color-scheme: light; }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { margin: 0; scroll-padding-bottom: 76px; }
+  body {
+    margin: 0;
+    overflow-x: clip;
+    background: var(--bg);
+    color: var(--ink);
+    font: 13px/1.52 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 14px 16px 36px; min-width: 0; }
+  .page-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  h1 { font-size: 18px; line-height: 1.28; font-weight: 600; letter-spacing: 0; margin: 0; }
+  h2 { font-size: 13.5px; line-height: 1.35; margin: 0; font-weight: 600; }
+  p { margin: 6px 0; color: var(--ink-soft); }
+  .muted, .hint { color: var(--ink-faint); font-size: 12px; line-height: 1.45; }
+  .error { color: var(--danger); font-size: 12px; }
+  .ok { color: var(--accent); font-size: 12px; font-weight: 500; }
+
+  .card-block {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+    min-width: 0;
+  }
+  .block-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .head-left, .head-right {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .account {
+    margin: 0;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+  }
+  .account[data-configured="true"] {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .account strong, .appid {
+    font-family: var(--mono);
+    font-weight: 600;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+  button, input { font: inherit; color: inherit; max-width: 100%; }
+  button {
+    min-height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: var(--bg);
+    color: var(--ink-soft);
+    font-size: 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    white-space: nowrap;
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+  }
+  button:hover:not(:disabled) {
+    border-color: var(--line-strong);
+    color: var(--ink);
+    background: var(--panel);
+  }
+  button.primary {
+    background: var(--accent);
+    color: var(--on-accent);
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+  button.primary:hover:not(:disabled) {
+    background: var(--accent-deep);
+    border-color: var(--accent-deep);
+    color: var(--on-accent);
+  }
+  button.quiet {
+    background: transparent;
+    border-color: transparent;
+    padding: 0 7px;
+    min-height: 26px;
+    color: var(--ink-faint);
+  }
+  button.quiet:hover:not(:disabled) {
+    background: var(--panel);
+    color: var(--ink);
+  }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: 0.48; cursor: not-allowed; }
+  :is(button, input, summary, a):focus-visible {
+    outline: 2px solid var(--selected-ink);
+    outline-offset: 2px;
+  }
+
+  input {
+    width: 100%;
+    min-height: 34px;
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: var(--bg);
+    font-size: 12.5px;
+    outline: none;
+    transition: border-color 140ms ease;
+  }
+  input:hover:not(:disabled) { border-color: var(--line-strong); }
+  input:focus { border-color: var(--accent); }
+  input.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  input::placeholder { color: var(--ink-faint); }
+
+  label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-soft);
+    margin: 0 0 5px;
+  }
+  .field { min-width: 0; margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .hint { margin: 4px 0 0; overflow-wrap: anywhere; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+    gap: 12px 14px;
+  }
+  .grid .field { margin-bottom: 0; }
+  .wide { grid-column: 1 / -1; }
+
+  /* Secret input with Eye toggle + Paste + Clear */
+  .secret-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .secret-wrap {
+    position: relative;
+    flex: 1 1 170px;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+  }
+  .secret-wrap input { padding-right: 34px; }
+  .eye-btn {
+    position: absolute;
+    right: 4px;
+    width: 26px;
+    height: 26px;
+    min-height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--ink-faint);
+  }
+  .eye-btn:hover:not(:disabled) { background: var(--panel); color: var(--ink); }
+
+  /* QR setup stage */
+  #qr-area {
+    display: grid;
+    grid-template-columns: 168px minmax(0, 1fr);
+    gap: 18px;
+    align-items: center;
+    margin: 14px 0;
+    padding: 12px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+  #qr {
+    display: block;
+    width: 168px;
+    height: 168px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+  #qr-link {
+    display: inline-block;
+    margin-top: 6px;
+    color: var(--accent);
+    font-size: 12.5px;
+    font-weight: 500;
+    text-decoration: none;
+  }
+  #qr-link:hover { text-decoration: underline; }
+  #candidate {
+    margin: 12px 0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  #candidate p { margin: 0; font-size: 12.5px; color: var(--ink); }
+  .appid { font-size: 14px; }
+
+  /* Probe inline banner */
+  .probe-line {
+    font-size: 12px;
+    margin: 8px 0 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .probe-line[data-tone="ok"] { color: var(--accent); font-weight: 500; }
+  .probe-line[data-tone="err"] { color: var(--danger); }
+
+  /* Manual & OneBot groups */
+  details#manual, details.sub-disclosure {
+    border: 0;
+  }
+  details#manual > summary, details.sub-disclosure > summary {
+    cursor: pointer;
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-soft);
+    padding: 4px 0;
+    user-select: none;
+  }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform 140ms ease;
+  }
+  details[open] > summary::before { transform: rotate(45deg); }
+  details[open] > summary { color: var(--ink); margin-bottom: 12px; }
+
+  fieldset {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+  }
+  .subgroup-card {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  details.sub-disclosure {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  /* Sticky dirty dock */
+  .dock {
+    position: sticky;
+    bottom: 0;
+    margin-top: 14px;
+    padding: 10px 12px;
+    background: var(--panel);
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  #manual-status {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-right: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  #manual-status.ok { color: var(--accent); font-weight: 500; }
+  #manual-status.error { color: var(--danger); }
+  .kbd-hint {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    padding: 1px 5px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+  }
+
+  @media (max-width: 520px) {
+    main { padding: 12px 10px 28px; }
+    .card-block, .subgroup-card { padding: 12px; }
+    #qr-area { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  }
+  @media (pointer: coarse) {
+    button, input { min-height: 40px; }
+    .eye-btn { width: 34px; height: 34px; min-height: 34px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
 </style>
 </head>
 <body>
 <main>
-<h1 data-copy="title">QQ 连接</h1>
-<section aria-labelledby="official-title">
-<h2 id="official-title" data-copy="official">官方 QQ Bot</h2>
-<p id="account" class="account muted"></p>
-<p id="intro" data-copy="intro">使用手机 QQ 扫码，并在手机页面确认机器人。</p>
-<div id="qr-area" hidden>
-  <img id="qr" alt="">
-  <div><p data-copy="scan">使用手机 QQ 扫码，在官方页面完成确认。</p><p id="qr-fallback" class="muted" data-copy="qrHint" hidden>二维码暂时无法显示时，可打开官方页面。</p><a id="qr-link" href="#" data-copy="open">打开官方页面</a></div>
-</div>
-<div id="candidate" hidden><p data-copy="pending">手机已确认，待保存 AppID</p><div class="appid" id="candidate-id"></div></div>
-<div class="actions"><button type="button" id="begin" class="primary" disabled data-copy="begin">开始扫码</button><button type="button" id="save-bind" class="primary" hidden data-copy="saveBind">保存此账号</button><button type="button" id="cancel" hidden data-copy="cancel">取消</button></div>
-<p id="save-impact" class="muted" hidden data-copy="impact">保存会替换官方账号配置。已开启的 QQ 连接会使用新配置重新连接。</p>
-<p id="message" role="status" aria-live="polite"></p>
-</section>
-<details id="manual"><summary data-copy="manual">手动填写 / OneBot</summary>
-<div id="manual-form"><fieldset><legend data-copy="official">官方 QQ Bot</legend><div id="official-fields" class="grid"></div></fieldset><fieldset><legend>OneBot 11</legend><div id="onebot-fields" class="grid"></div></fieldset><p class="muted" data-copy="manualHint">密钥留空会保留已保存的值。保存后，已开启的连接会使用新配置重新连接。</p><div class="actions"><button id="save-manual" type="button" disabled data-copy="saveManual">保存手填配置</button><span id="manual-status" role="status"></span></div></div>
-</details>
+  <div class="page-head">
+    <h1 data-copy="title">QQ 连接</h1>
+  </div>
+
+  <!-- Core Connection 1: Official QQ Bot QR & Quick Verify -->
+  <section class="card-block" aria-labelledby="official-title">
+    <div class="block-head">
+      <div class="head-left">
+        <h2 id="official-title" data-copy="official">官方 QQ Bot</h2>
+        <p id="account" class="account muted"></p>
+        <button id="copy-appid" class="quiet" type="button" hidden data-copy="copyId">复制</button>
+      </div>
+      <div class="head-right">
+        <button id="probe-official" type="button" data-copy="probeOfficial">验证官方凭据</button>
+      </div>
+    </div>
+
+    <p id="intro" data-copy="intro">使用手机 QQ 扫码，并在手机页面确认机器人。</p>
+
+    <div id="qr-area" hidden>
+      <img id="qr" alt="">
+      <div>
+        <p data-copy="scan">使用手机 QQ 扫码，在官方页面完成确认。</p>
+        <p id="qr-fallback" class="muted" data-copy="qrHint" hidden>二维码暂时无法显示时，可打开官方页面。</p>
+        <a id="qr-link" href="#" data-copy="open">打开官方页面</a>
+      </div>
+    </div>
+
+    <div id="candidate" hidden>
+      <p data-copy="pending">手机已确认，待保存 AppID</p>
+      <div class="appid" id="candidate-id"></div>
+    </div>
+
+    <div class="actions">
+      <button type="button" id="begin" class="primary" disabled data-copy="begin">开始扫码</button>
+      <button type="button" id="save-bind" class="primary" hidden data-copy="saveBind">保存此账号</button>
+      <button type="button" id="cancel" hidden data-copy="cancel">取消</button>
+    </div>
+
+    <p id="save-impact" class="muted" hidden data-copy="impact">保存会替换官方账号配置。已开启的 QQ 连接会使用新配置重新连接。</p>
+    <p id="message" role="status" aria-live="polite"></p>
+    <p id="official-probe-status" class="probe-line" role="status" hidden></p>
+  </section>
+
+  <!-- Core Connection 2 + Default Policy + Advanced Parameters -->
+  <details id="manual" open>
+    <summary data-copy="manual">凭据配置与 OneBot 11 通道</summary>
+    <div id="manual-form">
+      <!-- Official Credentials + Collapsible Advanced Endpoints -->
+      <fieldset class="subgroup-card">
+        <div class="block-head">
+          <h2 data-copy="officialManual">官方凭据与高级网关</h2>
+        </div>
+        <div id="official-fields" class="grid"></div>
+        <details id="official-advanced" class="sub-disclosure">
+          <summary data-copy="advancedGateway">高级网关与源站参数</summary>
+          <div id="official-advanced-fields" class="grid"></div>
+        </details>
+      </fieldset>
+
+      <!-- OneBot 11 Core Connection & Expected Account Guard -->
+      <fieldset class="subgroup-card">
+        <div class="block-head">
+          <div class="head-left">
+            <h2>OneBot 11</h2>
+          </div>
+          <div class="head-right">
+            <button id="probe-onebot" type="button" data-copy="probeOnebot">检测 OneBot 连通性</button>
+          </div>
+        </div>
+        <div id="onebot-fields" class="grid"></div>
+        <p id="onebot-probe-status" class="probe-line" role="status" hidden></p>
+      </fieldset>
+
+      <p class="muted" data-copy="manualHint">密钥留空会保留已保存的值。保存后，已开启的连接会使用新配置重新连接。</p>
+
+      <div id="manual-dock" class="dock" hidden>
+        <span id="manual-status" role="status"></span>
+        <span id="manual-kbd" class="kbd-hint" hidden aria-hidden="true">Ctrl+S</span>
+        <button id="discard-manual" type="button" data-copy="discardManual" hidden>重置更改</button>
+        <button id="save-manual" class="primary" type="button" disabled data-copy="saveManual">保存配置</button>
+      </div>
+    </div>
+  </details>
 </main>
+
 <script type="module">
-const channel='kiki.panel.v1',instanceId='plugin:kiki-qq/qq-official',clientId=crypto.randomUUID(),waiting=new Map(),$=id=>document.getElementById(id);
-const copy={zh:{title:'QQ 连接',official:'官方 QQ Bot',intro:'使用手机 QQ 扫码，并在手机页面确认机器人。',scan:'使用手机 QQ 扫码，在官方页面完成确认。',qrHint:'二维码暂时无法显示时，可打开官方页面。',open:'打开官方页面',pending:'手机已确认，待保存 AppID',begin:'开始扫码',restart:'重新扫码',saveBind:'保存此账号',cancel:'取消',impact:'保存会替换官方账号配置。已开启的 QQ 连接会使用新配置重新连接。',manual:'手动填写 / OneBot',manualHint:'密钥留空会保留已保存的值。保存后，已开启的连接会使用新配置重新连接。',saveManual:'保存手填配置',loading:'正在读取配置…',unconfigured:'尚未配置官方账号',configured:'已配置 AppID',starting:'正在获取官方二维码…',waiting:'等待手机确认。确认后再在这里保存。',saving:'正在保存…',saved:'已保存官方账号。',expired:'二维码已过期，请重新扫码。',cancelled:'已停止本地扫码任务。手机端已确认的授权不会被撤销。',failed:'扫码失败，请重新扫码。',secretSaved:'已保存，留空保留',secretEmpty:'尚未设置',manualSaved:'已保存手填配置',unsaved:'未保存',requestFailed:'请求未完成。请重试；若刚才已点击保存，请先核对当前 AppID。',invalid_request:'请求已失效，请重新打开设置。',unsupported_instance:'请选择官方 QQ Bot 账号。',inactive:'插件尚未就绪，请重新启用插件。',stale_request:'此扫码任务已被另一页面替换或已结束，请重新扫码。',busy:'正在保存，请等待完成。',not_ready:'请先完成手机确认。',settings_changed:'官方配置已在其他位置更改。请核对当前配置后重新扫码。',save_failed:'保存失败，候选账号仍保留，可再次点击保存。',bind_failed:'扫码失败，请重新扫码。',invalid_credentials:'未收到有效账号，请重新扫码。',invalid_qr_url:'官方二维码无法使用，请重新扫码。',unknown_action:'请更新插件后重试。'},en:{title:'QQ connection',official:'Official QQ Bot',intro:'Scan with mobile QQ and confirm the bot on your phone.',scan:'Scan with mobile QQ, then confirm on the official page.',qrHint:'If the QR image is unavailable, open the official page.',open:'Open official page',pending:'Confirmed on phone. AppID ready to save',begin:'Start QR setup',restart:'New QR code',saveBind:'Save this account',cancel:'Cancel',impact:'Saving replaces the official account credentials. An enabled QQ connection will reconnect using the new configuration.',manual:'Manual setup / OneBot',manualHint:'Leave secrets blank to keep saved values. Enabled connections will reconnect using the saved configuration.',saveManual:'Save manual settings',loading:'Loading settings…',unconfigured:'No official account configured',configured:'Configured AppID',starting:'Getting the official QR code…',waiting:'Waiting for phone confirmation. Save here after confirming.',saving:'Saving…',saved:'Official account saved.',expired:'QR code expired. Request a new code.',cancelled:'Local setup stopped. This does not revoke authorization confirmed on your phone.',failed:'QR setup failed. Request a new code.',secretSaved:'Saved; leave blank to keep',secretEmpty:'Not configured',manualSaved:'Manual settings saved',unsaved:'Unsaved',requestFailed:'The request did not complete. Retry; if you just saved, check the current AppID first.',invalid_request:'This request is no longer valid. Reopen settings.',unsupported_instance:'Select the official QQ Bot account.',inactive:'The plugin is not ready. Enable it again.',stale_request:'Another page replaced this setup, or it has ended. Request a new code.',busy:'Saving. Wait for it to finish.',not_ready:'Complete confirmation on your phone first.',settings_changed:'Official settings changed elsewhere. Check the current configuration and start QR setup again.',save_failed:'Saving failed. The candidate is kept; choose Save this account to retry.',bind_failed:'QR setup failed. Request a new code.',invalid_credentials:'No valid account was returned. Request a new code.',invalid_qr_url:'The official QR code is unavailable. Request a new code.',unknown_action:'Update the plugin and try again.'}};
-copy.zh.reload='重试加载';copy.en.reload='Retry loading';
-let locale='zh',next=0,started=false,ready=false,loading=true,requestId,state={phase:'idle',configured:false},timer,busy=false,epoch=0,schema,values={},secrets=[],manualDirty=false,messageKey='loading',manualKey='',errorMessage=false,closed=false;
-const t=key=>key===''?'':copy[locale][key]??copy.en[key]??copy[locale].requestFailed;
-function ask(method,extra={}){const id=++next;return new Promise((resolve,reject)=>{const timeout=setTimeout(()=>{waiting.delete(id);reject(new Error('timeout'))},15000);waiting.set(id,{resolve:value=>{clearTimeout(timeout);resolve(value)},reject:()=>{clearTimeout(timeout);reject(new Error('bridge'))}});parent.postMessage({channel,kind:'request',id,method,...extra},'*')})}
-function call(action,withRequest=true){return ask('plugin.call',{action:`official_bind_${action}`,args:{instanceId,clientId,...(withRequest&&requestId?{requestId}:{})}})}
-let lastDirty,qrImageFailed=false;
-const editedFields=new Set();
-function fieldValue(key){const raw=$(key).value;return schema.properties[key].type==='number'?(raw===''?null:Number(raw)):(raw===''?null:raw)}
-function storedValue(key){return values[key]??schema.properties[key].default??null}
-function dirty(){const value=manualDirty||['candidate','saving'].includes(state.phase);if(value===lastDirty)return;lastDirty=value;parent.postMessage({channel,kind:'request',id:++next,method:'plugin.dirty',dirty:value},'*')}
-function message(key,error=false){messageKey=key;errorMessage=error;render()}
-function render(){document.title=t('title');document.querySelectorAll('[data-copy]').forEach(el=>el.textContent=t(el.dataset.copy));$('account').replaceChildren();$('account').append(document.createTextNode(state.appId?`${t('configured')} `:t('unconfigured')));if(state.appId){const id=document.createElement('strong');id.textContent=state.appId;$('account').append(id)}const phase=state.phase,active=['starting','waiting','candidate'].includes(phase);$('begin').textContent=t(!ready&&!loading?'reload':requestId?'restart':'begin');$('begin').disabled=loading||busy||phase==='saving';$('begin').className=phase==='candidate'?'':'primary';$('save-bind').hidden=!['candidate','saving'].includes(phase);$('save-bind').disabled=busy||phase==='saving'||state.error?.code==='settings_changed';$('cancel').hidden=!active;$('cancel').disabled=busy;$('intro').hidden=['waiting','candidate','saving'].includes(phase);$('qr-area').hidden=phase!=='waiting'||!state.qrUrl;const qrSource=state.qrDataUrl??'';if($('qr').dataset.source!==qrSource){$('qr').dataset.source=qrSource;qrImageFailed=false;if(qrSource)$('qr').src=qrSource;else $('qr').removeAttribute('src')}$('qr').hidden=!qrSource||qrImageFailed;$('qr-fallback').hidden=phase!=='waiting'||Boolean(qrSource&&!qrImageFailed);$('qr').alt=t('scan');$('candidate').hidden=!['candidate','saving'].includes(phase);$('candidate-id').textContent=state.candidateAppId??'';$('save-impact').hidden=!['candidate','saving'].includes(phase);$('message').textContent=messageKey==='candidate'?'':t(messageKey);$('message').hidden=messageKey==='candidate'||messageKey==='';$('message').className=errorMessage?'error':'';$('manual-status').textContent=manualKey?t(manualKey):'';$('save-manual').disabled=!ready||busy||phase==='saving'||!manualDirty;localizeFields()}
-function localizeFields(){for(const [key,prop]of Object.entries(schema?.properties??{})){const field=$(key);if(!field)continue;field.disabled=loading||busy||state.phase==='saving';const text=locale==='zh'?(prop.localizations?.zh??prop):prop;document.querySelector(`label[for="${key}"]`).textContent=text.title??key;const hint=$(`${key}-hint`);if(hint)hint.textContent=text.description??'';if(prop.secret)field.placeholder=t(secrets.includes(key)?'secretSaved':'secretEmpty')}}
-function fields(){for(const [key,prop]of Object.entries(schema?.properties??{})){const group=$(key.startsWith('official__')?'official-fields':'onebot-fields');const wrap=document.createElement('div');wrap.className='field'+(key.includes('Url')?' wide':'');const label=document.createElement('label');label.htmlFor=key;const input=document.createElement('input');input.id=key;input.name=key;input.type=prop.secret?'password':prop.type==='number'?'number':'text';input.autocomplete=prop.secret?'new-password':'off';if(prop.type==='number')input.step='1';input.value=prop.secret?'':values[key]??prop.default??'';const hint=document.createElement('p');hint.id=`${key}-hint`;hint.className='hint';input.setAttribute('aria-describedby',hint.id);wrap.append(label,input,hint);group.append(wrap)}localizeFields()}
-function accept(result){state=result;if(result.requestId)requestId=result.requestId;messageKey=result.error?.code??(result.phase==='idle'?'':result.phase);errorMessage=Boolean(result.error);render();dirty()}
-function schedule(){clearTimeout(timer);if(!closed&&['starting','waiting'].includes(state.phase))timer=setTimeout(poll,2500)}
-async function poll(){const generation=epoch;try{const result=await call('status');if(generation!==epoch||closed)return;accept(result);schedule()}catch{if(generation===epoch&&!closed){message('requestFailed',true);schedule()}}}
-async function settings(replace=false){const result=await ask('plugin.settings.get');schema=result.schema?.schema??result.schema;values=result.values??{};secrets=result.secretsConfigured??[];if(!document.querySelector('#official-fields input'))fields();else if(replace){for(const [key,prop]of Object.entries(schema?.properties??{})){if(editedFields.has(key))continue;$(key).value=prop.secret?'':values[key]??prop.default??''}}localizeFields()}
-async function boot(){loading=true;messageKey='loading';render();try{await settings();const result=await call('status',false);state=result;messageKey=result.error?.code??'';ready=!result.error;errorMessage=Boolean(result.error)}catch{ready=false;messageKey='requestFailed';errorMessage=true}finally{loading=false;render()}}
-$('begin').onclick=async()=>{if(!ready){await boot();return}busy=true;++epoch;clearTimeout(timer);render();try{const result=await call('start',false);requestId=result.requestId;accept(result);schedule()}catch{message('requestFailed',true)}finally{busy=false;render()}};
-$('cancel').onclick=async()=>{busy=true;++epoch;clearTimeout(timer);render();try{accept(await call('cancel'))}catch{message('requestFailed',true)}finally{busy=false;render()}};
-$('save-bind').onclick=async()=>{busy=true;render();try{accept(await call('save'));await settings(true)}catch{message('requestFailed',true)}finally{busy=false;render()}};
-$('qr-link').onclick=event=>{event.preventDefault();if(state.qrUrl)ask('plugin.openExternal',{url:state.qrUrl}).catch(()=>message('requestFailed',true))};
-$('qr').onerror=()=>{qrImageFailed=true;render()};
-$('manual-form').oninput=event=>{const key=event.target.id,prop=schema?.properties?.[key];if(!prop)return;if(prop.secret?Boolean(event.target.value):fieldValue(key)!==storedValue(key))editedFields.add(key);else editedFields.delete(key);manualDirty=editedFields.size>0;manualKey=manualDirty?'unsaved':'';dirty();render()};
-$('save-manual').onclick=async()=>{if(busy)return;if([...editedFields].some(key=>!$(key).reportValidity()))return;const patch={};for(const key of editedFields){const prop=schema.properties[key];if(prop.secret){if($(key).value)patch[key]=$(key).value}else if(fieldValue(key)!==storedValue(key))patch[key]=fieldValue(key)}busy=true;render();try{await ask('plugin.settings.patch',{values:patch});editedFields.clear();manualDirty=false;manualKey='manualSaved';$('manual-status').className='';await settings(true);const result=await call('status',Boolean(requestId));accept(result);dirty()}catch{manualKey='requestFailed';$('manual-status').className='error'}finally{busy=false;render()}};
-function presentation(p){if(!p)return;if(p.locale)locale=p.locale.startsWith('zh')?'zh':'en';document.documentElement.lang=locale==='zh'?'zh-CN':'en';if(['light','dark'].includes(p.theme))document.documentElement.dataset.theme=p.theme;for(const [key,value]of Object.entries(p.tokens??{})){if(key.startsWith('--color-')&&typeof value==='string')document.documentElement.style.setProperty(key.replace('--color-','--'),value)}render()}
-window.addEventListener('message',event=>{if(event.source!==parent||event.data?.channel!==channel)return;const data=event.data;if(data.kind==='init'){presentation(data.presentation);if(!started){started=true;void boot()}}if(data.kind==='presentation')presentation(data.presentation);if(data.kind==='response'){const item=waiting.get(data.id);if(!item)return;waiting.delete(data.id);data.ok?item.resolve(data.result):item.reject()}});
-window.addEventListener('pagehide',()=>{closed=true;++epoch;clearTimeout(timer);if(requestId&&['starting','waiting','candidate'].includes(state.phase))parent.postMessage({channel,kind:'request',id:++next,method:'plugin.call',action:'official_bind_cancel',args:{instanceId,clientId,requestId}},'*')});
+const memStore = new Map();
+const safeStorage = {
+  get(key) {
+    try {
+      const s = typeof window === 'object' ? window.localStorage : null;
+      if (!s) throw new Error('unavailable');
+      const v = s.getItem(key);
+      return v === null ? (memStore.has(key) ? memStore.get(key) : null) : v;
+    } catch {
+      return memStore.has(key) ? memStore.get(key) : null;
+    }
+  },
+  set(key, value) {
+    const str = String(value);
+    memStore.set(key, str);
+    try {
+      const s = typeof window === 'object' ? window.localStorage : null;
+      if (s) s.setItem(key, str);
+    } catch {}
+  },
+};
+
+async function copyText(str) {
+  try {
+    if (typeof navigator === 'object' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      await navigator.clipboard.writeText(str);
+      return true;
+    }
+  } catch {}
+  try {
+    if (!document.body || typeof document.execCommand !== 'function' || typeof document.createElement !== 'function') return false;
+    const area = document.createElement('textarea');
+    area.value = str;
+    if (area.style) {
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      area.style.pointerEvents = 'none';
+    }
+    document.body.append(area);
+    if (typeof area.select === 'function') area.select();
+    const ok = document.execCommand('copy');
+    if (typeof area.remove === 'function') area.remove();
+    return Boolean(ok);
+  } catch {
+    return false;
+  }
+}
+
+function makeSvg(paths, size = 14) {
+  if (typeof document.createElementNS !== 'function') return document.createElement('span');
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('width', String(size));
+  svg.setAttribute('height', String(size));
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.5');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  for (const d of paths) {
+    const p = document.createElementNS(ns, 'path');
+    p.setAttribute('d', d);
+    svg.append(p);
+  }
+  return svg;
+}
+
+function randomId() {
+  if (typeof crypto === 'object' && crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  if (typeof crypto === 'object' && crypto && typeof crypto.getRandomValues === 'function') {
+    const b = new Uint8Array(16);
+    crypto.getRandomValues(b);
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  }
+  return 'cid-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+}
+
+const channel = 'kiki.panel.v1';
+const instanceId = 'plugin:kiki-qq/qq-official';
+const clientId = randomId();
+const waiting = new Map();
+const $ = (id) => document.getElementById(id);
+
+const ADVANCED_OFFICIAL_KEYS = new Set(['official__apiBaseUrl', 'official__tokenBaseUrl', 'official__intents']);
+
+const copy = {
+  zh: {
+    title: 'QQ 连接',
+    official: '官方 QQ Bot',
+    officialManual: '官方手填凭据',
+    advancedGateway: '高级网关与源站参数',
+    intro: '使用手机 QQ 扫码，并在手机页面确认机器人。',
+    scan: '使用手机 QQ 扫码，在官方页面完成确认。',
+    qrHint: '二维码暂时无法显示时，可打开官方页面。',
+    open: '打开官方页面',
+    pending: '手机已确认，待保存 AppID',
+    begin: '开始扫码',
+    restart: '重新扫码',
+    saveBind: '保存此账号',
+    cancel: '取消',
+    impact: '保存会替换官方账号配置。已开启的 QQ 连接会使用新配置重新连接。',
+    manual: '凭据配置与 OneBot 11 通道',
+    manualHint: '密钥留空会保留已保存的值。保存后，已开启的连接会使用新配置重新连接。',
+    saveManual: '保存手填配置',
+    discardManual: '重置更改',
+    copyId: '复制',
+    copiedId: '已复制 AppID',
+    probeOfficial: '验证官方凭据',
+    probeOnebot: '检测 OneBot 连通性',
+    probing: '检测中…',
+    probeOfficialOk: (id, ms) => `官方令牌验证通过 · AppID ${id}（${ms}ms）`,
+    probeOnebotOk: (id, nick, ms) => `OneBot 连通正常 · 账号 ${id}${nick ? ` (${nick})` : ''}（${ms}ms）`,
+    probeUnconfigured: '尚未保存完整的官方 AppID 与 AppSecret。',
+    probeAuthFailed: '凭据校验未通过，请核对密钥或令牌。',
+    probeMismatch: (id) => `登录账号 ${id} 与预期账号 ID 不一致。`,
+    probeUnreachable: '无法连接目标接口，请检查服务是否启动及地址配置。',
+    revealSecret: '显示密钥',
+    hideSecret: '隐藏密钥',
+    pasteSecret: '粘贴',
+    clearDraft: '清空',
+    reload: '重试加载',
+    loading: '正在读取配置…',
+    unconfigured: '尚未配置官方账号',
+    configured: '已配置 AppID',
+    starting: '正在获取官方二维码…',
+    waiting: '等待手机确认。确认后再在这里保存。',
+    saving: '正在保存…',
+    saved: '已保存官方账号。',
+    expired: '二维码已过期，请重新扫码。',
+    cancelled: '已停止本地扫码任务。手机端已确认的授权不会被撤销。',
+    failed: '扫码失败，请重新扫码。',
+    secretSaved: '已保存，留空保留',
+    secretEmpty: '尚未设置',
+    manualSaved: '已保存手填配置',
+    unsaved: '有未保存的更改',
+    requestFailed: '请求未完成。请重试；若刚才已点击保存，请先核对当前 AppID。',
+    invalid_request: '请求已失效，请重新打开设置。',
+    unsupported_instance: '请选择官方 QQ Bot 账号。',
+    inactive: '插件尚未就绪，请重新启用插件。',
+    stale_request: '此扫码任务已被另一页面替换或已结束，请重新扫码。',
+    busy: '正在保存，请等待完成。',
+    not_ready: '请先完成手机确认。',
+    settings_changed: '官方配置已在其他位置更改。请核对当前配置后重新扫码。',
+    save_failed: '保存失败，候选账号仍保留，可再次点击保存。',
+    bind_failed: '扫码失败，请重新扫码。',
+    invalid_credentials: '未收到有效账号，请重新扫码。',
+    invalid_qr_url: '官方二维码无法使用，请重新扫码。',
+    unknown_action: '请更新插件后重试。',
+  },
+  en: {
+    title: 'QQ connection',
+    official: 'Official QQ Bot',
+    officialManual: 'Official credentials',
+    advancedGateway: 'Advanced gateway & origins',
+    intro: 'Scan with mobile QQ and confirm the bot on your phone.',
+    scan: 'Scan with mobile QQ, then confirm on the official page.',
+    qrHint: 'If the QR image is unavailable, open the official page.',
+    open: 'Open official page',
+    pending: 'Confirmed on phone. AppID ready to save',
+    begin: 'Start QR setup',
+    restart: 'New QR code',
+    saveBind: 'Save this account',
+    cancel: 'Cancel',
+    impact: 'Saving replaces the official account credentials. An enabled QQ connection will reconnect using the new configuration.',
+    manual: 'Credentials & OneBot 11 channel',
+    manualHint: 'Leave secrets blank to keep saved values. Enabled connections will reconnect using the saved configuration.',
+    saveManual: 'Save manual settings',
+    discardManual: 'Reset changes',
+    copyId: 'Copy',
+    copiedId: 'AppID copied',
+    probeOfficial: 'Verify Official API',
+    probeOnebot: 'Test OneBot HTTP',
+    probing: 'Checking…',
+    probeOfficialOk: (id, ms) => `Official token verified · AppID ${id} (${ms}ms)`,
+    probeOnebotOk: (id, nick, ms) => `OneBot reachable · ID ${id}${nick ? ` (${nick})` : ''} (${ms}ms)`,
+    probeUnconfigured: 'Save both Official AppID and AppSecret first.',
+    probeAuthFailed: 'Authentication failed. Check your secret or token.',
+    probeMismatch: (id) => `Connected account ${id} does not match Expected OneBot account ID.`,
+    probeUnreachable: 'Endpoint unreachable. Verify the service is running and check the URL.',
+    revealSecret: 'Show secret',
+    hideSecret: 'Hide secret',
+    pasteSecret: 'Paste',
+    clearDraft: 'Clear',
+    reload: 'Retry loading',
+    loading: 'Loading settings…',
+    unconfigured: 'No official account configured',
+    configured: 'Configured AppID',
+    starting: 'Getting the official QR code…',
+    waiting: 'Waiting for phone confirmation. Save here after confirming.',
+    saving: 'Saving…',
+    saved: 'Official account saved.',
+    expired: 'QR code expired. Start a new scan.',
+    cancelled: 'Stopped local QR setup. Authorizations already confirmed on the phone are not revoked.',
+    failed: 'QR setup failed. Start a new scan.',
+    secretSaved: 'Saved; leave blank to keep',
+    secretEmpty: 'Not set',
+    manualSaved: 'Manual settings saved',
+    unsaved: 'Unsaved changes',
+    requestFailed: 'Request did not complete. Retry; if you just clicked save, check the current AppID first.',
+    invalid_request: 'This request expired. Reopen settings.',
+    unsupported_instance: 'Select the official QQ Bot account.',
+    inactive: 'Plugin is not ready. Re-enable the plugin.',
+    stale_request: 'This QR setup was replaced or finished. Start a new scan.',
+    busy: 'Saving in progress. Wait for it to finish.',
+    not_ready: 'Confirm on your phone first.',
+    settings_changed: 'Official credentials changed elsewhere. Check the current settings and scan again.',
+    save_failed: 'Save failed. The candidate account is still kept; click save again.',
+    bind_failed: 'QR setup failed. Start a new scan.',
+    invalid_credentials: 'Did not receive valid credentials. Start a new scan.',
+    invalid_qr_url: 'Official QR URL could not be used. Start a new scan.',
+    unknown_action: 'Update the plugin and try again.',
+  },
+};
+
+let locale = 'zh';
+let hostTheme = '';
+let next = 0;
+let started = false;
+let ready = false;
+let loading = true;
+let requestId;
+let state = { phase: 'idle', configured: false };
+let timer;
+let busy = false;
+let probingTarget = '';
+let savedFadeTimer = 0;
+let epoch = 0;
+let schema;
+let values = {};
+let secrets = [];
+let manualDirty = false;
+let messageKey = 'loading';
+let manualKey = '';
+let errorMessage = false;
+let closed = false;
+let lastDirty;
+let qrImageFailed = false;
+const editedFields = new Set();
+const revealedSecrets = new Set();
+
+const t = (key) => (key === '' ? '' : copy[locale][key] ?? copy.en[key] ?? copy[locale].requestFailed);
+
+function setRootTheme(theme) {
+  if ((theme !== 'light' && theme !== 'dark') || !document.documentElement) return;
+  if (document.documentElement.dataset) document.documentElement.dataset.theme = theme;
+}
+
+try {
+  if (typeof URLSearchParams !== 'undefined' && typeof location === 'object' && location && location.search) {
+    const qTheme = new URLSearchParams(location.search).get('theme');
+    if (qTheme === 'dark' || qTheme === 'light') {
+      hostTheme = qTheme;
+      setRootTheme(qTheme);
+    }
+  }
+} catch {}
+if (!hostTheme && typeof matchMedia === 'function') {
+  const mq = matchMedia('(prefers-color-scheme: dark)');
+  const syncOs = () => { if (!hostTheme) setRootTheme(mq.matches ? 'dark' : 'light'); };
+  syncOs();
+  if (typeof mq.addEventListener === 'function') mq.addEventListener('change', syncOs);
+}
+
+const savedManualOpen = safeStorage.get('kiki.qq.manualOpen');
+if (savedManualOpen === '0' && $('manual')) $('manual').open = false;
+
+function ask(method, extra = {}) {
+  const id = ++next;
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      waiting.delete(id);
+      reject(new Error('timeout'));
+    }, 15000);
+    waiting.set(id, {
+      resolve: (value) => { clearTimeout(timeout); resolve(value); },
+      reject: () => { clearTimeout(timeout); reject(new Error('bridge')); },
+    });
+    parent.postMessage({ channel, kind: 'request', id, method, ...extra }, '*');
+  });
+}
+
+function call(action, withRequest = true) {
+  return ask('plugin.call', {
+    action: `official_bind_${action}`,
+    args: { instanceId, clientId, ...(withRequest && requestId ? { requestId } : {}) },
+  });
+}
+
+function fieldValue(key) {
+  const raw = $(key).value;
+  return schema.properties[key].type === 'number'
+    ? (raw === '' ? null : Number(raw))
+    : (raw === '' ? null : raw);
+}
+
+function storedValue(key) {
+  return values[key] ?? schema.properties[key].default ?? null;
+}
+
+function dirty() {
+  const value = manualDirty || ['candidate', 'saving'].includes(state.phase);
+  if (value === lastDirty) return;
+  lastDirty = value;
+  parent.postMessage({ channel, kind: 'request', id: ++next, method: 'plugin.dirty', dirty: value }, '*');
+}
+
+function message(key, error = false) {
+  messageKey = key;
+  errorMessage = error;
+  render();
+}
+
+function updateEyeButton(key) {
+  const field = $(key);
+  const btn = document.querySelector?.(`[data-eye-for="${key}"]`);
+  const clearBtn = document.querySelector?.(`[data-clear-for="${key}"]`);
+  if (field) {
+    const rev = revealedSecrets.has(key);
+    field.type = rev ? 'text' : 'password';
+    if (btn) {
+      btn.setAttribute('aria-label', rev ? t('hideSecret') : t('revealSecret'));
+      btn.setAttribute('title', rev ? t('hideSecret') : t('revealSecret'));
+      btn.replaceChildren(rev
+        ? makeSvg(['M2 2l12 12', 'M6.5 6.5a2 2 0 0 0 2.8 2.8', 'M1.5 8s2.5-4.5 6.5-4.5c1.3 0 2.5.5 3.5 1.2M14.5 8s-1.2 2.2-3.2 3.5'])
+        : makeSvg(['M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8s-2.5 4.5-6.5 4.5S1.5 8 1.5 8Z', 'M8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z']));
+    }
+    if (clearBtn) {
+      clearBtn.hidden = !field.value;
+      clearBtn.textContent = t('clearDraft');
+    }
+  }
+}
+
+function localizeFields() {
+  for (const [key, prop] of Object.entries(schema?.properties ?? {})) {
+    const field = $(key);
+    if (!field) continue;
+    const locked = loading || busy || state.phase === 'saving';
+    field.disabled = locked;
+    const text = locale === 'zh' ? (prop.localizations?.zh ?? prop) : prop;
+    const labelEl = document.querySelector?.(`label[for="${key}"]`);
+    if (labelEl) labelEl.textContent = text.title ?? key;
+    const hint = $(`${key}-hint`);
+    if (hint) hint.textContent = text.description ?? '';
+    if (prop.secret) {
+      field.placeholder = t(secrets.includes(key) ? 'secretSaved' : 'secretEmpty');
+      updateEyeButton(key);
+      const pasteBtn = document.querySelector?.(`[data-paste-for="${key}"]`);
+      if (pasteBtn) {
+        pasteBtn.textContent = t('pasteSecret');
+        pasteBtn.disabled = locked;
+      }
+      const eyeBtn = document.querySelector?.(`[data-eye-for="${key}"]`);
+      if (eyeBtn) eyeBtn.disabled = locked;
+      const clearBtn = document.querySelector?.(`[data-clear-for="${key}"]`);
+      if (clearBtn) clearBtn.disabled = locked;
+    }
+  }
+}
+
+function render() {
+  document.title = t('title');
+  document.querySelectorAll?.('[data-copy]').forEach((el) => {
+    if (el.id === 'probe-official' && probingTarget === 'official') el.textContent = t('probing');
+    else if (el.id === 'probe-onebot' && probingTarget === 'onebot') el.textContent = t('probing');
+    else el.textContent = t(el.dataset.copy);
+  });
+
+  const acc = $('account');
+  acc.replaceChildren();
+  acc.dataset.configured = state.appId ? 'true' : 'false';
+  acc.append(document.createTextNode(state.appId ? `${t('configured')} ` : t('unconfigured')));
+  if (state.appId) {
+    const id = document.createElement('strong');
+    id.textContent = state.appId;
+    acc.append(id);
+  }
+  const copyAppBtn = $('copy-appid');
+  if (copyAppBtn) copyAppBtn.hidden = !state.appId;
+
+  const phase = state.phase;
+  const active = ['starting', 'waiting', 'candidate'].includes(phase);
+  $('begin').textContent = t(!ready && !loading ? 'reload' : requestId ? 'restart' : 'begin');
+  $('begin').disabled = loading || busy || phase === 'saving';
+  $('begin').className = phase === 'candidate' ? '' : 'primary';
+  $('save-bind').hidden = !['candidate', 'saving'].includes(phase);
+  $('save-bind').disabled = busy || phase === 'saving' || state.error?.code === 'settings_changed';
+  $('cancel').hidden = !active;
+  $('cancel').disabled = busy;
+  $('intro').hidden = ['waiting', 'candidate', 'saving'].includes(phase);
+  $('qr-area').hidden = phase !== 'waiting' || !state.qrUrl;
+
+  const qrSource = state.qrDataUrl ?? '';
+  if ($('qr').dataset.source !== qrSource) {
+    $('qr').dataset.source = qrSource;
+    qrImageFailed = false;
+    if (qrSource) $('qr').src = qrSource;
+    else $('qr').removeAttribute('src');
+  }
+  $('qr').hidden = !qrSource || qrImageFailed;
+  $('qr-fallback').hidden = phase !== 'waiting' || Boolean(qrSource && !qrImageFailed);
+  $('qr').alt = t('scan');
+
+  $('candidate').hidden = !['candidate', 'saving'].includes(phase);
+  $('candidate-id').textContent = state.candidateAppId ?? '';
+  $('save-impact').hidden = !['candidate', 'saving'].includes(phase);
+  $('message').textContent = messageKey === 'candidate' ? '' : t(messageKey);
+  $('message').hidden = messageKey === 'candidate' || messageKey === '';
+  $('message').className = errorMessage ? 'error' : phase === 'saved' ? 'ok' : '';
+
+  const probeOffBtn = $('probe-official');
+  if (probeOffBtn) probeOffBtn.disabled = loading || busy || Boolean(probingTarget);
+  const probeOneBtn = $('probe-onebot');
+  if (probeOneBtn) probeOneBtn.disabled = loading || busy || Boolean(probingTarget);
+
+  const dockVisible = manualDirty || manualKey !== '';
+  const dock = $('manual-dock');
+  if (dock) dock.hidden = !dockVisible;
+  const kbd = $('manual-kbd');
+  if (kbd) kbd.hidden = !manualDirty || busy;
+  const discardBtn = $('discard-manual');
+  if (discardBtn) {
+    discardBtn.hidden = !manualDirty;
+    discardBtn.disabled = busy || !manualDirty;
+  }
+
+  $('manual-status').textContent = manualKey ? t(manualKey) : '';
+  if (manualKey === 'manualSaved') $('manual-status').className = 'ok';
+  else if (manualKey === 'requestFailed') $('manual-status').className = 'error';
+  else $('manual-status').className = '';
+
+  $('save-manual').disabled = !ready || busy || phase === 'saving' || !manualDirty;
+  localizeFields();
+}
+
+function recomputeManualDirty() {
+  editedFields.clear();
+  for (const [key, prop] of Object.entries(schema?.properties ?? {})) {
+    const el = $(key);
+    if (!el) continue;
+    if (prop.secret ? Boolean(el.value) : fieldValue(key) !== storedValue(key)) {
+      editedFields.add(key);
+    }
+  }
+  manualDirty = editedFields.size > 0;
+  if (manualDirty) {
+    clearTimeout(savedFadeTimer);
+    manualKey = 'unsaved';
+  } else if (manualKey === 'unsaved') {
+    manualKey = '';
+  }
+  dirty();
+  render();
+}
+
+function fields() {
+  for (const [key, prop] of Object.entries(schema?.properties ?? {})) {
+    const group = key.startsWith('official__')
+      ? $(ADVANCED_OFFICIAL_KEYS.has(key) ? 'official-advanced-fields' : 'official-fields')
+      : $('onebot-fields');
+    const wrap = document.createElement('div');
+    wrap.className = 'field' + (key.includes('Url') ? ' wide' : '');
+    const label = document.createElement('label');
+    label.htmlFor = key;
+
+    const input = document.createElement('input');
+    input.id = key;
+    input.name = key;
+    input.type = prop.secret ? 'password' : prop.type === 'number' ? 'number' : 'text';
+    if (prop.type === 'number' || key.includes('Url') || key.endsWith('Id')) input.className = 'mono';
+    input.autocomplete = prop.secret ? 'new-password' : 'off';
+    if (prop.type === 'number') input.step = '1';
+    input.value = prop.secret ? '' : values[key] ?? prop.default ?? '';
+
+    const hint = document.createElement('p');
+    hint.id = `${key}-hint`;
+    hint.className = 'hint';
+    input.setAttribute('aria-describedby', hint.id);
+
+    if (prop.secret) {
+      const row = document.createElement('div');
+      row.className = 'secret-row';
+      const inputWrap = document.createElement('div');
+      inputWrap.className = 'secret-wrap';
+
+      const eyeBtn = document.createElement('button');
+      eyeBtn.type = 'button';
+      eyeBtn.className = 'eye-btn';
+      eyeBtn.dataset.eyeFor = key;
+      eyeBtn.onclick = () => {
+        if (revealedSecrets.has(key)) revealedSecrets.delete(key);
+        else revealedSecrets.add(key);
+        updateEyeButton(key);
+      };
+      inputWrap.append(input, eyeBtn);
+
+      const pasteBtn = document.createElement('button');
+      pasteBtn.type = 'button';
+      pasteBtn.dataset.pasteFor = key;
+      pasteBtn.onclick = async () => {
+        try {
+          if (typeof navigator === 'object' && navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+            const clip = (await navigator.clipboard.readText()).trim();
+            if (clip) {
+              input.value = clip;
+              recomputeManualDirty();
+              return;
+            }
+          }
+        } catch {}
+        input.focus?.();
+      };
+
+      const clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.dataset.clearFor = key;
+      clearBtn.hidden = true;
+      clearBtn.onclick = () => {
+        input.value = '';
+        recomputeManualDirty();
+        input.focus?.();
+      };
+
+      row.append(inputWrap, pasteBtn, clearBtn);
+      wrap.append(label, row, hint);
+    } else {
+      wrap.append(label, input, hint);
+    }
+    group.append(wrap);
+  }
+  const hasCustomAdvanced = [...ADVANCED_OFFICIAL_KEYS].some((k) => values[k] !== undefined && values[k] !== schema?.properties?.[k]?.default);
+  if (hasCustomAdvanced && $('official-advanced')) $('official-advanced').open = true;
+  localizeFields();
+}
+
+function accept(result) {
+  state = result;
+  if (result.requestId) requestId = result.requestId;
+  messageKey = result.error?.code ?? (result.phase === 'idle' ? '' : result.phase);
+  errorMessage = Boolean(result.error);
+  render();
+  dirty();
+}
+
+function schedule() {
+  clearTimeout(timer);
+  if (!closed && ['starting', 'waiting'].includes(state.phase)) timer = setTimeout(poll, 2500);
+}
+
+async function poll() {
+  const generation = epoch;
+  try {
+    const result = await call('status');
+    if (generation !== epoch || closed) return;
+    accept(result);
+    schedule();
+  } catch {
+    if (generation === epoch && !closed) {
+      message('requestFailed', true);
+      schedule();
+    }
+  }
+}
+
+async function settings(replace = false) {
+  const result = await ask('plugin.settings.get');
+  schema = result.schema?.schema ?? result.schema;
+  values = result.values ?? {};
+  secrets = result.secretsConfigured ?? [];
+  if (!document.querySelector?.('#official-fields input')) {
+    fields();
+  } else if (replace) {
+    for (const [key, prop] of Object.entries(schema?.properties ?? {})) {
+      if (editedFields.has(key)) continue;
+      $(key).value = prop.secret ? '' : values[key] ?? prop.default ?? '';
+    }
+  }
+  localizeFields();
+}
+
+async function boot() {
+  loading = true;
+  messageKey = 'loading';
+  render();
+  try {
+    await settings();
+    const result = await call('status', false);
+    state = result;
+    messageKey = result.error?.code ?? '';
+    ready = !result.error;
+    errorMessage = Boolean(result.error);
+  } catch {
+    ready = false;
+    messageKey = 'requestFailed';
+    errorMessage = true;
+  } finally {
+    loading = false;
+    render();
+  }
+}
+
+async function saveManualSettings() {
+  if (busy || !manualDirty || !ready || state.phase === 'saving') return;
+  if ([...editedFields].some((key) => typeof $(key).reportValidity === 'function' && !$(key).reportValidity())) return;
+  const patch = {};
+  for (const key of editedFields) {
+    const prop = schema.properties[key];
+    if (prop.secret) {
+      if ($(key).value) patch[key] = $(key).value;
+    } else if (fieldValue(key) !== storedValue(key)) {
+      patch[key] = fieldValue(key);
+    }
+  }
+  busy = true;
+  render();
+  try {
+    await ask('plugin.settings.patch', { values: patch });
+    editedFields.clear();
+    revealedSecrets.clear();
+    manualDirty = false;
+    manualKey = 'manualSaved';
+    await settings(true);
+    const result = await call('status', Boolean(requestId));
+    accept(result);
+    dirty();
+    clearTimeout(savedFadeTimer);
+    savedFadeTimer = setTimeout(() => {
+      if (!manualDirty && manualKey === 'manualSaved') {
+        manualKey = '';
+        render();
+      }
+    }, 2600);
+  } catch {
+    manualKey = 'requestFailed';
+  } finally {
+    busy = false;
+    render();
+  }
+}
+
+async function runProbe(target) {
+  if (probingTarget || busy || loading) return;
+  probingTarget = target;
+  const line = $(target === 'official' ? 'official-probe-status' : 'onebot-probe-status');
+  if (line) line.hidden = true;
+  render();
+  try {
+    const args = target === 'official'
+      ? {
+          target: 'official',
+          appId: $('official__appId')?.value?.trim() || state.appId || '',
+          tokenBaseUrl: $('official__tokenBaseUrl')?.value?.trim() || undefined,
+        }
+      : {
+          target: 'onebot',
+          baseUrl: $('onebot__baseUrl')?.value?.trim() || undefined,
+          selfId: $('onebot__selfId')?.value?.trim() ?? '',
+        };
+    const res = await ask('plugin.call', { action: 'qq_probe', args });
+    if (line) {
+      line.hidden = false;
+      if (res && res.ok) {
+        line.dataset.tone = 'ok';
+        line.textContent = target === 'official'
+          ? copy[locale].probeOfficialOk(res.appId || '', res.latencyMs ?? 0)
+          : copy[locale].probeOnebotOk(res.accountId || '', res.nickname || '', res.latencyMs ?? 0);
+      } else {
+        line.dataset.tone = 'err';
+        const code = res?.code;
+        if (code === 'unconfigured') line.textContent = t('probeUnconfigured');
+        else if (code === 'auth_failed') line.textContent = t('probeAuthFailed');
+        else if (code === 'self_id_mismatch') line.textContent = copy[locale].probeMismatch(res?.accountId || '?');
+        else line.textContent = t('probeUnreachable');
+      }
+    }
+  } catch {
+    if (line) {
+      line.hidden = false;
+      line.dataset.tone = 'err';
+      line.textContent = t('probeUnreachable');
+    }
+  } finally {
+    probingTarget = '';
+    render();
+  }
+}
+
+$('begin').onclick = async () => {
+  if (!ready) { await boot(); return; }
+  busy = true;
+  ++epoch;
+  clearTimeout(timer);
+  render();
+  try {
+    const result = await call('start', false);
+    requestId = result.requestId;
+    accept(result);
+    schedule();
+  } catch {
+    message('requestFailed', true);
+  } finally {
+    busy = false;
+    render();
+  }
+};
+
+$('cancel').onclick = async () => {
+  busy = true;
+  ++epoch;
+  clearTimeout(timer);
+  render();
+  try { accept(await call('cancel')); }
+  catch { message('requestFailed', true); }
+  finally { busy = false; render(); }
+};
+
+$('save-bind').onclick = async () => {
+  busy = true;
+  render();
+  try {
+    accept(await call('save'));
+    await settings(true);
+  } catch {
+    message('requestFailed', true);
+  } finally {
+    busy = false;
+    render();
+  }
+};
+
+$('qr-link').onclick = (event) => {
+  event.preventDefault();
+  if (state.qrUrl) ask('plugin.openExternal', { url: state.qrUrl }).catch(() => message('requestFailed', true));
+};
+$('qr').onerror = () => { qrImageFailed = true; render(); };
+
+if ($('copy-appid')) {
+  $('copy-appid').onclick = async () => {
+    if (!state.appId) return;
+    const ok = await copyText(String(state.appId));
+    if (ok) {
+      const line = $('official-probe-status');
+      if (line) {
+        line.hidden = false;
+        line.dataset.tone = 'ok';
+        line.textContent = t('copiedId');
+      }
+    }
+  };
+}
+if ($('probe-official')) $('probe-official').onclick = () => void runProbe('official');
+if ($('probe-onebot')) $('probe-onebot').onclick = () => void runProbe('onebot');
+
+$('manual').ontoggle = () => safeStorage.set('kiki.qq.manualOpen', $('manual').open ? '1' : '0');
+
+$('manual-form').oninput = (event) => {
+  const key = event?.target?.id;
+  if (!key || !schema?.properties?.[key]) return;
+  recomputeManualDirty();
+};
+
+if ($('discard-manual')) {
+  $('discard-manual').onclick = () => {
+    if (busy) return;
+    editedFields.clear();
+    revealedSecrets.clear();
+    for (const [key, prop] of Object.entries(schema?.properties ?? {})) {
+      const el = $(key);
+      if (el) el.value = prop.secret ? '' : values[key] ?? prop.default ?? '';
+    }
+    manualDirty = false;
+    manualKey = '';
+    dirty();
+    render();
+  };
+}
+
+$('save-manual').onclick = () => saveManualSettings();
+
+document.addEventListener?.('keydown', (event) => {
+  if (event && (event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 's') {
+    event.preventDefault();
+    if (manualDirty && !busy) void saveManualSettings();
+    else if (state.phase === 'candidate' && !busy) $('save-bind').onclick();
+  }
+});
+
+function presentation(p) {
+  if (!p) return;
+  if (p.locale) locale = p.locale.startsWith('zh') ? 'zh' : 'en';
+  if (document.documentElement) document.documentElement.lang = locale === 'zh' ? 'zh-CN' : 'en';
+  if (['light', 'dark'].includes(p.theme)) {
+    hostTheme = p.theme;
+    setRootTheme(p.theme);
+  }
+  if (document.documentElement?.style?.setProperty) {
+    const tokenMap = {
+      '--color-canvas': '--bg',
+      '--color-paper': '--paper',
+      '--color-panel': '--panel',
+      '--color-hairline': '--line',
+      '--color-hairline-strong': '--line-strong',
+      '--color-ink': '--ink',
+      '--color-ink-soft': '--ink-soft',
+      '--color-ink-faint': '--ink-faint',
+      '--color-accent': '--accent',
+      '--color-accent-deep': '--accent-deep',
+      '--color-on-accent': '--on-accent',
+      '--color-danger': '--danger',
+      '--color-selected-ink': '--selected-ink',
+    };
+    for (const [key, value] of Object.entries(p.tokens ?? {})) {
+      const mapped = tokenMap[key];
+      if (mapped && typeof value === 'string' && value.length < 120) {
+        document.documentElement.style.setProperty(mapped, value);
+      }
+    }
+  }
+  render();
+}
+
+window.addEventListener('message', (event) => {
+  if (event.source !== parent || event.data?.channel !== channel) return;
+  const data = event.data;
+  if (data.theme === 'light' || data.theme === 'dark') {
+    hostTheme = data.theme;
+    setRootTheme(data.theme);
+  }
+  if (data.kind === 'init') {
+    presentation(data.presentation);
+    if (!started) { started = true; void boot(); }
+  }
+  if (data.kind === 'presentation' || data.kind === 'theme') presentation(data.presentation);
+  if (data.kind === 'response') {
+    const item = waiting.get(data.id);
+    if (!item) return;
+    waiting.delete(data.id);
+    data.ok ? item.resolve(data.result) : item.reject();
+  }
+});
+
+window.addEventListener('pagehide', () => {
+  closed = true;
+  ++epoch;
+  clearTimeout(timer);
+  if (requestId && ['starting', 'waiting', 'candidate'].includes(state.phase)) {
+    parent.postMessage({
+      channel,
+      kind: 'request',
+      id: ++next,
+      method: 'plugin.call',
+      action: 'official_bind_cancel',
+      args: { instanceId, clientId, requestId },
+    }, '*');
+  }
+});
+
 render();
 </script>
 </body>

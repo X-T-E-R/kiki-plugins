@@ -492,7 +492,7 @@ test('official catalog points to the promoted package and preserves pinned vendo
   const catalog = JSON.parse(await readFile(new URL('../../../marketplace.json', import.meta.url), 'utf8'));
   const entry = catalog.plugins.find((plugin) => plugin.id === 'kiki-mail');
   assert.equal(entry.source, './official/kiki-mail');
-  assert.equal(entry.version, '0.3.0');
+  assert.equal(entry.version, '0.3.1');
   const versions = JSON.parse(await readFile(new URL('../vendor/versions.json', import.meta.url), 'utf8'));
   const lock = JSON.parse(await readFile(new URL('../package-lock.json', import.meta.url), 'utf8'));
   assert.equal(versions.nodemailer.version, lock.packages['node_modules/nodemailer'].version);

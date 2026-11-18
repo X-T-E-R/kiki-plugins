@@ -1,21 +1,176 @@
 import { readFile } from 'node:fs/promises';
 import { createProviderLimiter } from './lib/provider-concurrency.mjs';
 
+const BUILTIN_VOICES = {
+  openai: [
+    { id: 'alloy', label: 'Alloy' },
+    { id: 'ash', label: 'Ash' },
+    { id: 'ballad', label: 'Ballad' },
+    { id: 'coral', label: 'Coral' },
+    { id: 'echo', label: 'Echo' },
+    { id: 'nova', label: 'Nova' },
+    { id: 'onyx', label: 'Onyx' },
+    { id: 'sage', label: 'Sage' },
+    { id: 'shimmer', label: 'Shimmer' },
+    { id: 'verse', label: 'Verse' },
+  ],
+  stepfun: [
+    { id: 'cixingnansheng', label: '磁性男声' },
+    { id: 'wenrounvsheng', label: '温柔女声' },
+    { id: 'yuanqishaonv', label: '元气少女' },
+    { id: 'qingniandaxuesheng', label: '青年大学生' },
+    { id: 'boyinnansheng', label: '播音男声' },
+  ],
+};
+
 async function readManifest() {
   return JSON.parse(await readFile(new URL('./kimi.plugin.json', import.meta.url), 'utf8'));
 }
 
-function sourceSettings(source, manifest, stored = {}) {
+function sourceSettings(source, manifest, stored = {}, includeSecrets = false) {
   const values = {};
   for (const [key, property] of Object.entries(manifest['x-kiki'].settings.schema.properties)) {
-    if (!key.startsWith(source.settingsPrefix) || property.secret === true) continue;
+    if (!key.startsWith(source.settingsPrefix)) continue;
+    if (!includeSecrets && property.secret === true) continue;
     const localKey = key.slice(source.settingsPrefix.length);
     values[localKey] = stored[key] ?? stored[localKey] ?? property.default;
   }
   return values;
 }
 
-export async function handlePanelRequest(action, _args = {}, context = {}) {
+async function inspectSource(manifest, args = {}, context = {}) {
+  const source = manifest['x-kiki'].mediaSources.find((item) => item.id === args.sourceId) ?? manifest['x-kiki'].mediaSources[0];
+  if (!source) return { error: 'unknown source' };
+  const props = manifest['x-kiki'].settings.schema.properties;
+  const effective = sourceSettings(source, manifest, context.settings, true);
+  if (args.overrides && typeof args.overrides === 'object') {
+    for (const [fullKey, val] of Object.entries(args.overrides)) {
+      if (!fullKey.startsWith(source.settingsPrefix)) continue;
+      if (props[fullKey]?.secret === true) continue;
+      const localKey = fullKey.slice(source.settingsPrefix.length);
+      effective[localKey] = val === '' ? undefined : val;
+    }
+  }
+  const nonSecret = { ...effective };
+  delete nonSecret.apiKey;
+
+  const missing = source.required.filter(
+    (key) => !effective[key] && !(effective.connectionId && ['apiKey', 'baseUrl'].includes(key)),
+  );
+
+  const { adapters, createAdapters } = await import(`./lib/sources/${source.id}.mjs`);
+  const fetchFn = typeof context.fetchImpl === 'function' ? context.fetchImpl : globalThis.fetch;
+  const activeAdapters = typeof createAdapters === 'function' && context.fetchImpl ? createAdapters(fetchFn) : adapters;
+
+  const capabilities = [];
+  let liveVoices = null;
+  let voiceAdapter = null;
+  for (const providerId of source.providerIds) {
+    const provider = manifest['x-kiki'].mediaProviders.find((item) => item.id === providerId);
+    const localId = providerId.slice(source.id.length + 1);
+    const adapter = activeAdapters[localId];
+    if (!provider || !adapter) continue;
+    if (typeof adapter.voices === 'function') voiceAdapter = adapter;
+    let models = [];
+    let optionKeys = [];
+    if (typeof adapter.describe === 'function') {
+      try {
+        const desc = await adapter.describe({}, {
+          settings: nonSecret,
+          signal: context.signal ?? new AbortController().signal,
+        });
+        models = (desc.models ?? []).filter((m) => typeof m.id === 'string' && m.id).map((m) => ({ id: m.id, kind: m.kind }));
+        optionKeys = Object.keys(desc.optionsSchema?.properties ?? {});
+      } catch {}
+    }
+    capabilities.push({ id: provider.id, label: provider.label, kinds: provider.kinds, models, optionKeys });
+  }
+
+  let probe = {
+    state: missing.length === 0 ? 'configured' : 'unconfigured',
+  };
+
+  if (args.probeNetwork === true) {
+    if (missing.length > 0) {
+      probe = { state: 'unconfigured', missing };
+    } else if (effective.connectionId && typeof context.connection !== 'function') {
+      probe = { state: 'connection_managed', connectionId: String(effective.connectionId) };
+    } else {
+      const started = Date.now();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      try {
+        if (voiceAdapter) {
+          const vRes = await voiceAdapter.voices({}, {
+            settings: effective,
+            connection: context.connection,
+            signal: controller.signal,
+          });
+          liveVoices = (vRes.voices ?? []).slice(0, 24).map((v) => ({ id: String(v.id), label: String(v.label || v.id) }));
+          probe = { state: 'ok', latencyMs: Date.now() - started, detail: `${liveVoices.length} voices` };
+        } else {
+          let base = String(effective.baseUrl ?? '').replace(/\/+$/, '');
+          let headers = {};
+          if (effective.connectionId && typeof context.connection === 'function') {
+            const conn = await context.connection();
+            if (conn?.baseUrl) base = String(conn.baseUrl).replace(/\/+$/, '');
+            if (conn?.headers) headers = { ...conn.headers };
+          } else if (effective.apiKey) {
+            if (source.id === 'google') headers['x-goog-api-key'] = String(effective.apiKey);
+            else headers.Authorization = `Bearer ${effective.apiKey}`;
+          }
+          if (!/^https?:\/\//.test(base)) {
+            probe = { state: 'failed', detail: 'Invalid base URL' };
+          } else {
+            const path = source.id === 'comfyui'
+              ? '/system_stats'
+              : source.id === 'google'
+                ? '/models?pageSize=4'
+                : '/models';
+            const res = await fetchFn(`${base}${path}`, {
+              method: 'GET',
+              headers,
+              redirect: 'manual',
+              signal: controller.signal,
+            });
+            const latencyMs = Date.now() - started;
+            if (res.ok) {
+              probe = { state: 'ok', status: res.status, latencyMs };
+            } else {
+              probe = { state: 'failed', status: res.status, latencyMs, detail: `HTTP ${res.status}` };
+            }
+          }
+        }
+      } catch (err) {
+        probe = {
+          state: 'failed',
+          latencyMs: Date.now() - started,
+          detail: controller.signal.aborted ? 'Timed out' : (err instanceof Error ? err.message : 'Unreachable'),
+        };
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  }
+
+  const voices = liveVoices ?? BUILTIN_VOICES[source.id] ?? [];
+  return {
+    sourceId: source.id,
+    enabled: effective.enabled !== false,
+    configured: missing.length === 0,
+    authMode: effective.connectionId ? 'connection' : effective.apiKey ? 'apiKey' : 'none',
+    missing,
+    capabilities,
+    voices,
+    probe,
+  };
+}
+
+export async function handlePanelRequest(action, args = {}, context = {}) {
+  if (action === 'inspect') {
+    const manifest = await readManifest();
+    return inspectSource(manifest, args, context);
+  }
   if (action !== 'catalog') return { error: 'unknown action' };
   const manifest = await readManifest();
   const providers = await Promise.all(manifest['x-kiki'].mediaProviders.map(async (provider) => {

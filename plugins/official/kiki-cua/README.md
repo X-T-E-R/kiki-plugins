@@ -9,8 +9,8 @@ Unified native desktop and cross-plugin remote computer-use control for Kiki, pa
   - **macOS & Linux**: Built-in `screencapture` / CoreGraphics JXA on macOS and `grim` / `import` + `xdotool` / `wmctrl` on Linux.
 - **Cross-plugin Remote Target Provider Bus (`kiki.cua.provider.v1`)**:
   - Discovers companion Remote Display/Input Target Providers (for example `kiki-uu-remote`) via atomic `0600` loopback lease files (`^http://127\.0\.0\.1:\d{2,5}$` + constant-time `Bearer` authentication), aggregating local monitors and remote desktops under one target selector.
-- **Human-Takeover Guard**:
-  - Manual lock toggle in `cua_targets` and the `Computer Preview` panel, automatic lock when clicking directly on the live preview canvas, and automatic physical mouse displacement detection (`takeoverThresholdPx`, default `48` px) on local displays.
+- **Human-Takeover Guard & Direct Canvas Manipulation**:
+  - Single-click **Takeover Control (`Alt+T`)** toggle in `cua_targets` and the `Computer Preview` workspace panel (read-only by default so watching never hijacks an active agent run), inverse `object-fit: contain` pixel/normalized mapping for direct left/double/right click, drag, wheel, keyboard chords, and clipboard text paste, plus automatic physical mouse displacement detection (`takeoverThresholdPx`, default `48` px) on local displays.
 
 ## Tools
 

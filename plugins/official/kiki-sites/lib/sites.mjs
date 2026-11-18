@@ -8,7 +8,10 @@ import { cliPackages, installCli } from './installer.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const publicConnection = ({ token, ...c }) => ({ ...c, hasToken: Boolean(token) });
-const publicJob = ({ target, ...job }) => job;
+const publicJob = ({ target, ...job }, adapters) => ({
+  ...job,
+  ...(adapters && job.kind === 'deploy' && job.state === 'ready' && adapters.canRollback(target, job.result) ? { rollbackable: true } : {}),
+});
 const connection = (state, id, enabled = true) => {
   const c = state.connections.find(c => c.id === id);
   if (!c) throw new SitesError('connection_missing', 'This connection no longer exists.', 'Select an existing connection.');
@@ -23,7 +26,7 @@ export class Sites {
       for (const job of state.jobs) if (job.state === 'running' && !this.active.has(job.id)) { job.state = job.kind === 'deploy' ? 'unknown' : 'interrupted'; job.error = { code: 'interrupted', message: job.kind === 'deploy' ? 'The runtime restarted while waiting; the remote submission may already exist.' : 'The local operation was interrupted.', recovery: job.kind === 'deploy' ? 'Check the provider before deploying again.' : 'Start the operation again.' }; }
     });
   }
-  async state() { await this.reconcile(); const s = await this.store.read(); return { catalog: catalog.map(c => ({ ...c, installable: cliPackages[c.id] })), connections: s.connections.map(publicConnection), targets: s.targets, jobs: s.jobs.map(publicJob), guidance: guidance(s) }; }
+  async state() { await this.reconcile(); const s = await this.store.read(); return { catalog: catalog.map(c => ({ ...c, installable: cliPackages[c.id] })), connections: s.connections.map(publicConnection), targets: s.targets, jobs: s.jobs.map(j => publicJob(j, this.adapters)), guidance: guidance(s) }; }
   async saveConnection(input) {
     const data = input.connection || {}; const spec = service(data.service);
     if (!spec.authModes.includes(data.authMode)) throw new SitesError('invalid_auth_mode', 'This service does not support that authentication mode.');
@@ -92,7 +95,7 @@ export class Sites {
       if (controller.signal.aborted) error = new SitesError('cancelled', kind === 'deploy' ? 'Stopped local waiting; the remote result may be unknown.' : 'The local operation was cancelled.', kind === 'deploy' ? 'Check the provider before deploying again.' : 'Start the operation again when ready.');
       await this.store.update(s => { const j = s.jobs.find(j => j.id === job.id); j.state = kind !== 'deploy' ? error.code === 'cancelled' ? 'cancelled' : 'failed' : ['cancelled', 'timeout', 'offline', 'result_unknown'].includes(error.code) ? 'unknown' : 'failed'; j.error = errorView(error); });
     }).finally(() => { externalSignal?.removeEventListener('abort', cancel); this.active.delete(job.id); });
-    return { job: publicJob(job) };
+    return { job: publicJob(job, this.adapters) };
   }
   async login(id) {
     const c = connection(await this.store.read(), id); const args = loginCommand(c);
@@ -128,6 +131,35 @@ export class Sites {
       return result;
     }, context.signal);
   }
+  async rollback(args = {}, context = {}) {
+    context.signal?.throwIfAborted();
+    const jobId = bounded(args.jobId, 'deployment job ID');
+    const s = await this.store.read();
+    const sourceJob = s.jobs.find(j => j.id === jobId);
+    if (!sourceJob || sourceJob.kind !== 'deploy' || sourceJob.state !== 'ready' || !sourceJob.result) {
+      throw new SitesError('invalid_rollback_source', 'Select a completed ready deployment to roll back to.');
+    }
+    const t = targetOf(s, sourceJob.targetId);
+    const c = connection(s, t.connectionId);
+    if (!this.adapters.canRollback(t, sourceJob.result)) {
+      throw new SitesError('rollback_unsupported', 'Direct rollback is not available for this deployment record.', 'Deploy the desired revision or roll back in the provider dashboard.');
+    }
+    const auth = await this.check(c.id, context);
+    context.signal?.throwIfAborted();
+    if (auth.auth.state !== 'valid') throw new SitesError(auth.auth.state, auth.auth.message, auth.auth.recovery);
+    return this.createJob('deploy', c, t, async (signal, job) => {
+      signal.throwIfAborted();
+      let result = await this.adapters.rollback(c, t, sourceJob.result, { signal });
+      if (t.service === 'render') {
+        for (let poll = 0; result.state === 'submitted' && poll < 400; poll++) {
+          await this.store.update(st => { st.jobs.find(j => j.id === job.id).result = result; });
+          await delay(this.pollInterval, undefined, { signal });
+          result = await this.adapters.status(c, t, result, { signal });
+        }
+      }
+      return result;
+    }, context.signal);
+  }
   async install(id) {
     const c = connection(await this.store.read(), id, false);
     if (!cliPackages[c.service]) throw new SitesError('external_cli', 'Use the official installer for this CLI.', `See ${service(c.service).docs}.`);
@@ -153,9 +185,10 @@ export class Sites {
         case 'remove_target': result = await this.store.update(s => { targetOf(s, args.id); s.targets = s.targets.filter(t => t.id !== args.id); return { removed: true }; }); break;
         case 'preview': result = await this.preview(args.id); break;
         case 'deploy': result = await this.deploy(args, context); break;
+        case 'rollback': result = await this.rollback(args, context); break;
         case 'login': result = await this.login(args.id); break;
         case 'cancel_job': { const running = this.active.get(args.id); running?.abort(); await running?.promise; return this.action('job', args); }
-        case 'job': { await this.reconcile(); const job = (await this.store.read()).jobs.find(j => j.id === args.id); if (!job) throw new SitesError('job_missing', 'This job no longer exists.'); result = { job: publicJob(job) }; break; }
+        case 'job': { await this.reconcile(); const job = (await this.store.read()).jobs.find(j => j.id === args.id); if (!job) throw new SitesError('job_missing', 'This job no longer exists.'); result = { job: publicJob(job, this.adapters) }; break; }
         case 'deployment_status': {
           const s = await this.store.read(); const job = s.jobs.find(j => j.id === args.jobId);
           if (!job || job.kind !== 'deploy' || !job.result) throw new SitesError('job_not_submitted', 'There is no accepted deployment to check.');

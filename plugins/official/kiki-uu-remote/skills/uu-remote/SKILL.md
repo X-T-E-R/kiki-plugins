@@ -5,32 +5,26 @@ description: Discover, connect, preview, and operate NetEase UU Remote (UU远程
 
 # UU Remote Control (`kiki-uu-remote`)
 
-Operate NetEase UU Remote (`GameViewer.exe` + official `uuyc-cli`) remote desktop sessions cleanly with zero-focus background observation, 1:1 black-bar-trimmed coordinates, and cooperative Human Takeover safety.
+## Tool Selection
 
-## 1. Discover Sessions & Paired Devices
+| Goal | Tool & Call |
+| --- | --- |
+| List open `uu:<hwnd>` windows & paired devices | `uu_sessions({ action: "list" })` (add `includeTerminals: true` only when inspecting `uuyc-cli term`) |
+| Check client/CLI paths, URI registration, or CUA bus lease | `uu_status({ includeCliStatus: true })` |
+| Connect / disconnect a paired workstation or rescue windows | `uu_launch({ action: "connect_device" \| "disconnect_device" \| "open_client" \| "recover_offscreen", deviceId })` |
+| Screenshot, zoom crop, or inject mouse/keyboard/clipboard | `uu_control({ sessionId, action, actions, zoom, coordinateMode: "normalized_1000" })` |
 
-1. Call `uu_sessions` (default `action: "list"`) to inspect:
-   - Open streaming windows (`id: "uu:<hwnd>"`, `label`, `state: "active" | "minimized" | "offscreen"`, `canvasBounds`, `contentRect`, `dpi`, `takeoverActive`).
-   - Paired online/offline workstations from `uuyc-cli device list --json` and `uuyc-cli device status --json`.
-   - Pass `includeTerminals: true` when you also need `uuyc-cli term -d <deviceId> ls --json` remote terminal sessions.
-2. Call `uu_status` when diagnosing local installation paths (`GameViewer.exe`, `uuyc-cli`), `uuremote://` URI registration, `uuyc-cli status --json`, or `kiki.cua.provider.v1` bus lease health.
+## Pre-Flight & Execution Rules
 
-## 2. Connect, Recover, or Restore Before Acting
+1. **Inspect sessions first**: Call `uu_sessions()` before acting if you do not already have a live `uu:<hwnd>` ID. Never omit `deviceId` on `disconnect_device` (blocked to protect sibling sessions).
+2. **Zero-focus 1:1 coordinates**: `uu_control({ action: "screenshot" })` captures the inner `GameViewer` render stage via `PrintWindow(PW_RENDERFULLCONTENT)` without stealing focus and trims symmetric letterbox/pillarbox black bars automatically. Keep `coordinateMode: "normalized_1000"` (`(0, 0)` top-left to `(1000, 1000)` bottom-right of the trimmed remote desktop).
+3. **Zoom dense UI before clicking**: Pass `zoom: { x, y, width, height }` in `normalized_1000` to read small menus, table cells, or toolbar icons at native stream resolution.
+4. **Batch clear steps**: Combine deterministic sequences in `actions: [...]` (e.g., click field -> `type` -> `submit: true`) with `observeAfter: true`, and verify the returned screenshot before repeating a state-changing action. Never submit payments, destructive deletions, or external publications without explicit user confirmation.
 
-- **Connect a paired device**: If no streaming window is open for the target machine (for example `"Remote Mac Studio"` or `"Office Workstation"`), call `uu_launch({ action: "connect_device", deviceId: "<device_id>" })`.
-- **Disconnect a specific device**: Call `uu_launch({ action: "disconnect_device", deviceId: "<device_id>" })`. **Always** pass an explicit non-empty `deviceId`—disconnecting without an ID is blocked so sibling sessions are never dropped.
-- **Off-screen window (`state: "offscreen"`)**: Multi-monitor unplugging can leave `GameViewer` outside connected displays. Run `uu_launch({ action: "recover_offscreen" })` to center stranded windows onto the primary monitor's work area without stealing focus.
-- **Minimized window (`state: "minimized"`)**: Minimized `Qt` windows cannot render `PrintWindow` frames. Run `uu_control({ sessionId, action: "restore" })` before capturing or clicking.
+## Failure Recovery
 
-## 3. Observe & Act with Precision
-
-- **Zero-focus observation**: `uu_control({ sessionId, action: "screenshot" })` captures the hardware-decoded D3D11 visual tree via `PrintWindow(PW_RENDERFULLCONTENT)` in the background without stealing window focus, crops to the inner `GameViewer` stage HWND (excluding the outer UU Remote header bar), and trims symmetric letterbox/pillarbox black bars automatically.
-- **Zoom into dense UI**: Pass `zoom: { x, y, width, height }` in `normalized_1000` (or `target_pixels`) to inspect small text, menus, or icons at native stream resolution before clicking.
-- **1:1 Coordinate Mapping**: Keep `coordinateMode: "normalized_1000"` (`[0..1000]` across the trimmed remote desktop). Because black bars and the top UU Remote title bar are already stripped, `(0, 0)` is the remote desktop's top-left corner and `(1000, 1000)` is its bottom-right corner—even on negative multi-monitor coordinates or 225% DPI displays.
-- **Coalesce clear actions, verify outcomes**: Batch deterministic steps via `actions: [...]` (for example click input -> `type` -> `submit: true`) with `observeAfter: true`, and inspect the returned screenshot before repeating any modifying action.
-- **Avoid `Ctrl+Alt+*` local shortcuts**: `Ctrl+Alt+{Enter,G,F,P,U,Left,Right}` triggers UU Remote's local client overlay/fullscreen controls instead of the remote OS, and is blocked by default unless `allowClientHotkey: true` is explicitly requested.
-
-## 4. Respect Human Takeover & High-Stakes Boundaries
-
-- If the user clicks **Takeover** in the UU Remote workspace panel or physically moves the mouse beyond `takeoverThresholdPx` during active control, `uu_control` returns `code: "human_takeover_active"`.
-- **Stop immediately** when `human_takeover_active` is reported—do not set `overrideHumanTakeover: true` unless the user explicitly instructs you to resume control. Never submit payments, destructive deletions, or external publications on a remote workstation without explicit user confirmation.
+- **No open session**: Call `uu_sessions({ action: "list" })` to find online `pairedDevices`, then call `uu_launch({ action: "connect_device", deviceId: "<id>" })` (or `action: "open_client"` if unpaired).
+- **`state: "minimized"`**: Minimized Qt stages cannot render `PrintWindow` frames. Run `uu_control({ sessionId, action: "restore" })` before capturing or sending input.
+- **`state: "offscreen"`**: Unplugged external monitors can leave `GameViewer` off-screen. Run `uu_launch({ action: "recover_offscreen" })` to move stranded windows onto the primary work area without stealing focus.
+- **`Ctrl+Alt+*` shortcut rejected**: `Ctrl+Alt+{Enter,G,F,P,U,Left,Right}` triggers UU Remote's local overlay/fullscreen UI rather than the remote OS. Use remote OS equivalents or menus; pass `allowClientHotkey: true` only when intentionally toggling the local client.
+- **`human_takeover_active` (HTTP 409)**: The user engaged **Takeover Control** in the UU Remote workspace panel or moved the physical mouse past `takeoverThresholdPx`. Stop immediately and yield to the user—never set `overrideHumanTakeover: true` unless the user explicitly asks you to resume.

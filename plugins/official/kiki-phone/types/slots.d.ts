@@ -8,11 +8,13 @@ export function buildPhoneGuiSlots(
 export const PHONE_HTTP_ROUTES: ReadonlyArray<{
   readonly method: 'GET' | 'POST';
   readonly subpath: string;
+  readonly scopeAcl?: string;
 }>;
 
 export function createPhoneSlotHandlers(
   previewService: {
-    listState(opts?: { settings?: Record<string, unknown> }): Promise<Record<string, unknown>>;
+    peekState?(opts?: { settings?: Record<string, unknown>; maxAgeMs?: number; waitBudgetMs?: number }): Promise<Record<string, unknown>>;
+    listState(opts?: { settings?: Record<string, unknown>; fast?: boolean }): Promise<Record<string, unknown>>;
     captureFrame(opts?: Record<string, unknown>): Promise<Record<string, unknown>>;
     inspectHierarchy(opts?: Record<string, unknown>): Promise<Record<string, unknown>>;
     performAction(input?: Record<string, unknown>, opts?: { settings?: Record<string, unknown> }): Promise<Record<string, unknown>>;

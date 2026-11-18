@@ -35,7 +35,7 @@ test('activation/status do not start SDK; exact manifest and lifecycle exports a
   assert.equal(before.phase, 'idle'); assert.equal(before.configured, true); assert.equal(before.appId, old.official__appId);
   assert.equal(f.callbacks.length, 0); assert.equal(f.writes.length, 0); privateWire(before);
   const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.version, '0.4.0'); assert.equal(manifest['x-kiki'].activation, 'app'); assert.equal(manifest['x-kiki'].permissions.uiPanel, true);
+  assert.equal(manifest.version, '0.4.1'); assert.equal(manifest['x-kiki'].activation, 'app'); assert.equal(manifest['x-kiki'].permissions.uiPanel, true);
   assert.deepEqual(manifest['x-kiki'].panels, [{ schemaVersion: 1, id: 'qq-connection', label: 'QQ connection', slot: 'settings', path: './settings.html' }]);
   const entry = await import('../entry.mjs');
   for (const key of ['activate', 'deactivate', 'handlePanelRequest']) assert.equal(typeof entry[key], 'function');
@@ -187,4 +187,58 @@ test('official status 3 stops SDK auto-refresh; late create and late decrypted s
   held({ retcode: 0, data: { task_id: 'late-create' } }); await tick(); await tick(); assert.equal(boundary.calls.length, 3); assert.equal(f.service.request.phase, 'cancelled');
   held = undefined; mode = 'success-late'; const success = await f.call('start'); await until(() => Boolean(held)); await f.call('cancel', { requestId: success.requestId }); held(); await tick(); await tick();
   assert.equal(f.service.request.phase, 'cancelled'); assert.equal(f.service.request.candidate, undefined); assert.equal(f.writes.length, 0);
+});
+
+test('qq_probe checks Official and OneBot connectivity without leaking secrets, and settings.html honors paper-and-ink tokens & zero emoji', async () => {
+  const html = await readFile(new URL('../settings.html', import.meta.url), 'utf8');
+  assert.equal(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(html), false);
+  assert.match(html, /--bg:\s*#f6f4ef/i);
+  assert.match(html, /--bg:\s*#141413/i);
+  assert.match(html, /--accent:\s*#2c5e4f/i);
+  assert.match(html, /--accent:\s*#58a88f/i);
+  assert.match(html, /execCommand\('copy'\)/);
+  assert.match(html, /data-eye-for/);
+
+  const { handlePanelRequest } = await import('../entry.mjs');
+  const unconfigured = await handlePanelRequest('qq_probe', { target: 'official' }, { settings: { official__appId: '82041957' } });
+  assert.equal(unconfigured.ok, false);
+  assert.equal(unconfigured.code, 'unconfigured');
+
+  const officialOk = await handlePanelRequest(
+    'qq_probe',
+    { target: 'official' },
+    {
+      settings: { official__appId: '82041957', official__appSecret: 'fixture-only-old-secret', official__tokenBaseUrl: 'https://bots.example.test' },
+      fetchImpl: async () => new Response(JSON.stringify({ access_token: 'secret-live-token', expires_in: 7200 }), { status: 200 }),
+    },
+  );
+  assert.equal(officialOk.ok, true);
+  assert.equal(officialOk.appId, '82041957');
+  privateWire(officialOk);
+  assert.equal(JSON.stringify(officialOk).includes('secret-live-token'), false);
+
+  const onebotMismatch = await handlePanelRequest(
+    'qq_probe',
+    { target: 'onebot', selfId: '999' },
+    {
+      settings: { onebot__baseUrl: 'http://127.0.0.1:5700', onebot__accessToken: 'fixture-onebot' },
+      fetchImpl: async () => new Response(JSON.stringify({ status: 'ok', retcode: 0, data: { user_id: 201, nickname: 'NiaBot' } }), { status: 200 }),
+    },
+  );
+  assert.equal(onebotMismatch.ok, false);
+  assert.equal(onebotMismatch.code, 'self_id_mismatch');
+  privateWire(onebotMismatch);
+
+  const onebotOk = await handlePanelRequest(
+    'qq_probe',
+    { target: 'onebot', selfId: '201' },
+    {
+      settings: { onebot__baseUrl: 'http://127.0.0.1:5700', onebot__accessToken: 'fixture-onebot' },
+      fetchImpl: async () => new Response(JSON.stringify({ status: 'ok', retcode: 0, data: { user_id: 201, nickname: 'NiaBot' } }), { status: 200 }),
+    },
+  );
+  assert.equal(onebotOk.ok, true);
+  assert.equal(onebotOk.accountId, '201');
+  assert.equal(onebotOk.nickname, 'NiaBot');
+  privateWire(onebotOk);
 });

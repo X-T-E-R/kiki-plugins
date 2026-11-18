@@ -205,6 +205,13 @@ test('backend exit clears stale leases, makes release idempotent, and allows a l
 });
 
 test('panel configuration is metadata-only and refresh lists both engines without model or connection fields', async () => {
+  const panelHtml = await readFile(new URL('../panel.html', import.meta.url), 'utf8');
+  assert.equal(/\p{Extended_Pictographic}/u.test(panelHtml), false, 'panel.html must contain zero Emoji');
+  assert.match(panelHtml, /--bg:\s*var\(--color-canvas,\s*#f6f4ef\)/);
+  assert.match(panelHtml, /--accent:\s*var\(--color-accent,\s*#2c5e4f\)/);
+  assert.match(panelHtml, /safeStorage/);
+  assert.match(panelHtml, /execCommand\('copy'\)/);
+
   const h = await harness();
   try {
     const configuration = await h.service.panel('configuration', {}, h.context);
@@ -213,6 +220,10 @@ test('panel configuration is metadata-only and refresh lists both engines withou
     const refreshed = await h.service.panel('refresh', {}, h.context);
     assert.equal(h.spawnCount, 1);
     assert.deepEqual(refreshed.accounts.map((account) => account.engineId), ['agy-cli', 'codex-app-server']);
+    assert.equal(typeof refreshed.refreshedAt, 'string');
+    assert.equal(refreshed.activeLeases, 0);
+    const singleRefreshed = await h.service.panel('refresh', { engineId: 'agy-cli' }, h.context);
+    assert.deepEqual(singleRefreshed.accounts.map((account) => account.engineId), ['agy-cli']);
     assert.equal(JSON.stringify(refreshed).includes('fixture-secret-'), false);
     assert.equal(JSON.stringify(refreshed).includes('modelIds'), false);
     assert.equal(JSON.stringify(refreshed).includes('connection'), false);

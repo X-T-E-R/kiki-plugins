@@ -10,7 +10,17 @@ import { adbArguments, runAdb } from '../lib/adb.mjs';
 import { register, prepareOptions } from '../entry.mjs';
 import { findAdb, mobileEnvironment } from '../lib/environment.mjs';
 import { preparePhone, installOfficialTools } from '../lib/prepare.mjs';
-import { createPhoneScriptRunner, executePhoneScript, parseAndroidScreenState } from '../lib/phone-run.mjs';
+import {
+  attachPhoneConvenienceApis,
+  buildHumanSwipeKeyframes,
+  buildHumanTapKeyframes,
+  createPhoneScriptRunner,
+  executePhoneScript,
+  parseAndroidScreenState,
+  resolveDirectionEndpoints,
+  sampleHumanDelayMs,
+  samplePointInBox,
+} from '../lib/phone-run.mjs';
 import { nodeExecutable } from '../lib/node-executable.mjs';
 import { packageFiles } from '../../../../scripts/package-files.mjs';
 import './mobile-facade.test.mjs';
@@ -39,9 +49,13 @@ test('manifest retains exact native tools and selects only the compact MCP facad
     env: { MOBILEMCP_DISABLE_TELEMETRY: '1', npm_config_ignore_scripts: 'true' },
   });
   const files = await packageFiles(root);
-  for (const file of ['kimi.plugin.json', 'entry.mjs', 'panel.html', 'icon.svg', 'lib/adb.mjs', 'lib/definitions.mjs', 'lib/launch-mobile-mcp.mjs', 'lib/mobile-facade.mjs', 'lib/environment.mjs', 'lib/prepare.mjs', 'lib/prepare-cli.mjs', 'lib/preview-service.mjs', 'lib/scrcpy-stream.mjs', 'lib/slots.mjs', 'lib/start.cmd', 'lib/phone-run.mjs', 'lib/node-executable.mjs', 'skills/phone-control/SKILL.md', 'skills/phone-control/agents/openai.yaml', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md']) assert.ok(files.includes(file), file);
+  for (const file of ['kimi.plugin.json', 'entry.mjs', 'panel.html', 'icon.svg', 'lib/adb.mjs', 'lib/definitions.mjs', 'lib/human-input.mjs', 'lib/launch-mobile-mcp.mjs', 'lib/mobile-facade.mjs', 'lib/environment.mjs', 'lib/prepare.mjs', 'lib/prepare-cli.mjs', 'lib/preview-service.mjs', 'lib/scrcpy-stream.mjs', 'lib/slots.mjs', 'lib/start.cmd', 'lib/phone-run.mjs', 'lib/node-executable.mjs', 'skills/phone-control/SKILL.md', 'skills/phone-control/references/anti-risk-control.md', 'skills/phone-control/agents/openai.yaml', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md']) assert.ok(files.includes(file), file);
   assert.ok(files.every(file => !file.startsWith('test/') && !file.includes('node_modules') && !file.includes('.cache')));
-  for (const file of files) assert.doesNotMatch(await readFile(resolve(root, file), 'utf8'), /C:\\Programs|C:\/Programs|C:\\Users|C:\/Users/);
+  for (const file of files) {
+    const content = await readFile(resolve(root, file), 'utf8');
+    assert.doesNotMatch(content, /C:\\Programs|C:\/Programs|C:\\Users|C:\/Users/);
+    assert.doesNotMatch(content, /100%\s*\u514d\u75ab|\u96f6\u98ce\u63a7|zero\s+risk[- ]control|100%\s*immune/i);
+  }
 });
 
 test('settings match the strict Host contribution shape, not arbitrary JSON Schema', () => {
@@ -619,4 +633,312 @@ test('Android power and lockscreen helpers wake, swipe-unlock unsecured keyguard
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+function createDeterministicRng(seed = 0x12345678) {
+  let state = seed >>> 0;
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return (state + 0.5) / 4294967296;
+  };
+}
+
+test('human-input pure primitives enforce safe-core Gaussian bounds, 55-125ms tap dwell, and non-collinear Bezier swipes', () => {
+  const rng = createDeterministicRng(42);
+  const box = { x: 100, y: 200, width: 200, height: 100 };
+  const xs = new Set();
+  const ys = new Set();
+  for (let i = 0; i < 400; i++) {
+    const pt = samplePointInBox(box, { rng });
+    assert.ok(pt.x >= 156 && pt.x <= 244, `x=${pt.x} outside central 44% core [156,244]`);
+    assert.ok(pt.y >= 228 && pt.y <= 272, `y=${pt.y} outside central 44% core [228,272]`);
+    xs.add(pt.x);
+    ys.add(pt.y);
+  }
+  assert.ok(xs.size > 5 && ys.size > 5, 'samplePointInBox must produce non-zero spatial entropy');
+  // Extreme tail draws still clamp strictly inside safe core
+  const tailValues = [1e-9, 0.999999999, 1e-9, 0.00001];
+  let idx = 0;
+  const extremePt = samplePointInBox(box, { rng: () => tailValues[idx++ % tailValues.length] });
+  assert.ok(extremePt.x >= 156 && extremePt.x <= 244);
+  assert.ok(extremePt.y >= 228 && extremePt.y <= 272);
+  assert.deepEqual(samplePointInBox({ x: 50, y: 80, width: 2, height: 2 }, { rng }), { x: 51, y: 81 });
+
+  for (let i = 0; i < 200; i++) {
+    const tap = buildHumanTapKeyframes({ x: 540, y: 1200 }, { rng });
+    assert.ok(tap.holdMs >= 55 && tap.holdMs <= 125, `holdMs=${tap.holdMs} outside [55,125]`);
+    assert.equal(tap.points.length, 2);
+    assert.equal(tap.points[0].time, 0);
+    assert.equal(tap.points[1].time, tap.holdMs);
+    assert.ok(Math.abs(tap.points[1].x - tap.points[0].x) <= 1);
+    assert.ok(Math.abs(tap.points[1].y - tap.points[0].y) <= 1);
+  }
+
+  const swipe = buildHumanSwipeKeyframes(560, 1820, 540, 780, { rng });
+  assert.ok(swipe.durationMs >= 180 && swipe.durationMs <= 720);
+  assert.ok(swipe.points.length >= 7 && swipe.points.length <= 13);
+  for (let i = 1; i < swipe.points.length; i++) {
+    assert.ok(swipe.points[i].time > swipe.points[i - 1].time, 'Swipe timestamps must strictly increase');
+  }
+  assert.equal(swipe.points.at(-1).time, swipe.durationMs);
+  // Verify non-collinearity against chord (sx, sy) -> (ex, ey) and non-uniform inter-frame dt
+  const chordDx = swipe.x2 - swipe.x1;
+  const chordDy = swipe.y2 - swipe.y1;
+  const chordLen = Math.hypot(chordDx, chordDy);
+  const maxPerpDist = Math.max(
+    ...swipe.points.slice(1, -1).map(p => Math.abs((p.x - swipe.x1) * chordDy - (p.y - swipe.y1) * chordDx) / chordLen),
+  );
+  assert.ok(maxPerpDist > 15, `Expected curved Bezier arch > 15px perpendicular deviation, got ${maxPerpDist}`);
+  const dts = swipe.points.slice(1).map((p, i) => p.time - swipe.points[i].time);
+  assert.ok(new Set(dts).size > 1, `Expected non-uniform inter-frame dt jitter, got ${JSON.stringify(dts)}`);
+
+  // Wide full-row container caps horizontal spread via maxOffsetPx so right-edge steppers/icons stay untouched
+  for (let i = 0; i < 100; i++) {
+    const widePt = samplePointInBox({ x: 0, y: 800, width: 1080, height: 140 }, { maxOffsetPx: 52, rng });
+    assert.ok(widePt.x >= 488 && widePt.x <= 592, `wide row x=${widePt.x} exceeded +-52px center cap`);
+  }
+
+  for (const dir of ['up', 'down', 'left', 'right']) {
+    const ep = resolveDirectionEndpoints(dir, { width: 1080, height: 2400, rng });
+    assert.ok(Number.isFinite(ep.x1) && Number.isFinite(ep.y1) && Number.isFinite(ep.x2) && Number.isFinite(ep.y2));
+  }
+  assert.throws(() => resolveDirectionEndpoints('diagonal', { rng }), /Unsupported swipe direction/);
+
+  const delays = Array.from({ length: 300 }, () => sampleHumanDelayMs(400, 1400, rng));
+  assert.ok(delays.every(ms => ms >= 400 && ms <= 1400));
+  const avgDelay = delays.reduce((a, b) => a + b, 0) / delays.length;
+  assert.ok(avgDelay < 900, `Right-skewed human delay mean (${avgDelay}) should sit below midpoint 900`);
+});
+
+test('humanTap, humanSwipe, humanDelay and ensureCleanIme wire gesture replay, fallbacks and IME recovery', async () => {
+  const rng = createDeterministicRng(7);
+  const gestures = [];
+  const delays = [];
+  const adbCommands = [];
+  let currentIme = 'com.android.adbkeyboard/.AdbIME';
+  let imeList = 'com.android.adbkeyboard/.AdbIME\ncom.iflytek.inputmethod.miui/.FlyIME\n';
+  let viewTreeCalls = 0;
+
+  const executeAdb = async (_adb, argv) => {
+    const cmd = argv.slice(3).join(' ');
+    adbCommands.push(cmd);
+    if (cmd === 'settings get secure default_input_method') return { stdout: `${currentIme}\n`, stderr: '' };
+    if (cmd === 'ime list -s') return { stdout: imeList, stderr: '' };
+    if (cmd.startsWith('ime set ')) {
+      currentIme = cmd.slice('ime set '.length).trim();
+      return { stdout: '', stderr: '' };
+    }
+    return { stdout: '', stderr: '' };
+  };
+
+  const device = {
+    async screenSize() { return { width: 1080, height: 2400, scale: 3 }; },
+  };
+  const screen = {
+    async viewTree() { viewTreeCalls++; return []; },
+    async gesture(seq) { gestures.push(seq); },
+  };
+  attachPhoneConvenienceApis(device, screen, {
+    platform: 'android',
+    serial: 'test-serial',
+    adbBinary: 'adb',
+    executeAdb,
+    delay: async (ms) => { delays.push(ms); },
+    rng,
+  });
+
+  // 1. Tier S box tap & directional swipe via screen.gesture without calling viewTree()
+  const tapBoxRes = await screen.humanTap({ x: 200, y: 300, width: 400, height: 120 });
+  assert.ok(tapBoxRes.x >= 312 && tapBoxRes.x <= 488);
+  assert.ok(tapBoxRes.y >= 334 && tapBoxRes.y <= 386);
+  assert.ok(tapBoxRes.holdMs >= 55 && tapBoxRes.holdMs <= 125);
+  assert.equal(viewTreeCalls, 0);
+  assert.equal(gestures.length, 1);
+  assert.equal(gestures[0].pointers[0].length, 2);
+
+  // 2. Locator tap resolves boundingBox once
+  let bboxCalls = 0;
+  const fakeLocator = {
+    async boundingBox(opts) {
+      bboxCalls++;
+      assert.equal(opts?.timeout, 2500);
+      return { x: 700, y: 2100, width: 300, height: 100 };
+    },
+  };
+  const tapLocRes = await screen.humanTap(fakeLocator, { timeout: 2500 });
+  assert.equal(bboxCalls, 1);
+  assert.ok(tapLocRes.x >= 784 && tapLocRes.x <= 916);
+
+  // 3. Coordinate tap + humanSwipe + humanDelay
+  const tapCoordRes = await screen.humanTap(500, 900, { jitterPx: 4 });
+  assert.ok(Math.abs(tapCoordRes.x - 500) <= 4 && Math.abs(tapCoordRes.y - 900) <= 4);
+  const swipeRes = await screen.humanSwipe('up', { durationMs: 360 });
+  assert.equal(swipeRes.durationMs, 360);
+  assert.ok(swipeRes.steps >= 6 && swipeRes.steps <= 12);
+  assert.equal(gestures.at(-1).pointers[0].length, swipeRes.steps + 1);
+  const waited = await device.humanDelay(300, 500);
+  assert.ok(waited >= 300 && waited <= 500);
+  assert.deepEqual(delays, [waited]);
+
+  // 4. ensureCleanIme recovers from AdbIME and is idempotent afterward
+  const cleaned = await device.ensureCleanIme();
+  assert.deepEqual(cleaned, {
+    changed: true,
+    previous: 'com.android.adbkeyboard/.AdbIME',
+    restored: 'com.iflytek.inputmethod.miui/.FlyIME',
+  });
+  assert.ok(adbCommands.includes('ime set com.iflytek.inputmethod.miui/.FlyIME'));
+  assert.ok(adbCommands.includes('ime disable com.android.adbkeyboard/.AdbIME'));
+  const secondClean = await device.ensureCleanIme();
+  assert.deepEqual(secondClean, { changed: false, current: 'com.iflytek.inputmethod.miui/.FlyIME' });
+
+  // 5. Fallback paths when screen.gesture is unavailable (Android ADB / driver.call swipe & iOS tap)
+  const driverSwipes = [];
+  const androidNoGestureDevice = {};
+  const androidNoGestureScreen = {
+    async swipe() {},
+  };
+  adbCommands.length = 0;
+  attachPhoneConvenienceApis(androidNoGestureDevice, androidNoGestureScreen, {
+    platform: 'android',
+    serial: 'fallback-serial',
+    adbBinary: 'adb',
+    executeAdb,
+    delay: async () => {},
+    rng,
+  });
+  const fbTap = await androidNoGestureScreen.humanTap({ x: 100, y: 100, width: 100, height: 100 }, { holdMs: 80 });
+  assert.equal(fbTap.holdMs, 80);
+  const fbSwipe = await androidNoGestureScreen.humanSwipe(500, 1700, 500, 800, 400);
+  assert.equal(fbSwipe.durationMs, 400);
+  assert.equal(adbCommands.length, 2);
+  assert.match(adbCommands[0], /^input swipe \d+ \d+ \d+ \d+ 80$/);
+  assert.match(adbCommands[1], /^input swipe \d+ \d+ \d+ \d+ 400$/);
+
+  const driverFallbackDevice = {
+    driver: { async call(method, params) { if (method === 'device.io.swipe') driverSwipes.push(params); } },
+  };
+  const driverFallbackScreen = { async swipe() {} };
+  attachPhoneConvenienceApis(driverFallbackDevice, driverFallbackScreen, {
+    platform: 'android',
+    serial: 'driver-fallback',
+    executeAdb,
+    delay: async () => {},
+    rng,
+  });
+  await driverFallbackScreen.humanSwipe(520, 1750, 520, 820, 380);
+  assert.equal(driverSwipes.length, 1);
+  assert.equal(driverSwipes[0].duration, 380);
+
+  const iosTaps = [];
+  const iosDevice = {};
+  const iosScreen = { async tap(x, y) { iosTaps.push({ x, y }); } };
+  attachPhoneConvenienceApis(iosDevice, iosScreen, { platform: 'ios', delay: async () => {}, rng });
+  await iosScreen.humanTap(180, 320, { jitterPx: 0 });
+  assert.deepEqual(iosTaps, [{ x: 180, y: 320 }]);
+  assert.deepEqual(await iosDevice.ensureCleanIme(), { changed: false });
+});
+
+test('screen.tap, screen.swipe and locator.tap default to humanized gesture trajectories and honor { raw: true } and KIKI_PHONE_RAW_INPUT=1', async () => {
+  const rng = createDeterministicRng(2026);
+  const rawTaps = [];
+  const rawSwipes = [];
+  const driverSwipes = [];
+  const gestures = [];
+
+  class FakeLocator {
+    constructor(driver, bounds) {
+      this.driver = driver;
+      this.bounds = bounds;
+    }
+    child(bounds) {
+      return new FakeLocator(this.driver, bounds);
+    }
+    async _step(_title, fn) {
+      return fn();
+    }
+    async resolveActionable() {
+      return { bounds: this.bounds, isVisible: true, isEnabled: true };
+    }
+    async tap() {
+      const cx = Math.round(this.bounds.x + this.bounds.width / 2);
+      const cy = Math.round(this.bounds.y + this.bounds.height / 2);
+      await this.driver.tap(cx, cy);
+    }
+  }
+
+  const sharedDriver = {
+    async tap(x, y) { rawTaps.push({ x, y }); },
+    async call(method, params) { if (method === 'device.io.swipe') driverSwipes.push(params); },
+  };
+  const device = {
+    driver: sharedDriver,
+    async screenSize() { return { width: 1080, height: 2400, scale: 3 }; },
+  };
+  const rootLocator = new FakeLocator(sharedDriver, { x: 0, y: 0, width: 1080, height: 2400 });
+  const screen = {
+    driver: sharedDriver,
+    root: rootLocator,
+    getByText() {
+      return rootLocator.child({ x: 0, y: 900, width: 1080, height: 140 });
+    },
+    async tap(x, y) { rawTaps.push({ x, y }); },
+    async swipe(direction, opts) { rawSwipes.push({ direction, opts }); },
+    async gesture(seq) { gestures.push(seq); },
+  };
+
+  const env = {};
+  attachPhoneConvenienceApis(device, screen, {
+    platform: 'android',
+    serial: 'auto-human-serial',
+    rng,
+    env,
+  });
+
+  // 1. Default screen.tap(x, y) routes to 2-frame humanized gesture with +-4px jitter
+  const tapRes = await screen.tap(540, 1200);
+  assert.equal(rawTaps.length, 0);
+  assert.equal(gestures.length, 1);
+  assert.equal(gestures[0].pointers[0].length, 2);
+  assert.ok(Math.abs(tapRes.x - 540) <= 4 && Math.abs(tapRes.y - 1200) <= 4);
+  assert.ok(tapRes.holdMs >= 55 && tapRes.holdMs <= 125);
+
+  // 2. Default screen.swipe('up') and tuple screen.swipe(x1,y1,x2,y2,dur) route to curved Bezier gestures
+  await screen.swipe('up');
+  assert.equal(rawSwipes.length, 0);
+  assert.equal(gestures.length, 2);
+  assert.ok(gestures[1].pointers[0].length >= 7);
+
+  await screen.swipe(540, 1850, 540, 750, 340);
+  assert.equal(driverSwipes.length, 0);
+  assert.equal(gestures.length, 3);
+  assert.equal(gestures[2].pointers[0].at(-1).time, 340);
+
+  // 3. Default locator.tap() resolves bounds and taps within wide-row safe core via gesture
+  await screen.getByText('显示').tap();
+  assert.equal(rawTaps.length, 0);
+  assert.equal(gestures.length, 4);
+  const locTapPt = gestures[3].pointers[0][0];
+  assert.ok(locTapPt.x >= 488 && locTapPt.x <= 592, `locator tap x=${locTapPt.x} outside +-52px safe center cap`);
+  assert.ok(locTapPt.y >= 939 && locTapPt.y <= 1001);
+
+  // 4. { raw: true } per-call escape hatch bypasses humanization cleanly
+  await screen.tap(540, 1200, { raw: true });
+  assert.deepEqual(rawTaps, [{ x: 540, y: 1200 }]);
+  await screen.swipe('up', { distance: 500, raw: true });
+  assert.deepEqual(rawSwipes, [{ direction: 'up', opts: { distance: 500 } }]);
+  await screen.swipe(600, 1900, 600, 1100, 300, { raw: true });
+  assert.deepEqual(driverSwipes, [{ x1: 600, y1: 1900, x2: 600, y2: 1100, duration: 300 }]);
+  await screen.getByText('显示').tap({ raw: true });
+  assert.deepEqual(rawTaps.at(-1), { x: 540, y: 970 });
+  assert.equal(gestures.length, 4);
+
+  // 5. KIKI_PHONE_RAW_INPUT=1 environment toggle forces raw behavior globally
+  env.KIKI_PHONE_RAW_INPUT = '1';
+  await screen.tap(320, 640);
+  await screen.swipe('down');
+  await screen.getByText('显示').tap();
+  assert.equal(gestures.length, 4);
+  assert.deepEqual(rawTaps.slice(-2), [{ x: 320, y: 640 }, { x: 540, y: 970 }]);
+  assert.equal(rawSwipes.at(-1).direction, 'down');
 });

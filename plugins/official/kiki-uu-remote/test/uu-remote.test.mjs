@@ -18,7 +18,9 @@ import {
 } from '../lib/cua-provider-bridge.mjs';
 import { definitions } from '../lib/definitions.mjs';
 import {
+  computeContainedRect,
   computeStreamContentRect,
+  mapContainedClientToRemote,
   mapPointToTarget,
   processCapturedStagePng,
 } from '../lib/frame-math.mjs';
@@ -246,6 +248,7 @@ test('manifest, sync-manifest --check, validateRegistration, packageFiles, and r
 
   const manifest = JSON.parse(await readFile(path.join(PLUGIN_ROOT, 'kimi.plugin.json'), 'utf8'));
   assert.equal(manifest.name, 'kiki-uu-remote');
+  assert.equal(manifest.version, '0.1.1');
   assert.equal(manifest.license, 'MIT');
   assert.equal(manifest['x-kiki'].activation, 'app');
   assert.deepEqual(manifest['x-kiki'].tools, definitions);
@@ -271,7 +274,13 @@ test('manifest, sync-manifest --check, validateRegistration, packageFiles, and r
 
   const panelHtml = await readFile(path.join(PLUGIN_ROOT, 'panel.html'), 'utf8');
   assert.equal(/\p{Extended_Pictographic}/u.test(panelHtml), false, 'panel.html must contain zero UI emojis');
-  assert.ok(panelHtml.includes('Takeover'));
+  assert.doesNotMatch(panelHtml, /data may be stale|results may be incomplete|数据可能已过期|结果可能不完整|仅供预览/i);
+  assert.doesNotMatch(panelHtml, /\b(?:localStorage|sessionStorage)\./);
+  assert.match(panelHtml, /safeStorage/);
+  assert.match(panelHtml, /execCommand\('copy'\)/);
+  assert.match(panelHtml, /object-fit:\s*contain/);
+  assert.match(panelHtml, /URLSearchParams\(window\.location\.search\)\.get\('theme'\)/);
+  assert.ok(panelHtml.includes('Takeover Control'));
   assert.ok(panelHtml.includes('Rescue Off-screen'));
 });
 
@@ -970,7 +979,119 @@ test('previewService streams binary PNG packets over openPanelStream and serves 
   assert.match(promptCtx.sections[0].content, /uu:24780134/);
 
   const guiDescribe = await slots['E12:server-gui-slots']({ kind: 'describe' }, {});
-  assert.ok(guiDescribe.guiSlots.some((s) => s.id === 'uu-active-capsule'));
+  assert.equal(guiDescribe.guiSlots.some((s) => s.slot === 'inspector-tab'), false);
+  assert.equal(guiDescribe.guiSlots.some((s) => s.slot === 'sidebar-nav'), false);
+  assert.equal(guiDescribe.guiSlots.some((s) => s.slot === 'sidebar-panel'), false);
+  assert.ok(guiDescribe.guiSlots.some((s) => s.slot === 'composer-toolbar' && s.icon === 'monitor' && s.action?.panelId === 'preview'));
+  assert.ok(guiDescribe.guiSlots.some((s) => s.slot === 'slash-command' && s.command === 'uu-remote' && s.action?.panelId === 'preview'));
+  assert.ok(guiDescribe.guiSlots.some((s) => s.id === 'uu-active-capsule' && s.action?.panelId === 'preview'));
+
+  // Contained canvas inverse mapping deducts pillarbox/letterbox bars accurately
+  const contained = computeContainedRect(800, 600, 1920, 1080);
+  assert.deepEqual({ x: contained.x, y: contained.y, width: contained.width, height: contained.height }, {
+    x: 0,
+    y: 75,
+    width: 800,
+    height: 450,
+  });
+  const topMarginClick = mapContainedClientToRemote(400, 30, 800, 600, { width: 1920, height: 1080 });
+  assert.equal(topMarginClick.inside, false);
+  const centerClick = mapContainedClientToRemote(400, 300, 800, 600, { width: 1920, height: 1080 });
+  assert.equal(centerClick.inside, true);
+  assert.deepEqual({ targetX: centerClick.targetX, targetY: centerClick.targetY, normX: centerClick.normX, normY: centerClick.normY }, {
+    targetX: Math.round(0.5 * 1919),
+    targetY: Math.round(0.5 * 1079),
+    normX: 500,
+    normY: 500,
+  });
+
+  // Direct canvas HTTP route actions: auto-engages Human Takeover, supports right+modifier click, drag, scroll, key chord, and clipboard paste
+  for (const body of [
+    {
+      action: 'input',
+      sessionId: 'uu:24780134',
+      subAction: 'click',
+      coordinateMode: 'normalized_1000',
+      x: 500,
+      y: 500,
+      button: 'right',
+      count: 1,
+      modifiers: ['Ctrl'],
+      fromHumanPanel: true,
+    },
+    {
+      action: 'input',
+      sessionId: 'uu:24780134',
+      subAction: 'drag',
+      coordinateMode: 'normalized_1000',
+      startX: 250,
+      startY: 300,
+      endX: 750,
+      endY: 650,
+      button: 'left',
+      durationMs: 180,
+      fromHumanPanel: true,
+    },
+    {
+      action: 'input',
+      sessionId: 'uu:24780134',
+      subAction: 'scroll',
+      coordinateMode: 'normalized_1000',
+      x: 500,
+      y: 500,
+      deltaX: 0,
+      deltaY: 240,
+      fromHumanPanel: true,
+    },
+    {
+      action: 'input',
+      sessionId: 'uu:24780134',
+      subAction: 'key',
+      keys: ['Ctrl', 'C'],
+      fromHumanPanel: true,
+    },
+    {
+      action: 'input',
+      sessionId: 'uu:24780134',
+      subAction: 'paste',
+      text: '远端剪贴板直发',
+      fromHumanPanel: true,
+    },
+  ]) {
+    const actRoute = await slots['E12:server-gui-slots'](
+      {
+        kind: 'http-route',
+        method: 'POST',
+        subpath: '/preview/action',
+        body,
+      },
+      {},
+    );
+    assert.equal(actRoute.status, 200);
+    assert.equal(actRoute.data.ok, true);
+    assert.equal(actRoute.data.takeoverActive, true);
+  }
+
+  // Background agent action without overrideHumanTakeover is blocked while human panel takeover is active
+  const agentBlocked = await uuService.controlSession(
+    { sessionId: 'uu:24780134', action: 'click', x: 100, y: 100 },
+    {},
+  );
+  assert.equal(agentBlocked.ok, false);
+  assert.equal(agentBlocked.code, 'human_takeover_active');
+
+  // Release takeover cleanly via /preview/action
+  const releaseRoute = await slots['E12:server-gui-slots'](
+    {
+      kind: 'http-route',
+      method: 'POST',
+      subpath: '/preview/action',
+      body: { action: 'takeover', sessionId: 'uu:24780134', active: false },
+    },
+    {},
+  );
+  assert.equal(releaseRoute.status, 200);
+  assert.equal(releaseRoute.data.takeoverActive, false);
 });
 
 test(

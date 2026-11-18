@@ -1,6 +1,6 @@
 {
   "name": "kiki-cua",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Operate local desktop displays, windows, and cross-plugin remote computer-use targets with high-precision DPI/zoom capture, human-takeover protection, and live workspace preview.",
   "license": "MIT",
   "icon": "./icon.svg",

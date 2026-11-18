@@ -410,3 +410,51 @@ export function processCapturedStagePng(pngBytes, {
     imageSize: { width: finalImage.width, height: finalImage.height },
   };
 }
+
+export function computeContainedRect(containerWidth, containerHeight, contentWidth, contentHeight) {
+  const cw = Math.max(1, Number(containerWidth) || 1);
+  const ch = Math.max(1, Number(containerHeight) || 1);
+  const iw = Math.max(1, Number(contentWidth) || 1);
+  const ih = Math.max(1, Number(contentHeight) || 1);
+  const scale = Math.min(cw / iw, ch / ih);
+  const width = iw * scale;
+  const height = ih * scale;
+  const x = (cw - width) / 2;
+  const y = (ch - height) / 2;
+  return { x, y, width, height, scale };
+}
+
+export function mapContainedClientToRemote(
+  offsetX,
+  offsetY,
+  containerWidth,
+  containerHeight,
+  logicalSize = { width: 1920, height: 1080 },
+) {
+  const lw = Math.max(1, Math.round(Number(logicalSize?.width) || 1920));
+  const lh = Math.max(1, Math.round(Number(logicalSize?.height) || 1080));
+  const rect = computeContainedRect(containerWidth, containerHeight, lw, lh);
+  const rawX = Number(offsetX) || 0;
+  const rawY = Number(offsetY) || 0;
+  const inside =
+    rawX >= rect.x - 0.5 &&
+    rawX <= rect.x + rect.width + 0.5 &&
+    rawY >= rect.y - 0.5 &&
+    rawY <= rect.y + rect.height + 0.5;
+  const relX = clamp((rawX - rect.x) / Math.max(1e-6, rect.width), 0, 1);
+  const relY = clamp((rawY - rect.y) / Math.max(1e-6, rect.height), 0, 1);
+  const targetX = lw <= 1 ? 0 : Math.round(relX * (lw - 1));
+  const targetY = lh <= 1 ? 0 : Math.round(relY * (lh - 1));
+  const normX = Math.round(relX * 1000);
+  const normY = Math.round(relY * 1000);
+  return {
+    inside,
+    localX: clamp(rawX, rect.x, rect.x + rect.width),
+    localY: clamp(rawY, rect.y, rect.y + rect.height),
+    targetX,
+    targetY,
+    normX,
+    normY,
+    rect,
+  };
+}

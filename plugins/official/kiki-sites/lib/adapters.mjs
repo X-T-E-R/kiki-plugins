@@ -120,4 +120,80 @@ export class Adapters {
     if (state === 'ready') { const data = await this.api(c, `/services/${encodeURIComponent(target.serviceId)}`, context); url = data.serviceDetails?.url; }
     return { ...result, state, remoteStatus: deploy.status, url, message: state === 'ready' ? 'Render reports this deployment is live.' : `Render status: ${deploy.status}` };
   }
+  canRollback(target, result) {
+    if (!target || !result) return false;
+    if (target.service === 'vercel') return Boolean(result.remoteId || result.url);
+    if (target.service === 'netlify') return Boolean(result.remoteId && target.siteId);
+    if (target.service === 'cloudflare-workers') return Boolean(target.config);
+    if (target.service === 'render') return Boolean(result.remoteId && target.serviceId);
+    return false;
+  }
+  async rollback(c, target, sourceResult, context = {}) {
+    if (!this.canRollback(target, sourceResult)) {
+      throw new SitesError('rollback_unsupported', 'Direct rollback is not available for this deployment record.', 'Deploy the desired revision or roll back in the provider dashboard.');
+    }
+    if (target.service === 'render') {
+      const data = await this.api(c, `/services/${encodeURIComponent(target.serviceId)}/rollback`, {
+        ...context,
+        method: 'POST',
+        body: { deployId: sourceResult.remoteId },
+      });
+      return {
+        state: 'submitted',
+        remoteId: data.id || sourceResult.remoteId,
+        remoteStatus: data.status || 'queued',
+        source: 'existing_remote_repository',
+        rolledBackTo: sourceResult.remoteId,
+        message: 'Render accepted the rollback request.',
+      };
+    }
+    const env = {
+      ...cliEnvironment(c),
+      ...(target.service === 'vercel' ? { VERCEL_PROJECT_ID: target.projectId, VERCEL_ORG_ID: target.orgId } : {}),
+    };
+    if (target.service === 'vercel') {
+      const ref = sourceResult.remoteId || sourceResult.url;
+      await this.cli(c, ['rollback', ref, '--yes'], { ...context, cwd: target.project, env });
+      return {
+        state: 'ready',
+        url: sourceResult.url,
+        remoteId: sourceResult.remoteId,
+        rolledBackTo: ref,
+        message: 'Official Vercel CLI promoted the selected deployment.',
+      };
+    }
+    if (target.service === 'netlify') {
+      const res = await this.cli(
+        c,
+        ['api', 'restoreSiteDeploy', '--data', JSON.stringify({ site_id: target.siteId, deploy_id: sourceResult.remoteId })],
+        { ...context, cwd: target.project, env },
+      );
+      const data = parseJson(res.stdout);
+      const url = data.ssl_url || data.url || data.deploy_url || sourceResult.url;
+      return {
+        state: url ? 'ready' : 'completed_without_url',
+        url,
+        remoteId: data.id || data.deploy_id || sourceResult.remoteId,
+        rolledBackTo: sourceResult.remoteId,
+        message: 'Official Netlify CLI restored the selected deploy.',
+      };
+    }
+    if (target.service === 'cloudflare-workers') {
+      const args = [
+        'rollback',
+        ...(sourceResult.remoteId ? [sourceResult.remoteId] : []),
+        '--config',
+        target.config,
+        ...(target.environment ? ['--env', target.environment] : []),
+      ];
+      await this.cli(c, args, { ...context, cwd: target.project, env });
+      return {
+        state: sourceResult.url ? 'ready' : 'completed_without_url',
+        url: sourceResult.url,
+        ...(sourceResult.remoteId ? { remoteId: sourceResult.remoteId, rolledBackTo: sourceResult.remoteId } : {}),
+        message: 'Official Wrangler rolled back the Worker deployment.',
+      };
+    }
+    throw new SitesError('rollback_unsupported', 'Direct rollback is not available for this provider.');
+  }
 }

@@ -1,6 +1,6 @@
 {
   "name": "kiki-mail",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Search archived mail across sources in Open Archiver, or read and send through direct IMAP and SMTP accounts.",
   "license": "MIT",
   "icon": "./icon.svg",

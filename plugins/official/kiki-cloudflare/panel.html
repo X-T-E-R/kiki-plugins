@@ -1,318 +1,853 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Cloudflare Tunnel</title>
+<title>Cloudflare</title>
 <style>
-/* Served into a sandboxed iframe (sandbox="allow-scripts"), so the panel cannot
-   read the host theme, fonts or DOM. It is a self-contained sheet on Kiki's
-   paper-and-ink ladder: one state line with weight, the next step directly
-   under it, and everything rare (paths, account access) folded away. Dark
-   values are chosen, not inverted, to match the host's Inkstone surfaces. */
 :root {
   color-scheme: light dark;
-  --paper: #fbfaf6;
-  --panel: #fffdfa;
-  --ink: #1b1a17;
-  --ink-soft: #4b453e;
-  --ink-faint: #665e54;
-  --hairline: #e4ddd0;
-  --hairline-strong: #cdc3b1;
-  --accent: #c8401a;
-  --accent-ink: #9c3012;
-  --accent-on: #fff;
-  --selected: #dfe8f0;
-  --selected-ink: #1d4d6d;
-  --attention: #b33a12;
-  --ok: #2f6b45;
-  --danger: #b0261e;
-  --focus: #1d4d6d;
-  --wash: rgb(27 26 23 / 0.05);
+  font-synthesis: none;
+  --bg: var(--color-canvas, #f6f4ef);
+  --paper: var(--color-paper, #fcfbf8);
+  --panel: var(--color-panel, #efece4);
+  --ink: var(--color-ink, #1b1a17);
+  --ink-soft: var(--color-ink-soft, #5c5850);
+  --ink-faint: var(--color-ink-faint, #8c867b);
+  --line: var(--color-hairline, rgba(27, 26, 23, 0.10));
+  --line-strong: var(--color-hairline-strong, rgba(27, 26, 23, 0.18));
+  --accent: var(--color-accent, #2c5e4f);
+  --accent-deep: var(--color-accent-deep, #22493d);
+  --accent-soft: rgba(44, 94, 79, 0.10);
+  --on-accent: var(--color-on-accent, #fcfbf8);
+  --ok: var(--color-success, #2c6e49);
+  --warn: var(--color-amber-ink, #8a5a19);
+  --warn-bg: var(--color-amber-card, rgba(138, 90, 25, 0.11));
+  --danger: var(--color-danger, #a63429);
+  --danger-bg: rgba(166, 52, 41, 0.09);
+  --wash: rgba(27, 26, 23, 0.04);
+  --sans: "Instrument Sans", ui-sans-serif, system-ui, "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --display: "Newsreader", Georgia, "Songti SC", "Noto Serif SC", serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --radius: 6px;
 }
+
 @media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #1b2226;
-    --panel: #252d31;
-    --ink: #eeEAe2;
-    --ink-soft: #c1c5c5;
-    --ink-faint: #a2acaf;
-    --hairline: #354047;
-    --hairline-strong: #596870;
-    --accent: #eb946f;
-    --accent-ink: #f4ae8d;
-    --accent-on: #261a14;
-    --selected: #24323b;
-    --selected-ink: #a3cbde;
-    --attention: #f4ae8d;
-    --ok: #9ac6ae;
-    --danger: #f1a29a;
-    --focus: #a3cbde;
-    --wash: rgb(238 234 226 / 0.07);
+  :root:not([data-theme="light"]) {
+    --bg: var(--color-canvas, #141413);
+    --paper: var(--color-paper, #1c1b19);
+    --panel: var(--color-panel, #252320);
+    --ink: var(--color-ink, #edeae2);
+    --ink-soft: var(--color-ink-soft, #b2aca0);
+    --ink-faint: var(--color-ink-faint, #7b766c);
+    --line: var(--color-hairline, rgba(237, 234, 226, 0.10));
+    --line-strong: var(--color-hairline-strong, rgba(237, 234, 226, 0.18));
+    --accent: var(--color-accent, #58a88f);
+    --accent-deep: var(--color-accent-deep, #6ebe9f);
+    --accent-soft: rgba(88, 168, 143, 0.15);
+    --on-accent: var(--color-on-accent, #141413);
+    --ok: var(--color-success, #6bbf8e);
+    --warn: var(--color-amber-ink, #dca056);
+    --warn-bg: var(--color-amber-card, rgba(220, 160, 86, 0.14));
+    --danger: var(--color-danger, #e27a6e);
+    --danger-bg: rgba(226, 122, 110, 0.14);
+    --wash: rgba(237, 234, 226, 0.05);
   }
 }
+
+:root[data-theme="dark"] {
+  --bg: var(--color-canvas, #141413);
+  --paper: var(--color-paper, #1c1b19);
+  --panel: var(--color-panel, #252320);
+  --ink: var(--color-ink, #edeae2);
+  --ink-soft: var(--color-ink-soft, #b2aca0);
+  --ink-faint: var(--color-ink-faint, #7b766c);
+  --line: var(--color-hairline, rgba(237, 234, 226, 0.10));
+  --line-strong: var(--color-hairline-strong, rgba(237, 234, 226, 0.18));
+  --accent: var(--color-accent, #58a88f);
+  --accent-deep: var(--color-accent-deep, #6ebe9f);
+  --accent-soft: rgba(88, 168, 143, 0.15);
+  --on-accent: var(--color-on-accent, #141413);
+  --ok: var(--color-success, #6bbf8e);
+  --warn: var(--color-amber-ink, #dca056);
+  --warn-bg: var(--color-amber-card, rgba(220, 160, 86, 0.14));
+  --danger: var(--color-danger, #e27a6e);
+  --danger-bg: rgba(226, 122, 110, 0.14);
+  --wash: rgba(237, 234, 226, 0.05);
+}
+
 * { box-sizing: border-box; }
-body {
+[hidden] { display: none !important; }
+
+html, body {
   margin: 0;
-  background: var(--paper);
+  padding: 0;
+  overflow-x: hidden;
+  background: var(--bg);
   color: var(--ink);
-  font: 14px/1.55 'Instrument Sans', ui-sans-serif, system-ui, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  font: 13px/1.55 var(--sans);
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
-.sheet { max-width: 620px; margin: 0 auto; padding: 22px 20px 44px; }
-@media (min-width: 720px) { .sheet { padding: 26px 28px 52px; } }
 
-h1 { font-size: 19px; font-weight: 500; letter-spacing: -0.01em; margin: 0 0 10px; }
+.sheet {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 20px 20px 48px;
+}
 
-.statusline { display: flex; align-items: center; gap: 8px; }
-.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--ink-faint); }
-.dot[data-tone="running"] { background: var(--ok); }
-.dot[data-tone="busy"] { background: var(--attention); }
+.icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  flex: none;
+}
+
+.masthead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+h1 {
+  margin: 0;
+  font: 500 20px/1.28 var(--display);
+  letter-spacing: 0;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  flex: none;
+}
+.dot[data-tone="running"], .dot[data-tone="ok"] { background: var(--ok); }
+.dot[data-tone="busy"] { background: var(--warn); }
 .dot[data-tone="error"] { background: var(--danger); }
-.dot[data-tone="ready"] { background: var(--selected-ink); }
-.statustext { font-size: 15px; color: var(--ink); }
-.reason { margin: 5px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--ink-faint); }
-.reason[data-tone="error"] { color: var(--danger); }
 
-.rule { height: 1px; background: var(--hairline); border: 0; margin: 15px 0; }
-/* `display` on a class beats the UA [hidden] rule, so hidden containers would
-   stay visible; this keeps the attribute authoritative everywhere. */
-[hidden] { display: none !important; }
-.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.top-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 
-.actions.tight { margin-top: 8px; }
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.seg button {
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  min-height: 29px;
+  padding: 0 11px;
+  background: transparent;
+  color: var(--ink-soft);
+  font: 500 12px/1 var(--sans);
+  cursor: pointer;
+}
+.seg button:last-child { border-right: 0; }
+.seg button:hover:not([aria-pressed="true"]):not(:disabled) { background: var(--wash); color: var(--ink); }
+.seg button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
 
 button {
-  font: inherit; font-size: 13px; min-height: 34px; padding: 0 14px; border-radius: 7px;
-  border: 1px solid transparent; background: transparent; color: var(--ink);
-  cursor: pointer; transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font: 500 12px/1 var(--sans);
+  min-height: 30px;
+  padding: 0 11px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color 0.13s ease, border-color 0.13s ease, color 0.13s ease;
 }
-button.primary { background: var(--accent); color: var(--accent-on); }
-button.primary:hover:not(:disabled) { background: var(--accent-ink); }
-button.secondary { border-color: var(--hairline-strong); color: var(--ink-soft); }
-button.secondary:hover:not(:disabled) { background: var(--wash); color: var(--ink); }
-button.quiet { color: var(--ink-faint); padding: 0 6px; min-height: 30px; }
+button.primary { background: var(--accent); color: var(--on-accent); }
+button.primary:hover:not(:disabled) { background: var(--accent-deep); }
+button.secondary { border-color: var(--line-strong); background: var(--paper); color: var(--ink-soft); }
+button.secondary:hover:not(:disabled) { background: var(--panel); color: var(--ink); }
+button.quiet { color: var(--ink-faint); padding: 0 7px; min-height: 26px; }
 button.quiet:hover:not(:disabled) { color: var(--ink); background: var(--wash); }
-button:disabled { opacity: 0.45; cursor: default; }
-button:focus-visible, summary:focus-visible, input:focus-visible, a:focus-visible {
-  outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 7px;
-}
-@media (pointer: coarse) { button { min-height: 44px; } }
+button.danger-btn:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+button.sm { min-height: 25px; padding: 0 8px; font-size: 11.5px; }
+button:disabled { opacity: 0.48; cursor: default; }
 
-.field { display: block; margin: 0 0 12px; }
-.field > .label { display: block; font-size: 12px; color: var(--ink-soft); margin: 0 0 4px; }
-.hint { display: block; font-size: 12px; line-height: 1.45; color: var(--ink-faint); margin: 4px 0 0; }
-input[type="text"], input[type="password"] {
-  width: 100%; min-height: 34px; padding: 6px 10px; font: inherit; font-size: 13.5px;
-  color: var(--ink); background: var(--panel);
-  border: 1px solid var(--hairline-strong); border-radius: 7px;
+@keyframes spin { to { transform: rotate(360deg); } }
+button[data-busy="true"] .icon { animation: spin 0.9s linear infinite; }
+
+:is(button, summary, input, select, a):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
-input::placeholder { color: var(--ink-faint); opacity: 1; }
-input:focus-visible { outline-offset: -1px; }
-.mono { font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace; font-size: 12.5px; }
+
+.reason {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+.reason[data-tone="error"] {
+  color: var(--danger);
+  background: var(--danger-bg);
+  padding: 7px 10px;
+  border-radius: var(--radius);
+}
+.saved-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--ok);
+}
+
+.url-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 8px 11px;
+  border-radius: var(--radius);
+  background: var(--paper);
+  border: 1px solid var(--line);
+}
+
+.url-code {
+  font: 12px/1.35 var(--mono);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.actions.tight { margin-top: 8px; }
+
+.rule {
+  height: 1px;
+  background: var(--line);
+  border: 0;
+  margin: 16px 0;
+}
+
+.surface-card {
+  margin-top: 14px;
+  padding: 14px 16px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.field { display: block; margin: 0 0 11px; min-width: 0; }
+.field > .label { display: block; font-size: 12px; color: var(--ink-soft); margin: 0 0 4px; }
+.hint { display: block; font-size: 11.5px; line-height: 1.45; color: var(--ink-faint); margin: 4px 0 0; }
+
+input[type="text"], input[type="password"], select {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 5px 9px;
+  font: 12.5px/1.35 var(--sans);
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+}
+input:focus, select:focus { border-color: var(--accent); outline: none; }
+input::placeholder { color: var(--ink-faint); }
+.mono { font-family: var(--mono); font-size: 12px; }
 
 .choices { display: flex; gap: 6px; flex-wrap: wrap; }
 .choice { position: relative; }
 .choice input { position: absolute; opacity: 0; width: 0; height: 0; }
 .choice span {
-  display: inline-flex; align-items: center; min-height: 30px; padding: 0 11px;
-  font-size: 12.5px; border: 1px solid var(--hairline-strong); border-radius: 7px;
-  color: var(--ink-soft); cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink-soft);
+  cursor: pointer;
 }
-.choice input:checked + span { border-color: var(--selected-ink); background: var(--selected); color: var(--selected-ink); font-weight: 500; }
-.choice input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+.choice input:checked + span {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
 
-.pref { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0 0; padding: 0; border: 0; min-width: 0; }
-.pref input { margin: 3px 0 0; width: 15px; height: 15px; accent-color: var(--selected-ink); flex: none; }
+.pref {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  margin: 12px 0 0;
+  padding: 0;
+  border: 0;
+}
+.pref input { margin: 3px 0 0; width: 14px; height: 14px; accent-color: var(--accent); flex: none; }
 
-/* The rule above the disclosure is the separator; details must not add another. */
-details { border-top: 0; }
+details { margin-top: 12px; }
 summary {
-  display: flex; align-items: center; gap: 6px; min-height: 38px; cursor: pointer;
-  font-size: 12.5px; color: var(--ink-faint); list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  list-style: none;
+  user-select: none;
 }
 summary::-webkit-details-marker { display: none; }
-summary::after { content: '+'; margin-left: auto; font-size: 14px; }
-details[open] summary::after { content: '-'; }
-summary:hover { color: var(--ink); }
-details .inside { padding: 2px 0 14px; }
+summary::after { content: "+"; margin-left: auto; font-family: var(--mono); color: var(--ink-faint); }
+details[open] > summary::after { content: "-"; }
+details .inside { padding: 6px 0 10px; }
 
-a.link { color: var(--selected-ink); font-size: 12.5px; text-underline-offset: 2px; cursor: pointer; }
-a.link:hover { color: var(--ink); }
+a.link { color: var(--accent); font-size: 12px; text-underline-offset: 2px; cursor: pointer; }
 
 .loginurl {
-  display: block; margin: 8px 0 0; padding: 8px 10px; word-break: break-all;
-  background: var(--panel); border: 1px solid var(--hairline); border-radius: 7px;
-  font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace; font-size: 12px;
+  display: block;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  word-break: break-all;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font: 12px/1.4 var(--mono);
   color: var(--ink-soft);
 }
-.tunnels { list-style: none; margin: 8px 0 0; padding: 0; border-top: 1px solid var(--hairline); }
-.tunnels li { border-bottom: 1px solid var(--hairline); }
+
+.tunnels {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.tunnels li { border-bottom: 1px solid var(--line); }
 .tunnels button {
-  display: flex; width: 100%; align-items: baseline; gap: 8px; text-align: left;
-  min-height: 40px; padding: 6px 2px; border-radius: 0;
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  align-items: baseline;
+  gap: 8px;
+  text-align: left;
+  min-height: 36px;
+  padding: 6px 4px;
+  border-radius: 0;
 }
-.section-label { font-size: 12px; color: var(--ink-soft); margin: 14px 0 0; }
-.tunnels .tname { color: var(--ink); font-size: 13px; }
+.tunnels .tname { color: var(--ink); font-size: 12.5px; }
 .tunnels .tid { color: var(--ink-faint); font-size: 11.5px; margin-left: auto; }
-.saved-note { font-size: 12.5px; color: var(--ok); margin: 10px 0 0; }
-.vis-hidden {
-  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
-  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+
+/* --- DNS & Worker Routes --- */
+.dns-head-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
 }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+.dns-head-bar select {
+  width: auto;
+  min-width: 180px;
+  max-width: 100%;
+  background: var(--paper);
+  font-weight: 500;
+}
+
+.zone-badge {
+  font: 11px/1.3 var(--mono);
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.dns-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.type-pills {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.type-pill {
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--paper);
+  color: var(--ink-soft);
+  font: 500 11px/1 var(--mono);
+}
+.type-pill[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.dns-search {
+  flex: 1 1 160px;
+  min-width: 0;
+  background: var(--paper) !important;
+}
+
+.dns-editor {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--paper);
+  border: 1px solid var(--accent);
+}
+
+.dns-form-grid {
+  display: grid;
+  grid-template-columns: 96px minmax(110px, 1fr) minmax(130px, 1.3fr) 96px;
+  gap: 8px 10px;
+  align-items: end;
+}
+
+.dns-ledger {
+  margin-top: 12px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.dns-row {
+  display: grid;
+  grid-template-columns: 54px minmax(100px, 1fr) minmax(120px, 1.4fr) auto;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.dns-row:last-child { border-bottom: 0; }
+.dns-row:hover { background: var(--wash); }
+
+.rec-type {
+  display: inline-flex;
+  justify-content: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 600 11px/1.3 var(--mono);
+}
+
+.rec-name {
+  font: 500 12px/1.35 var(--mono);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.rec-content {
+  font: 12px/1.35 var(--mono);
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.rec-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.proxy-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg);
+  color: var(--ink-faint);
+  font: 500 11px/1 var(--sans);
+}
+.proxy-toggle[aria-checked="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.routes-section {
+  margin-top: 18px;
+}
+
+.routes-section h2 {
+  margin: 0 0 8px;
+  font: 600 12px/1.35 var(--sans);
+  color: var(--ink-soft);
+}
+
+.route-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.route-row:last-child { border-bottom: 0; }
+
+.empty-box {
+  padding: 22px 14px;
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: 12.5px;
+}
+
+.vis-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 620px) {
+  .sheet { padding: 14px 12px 38px; }
+  .top-right { margin-left: 0; width: 100%; justify-content: space-between; }
+  .dns-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .dns-row { grid-template-columns: auto minmax(0, 1fr); }
+  .dns-row .rec-content { grid-column: 1 / -1; }
+  .dns-row .rec-actions { grid-column: 1 / -1; justify-content: flex-start; }
+}
+
+@media (pointer: coarse) {
+  button, input, select, summary { min-height: 40px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
 </style>
 </head>
 <body>
 <main class="sheet">
-  <h1 data-i18n="title">Cloudflare Tunnel</h1>
+  <header class="masthead">
+    <div class="title-wrap">
+      <h1 data-i18n="title">Cloudflare</h1>
+      <span class="status-pill" id="statusPill">
+        <span class="dot" id="dot" data-tone="" aria-hidden="true"></span>
+        <span id="stat">…</span>
+      </span>
+    </div>
+    <div class="top-right">
+      <div class="seg" role="tablist" aria-label="视图切换">
+        <button type="button" id="tabTunnel" aria-pressed="true" data-i18n="tabTunnel">隧道连接</button>
+        <button type="button" id="tabDns" aria-pressed="false" data-i18n="tabDns">域名与 DNS</button>
+      </div>
+      <button type="button" class="secondary sm" id="langBtn">EN</button>
+    </div>
+  </header>
+
   <p class="vis-hidden" id="live" role="status" aria-live="polite"></p>
-
-  <div class="statusline">
-    <span class="dot" id="dot" data-tone="" aria-hidden="true"></span>
-    <span class="statustext" id="stat">Reading state</span>
-  </div>
-  <p class="reason" id="reason"></p>
-  <p class="reason" id="public-url" hidden></p>
-
-  <div class="actions" id="lifecycle" hidden></div>
   <p class="reason" id="root-reason" data-tone="error" role="alert" hidden></p>
-  <p class="busy-note" id="busy" hidden></p>
 
-  <hr class="rule" id="rule-dep" hidden>
+  <!-- SURFACE 1: TUNNEL CONNECTOR -->
+  <section id="tunnelView">
+    <p class="reason" id="reason"></p>
 
-  <section id="dep-section" hidden>
-    <div class="actions tight" id="dep-actions"></div>
-    <p class="reason" id="dep-note"></p>
+    <div class="url-strip" id="public-url-bar" hidden>
+      <span class="url-code" id="public-url-val"></span>
+      <button type="button" class="secondary sm" id="copyPublicUrlBtn" data-i18n="copyBtn">复制</button>
+      <button type="button" class="secondary sm" id="openPublicUrlBtn" data-i18n="openBtn">打开</button>
+    </div>
+
+    <div class="actions" id="lifecycle" hidden></div>
+    <p class="reason" id="busy" hidden></p>
+
+    <section id="dep-section" class="surface-card" hidden>
+      <p class="reason" id="dep-note" style="margin-top:0"></p>
+      <div class="actions tight" id="dep-actions"></div>
+    </section>
+
+    <div id="setup" class="surface-card">
+      <div id="setup-fields">
+        <div class="actions tight" id="create-actions" style="margin-top:0">
+          <button type="button" class="secondary" id="create" data-i18n="createButton">在 Cloudflare 创建隧道</button>
+          <a class="link" id="docs" href="https://developers.cloudflare.com/tunnel/get-started/" data-i18n="docsLink">文档说明</a>
+        </div>
+        <p class="hint" id="create-hint" data-i18n="createHint"></p>
+
+        <div class="field" id="wrap-token" style="margin-top:12px">
+          <label class="label" for="token" data-i18n="tokenLabel">隧道 Connector Token</label>
+          <input type="password" id="token" autocomplete="off" spellcheck="false" data-i18n-placeholder="tokenPlaceholder">
+          <div class="actions tight" id="clear-token-row">
+            <button type="button" class="quiet" id="clear-token" data-i18n="clearSecret" hidden>清除已存 Token</button>
+          </div>
+          <span class="hint" id="token-hint"></span>
+        </div>
+
+        <div class="choices" id="mode" role="radiogroup" data-i18n-aria="modeGroup" aria-label="配置方式">
+          <label class="choice">
+            <input type="radio" name="mode" value="token" checked>
+            <span data-i18n="modeToken">Connector Token</span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="mode" value="local">
+            <span data-i18n="modeLocal">已有本地配置</span>
+          </label>
+        </div>
+
+        <div id="local-fields" hidden>
+          <label class="field" for="tunnelid" style="margin-top:12px">
+            <span class="label" data-i18n="tunnelIdLabel">隧道 UUID</span>
+            <input type="text" id="tunnelid" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="uuidPlaceholder">
+          </label>
+          <label class="field" for="configpath">
+            <span class="label" data-i18n="configPathLabel">cloudflared 配置文件</span>
+            <input type="text" id="configpath" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="configPathPlaceholder">
+          </label>
+        </div>
+
+        <div class="actions" id="reuse-actions">
+          <button type="button" class="primary" id="save" data-i18n="saveButton">保存并连接</button>
+          <button type="button" class="secondary" id="reuse" data-i18n="reuseButton">选用已有隧道</button>
+          <button type="button" class="secondary" id="login" data-i18n="loginButton">证书登录</button>
+        </div>
+
+        <p class="reason" id="setup-reason" role="alert" hidden></p>
+      </div>
+    </div>
+
+    <div id="login-panel" class="surface-card" hidden>
+      <p class="reason" id="login-state" style="margin-top:0"></p>
+      <a class="link" id="login-link" href="#" hidden data-i18n="loginLink">打开授权页面</a>
+      <p class="loginurl" id="login-url" hidden></p>
+      <div class="actions tight">
+        <button type="button" class="quiet" id="cancel-login" data-i18n="loginCancel">取消登录</button>
+      </div>
+    </div>
+
+    <div id="reuse-panel" class="surface-card" hidden>
+      <div class="actions tight" style="margin-top:0;justify-content:space-between">
+        <span class="label" data-i18n="reuseTitle" style="font-weight:600">账户下的隧道</span>
+        <button type="button" class="quiet" id="reuse-close" data-i18n="reuseClose">收起</button>
+      </div>
+      <input type="text" id="tunnelFilter" style="margin-top:8px" autocomplete="off" spellcheck="false" data-i18n-placeholder="tunnelFilterPh" placeholder="搜索隧道名或 ID…">
+      <p class="reason" id="reuse-state"></p>
+      <ul class="tunnels" id="tunnels"></ul>
+    </div>
+
+    <p class="saved-note" id="saved-note" hidden></p>
+
+    <details id="advanced">
+      <summary data-i18n="advancedSummary">路径与账户 API 凭据</summary>
+      <div class="inside surface-card" style="margin-top:4px">
+        <p class="hint" id="cert-fact" style="margin-top:0"></p>
+
+        <div class="field" style="margin-top:10px">
+          <label class="label" for="apitoken" data-i18n="apiTokenLabel">Cloudflare API Token（可选，用于列举隧道及管理 DNS）</label>
+          <input type="password" id="apitoken" autocomplete="off" spellcheck="false" data-i18n-placeholder="apiTokenPlaceholder">
+          <div class="actions tight" id="clear-apitoken-row">
+            <button type="button" class="quiet" id="clear-apitoken" data-i18n="clearSecret" hidden>清除已存 Token</button>
+          </div>
+          <span class="hint" data-i18n="apiTokenHint"></span>
+        </div>
+
+        <label class="field" for="accountid">
+          <span class="label" data-i18n="accountIdLabel">Account ID</span>
+          <input type="text" id="accountid" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="accountIdPlaceholder">
+        </label>
+
+        <label class="field" for="publicurl">
+          <span class="label" data-i18n="publicUrlLabel">公开 HTTPS 地址</span>
+          <input type="text" id="publicurl" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="publicUrlPlaceholder">
+        </label>
+
+        <label class="field" for="tokenfile">
+          <span class="label" data-i18n="tokenFileLabel">已有 Token 文件路径</span>
+          <input type="text" id="tokenfile" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="tokenFilePlaceholder">
+        </label>
+
+        <label class="field" for="certpath">
+          <span class="label" data-i18n="certPathLabel">证书路径 (cert.pem)</span>
+          <input type="text" id="certpath" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="certPathPlaceholder">
+        </label>
+
+        <label class="field" for="credfile">
+          <span class="label" data-i18n="credentialsFileLabel">隧道凭据 JSON 路径</span>
+          <input type="text" id="credfile" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="credentialsFilePlaceholder">
+        </label>
+
+        <label class="field" for="binarypath">
+          <span class="label" data-i18n="binaryPathLabel">cloudflared 可执行文件路径</span>
+          <input type="text" id="binarypath" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="binaryPathPlaceholder">
+        </label>
+
+        <fieldset class="pref">
+          <input type="checkbox" id="autoStart" checked>
+          <span>
+            <label for="autoStart" data-i18n="autoStartLabel">随 Kiki 自动启动</label>
+            <span class="hint" data-i18n="autoStartHint"></span>
+          </span>
+        </fieldset>
+      </div>
+    </details>
   </section>
 
-  <hr class="rule" id="rule-setup" hidden>
-
-  <div id="setup">
-    <div id="setup-fields">
-      <div class="actions tight" id="create-actions">
-        <button type="button" class="secondary" id="create" data-i18n="createButton">Create tunnel in Cloudflare</button>
-        <a class="link" id="docs" href="https://developers.cloudflare.com/tunnel/get-started/" target="_blank" rel="noreferrer noopener" data-i18n="docsLink">How tunnels work</a>
+  <!-- SURFACE 2: ZONES, DNS RECORDS & WORKER ROUTES -->
+  <section id="dnsView" hidden>
+    <div id="dnsTokenSetup" class="surface-card" hidden>
+      <label class="field" for="quickApiToken" style="margin-bottom:8px">
+        <span class="label" data-i18n="dnsSetupTitle">配置 Cloudflare API Token 以管理域名与 DNS</span>
+        <input type="password" id="quickApiToken" autocomplete="off" spellcheck="false" data-i18n-placeholder="dnsTokenPh" placeholder="需包含 Zone:Read 与 DNS:Edit 权限">
+      </label>
+      <div class="actions tight">
+        <button type="button" class="primary" id="saveQuickApiTokenBtn" data-i18n="saveLoadZones">保存并加载域名</button>
       </div>
-      <p class="hint" id="create-hint" data-i18n="createHint"></p>
-
-      <div class="field" id="wrap-token" style="margin-top:14px">
-        <label class="label" for="token" data-i18n="tokenLabel">Tunnel connector token</label>
-        <input type="password" id="token" autocomplete="off" spellcheck="false" data-i18n-placeholder="tokenPlaceholder">
-        <div class="actions tight" id="clear-token-row">
-          <button type="button" class="quiet" id="clear-token" data-i18n="clearSecret" hidden>Clear saved token</button>
-        </div>
-        <span class="hint" id="token-hint"></span>
-      </div>
-
-      <div class="choices" id="mode" role="radiogroup" data-i18n-aria="modeGroup" aria-label="Configuration source">
-        <label class="choice">
-          <input type="radio" name="mode" value="token" checked>
-          <span data-i18n="modeToken">Tunnel token</span>
-        </label>
-        <label class="choice">
-          <input type="radio" name="mode" value="local">
-          <span data-i18n="modeLocal">Existing local tunnel</span>
-        </label>
-      </div>
-
-      <div id="local-fields" hidden>
-        <label class="field" for="tunnelid" style="margin-top:12px">
-          <span class="label" data-i18n="tunnelIdLabel">Tunnel ID</span>
-          <input type="text" id="tunnelid" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="uuidPlaceholder">
-        </label>
-        <label class="field" for="configpath">
-          <span class="label" data-i18n="configPathLabel">cloudflared config file</span>
-          <input type="text" id="configpath" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="configPathPlaceholder">
-        </label>
-      </div>
-
-      <div class="actions" id="reuse-actions">
-        <button type="button" class="secondary" id="login" data-i18n="loginButton">Sign in with Cloudflare</button>
-        <button type="button" class="secondary" id="reuse" data-i18n="reuseButton">Use an existing tunnel</button>
-        <button type="button" class="primary" id="save" data-i18n="saveButton">Save and connect</button>
-      </div>
-
-      <p class="reason" id="setup-reason" role="alert" hidden></p>
     </div>
-  </div>
 
-  <div id="login-panel" hidden>
-    <p class="reason" id="login-state"></p>
-    <a class="link" id="login-link" href="#" hidden data-i18n="loginLink">Open the Cloudflare authorization page</a>
-    <p class="loginurl" id="login-url" hidden></p>
-    <div class="actions tight">
-      <button type="button" class="quiet" id="cancel-login" data-i18n="loginCancel">Cancel sign-in</button>
-    </div>
-  </div>
-
-  <div id="reuse-panel" hidden>
-    <p class="section-label" id="reuse-title" data-i18n="reuseTitle">Tunnels on this account</p>
-    <p class="reason" id="reuse-state"></p>
-    <ul class="tunnels" id="tunnels"></ul>
-    <div class="actions tight">
-      <button type="button" class="quiet" id="reuse-close" data-i18n="reuseClose">Close list</button>
-    </div>
-  </div>
-
-  <p class="saved-note" id="saved-note" hidden></p>
-
-  <hr class="rule" id="rule-advanced" hidden>
-
-  <details id="advanced">
-    <summary data-i18n="advancedSummary">Paths and account access</summary>
-    <div class="inside">
-      <p class="hint" id="cert-fact"></p>
-
-      <div class="field" style="margin-top:12px">
-        <label class="label" for="apitoken" data-i18n="apiTokenLabel">Account API token (optional)</label>
-        <input type="password" id="apitoken" autocomplete="off" spellcheck="false" data-i18n-placeholder="apiTokenPlaceholder">
-        <div class="actions tight" id="clear-apitoken-row">
-          <button type="button" class="quiet" id="clear-apitoken" data-i18n="clearSecret" hidden>Clear saved token</button>
-        </div>
-        <span class="hint" data-i18n="apiTokenHint"></span>
-      </div>
-
-      <label class="field" for="accountid">
-        <span class="label" data-i18n="accountIdLabel">Account ID</span>
-        <input type="text" id="accountid" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="accountIdPlaceholder">
-      </label>
-
-      <label class="field" for="tokenfile">
-        <span class="label" data-i18n="tokenFileLabel">Existing token file</span>
-        <input type="text" id="tokenfile" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="tokenFilePlaceholder">
-      </label>
-
-      <label class="field" for="certpath">
-        <span class="label" data-i18n="certPathLabel">Certificate file</span>
-        <input type="text" id="certpath" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="certPathPlaceholder">
-      </label>
-
-      <label class="field" for="credfile">
-        <span class="label" data-i18n="credentialsFileLabel">Tunnel credentials file</span>
-        <input type="text" id="credfile" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="credentialsFilePlaceholder">
-      </label>
-
-      <label class="field" for="binarypath">
-        <span class="label" data-i18n="binaryPathLabel">cloudflared executable</span>
-        <input type="text" id="binarypath" class="mono" spellcheck="false" autocomplete="off" data-i18n-placeholder="binaryPathPlaceholder">
-      </label>
-
-      <label class="field" for="publicurl">
-        <span class="label" data-i18n="publicUrlLabel">Public HTTPS endpoint</span>
-        <input type="text" id="publicurl" spellcheck="false" autocomplete="off" data-i18n-placeholder="publicUrlPlaceholder">
-        <span class="hint" data-i18n="publicUrlHint"></span>
-      </label>
-
-      <fieldset class="pref">
-        <input type="checkbox" id="autoStart" checked>
-        <span>
-          <label for="autoStart" data-i18n="autoStartLabel">Start with Kiki</label>
-          <span class="hint" data-i18n="autoStartHint"></span>
+    <div id="dnsWorkspace" hidden>
+      <div class="dns-head-bar">
+        <select id="zoneSelect" aria-label="Zone"></select>
+        <span class="zone-badge" id="zonePlanBadge" hidden></span>
+        <span style="margin-left:auto;display:inline-flex;gap:6px;flex-wrap:wrap">
+          <button type="button" class="secondary sm" id="refreshZoneBtn">
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M13.5 8a5.5 5.5 0 1 1-1.45-3.72M13.5 2.75v2.75h-2.75"/>
+            </svg>
+            <span data-i18n="refreshDns">刷新</span>
+          </button>
+          <button type="button" class="primary sm" id="addRecordBtn" data-i18n="addRecord">+ 新增记录</button>
         </span>
-      </fieldset>
+      </div>
+
+      <p class="reason" id="dnsError" data-tone="error" role="alert" hidden></p>
+      <p class="saved-note" id="dnsToast" hidden></p>
+
+      <div class="dns-editor" id="dnsEditor" hidden>
+        <div class="dns-form-grid">
+          <label class="field" style="margin:0">
+            <span class="label" data-i18n="recTypeLbl">类型</span>
+            <select id="recType">
+              <option value="A">A</option>
+              <option value="AAAA">AAAA</option>
+              <option value="CNAME">CNAME</option>
+              <option value="TXT">TXT</option>
+              <option value="MX">MX</option>
+              <option value="CAA">CAA</option>
+            </select>
+          </label>
+          <label class="field" style="margin:0">
+            <span class="label" data-i18n="recNameLbl">名称</span>
+            <input type="text" id="recName" class="mono" spellcheck="false" autocomplete="off" placeholder="@ / api">
+          </label>
+          <label class="field" style="margin:0">
+            <span class="label" data-i18n="recContentLbl">记录值</span>
+            <input type="text" id="recContent" class="mono" spellcheck="false" autocomplete="off" placeholder="203.0.113.10 / target.example.com">
+          </label>
+          <label class="field" style="margin:0">
+            <span class="label">TTL</span>
+            <select id="recTtl">
+              <option value="1">Auto</option>
+              <option value="60">1m</option>
+              <option value="300">5m</option>
+              <option value="3600">1h</option>
+              <option value="86400">1d</option>
+            </select>
+          </label>
+        </div>
+        <div class="actions tight" style="justify-content:space-between;margin-top:10px">
+          <label class="pref" id="recProxiedWrap" style="margin:0;align-items:center">
+            <input type="checkbox" id="recProxied" checked>
+            <span data-i18n="proxiedLbl">开启 Cloudflare 代理 (Proxied)</span>
+          </label>
+          <label class="field" id="recPriorityWrap" hidden style="margin:0;width:96px">
+            <span class="label">Priority</span>
+            <input type="text" id="recPriority" class="mono" value="10">
+          </label>
+          <span style="display:inline-flex;gap:6px;margin-left:auto">
+            <button type="button" class="secondary sm" id="cancelRecordBtn" data-i18n="cancelBtn">取消</button>
+            <button type="button" class="primary sm" id="saveRecordBtn" data-i18n="saveRecordBtn">保存记录</button>
+          </span>
+        </div>
+      </div>
+
+      <div class="dns-filter-bar">
+        <div class="type-pills" id="typePills">
+          <button type="button" class="type-pill" data-type="ALL" aria-pressed="true">ALL</button>
+          <button type="button" class="type-pill" data-type="A" aria-pressed="false">A</button>
+          <button type="button" class="type-pill" data-type="AAAA" aria-pressed="false">AAAA</button>
+          <button type="button" class="type-pill" data-type="CNAME" aria-pressed="false">CNAME</button>
+          <button type="button" class="type-pill" data-type="TXT" aria-pressed="false">TXT</button>
+          <button type="button" class="type-pill" data-type="MX" aria-pressed="false">MX</button>
+        </div>
+        <input type="text" id="dnsSearch" class="dns-search" spellcheck="false" autocomplete="off" data-i18n-placeholder="dnsSearchPh" placeholder="按名称或记录值过滤…">
+      </div>
+
+      <div class="dns-ledger" id="dnsList"></div>
+
+      <div class="routes-section" id="routesSection" hidden>
+        <h2 data-i18n="workerRoutesHeading">Worker 路由绑定</h2>
+        <div class="dns-ledger" id="routesList"></div>
+      </div>
     </div>
-  </details>
+  </section>
 </main>
 
 <script>
@@ -321,440 +856,408 @@ a.link:hover { color: var(--ink); }
 
 const CHANNEL = 'kiki.panel.v1';
 const PREREQUISITE = 'cloudflared';
+const PROXIABLE = new Set(['A', 'AAAA', 'CNAME']);
+const UUID = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
+
+const memStore = new Map();
+const safeStorage = {
+  get(k) {
+    try {
+      const v = window.localStorage.getItem(k);
+      return v !== null ? v : (memStore.get(k) ?? null);
+    } catch { return memStore.get(k) ?? null; }
+  },
+  set(k, v) {
+    const s = String(v);
+    memStore.set(k, s);
+    try { window.localStorage.setItem(k, s); } catch {}
+  },
+};
+
+try {
+  const qTheme = new URLSearchParams(window.location.search).get('theme');
+  if (qTheme === 'dark' || qTheme === 'light') {
+    document.documentElement.setAttribute('data-theme', qTheme);
+  }
+} catch {}
 
 const I18N = {
   en: {
-    title: 'Cloudflare Tunnel',
-    readingState: 'Reading state',
-    unavailable: 'Panel unavailable',
-    depMissing: 'cloudflared is not installed',
-    depMissingReason: 'A Cloudflare Tunnel needs the cloudflared executable before it can connect.',
-    depError: 'cloudflared did not answer',
+    title: 'Cloudflare',
+    langBtn: '中文',
+    tabTunnel: 'Tunnel',
+    tabDns: 'Zones & DNS',
+    readingState: 'Syncing…',
+    unavailable: 'Unavailable',
+    depMissing: 'cloudflared missing',
+    depMissingReason: 'Install the official cloudflared connector to run a tunnel.',
+    depTooOld: 'cloudflared outdated',
     depInstall: 'Install cloudflared',
-    depInstallNote: 'Kiki downloads the official cloudflared release and verifies it before installing.',
-    depInstalling: 'Downloading cloudflared...',
-    depInstalled: 'cloudflared is installed',
-    depTooOld: 'This cloudflared is too old',
+    depInstallNote: 'Downloads the SHA256-verified official cloudflared release into plugin storage.',
+    depInstalling: 'Downloading…',
+    depInstalled: 'cloudflared installed.',
     unconfigured: 'Not configured',
-    unconfiguredReason: 'Create a tunnel in Cloudflare, then paste its connector token here.',
+    unconfiguredReason: 'Create a tunnel in Cloudflare and paste its connector token below.',
     stopped: 'Stopped',
-    stoppedAutoReason: 'Paused for this Kiki run. It starts again the next time Kiki starts.',
-    stoppedReason: 'Paused for this Kiki run.',
+    stoppedAutoReason: 'Paused for this run; resumes on next Kiki launch.',
+    stoppedReason: 'Paused for this run.',
     starting: 'Connecting',
-    startingReason: 'Waiting for the tunnel to report itself ready.',
-    running: 'Tunnel running',
-    runningReason: 'The tunnel is connected.',
-    runningUrlReason: 'Configured public endpoint: ',
+    startingReason: 'Waiting for local readiness check.',
+    running: 'Connected',
+    runningReason: 'Tunnel connector is active.',
     retrying: 'Reconnecting',
-    retryingReason: 'cloudflared exited and is being restarted.',
-    error: 'Tunnel not running',
-    authOnly: 'Credentials saved, tunnel not started',
-    authOnlyReason: 'Start the tunnel to publish this machine.',
+    retryingReason: 'Connector exited; restarting.',
+    error: 'Stopped on error',
+    authOnly: 'Saved, idle',
+    authOnlyReason: 'Start the tunnel to connect this machine.',
     startButton: 'Start tunnel',
-    saveButton: 'Save and connect',
-    errorStart: 'Start',
+    saveButton: 'Save & connect',
+    errorStart: 'Retry start',
     stopButton: 'Stop for this run',
-    dashLink: 'Tunnel dashboard',
+    dashLink: 'Dashboard',
     createButton: 'Create tunnel in Cloudflare',
-    createHint: 'Create the tunnel and its hostname in the dashboard, then paste its connector token below.',
-    docsLink: 'How tunnels work',
+    createHint: 'Create the tunnel and hostname in Cloudflare, then paste its connector token.',
+    docsLink: 'Docs',
     tokenLabel: 'Tunnel connector token',
-    tokenPlaceholder: 'Paste the connector token from the dashboard',
-    tokenHint: 'Kiki stores this in its credentials store. It is never shown again.',
-    tokenConfigured: 'A token is already saved.',
-    tokenSavedHint: 'A token is saved. Paste a new one to replace it.',
-    tokenReplace: 'Paste a new connector token to replace the saved one',
+    tokenPlaceholder: 'Paste connector token',
+    tokenHint: 'Write-only in Kiki secret storage.',
+    tokenSavedHint: 'Token saved. Paste a new one to replace.',
+    tokenReplace: 'Paste new connector token to replace',
     clearSecret: 'Clear saved token',
     undoSecret: 'Undo clear',
-    clearPending: 'The saved token will be cleared when you save.',
-    modeGroup: 'Configuration source',
-    modeToken: 'Tunnel token',
-    modeLocal: 'Existing local tunnel',
-    tunnelIdLabel: 'Tunnel ID',
+    clearPending: 'Will clear saved token on save.',
+    modeGroup: 'Configuration mode',
+    modeToken: 'Connector token',
+    modeLocal: 'Local config',
+    tunnelIdLabel: 'Tunnel UUID',
     uuidPlaceholder: '00000000-0000-0000-0000-000000000000',
-    configPathLabel: 'cloudflared config file',
+    configPathLabel: 'cloudflared config path',
     configPathPlaceholder: '/etc/cloudflared/config.yml',
-    loginButton: 'Sign in with Cloudflare',
-    reuseButton: 'Use an existing tunnel',
-    loginWaiting: 'Waiting for Cloudflare to hand back a certificate...',
-    loginPending: 'Finish signing in in the browser window. Kiki picks the certificate up when you return.',
-    loginLink: 'Open the Cloudflare authorization page',
-    loginCancel: 'Cancel sign-in',
-    advancedSummary: 'Paths and account access',
-    apiTokenLabel: 'Account API token (optional)',
-    apiTokenPlaceholder: 'Only needed to list tunnels without a certificate',
-    apiTokenHint: 'Account-wide access for listing tunnels. It cannot deploy Workers or Pages, and it is separate from the tunnel token.',
+    loginButton: 'Cert sign-in',
+    reuseButton: 'Select existing tunnel',
+    loginWaiting: 'Waiting for certificate…',
+    loginPending: 'Complete sign-in in your browser.',
+    loginLink: 'Open authorization page',
+    loginCancel: 'Cancel',
+    advancedSummary: 'Paths & account API token',
+    apiTokenLabel: 'Account / Zone API token (optional)',
+    apiTokenPlaceholder: 'Used for listing tunnels and managing Zone DNS',
+    apiTokenHint: 'Write-only token; separate from the tunnel connector token.',
     accountIdLabel: 'Account ID',
-    accountIdPlaceholder: '32 hexadecimal characters',
+    accountIdPlaceholder: '32-char hex ID',
     tokenFileLabel: 'Existing token file',
-    tokenFilePlaceholder: 'Absolute path on the Kiki server',
-    certPathLabel: 'Certificate file',
-    certPathPlaceholder: 'Absolute path on the Kiki server',
-    credentialsFileLabel: 'Tunnel credentials file',
-    credentialsFilePlaceholder: 'Absolute path on the Kiki server',
+    tokenFilePlaceholder: 'Absolute path on server',
+    certPathLabel: 'Certificate path',
+    certPathPlaceholder: 'Absolute path on server',
+    credentialsFileLabel: 'Tunnel credentials JSON',
+    credentialsFilePlaceholder: 'Absolute path on server',
     binaryPathLabel: 'cloudflared executable',
-    binaryPathPlaceholder: 'Leave empty to use the installed copy',
+    binaryPathPlaceholder: 'Leave blank for managed binary',
     publicUrlLabel: 'Public HTTPS endpoint',
-    publicUrlPlaceholder: 'https://your-tunnel.example.com',
-    publicUrlHint: 'Shown here as a label. The Kiki remote-space connection keeps its own authentication.',
+    publicUrlPlaceholder: 'https://space.example.com',
     autoStartLabel: 'Start with Kiki',
-    autoStartHint: 'A saved tunnel starts when Kiki starts. Turning this off does not stop a tunnel that is already running.',
-    certPresent: 'Reusing the certificate at {path}.',
-    certAbsent: 'No account certificate yet. Sign in above, or point this at an existing cert.pem.',
-    reuseTitle: 'Tunnels on this account',
-    reuseLoading: 'Looking for existing tunnels',
-    reuseEmpty: 'No tunnels found on this account.',
-    reuseClose: 'Close list',
-    saving: 'Saving and connecting',
-    saved: 'Saved. The tunnel is connecting.',
+    autoStartHint: 'Starts saved tunnel on launch; toggling off leaves running tunnels up.',
+    certPresent: 'Certificate ready at {path}.',
+    certAbsent: 'No certificate saved yet.',
+    reuseTitle: 'Tunnels on account',
+    reuseLoading: 'Loading tunnels…',
+    reuseEmpty: 'No tunnels found.',
+    reuseClose: 'Close',
+    tunnelFilterPh: 'Filter tunnels…',
+    saving: 'Saving…',
+    saved: 'Saved and connecting.',
     savedOnly: 'Settings saved.',
-    stopped_note: 'Stopped for this Kiki run.',
-    started_note: 'The tunnel is connecting.',
+    stopped_note: 'Stopped for this run.',
+    started_note: 'Connecting tunnel…',
+    copyBtn: 'Copy',
+    copiedBtn: 'Copied',
+    openBtn: 'Open',
+    dnsSetupTitle: 'Add a Cloudflare API token (Zone:Read + DNS:Edit) to manage zones & DNS',
+    dnsTokenPh: 'Paste Cloudflare API token',
+    saveLoadZones: 'Save & load zones',
+    refreshDns: 'Refresh',
+    addRecord: '+ Add record',
+    recTypeLbl: 'Type',
+    recNameLbl: 'Name',
+    recContentLbl: 'Content',
+    proxiedLbl: 'Cloudflare Proxy (Proxied)',
+    cancelBtn: 'Cancel',
+    saveRecordBtn: 'Save record',
+    dnsSearchPh: 'Filter by name or content…',
+    dnsEmpty: 'No matching DNS records.',
+    zonesEmpty: 'No zones accessible with this API token.',
+    proxyOn: 'Proxied',
+    proxyOff: 'DNS only',
+    editBtn: 'Edit',
+    delBtn: 'Delete',
+    confirmDelBtn: 'Confirm',
+    recordSaved: 'DNS record saved.',
+    recordDeleted: 'DNS record deleted.',
+    workerRoutesHeading: 'Worker Routes',
+    copyRouteBtn: 'Copy URL',
     err: {
-      tokenRequired: 'Paste the connector token from the Cloudflare dashboard.',
-      uuidInvalid: 'Tunnel ID must be a UUID, like 00000000-0000-0000-0000-000000000000.',
-      localRequired: 'An existing local tunnel needs a tunnel ID and a config file path.',
-      noSession: 'Open a Kiki session to use this panel.',
-      rateLimited: 'Too many actions at once. Wait a moment and try again.',
-      noBridge: 'The Kiki host did not answer. Reopen the panel.',
-      unknown: 'The plugin did not answer. Try again.',
-      tunnelKeepsExiting: 'cloudflared keeps exiting. Check the token and configuration, then start again.',
-      tunnelReconnecting: 'cloudflared exited and is reconnecting.',
-      needCloudflared: 'Install cloudflared (2025.4.0 or later) first.',
-      needToken: 'Save a tunnel token or pick an existing tunnel first.',
-      needConfigFile: 'Choose a cloudflared config file and tunnel UUID.',
-      needCredentialsFile: 'The tunnel credentials file is missing or unreadable.',
-      needTokenFile: 'The tunnel token file is missing or unreadable.',
-      needCertificate: 'Sign in to Cloudflare, or point advanced settings at an existing certificate.',
-      needApiToken: 'Add an account API token to list tunnels without a certificate.',
-      noConnectorToken: 'No connector token was returned. Use an existing local config for a locally managed tunnel.',
-      cannotSave: 'Kiki cannot save this configuration. Update Kiki to a build with App lifecycle support.',
-      needAppLifecycle: 'This plugin needs a Kiki build with App lifecycle support. Update Kiki, then reopen this panel.',
-      notActivated: 'Kiki has not activated the Cloudflare plugin yet. Enable the plugin and reopen this panel.',
-      cloudflaredRejected: 'cloudflared refused the request. Check the token and configuration.',
-      cannotRun: 'Kiki cannot run cloudflared. Install it or choose a working executable.',
-      badSetting: (key) => 'Check the value for ' + key + '.',
-      checksumMismatch: 'The cloudflared download did not match its published checksum, so nothing was installed. Try again.',
-      pathOccupied: 'Another file already occupies the install path. Choose a different executable path.',
-      needConsent: 'Press Install to allow downloading cloudflared.'
-    }
+      tokenRequired: 'Paste a connector token first.',
+      uuidInvalid: 'Tunnel ID must be a valid UUID.',
+      localRequired: 'Provide both tunnel UUID and config path.',
+      unknown: 'Request failed. Check configuration and retry.',
+    },
   },
   zh: {
-    title: 'Cloudflare 隧道',
-    readingState: '正在读取状态',
-    unavailable: '面板不可用',
-    depMissing: '尚未安装 cloudflared',
-    depMissingReason: 'Cloudflare 隧道需要 cloudflared 可执行文件才能连接。',
-    depError: 'cloudflared 没有响应',
+    title: 'Cloudflare',
+    langBtn: 'EN',
+    tabTunnel: '隧道连接',
+    tabDns: '域名与 DNS',
+    readingState: '同步中…',
+    unavailable: '不可用',
+    depMissing: '未安装 cloudflared',
+    depMissingReason: '安装官方 cloudflared 连接器后即可运行隧道。',
+    depTooOld: 'cloudflared 版本过旧',
     depInstall: '安装 cloudflared',
-    depInstallNote: 'Kiki 会下载官方 cloudflared 版本并校验后安装。',
-    depInstalling: '正在下载 cloudflared…',
-    depInstalled: 'cloudflared 已安装',
-    depTooOld: '当前 cloudflared 版本过旧',
-    unconfigured: '尚未配置',
-    unconfiguredReason: '先在 Cloudflare 创建隧道，再把它的 connector token 粘贴到这里。',
-    stopped: '已停止',
-    stoppedAutoReason: '本次 Kiki 运行已暂停。下次启动 Kiki 时会重新运行。',
-    stoppedReason: '本次 Kiki 运行已暂停。',
-    starting: '正在连接',
-    startingReason: '等待隧道报告就绪。',
+    depInstallNote: '下载并校验官方 cloudflared 二进制至插件目录。',
+    depInstalling: '下载中…',
+    depInstalled: 'cloudflared 已就绪。',
+    unconfigured: '未配置隧道',
+    unconfiguredReason: '在 Cloudflare 创建隧道后，将 Connector Token 粘贴到下方。',
+    stopped: '已暂停',
+    stoppedAutoReason: '本次运行已暂停，下次启动 Kiki 自动恢复。',
+    stoppedReason: '本次运行已暂停。',
+    starting: '连接中',
+    startingReason: '正在等待本地就绪探针响应。',
     running: '隧道运行中',
-    runningReason: '隧道已连接。',
-    runningUrlReason: '已配置的公网地址：',
-    retrying: '正在重连',
-    retryingReason: 'cloudflared 已退出，正在重启。',
-    error: '隧道未运行',
-    authOnly: '凭据已保存，隧道未启动',
-    authOnlyReason: '启动隧道后才会对外发布这台机器。',
+    runningReason: 'cloudflared 连接器已就绪。',
+    retrying: '重连中',
+    retryingReason: '连接器退出，正在自动重连。',
+    error: '运行异常',
+    authOnly: '凭据已存，未启动',
+    authOnlyReason: '点击启动隧道对外建立连接。',
     startButton: '启动隧道',
     saveButton: '保存并连接',
-    errorStart: '启动',
-    stopButton: '本次运行停止',
-    dashLink: '隧道控制台',
+    errorStart: '重新启动',
+    stopButton: '本次停止',
+    dashLink: '控制台',
     createButton: '在 Cloudflare 创建隧道',
-    createHint: '在控制台里创建隧道并配置 hostname，然后粘贴它的 connector token。',
-    docsLink: '隧道工作方式',
-    tokenLabel: '隧道 connector token',
-    tokenPlaceholder: '粘贴控制台给出的 connector token',
-    tokenHint: '由 Kiki 存入凭据存储，之后不会再显示。',
-    tokenConfigured: '已保存一个 token。',
-    tokenSavedHint: '已保存一个 token。粘贴新的 token 即可替换。',
-    tokenReplace: '粘贴新的 connector token 以替换已保存的值',
-    clearSecret: '清除已保存 token',
+    createHint: '在控制台创建隧道与主机名，再粘贴其 Connector Token。',
+    docsLink: '文档说明',
+    tokenLabel: '隧道 Connector Token',
+    tokenPlaceholder: '粘贴控制台生成的 Connector Token',
+    tokenHint: '只写存入凭据库，保存后不回显。',
+    tokenSavedHint: '已存有 Token，粘贴新值可覆盖。',
+    tokenReplace: '粘贴新 Token 替换已存凭据',
+    clearSecret: '清除已存 Token',
     undoSecret: '撤销清除',
-    clearPending: '保存后将清除已保存的 token。',
-    modeGroup: '配置来源',
-    modeToken: '隧道 token',
-    modeLocal: '已有本地隧道',
-    tunnelIdLabel: '隧道 ID',
+    clearPending: '保存后将清除已存 Token。',
+    modeGroup: '配置方式',
+    modeToken: 'Connector Token',
+    modeLocal: '已有本地配置',
+    tunnelIdLabel: '隧道 UUID',
     uuidPlaceholder: '00000000-0000-0000-0000-000000000000',
-    configPathLabel: 'cloudflared 配置文件',
+    configPathLabel: 'cloudflared 配置文件路径',
     configPathPlaceholder: '/etc/cloudflared/config.yml',
-    loginButton: '登录 Cloudflare',
-    reuseButton: '使用已有隧道',
-    loginWaiting: '正在等待 Cloudflare 返回证书…',
-    loginPending: '请在浏览器窗口完成登录，Kiki 会在你返回后读取证书。',
-    loginLink: '打开 Cloudflare 授权页面',
-    loginCancel: '取消登录',
-    advancedSummary: '路径与账户访问',
-    apiTokenLabel: '账户 API token（可选）',
-    apiTokenPlaceholder: '仅在没有证书、需要列出隧道时使用',
-    apiTokenHint: '账户级访问权限，用于列出隧道。它不能部署 Workers 或 Pages，也与隧道 token 无关。',
-    accountIdLabel: '账户 ID',
+    loginButton: '证书登录',
+    reuseButton: '选用已有隧道',
+    loginWaiting: '等待返回证书…',
+    loginPending: '请在浏览器中完成授权。',
+    loginLink: '打开授权页面',
+    loginCancel: '取消',
+    advancedSummary: '路径与账户 API 凭据',
+    apiTokenLabel: 'Cloudflare API Token（可选，用于列举隧道及管理 DNS）',
+    apiTokenPlaceholder: '具备 Zone / DNS 或 Tunnel 读取权限的 API Token',
+    apiTokenHint: '只写存储，独立于单条隧道的 Connector Token。',
+    accountIdLabel: '账户 ID (Account ID)',
     accountIdPlaceholder: '32 位十六进制字符',
-    tokenFileLabel: '已有 token 文件',
-    tokenFilePlaceholder: 'Kiki 服务器上的绝对路径',
-    certPathLabel: '证书文件',
-    certPathPlaceholder: 'Kiki 服务器上的绝对路径',
-    credentialsFileLabel: '隧道凭据文件',
-    credentialsFilePlaceholder: 'Kiki 服务器上的绝对路径',
-    binaryPathLabel: 'cloudflared 可执行文件',
-    binaryPathPlaceholder: '留空则使用已安装的副本',
-    publicUrlLabel: '公共 HTTPS 地址',
-    publicUrlPlaceholder: 'https://your-tunnel.example.com',
-    publicUrlHint: '这里只作为标签显示。Kiki 远程空间连接保留自己的鉴权。',
-    autoStartLabel: '随 Kiki 启动',
-    autoStartHint: '已保存的隧道会在 Kiki 启动时运行。关闭此项不会停止已在运行的隧道。',
-    certPresent: '正在复用 {path} 的证书。',
-    certAbsent: '还没有账户证书。可以先登录，或在这里指向已有的 cert.pem。',
-    reuseTitle: '该账户下的隧道',
-    reuseLoading: '正在查找已有隧道',
-    reuseEmpty: '这个账户下没有找到隧道。',
-    reuseClose: '关闭列表',
-    saving: '正在保存并连接',
-    saved: '已保存，隧道正在连接。',
-    savedOnly: '设置已保存。',
-    stopped_note: '本次 Kiki 运行已停止。',
-    started_note: '隧道正在连接。',
+    tokenFileLabel: '已有 Token 文件路径',
+    tokenFilePlaceholder: '服务器绝对路径',
+    certPathLabel: '证书文件路径 (cert.pem)',
+    certPathPlaceholder: '服务器绝对路径',
+    credentialsFileLabel: '隧道凭据 JSON 路径',
+    credentialsFilePlaceholder: '服务器绝对路径',
+    binaryPathLabel: 'cloudflared 可执行文件路径',
+    binaryPathPlaceholder: '留空使用插件内置管理副本',
+    publicUrlLabel: '公开 HTTPS 地址',
+    publicUrlPlaceholder: 'https://space.example.com',
+    autoStartLabel: '随 Kiki 自动启动',
+    autoStartHint: '启动 Kiki 时自动拉起隧道；关闭此项不会中断当前运行。',
+    certPresent: '复用证书：{path}',
+    certAbsent: '尚未保存账户证书。',
+    reuseTitle: '账户下的隧道',
+    reuseLoading: '正在加载隧道…',
+    reuseEmpty: '未找到可用隧道。',
+    reuseClose: '收起',
+    tunnelFilterPh: '搜索隧道名称或 ID…',
+    saving: '正在保存…',
+    saved: '已保存，正在连接隧道。',
+    savedOnly: '配置已保存。',
+    stopped_note: '本次运行已暂停。',
+    started_note: '正在启动隧道…',
+    copyBtn: '复制',
+    copiedBtn: '已复制',
+    openBtn: '打开',
+    dnsSetupTitle: '填写具备 Zone:Read 与 DNS:Edit 权限的 API Token 以原位管理域名解析',
+    dnsTokenPh: '粘贴 Cloudflare API Token',
+    saveLoadZones: '保存并加载域名',
+    refreshDns: '刷新',
+    addRecord: '+ 新增记录',
+    recTypeLbl: '类型',
+    recNameLbl: '主机记录名',
+    recContentLbl: '记录值',
+    proxiedLbl: '开启 Cloudflare 代理 (Proxied)',
+    cancelBtn: '取消',
+    saveRecordBtn: '保存记录',
+    dnsSearchPh: '按名称或记录值过滤…',
+    dnsEmpty: '当前筛选下无 DNS 记录。',
+    zonesEmpty: '该 Token 下未读取到可用域名 Zone。',
+    proxyOn: '已代理',
+    proxyOff: '仅解析',
+    editBtn: '编辑',
+    delBtn: '删除',
+    confirmDelBtn: '确认删除',
+    recordSaved: 'DNS 记录已保存。',
+    recordDeleted: 'DNS 记录已删除。',
+    workerRoutesHeading: 'Worker 路由绑定',
+    copyRouteBtn: '复制路由',
     err: {
-      tokenRequired: '请粘贴 Cloudflare 控制台给出的 connector token。',
-      uuidInvalid: '隧道 ID 必须是 UUID，例如 00000000-0000-0000-0000-000000000000。',
-      localRequired: '使用已有本地隧道时需要填写隧道 ID 和配置文件路径。',
-      noSession: '请先打开一个 Kiki 会话再使用此面板。',
-      rateLimited: '操作过于频繁，请稍后再试。',
-      noBridge: 'Kiki 宿主没有响应，请重新打开面板。',
-      unknown: '插件没有响应，请重试。',
-      tunnelKeepsExiting: 'cloudflared 反复退出。请检查 token 与配置后重新启动。',
-      tunnelReconnecting: 'cloudflared 已退出，正在重连。',
-      needCloudflared: '请先安装 cloudflared（2025.4.0 或更新版本）。',
-      needToken: '请先保存隧道 token，或选择一个已有隧道。',
-      needConfigFile: '请选择 cloudflared 配置文件和隧道 UUID。',
-      needCredentialsFile: '隧道凭据文件缺失或不可读。',
-      needTokenFile: '隧道 token 文件缺失或不可读。',
-      needCertificate: '请登录 Cloudflare，或在高级设置里指向已有证书。',
-      needApiToken: '如需在没有证书时列出隧道，请提供账户 API token。',
-      noConnectorToken: '没有返回 connector token。本地管理的隧道请使用已有本地配置。',
-      cannotSave: 'Kiki 无法保存此配置。请更新到支持 App 生命周期的 Kiki 版本。',
-      needAppLifecycle: '此插件需要支持 App 生命周期的 Kiki 版本。请更新 Kiki 后重新打开本面板。',
-      notActivated: 'Kiki 尚未启用 Cloudflare 插件。请启用插件后重新打开本面板。',
-      cloudflaredRejected: 'cloudflared 拒绝了该请求。请检查 token 与配置。',
-      cannotRun: 'Kiki 无法运行 cloudflared。请安装它或指定可执行文件。',
-      badSetting: (key) => '请检查 ' + key + ' 的取值。',
-      checksumMismatch: '下载的 cloudflared 与官方校验值不符，因此没有安装。请重试。',
-      pathOccupied: '该安装路径已被其他文件占用。请换一个可执行文件路径。',
-      needConsent: '点击安装即表示允许下载 cloudflared。'
-    }
-  }
+      tokenRequired: '请先粘贴隧道 Connector Token。',
+      uuidInvalid: '隧道 ID 须为标准 UUID 格式。',
+      localRequired: '请填写隧道 UUID 与本地配置文件路径。',
+      unknown: '请求未完成，请检查配置后重试。',
+    },
+  },
 };
 
 const $ = (id) => document.getElementById(id);
-const el = {
-  stat: $('stat'), reason: $('reason'), publicUrl: $('public-url'), dot: $('dot'), live: $('live'),
-  lifecycle: $('lifecycle'), rootReason: $('root-reason'), busy: $('busy'),
-  ruleDep: $('rule-dep'), depSection: $('dep-section'), depActions: $('dep-actions'), depNote: $('dep-note'),
-  ruleSetup: $('rule-setup'), setup: $('setup'), setupFields: $('setup-fields'),
-  setupReason: $('setup-reason'),
-  createActions: $('create-actions'), create: $('create'), createHint: $('create-hint'), docs: $('docs'),
-  wrapToken: $('wrap-token'), token: $('token'), tokenHint: $('token-hint'),
-  mode: $('mode'), localFields: $('local-fields'), tunnelid: $('tunnelid'), configpath: $('configpath'),
-  login: $('login'), reuse: $('reuse'), save: $('save'),
-  loginPanel: $('login-panel'), loginState: $('login-state'), loginLink: $('login-link'),
-  loginUrl: $('login-url'), cancelLogin: $('cancel-login'),
-  reusePanel: $('reuse-panel'), reuseState: $('reuse-state'), tunnels: $('tunnels'), reuseClose: $('reuse-close'),
-  savedNote: $('saved-note'), ruleAdvanced: $('rule-advanced'), advanced: $('advanced'), certFact: $('cert-fact'),
-  apitoken: $('apitoken'), clearToken: $('clear-token'), clearApiToken: $('clear-apitoken'), accountid: $('accountid'), tokenfile: $('tokenfile'),
-  certpath: $('certpath'), credfile: $('credfile'), binarypath: $('binarypath'), publicurl: $('publicurl'),
-  autoStart: $('autoStart')
-};
-
-let t = I18N[detectLocale()];
+let lang = safeStorage.get('cf.lang') || ((navigator.language || 'en').toLowerCase().startsWith('zh') ? 'zh' : 'en');
+let t = I18N[lang] || I18N.zh;
+let activeTab = safeStorage.get('cf.tab') === 'dns' ? 'dns' : 'tunnel';
+let parentOrigin = '';
 let bridgeReady = false;
 let sequence = 0;
 const pending = new Map();
+
 let status = null;
 let mode = 'token';
 let busy = '';
 let pollTimer = null;
-let lastStateKey = '';
 let savedNote = '';
 let fieldsFilled = false;
 let blocked = '';
-let publicUrlFact = '';
 let lastLoginUrl = '';
 let depInstallError = '';
 let loginDismissed = false;
+let cachedTunnels = [];
 const clearedSecrets = new Set();
 
-function detectLocale() {
-  return (navigator.language || 'en').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+// DNS state
+let zones = [];
+let activeZoneId = safeStorage.get('cf.zoneId') || '';
+let dnsRecords = [];
+let workerRoutes = [];
+let dnsTypeFilter = 'ALL';
+let dnsSearchQuery = '';
+let editingRecordId = '';
+let deletingRecordId = '';
+let dnsBusy = false;
+const dnsRowMap = new Map();
+
+function applyPresentation(pres, topTheme) {
+  const root = document.documentElement;
+  const theme = (pres && pres.theme) || topTheme;
+  if (theme === 'dark' || theme === 'light') {
+    root.setAttribute('data-theme', theme);
+  }
+  if (!safeStorage.get('cf.lang') && pres && typeof pres.locale === 'string') {
+    lang = pres.locale.toLowerCase().startsWith('zh') ? 'zh' : 'en';
+    t = I18N[lang] || I18N.zh;
+  }
+  if (pres && pres.tokens && typeof pres.tokens === 'object') {
+    for (const [k, v] of Object.entries(pres.tokens)) {
+      if (typeof k === 'string' && k.startsWith('--color-') && typeof v === 'string' && v.trim()) {
+        root.style.setProperty(k, v.trim());
+      }
+    }
+  }
+}
+
+async function copySafe(text, btnNode) {
+  const prev = btnNode ? btnNode.textContent : '';
+  const mark = () => {
+    if (!btnNode) return;
+    btnNode.textContent = t.copiedBtn;
+    setTimeout(() => { btnNode.textContent = prev; }, 1200);
+  };
+  try {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      await navigator.clipboard.writeText(String(text));
+      mark();
+      return;
+    }
+    throw new Error('no clipboard');
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = String(text);
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-9999px';
+    ta.style.opacity = '0';
+    document.body.append(ta);
+    ta.select();
+    try { document.execCommand('copy'); mark(); } catch {}
+    ta.remove();
+  }
+}
+
+function request(payload) {
+  const id = ++sequence;
+  const targetOrigin = !parentOrigin || parentOrigin === 'null' ? '*' : parentOrigin;
+  const response = new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+  window.parent.postMessage({ channel: CHANNEL, kind: 'request', id, ...payload }, targetOrigin);
+  return response;
+}
+
+function call(action, args) {
+  if (!bridgeReady || blocked !== '') return Promise.reject(new Error(blocked || t.err.unknown));
+  return request({ method: 'plugin.call', action, args: args ?? {} });
+}
+
+function installPrerequisite(id) {
+  if (!bridgeReady || blocked !== '') return Promise.reject(new Error(blocked || t.err.unknown));
+  return request({ method: 'plugin.installPrerequisite', prerequisiteId: id, consent: true });
+}
+
+function openExternal(url) {
+  if (!bridgeReady || blocked !== '') return;
+  request({ method: 'plugin.openExternal', url: String(url) }).catch(() => { $('live').textContent = String(url); });
 }
 
 function applyStrings() {
-  document.documentElement.lang = t === I18N.zh ? 'zh' : 'en';
+  t = I18N[lang] || I18N.zh;
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
   document.title = t.title;
+  $('langBtn').textContent = t.langBtn;
   for (const node of document.querySelectorAll('[data-i18n]')) {
-    const value = t[node.getAttribute('data-i18n')];
-    if (typeof value === 'string') node.textContent = value;
+    const val = t[node.getAttribute('data-i18n')];
+    if (typeof val === 'string') node.textContent = val;
   }
-  /* Placeholders live in the table too, so no English survives a Chinese run. */
   for (const node of document.querySelectorAll('[data-i18n-placeholder]')) {
-    const value = t[node.getAttribute('data-i18n-placeholder')];
-    if (typeof value === 'string') node.placeholder = value;
+    const val = t[node.getAttribute('data-i18n-placeholder')];
+    if (typeof val === 'string') node.placeholder = val;
   }
   const aria = document.querySelector('[data-i18n-aria]');
   if (aria) aria.setAttribute('aria-label', t[aria.getAttribute('data-i18n-aria')]);
 }
 
-function setText(node, value) { node.textContent = value; }
-function announce(value) { el.live.textContent = value; }
-
-/* plugin.call and plugin.openExternal do not need a session; session.* methods do. */
-function request(payload) {
-  const id = ++sequence;
-  const response = new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
-  window.parent.postMessage({ channel: CHANNEL, kind: 'request', id, ...payload }, '*');
-  return response;
-}
-
-function call(action, args) {
-  if (!bridgeReady || blocked !== '') return Promise.reject(new Error(blocked || t.err.noBridge));
-  return request({ method: 'plugin.call', action, args: args ?? {} });
-}
-
-function installPrerequisite(id) {
-  if (!bridgeReady || blocked !== '') return Promise.reject(new Error(blocked || t.err.noBridge));
-  return request({ method: 'plugin.installPrerequisite', prerequisiteId: id, consent: true });
-}
-
-/* The sandbox cannot open windows, so the host opens the page. If it cannot,
-   the link stays visible and selectable instead of pretending it opened. */
-function openExternal(url) {
-  if (!bridgeReady || blocked !== '') { announce(t.err.noBridge); return; }
-  request({ method: 'plugin.openExternal', url }).catch(() => { announce(url); });
-}
-
-/* The backend throws safe, actionable English sentences. The panel shows the
-   user's own language for the ones it recognizes and falls back to the
-   original text, never to an empty or invented message. */
-const SERVICE_ERRORS = [
-  [/repeatedly exited/i, 'tunnelKeepsExiting'],
-  [/exited; reconnecting/i, 'tunnelReconnecting'],
-  [/Install cloudflared \(2025|Install cloudflared before/i, 'needCloudflared'],
-  [/Save a tunnel token or select/i, 'needToken'],
-  [/config file and tunnel UUID/i, 'needConfigFile'],
-  [/credentials file is missing/i, 'needCredentialsFile'],
-  [/token file is missing/i, 'needTokenFile'],
-  [/certificate/i, 'needCertificate'],
-  [/certificate, or clear its custom path/i, 'needCertificate'],
-  [/API token to (list|select)/i, 'needApiToken'],
-  [/No connector token was returned/i, 'noConnectorToken'],
-  [/Kiki cannot save this plugin configuration/i, 'cannotSave'],
-  [/App lifecycle support/i, 'needAppLifecycle'],
-  [/Kiki is not activated/i, 'notActivated'],
-  [/cloudflared rejected the operation/i, 'cloudflaredRejected'],
-  [/Cannot run cloudflared/i, 'cannotRun'],
-  [/Invalid setting: ([a-zA-Z]+)/, 'badSetting'],
-  [/download checksum mismatch/i, 'checksumMismatch'],
-  [/install path/i, 'pathOccupied'],
-  [/Choose Install to allow/i, 'needConsent']
-];
-
-function normalizeError(error) {
-  const raw = typeof error === 'string' ? error : (error && error.message) || '';
-  if (/rate limited/i.test(raw)) return t.err.rateLimited;
-  if (/no session/i.test(raw)) return t.err.noSession;
-  for (const [pattern, key] of SERVICE_ERRORS) {
-    const match = pattern.exec(raw);
-    if (match === null) continue;
-    const value = t.err[key];
-    if (typeof value === 'string') return value;
-    if (typeof value === 'function') return value(match[1] || '');
+function switchTab(nextTab) {
+  activeTab = nextTab === 'dns' ? 'dns' : 'tunnel';
+  safeStorage.set('cf.tab', activeTab);
+  $('tabTunnel').setAttribute('aria-pressed', activeTab === 'tunnel' ? 'true' : 'false');
+  $('tabDns').setAttribute('aria-pressed', activeTab === 'dns' ? 'true' : 'false');
+  $('tunnelView').hidden = activeTab !== 'tunnel';
+  $('dnsView').hidden = activeTab !== 'dns';
+  if (activeTab === 'dns' && bridgeReady) {
+    syncDnsSurface();
   }
-  return raw.trim() || t.err.unknown;
 }
 
-const UUID = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
-
-/* Any value the user typed is itself worth saving, even before the tunnel is
-   complete: a path, an account id or an endpoint is a real change. Only an
-   entirely empty form in token mode is rejected. */
-function hasPendingEdit() {
-  return clearedSecrets.size > 0 || [
-    el.token, el.tunnelid, el.configpath, el.accountid, el.tokenfile, el.certpath,
-    el.credfile, el.binarypath, el.publicurl, el.apitoken
-  ].some((node) => node.value.trim() !== '');
-}
-
-function validate() {
-  if (mode === 'token') {
-    /* A pasted token, a saved token, or an existing token file each complete
-       token mode. So does any other pending edit, because that is how a user
-       prepares a tunnel without typing the token yet. */
-    if (el.token.value.trim() || el.tokenfile.value.trim()) return null;
-    if (status?.configuration?.tokenConfigured && !clearedSecrets.has('tunnelToken')) return null;
-    if (hasPendingEdit()) return null;
-    return t.err.tokenRequired;
-  }
-  const tunnelId = el.tunnelid.value.trim();
-  if (tunnelId && !UUID.test(tunnelId)) return t.err.uuidInvalid;
-  if (!tunnelId || !el.configpath.value.trim()) return t.err.localRequired;
-  return null;
-}
-
-function collect() {
-  const values = { mode };
-  if (mode === 'token') {
-    const token = el.token.value.trim();
-    if (token) values.tunnelToken = token;
-  } else {
-    const tunnelId = el.tunnelid.value.trim();
-    const configPath = el.configpath.value.trim();
-    if (tunnelId) values.tunnelId = tunnelId;
-    if (configPath) values.configPath = configPath;
-  }
-  if (clearedSecrets.has('tunnelToken')) values.tunnelToken = null;
-  const cfg = status?.configuration || {};
-  const savedValues = {
-    accountId: cfg.accountId || '', tokenFile: cfg.tokenFile || '',
-    certificatePath: cfg.certificatePath && cfg.certificatePath.indexOf('.cloudflared') === -1 ? cfg.certificatePath : '',
-    credentialsFile: cfg.credentialsFile || '', cloudflaredPath: cfg.cloudflaredPath || '', publicUrl: cfg.publicUrl || ''
-  };
-  for (const [node, key] of [
-    [el.accountid, 'accountId'], [el.tokenfile, 'tokenFile'], [el.certpath, 'certificatePath'],
-    [el.credfile, 'credentialsFile'], [el.binarypath, 'cloudflaredPath'], [el.publicurl, 'publicUrl']
-  ]) {
-    const value = node.value.trim();
-    if (value !== String(savedValues[key]).trim()) values[key] = value || null;
-  }
-  /* An explicit clear must survive the write-only secret round trip. */
-  const apiToken = el.apitoken.value.trim();
-  if (apiToken) values.apiToken = apiToken;
-  else if (clearedSecrets.has('apiToken')) values.apiToken = null;
-  if (el.autoStart.checked !== (status?.configuration?.autoStart !== false)) {
-    values.autoStart = el.autoStart.checked;
-  }
-  return values;
-}
-
-function showFormError(message) {
-  el.setupReason.hidden = false;
-  el.setupReason.dataset.tone = 'error';
-  setText(el.setupReason, message);
-}
-
-function clearFormError() { el.setupReason.hidden = true; }
-
-function button(kind, label, onClick, disabled) {
+function btn(kind, label, onClick, disabled) {
   const node = document.createElement('button');
   node.type = 'button';
   node.className = kind;
@@ -764,18 +1267,88 @@ function button(kind, label, onClick, disabled) {
   return node;
 }
 
-function render(next) {
+function hasPendingEdit() {
+  return clearedSecrets.size > 0 || [
+    $('token'), $('tunnelid'), $('configpath'), $('accountid'), $('tokenfile'), $('certpath'),
+    $('credfile'), $('binarypath'), $('publicurl'), $('apitoken'),
+  ].some((node) => node.value.trim() !== '');
+}
+
+function validateTunnelForm() {
+  if (mode === 'token') {
+    if ($('token').value.trim() || $('tokenfile').value.trim()) return null;
+    if (status?.configuration?.tokenConfigured && !clearedSecrets.has('tunnelToken')) return null;
+    if (hasPendingEdit()) return null;
+    return t.err.tokenRequired;
+  }
+  const tid = $('tunnelid').value.trim();
+  if (tid && !UUID.test(tid)) return t.err.uuidInvalid;
+  if (!tid || !$('configpath').value.trim()) return t.err.localRequired;
+  return null;
+}
+
+function collectTunnelValues() {
+  const values = { mode };
+  if (mode === 'token') {
+    const tok = $('token').value.trim();
+    if (tok) values.tunnelToken = tok;
+  } else {
+    const tid = $('tunnelid').value.trim();
+    const cfgp = $('configpath').value.trim();
+    if (tid) values.tunnelId = tid;
+    if (cfgp) values.configPath = cfgp;
+  }
+  if (clearedSecrets.has('tunnelToken')) values.tunnelToken = null;
+  const cfg = status?.configuration || {};
+  const savedValues = {
+    accountId: cfg.accountId || '',
+    tokenFile: cfg.tokenFile || '',
+    certificatePath: cfg.certificatePath && cfg.certificatePath.indexOf('.cloudflared') === -1 ? cfg.certificatePath : '',
+    credentialsFile: cfg.credentialsFile || '',
+    cloudflaredPath: cfg.cloudflaredPath || '',
+    publicUrl: cfg.publicUrl || '',
+  };
+  for (const [node, key] of [
+    [$('accountid'), 'accountId'], [$('tokenfile'), 'tokenFile'], [$('certpath'), 'certificatePath'],
+    [$('credfile'), 'credentialsFile'], [$('binarypath'), 'cloudflaredPath'], [$('publicurl'), 'publicUrl'],
+  ]) {
+    const val = node.value.trim();
+    if (val !== String(savedValues[key]).trim()) values[key] = val || null;
+  }
+  const apiToken = $('apitoken').value.trim();
+  if (apiToken) values.apiToken = apiToken;
+  else if (clearedSecrets.has('apiToken')) values.apiToken = null;
+  if ($('autoStart').checked !== (cfg.autoStart !== false)) {
+    values.autoStart = $('autoStart').checked;
+  }
+  return values;
+}
+
+function syncFields() {
+  const cfg = status?.configuration || {};
+  mode = cfg.mode === 'local' ? 'local' : 'token';
+  const radio = $('mode').querySelector(`input[value="${mode}"]`);
+  if (radio && !radio.checked) radio.checked = true;
+  const fill = (node, val) => { if (node !== document.activeElement) node.value = val; };
+  fill($('tunnelid'), cfg.tunnelId || '');
+  fill($('configpath'), cfg.configPath || '');
+  fill($('accountid'), cfg.accountId || '');
+  fill($('tokenfile'), cfg.tokenFile || '');
+  fill($('certpath'), cfg.certificatePath && cfg.certificatePath.indexOf('.cloudflared') === -1 ? cfg.certificatePath : '');
+  fill($('credfile'), cfg.credentialsFile || '');
+  fill($('binarypath'), cfg.cloudflaredPath || '');
+  fill($('publicurl'), cfg.publicUrl || '');
+  $('autoStart').checked = cfg.autoStart !== false;
+}
+
+function renderTunnel(next) {
   if (next) {
-    /* Adopt the stored mode whenever the backend reports a fresh one, so a
-       page opened on a local-mode tunnel shows its own fields. */
     const reported = next.configuration?.mode;
     if (reported === 'local' || reported === 'token') {
-      const radio = el.mode.querySelector('input[value="' + reported + '"]');
+      const radio = $('mode').querySelector(`input[value="${reported}"]`);
       if (radio && !radio.checked) { radio.checked = true; mode = reported; }
     }
     status = next;
-    /* Populate the fields on the first status too, so an existing local tunnel
-       shows its own path instead of an empty form. */
     if (!fieldsFilled) { syncFields(); fieldsFilled = true; }
   }
   const dep = status?.dependency || { state: 'missing' };
@@ -788,17 +1361,12 @@ function render(next) {
   const starting = svc.state === 'starting' || svc.state === 'retrying';
   const working = busy !== '';
 
-  el.lifecycle.replaceChildren();
-  el.depActions.replaceChildren();
-  el.setup.hidden = !depReady;
-  el.ruleSetup.hidden = !depReady;
-  el.depSection.hidden = depReady;
-  el.ruleDep.hidden = depReady;
-  el.ruleAdvanced.hidden = !depReady;
-  el.advanced.hidden = !depReady;
+  $('setup').hidden = !depReady;
+  $('dep-section').hidden = depReady;
+  $('advanced').hidden = !depReady;
 
   let tone = '';
-  let headline;
+  let headline = '';
   let reason = '';
   if (!depReady) {
     tone = dep.state === 'error' ? 'error' : '';
@@ -811,125 +1379,101 @@ function render(next) {
     tone = 'running';
     headline = t.running;
     reason = t.runningReason;
-    /* A configured endpoint is a label Kiki shows; it is not proof the machine
-       is reachable, so it stays a separate fact under the status line. */
-    publicUrlFact = cfg.publicUrl || '';
   } else if (svc.state === 'error') {
     tone = 'error';
     headline = t.error;
-    /* The service reports a safe English sentence; show it in the user's
-       language when it is one we know, and never an empty reason. */
-    reason = svc.error ? normalizeError(svc.error) : t.err.unknown;
+    reason = svc.error || t.err.unknown;
   } else if (starting) {
     tone = 'busy';
     headline = svc.state === 'retrying' ? t.retrying : t.starting;
-    reason = t[svc.state === 'retrying' ? 'retryingReason' : 'startingReason'];
+    reason = svc.state === 'retrying' ? t.retryingReason : t.startingReason;
   } else if (svc.manualStop || svc.state === 'stopped') {
-    /* A paused run is exactly what Stop means, and it keeps the next-start
-       fact; saved-but-never-started is a different state, below. */
     headline = t.stopped;
     reason = cfg.autoStart !== false ? t.stoppedAutoReason : t.stoppedReason;
   } else {
-    /* Saved credentials that were never started are not a running tunnel. */
     headline = t.authOnly;
     reason = t.authOnlyReason;
   }
 
-  el.dot.dataset.tone = tone;
-  setText(el.stat, headline);
-  setText(el.reason, reason);
-  el.reason.dataset.tone = tone === 'error' ? 'error' : '';
-  el.publicUrl.hidden = publicUrlFact === '';
-  if (publicUrlFact) setText(el.publicUrl, t.runningUrlReason + publicUrlFact + '.');
+  $('dot').dataset.tone = tone;
+  $('stat').textContent = headline;
+  $('reason').textContent = reason;
+  $('reason').dataset.tone = tone === 'error' ? 'error' : '';
 
-  const stateKey = [dep.state, cfg.mode, configured, svc.state, svc.ready, cfg.autoStart, svc.manualStop, login.state].join('|');
-  if (stateKey !== lastStateKey) {
-    lastStateKey = stateKey;
-    announce(headline + (reason ? '. ' + reason : ''));
-  }
+  const pubUrl = cfg.publicUrl || '';
+  $('public-url-bar').hidden = !pubUrl;
+  if (pubUrl) $('public-url-val').textContent = pubUrl;
+
+  const lc = $('lifecycle');
+  lc.replaceChildren();
+  const depAct = $('dep-actions');
+  depAct.replaceChildren();
 
   if (depReady) {
     if (running || starting) {
-      el.lifecycle.append(button('secondary', t.stopButton, () => run('stop'), working));
+      lc.append(btn('secondary', t.stopButton, () => runLifecycle('stop'), working));
     } else if (configured) {
-      el.lifecycle.append(button('primary', svc.state === 'error' ? t.errorStart : t.startButton, () => run('start'), working));
+      lc.append(btn('primary', svc.state === 'error' ? t.errorStart : t.startButton, () => runLifecycle('start'), working));
     }
     if (cfg.tunnelId) {
-      el.lifecycle.append(button('quiet', t.dashLink, () => {
+      lc.append(btn('secondary', t.dashLink, () => {
         call('setup').then((r) => { if (r?.url) openExternal(r.url); }, () => {});
       }, false));
     }
-    el.lifecycle.hidden = el.lifecycle.childElementCount === 0;
+    lc.hidden = lc.childElementCount === 0;
   } else {
-    /* The button is the download consent; there is no second confirmation. */
-    el.depActions.append(button('primary', busy === 'install' ? t.depInstalling : t.depInstall,
-      () => runInstall(), working));
-    /* The status line above already carries the reason, so the block below
-       states only what the button does. */
-    setText(el.depNote, depInstallError || t.depInstallNote);
-    el.depSection.hidden = false;
+    depAct.append(btn('primary', working ? t.depInstalling : t.depInstall, () => runInstall(), working));
+    $('dep-note').textContent = depInstallError || t.depInstallNote;
   }
 
-  el.busy.hidden = working === false;
-  if (working) setText(el.busy, busy);
+  $('busy').hidden = !working;
+  if (working) $('busy').textContent = busy;
 
-  el.rootReason.hidden = true;
+  $('wrap-token').hidden = mode === 'local';
+  $('local-fields').hidden = mode !== 'local';
+  $('create-actions').hidden = configured;
+  $('create-hint').hidden = configured;
 
-  el.wrapToken.hidden = mode === 'local';
-  el.localFields.hidden = mode !== 'local';
-  /* Once a tunnel is configured, creating another one is no longer the next
-     step, so the dashboard handoff folds away and the live state owns the page. */
-  el.createActions.hidden = configured;
-  el.createHint.hidden = configured;
-  /* The saved state reads once, as the hint; the placeholder only invites a
-     replacement, so a configured token never appears twice in a row. */
-  el.tokenHint.textContent = clearedSecrets.has('tunnelToken') ? t.clearPending : (cfg.tokenConfigured ? t.tokenSavedHint : t.tokenHint);
-  el.token.placeholder = cfg.tokenConfigured ? t.tokenReplace : t.tokenPlaceholder;
-  el.apitoken.placeholder = clearedSecrets.has('apiToken') ? t.clearPending : (status?.account?.apiToken ? t.tokenSavedHint : t.apiTokenPlaceholder);
-  el.clearToken.hidden = mode === 'local' || cfg.credentialSource !== 'plugin-secret-store';
-  el.clearApiToken.hidden = !status?.account?.apiToken;
-  el.clearToken.textContent = clearedSecrets.has('tunnelToken') ? t.undoSecret : t.clearSecret;
-  el.clearApiToken.textContent = clearedSecrets.has('apiToken') ? t.undoSecret : t.clearSecret;
-  el.clearToken.disabled = working;
-  el.clearApiToken.disabled = working;
-  el.save.disabled = working;
-  el.login.disabled = working;
-  el.reuse.disabled = working;
-  el.create.disabled = working;
-  el.autoStart.disabled = working;
+  $('token-hint').textContent = clearedSecrets.has('tunnelToken') ? t.clearPending : (cfg.tokenConfigured ? t.tokenSavedHint : t.tokenHint);
+  $('token').placeholder = cfg.tokenConfigured ? t.tokenReplace : t.tokenPlaceholder;
+  $('apitoken').placeholder = clearedSecrets.has('apiToken') ? t.clearPending : (status?.account?.apiToken ? t.tokenSavedHint : t.apiTokenPlaceholder);
+  $('clear-token').hidden = mode === 'local' || cfg.credentialSource !== 'plugin-secret-store';
+  $('clear-apitoken').hidden = !status?.account?.apiToken;
+  $('clear-token').textContent = clearedSecrets.has('tunnelToken') ? t.undoSecret : t.clearSecret;
+  $('clear-apitoken').textContent = clearedSecrets.has('apiToken') ? t.undoSecret : t.clearSecret;
 
-  /* cloudflared can finish before the user has acted on the URL, so the
-     sign-in block stays until the user dismisses it or starts again. */
+  for (const b of [$('clear-token'), $('clear-apitoken'), $('save'), $('login'), $('reuse'), $('create'), $('autoStart')]) {
+    b.disabled = working;
+  }
+
   if (login.state === 'idle' || login.state === 'complete') lastLoginUrl = '';
   const signInVisible = login.state === 'pending' || login.state === 'error' || lastLoginUrl !== '';
-  el.loginPanel.hidden = !signInVisible && !loginDismissed;
+  $('login-panel').hidden = !signInVisible || loginDismissed;
   if (login.state === 'pending') {
-    setText(el.loginState, login.url ? t.loginPending : t.loginWaiting);
-    el.loginLink.hidden = !login.url;
-    el.cancelLogin.hidden = false;
-    el.loginUrl.hidden = !login.url;
+    $('login-state').textContent = login.url ? t.loginPending : t.loginWaiting;
+    $('login-link').hidden = !login.url;
+    $('cancel-login').hidden = false;
+    $('login-url').hidden = !login.url;
     if (login.url) {
-      el.loginLink.href = login.url;
-      setText(el.loginUrl, login.url);
-      /* cloudflared prints the URL only after the login call returns, so hand
-         it to the host on whichever status first reports one. */
+      $('login-link').href = login.url;
+      $('login-url').textContent = login.url;
       if (login.url !== lastLoginUrl) { lastLoginUrl = login.url; openExternal(login.url); }
     }
   } else if (login.state === 'error') {
-    setText(el.loginState, login.error ? normalizeError(login.error) : t.err.unknown);
-    lastLoginUrl = '';
-    el.loginLink.hidden = true;
-    el.loginUrl.hidden = true;
-    el.cancelLogin.hidden = true;
+    $('login-state').textContent = login.error || t.err.unknown;
+    $('login-link').hidden = true;
+    $('login-url').hidden = true;
+    $('cancel-login').hidden = true;
   }
 
-  el.savedNote.hidden = savedNote === '';
-  if (savedNote) setText(el.savedNote, savedNote);
+  $('saved-note').hidden = !savedNote;
+  if (savedNote) $('saved-note').textContent = savedNote;
 
-  el.certFact.textContent = status?.account?.certificate
+  $('cert-fact').textContent = status?.account?.certificate
     ? t.certPresent.replace('{path}', cfg.certificatePath || '')
     : t.certAbsent;
 
+  if (activeTab === 'dns') syncDnsSurface();
   schedulePoll();
 }
 
@@ -938,289 +1482,689 @@ function schedulePoll() {
   const svc = status?.service;
   const login = status?.login;
   const watch = busy !== '' || login?.state === 'pending' || svc?.state === 'starting' || svc?.state === 'retrying';
-  if (watch) pollTimer = setTimeout(() => { void refresh(); }, 2000);
+  if (watch) pollTimer = setTimeout(() => { void refreshStatus(); }, 2000);
 }
 
-/* When the host refuses the bridge (an older Kiki, or no session), every action
-   here is a dead click. Say so once and stop offering the form. */
-function block(message) {
-  blocked = message;
-  el.dot.dataset.tone = 'error';
-  setText(el.stat, t.unavailable);
-  setText(el.reason, '');
-  el.rootReason.hidden = false;
-  el.rootReason.dataset.tone = 'error';
-  setText(el.rootReason, message);
-  el.setup.hidden = true;
-  el.ruleSetup.hidden = true;
-  el.advanced.hidden = true;
-  el.ruleAdvanced.hidden = true;
-  el.depSection.hidden = true;
-  el.ruleDep.hidden = true;
-  el.lifecycle.replaceChildren();
-  el.lifecycle.hidden = true;
-  el.loginPanel.hidden = true;
-  el.reusePanel.hidden = true;
-  el.savedNote.hidden = true;
-  el.busy.hidden = true;
-  clearTimeout(pollTimer);
-  announce(message);
-}
-
-async function refresh() {
+async function refreshStatus() {
   try {
-    render(await call('status'));
-  } catch (error) {
-    block(normalizeError(error));
+    renderTunnel(await call('status'));
+  } catch (err) {
+    blocked = err?.message || t.err.unknown;
+    $('dot').dataset.tone = 'error';
+    $('stat').textContent = t.unavailable;
+    $('root-reason').hidden = false;
+    $('root-reason').textContent = blocked;
   }
 }
 
-async function run(action, args) {
+async function runLifecycle(action) {
   busy = action === 'stop' ? t.stopped_note : t.started_note;
-  render();
+  renderTunnel();
   try {
-    render(await call(action, args));
+    renderTunnel(await call(action));
     savedNote = action === 'stop' ? t.stopped_note : t.started_note;
-  } catch (error) {
-    showFormError(normalizeError(error));
+  } catch (err) {
+    $('setup-reason').hidden = false;
+    $('setup-reason').dataset.tone = 'error';
+    $('setup-reason').textContent = err?.message || t.err.unknown;
   } finally {
     busy = '';
-    render();
+    renderTunnel();
   }
 }
 
 async function runInstall() {
   busy = t.depInstalling;
-  render();
+  renderTunnel();
   try {
     await installPrerequisite(PREREQUISITE);
-  } catch (error) {
+  } catch (err) {
     busy = '';
-    depInstallError = normalizeError(error);
-    render();
+    depInstallError = err?.message || t.err.unknown;
+    renderTunnel();
     return;
   }
-  /* The host persists the path and its own setting; poll until the probe agrees. */
-  busy = t.depInstalling;
-  render();
   for (let i = 0; i < 20; i += 1) {
     await new Promise((r) => setTimeout(r, 1500));
     try {
       const next = await call('status');
-      busy = '';
-      if (next?.dependency?.state === 'ready') depInstallError = '';
-      render(next);
       if (next?.dependency?.state === 'ready') {
+        busy = '';
+        depInstallError = '';
         savedNote = t.depInstalled;
-        render();
+        renderTunnel(next);
         return;
       }
-    } catch { /* keep waiting for the host */ }
+    } catch {}
   }
   busy = '';
-  render();
+  renderTunnel();
 }
 
-function syncFields() {
-  const cfg = status?.configuration || {};
-  mode = cfg.mode === 'local' ? 'local' : 'token';
-  const radio = el.mode.querySelector('input[value="' + mode + '"]');
-  if (radio && !radio.checked) radio.checked = true;
-  /* A field the user is typing in keeps its value; the rest show what is
-     actually stored, so a status refresh never discards an edit. */
-  const fill = (node, value) => {
-    if (node !== document.activeElement) node.value = value;
+function renderTunnelList() {
+  const q = $('tunnelFilter').value.trim().toLowerCase();
+  const ul = $('tunnels');
+  ul.replaceChildren();
+  const filtered = cachedTunnels.filter((it) =>
+    !q || String(it.name || '').toLowerCase().includes(q) || String(it.id || '').toLowerCase().includes(q));
+  $('reuse-state').textContent = filtered.length === 0 ? t.reuseEmpty : '';
+  for (const item of filtered) {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.type = 'button';
+    const name = document.createElement('span');
+    name.className = 'tname';
+    name.textContent = item.name || item.id;
+    const id = document.createElement('span');
+    id.className = 'tid mono';
+    id.textContent = String(item.id || '').slice(0, 8);
+    b.append(name, id);
+    b.onclick = async () => {
+      b.disabled = true;
+      busy = t.saving;
+      renderTunnel();
+      try {
+        const next = await call('selectTunnel', { id: item.id });
+        $('reuse-panel').hidden = true;
+        $('setup-reason').hidden = true;
+        savedNote = t.saved;
+        renderTunnel(next);
+      } catch (err) {
+        $('setup-reason').hidden = false;
+        $('setup-reason').dataset.tone = 'error';
+        $('setup-reason').textContent = err?.message || t.err.unknown;
+      } finally {
+        busy = '';
+        renderTunnel();
+      }
+    };
+    li.append(b);
+    ul.append(li);
+  }
+}
+
+/* --- DNS & WORKER ROUTES CONTROLLER --- */
+
+function setDnsError(msg) {
+  const el = $('dnsError');
+  el.hidden = !msg;
+  el.textContent = msg || '';
+}
+
+function showDnsToast(msg) {
+  const el = $('dnsToast');
+  el.textContent = msg;
+  el.hidden = false;
+  setTimeout(() => { el.hidden = true; }, 2200);
+}
+
+function syncDnsSurface() {
+  const hasApiToken = Boolean(status?.account?.apiToken);
+  $('dnsTokenSetup').hidden = hasApiToken;
+  $('dnsWorkspace').hidden = !hasApiToken;
+  if (hasApiToken && zones.length === 0 && !dnsBusy) {
+    void loadZonesAndRecords();
+  }
+}
+
+async function loadZonesAndRecords() {
+  if (dnsBusy) return;
+  dnsBusy = true;
+  $('refreshZoneBtn').disabled = true;
+  $('refreshZoneBtn').dataset.busy = 'true';
+  setDnsError('');
+  try {
+    const res = await call('zones');
+    zones = Array.isArray(res?.items) ? res.items : [];
+    const sel = $('zoneSelect');
+    sel.replaceChildren();
+    if (zones.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = t.zonesEmpty;
+      sel.append(opt);
+      $('zonePlanBadge').hidden = true;
+      dnsRecords = [];
+      workerRoutes = [];
+      reconcileDnsRows();
+      renderWorkerRoutes();
+      return;
+    }
+    if (!activeZoneId || !zones.some((z) => z.id === activeZoneId)) {
+      activeZoneId = zones[0].id;
+      safeStorage.set('cf.zoneId', activeZoneId);
+    }
+    for (const z of zones) {
+      const opt = document.createElement('option');
+      opt.value = z.id;
+      opt.textContent = z.name;
+      sel.append(opt);
+    }
+    sel.value = activeZoneId;
+    await loadZoneData(activeZoneId);
+  } catch (err) {
+    setDnsError(err?.message || t.err.unknown);
+  } finally {
+    dnsBusy = false;
+    $('refreshZoneBtn').disabled = false;
+    $('refreshZoneBtn').dataset.busy = 'false';
+  }
+}
+
+async function loadZoneData(zoneId) {
+  const zoneMeta = zones.find((z) => z.id === zoneId);
+  const badge = $('zonePlanBadge');
+  if (zoneMeta) {
+    badge.hidden = false;
+    badge.textContent = [zoneMeta.status, zoneMeta.plan].filter(Boolean).join(' · ');
+  } else {
+    badge.hidden = true;
+  }
+  const prevScroll = window.scrollY;
+  const overview = await call('zoneOverview', { zoneId });
+  dnsRecords = Array.isArray(overview?.records) ? overview.records : [];
+  workerRoutes = Array.isArray(overview?.workerRoutes?.items) ? overview.workerRoutes.items : [];
+  reconcileDnsRows();
+  renderWorkerRoutes();
+  if (Math.abs(window.scrollY - prevScroll) > 2) window.scrollTo(0, prevScroll);
+}
+
+function visibleDnsRecords() {
+  const q = dnsSearchQuery.toLowerCase();
+  return dnsRecords.filter((rec) => {
+    if (dnsTypeFilter !== 'ALL' && rec.type !== dnsTypeFilter) return false;
+    if (!q) return true;
+    return rec.name.toLowerCase().includes(q) || rec.content.toLowerCase().includes(q) || rec.type.toLowerCase().includes(q);
+  });
+}
+
+function syncEditorTypeControls() {
+  const type = $('recType').value;
+  const canProxy = PROXIABLE.has(type);
+  $('recProxiedWrap').hidden = !canProxy;
+  $('recPriorityWrap').hidden = type !== 'MX';
+}
+
+function openRecordEditor(rec = null) {
+  editingRecordId = rec ? rec.id : '';
+  $('recType').value = rec ? rec.type : (dnsTypeFilter !== 'ALL' ? dnsTypeFilter : 'A');
+  $('recName').value = rec ? rec.name : '';
+  $('recContent').value = rec ? rec.content : '';
+  $('recTtl').value = rec && [1, 60, 300, 3600, 86400].includes(rec.ttl) ? String(rec.ttl) : '1';
+  $('recProxied').checked = rec ? Boolean(rec.proxied) : true;
+  $('recPriority').value = rec?.priority !== undefined ? String(rec.priority) : '10';
+  syncEditorTypeControls();
+  $('dnsEditor').hidden = false;
+  $('recName').focus();
+}
+
+function updateDnsRowDom(entry, rec) {
+  entry.rec = rec;
+  entry.typeEl.textContent = rec.type;
+  entry.nameEl.textContent = rec.name;
+  entry.contentEl.textContent = rec.priority !== undefined ? `[${rec.priority}] ${rec.content}` : rec.content;
+
+  if (rec.proxiable && PROXIABLE.has(rec.type)) {
+    entry.proxyBtn.hidden = false;
+    entry.proxyBtn.setAttribute('aria-checked', rec.proxied ? 'true' : 'false');
+    entry.proxyBtn.textContent = rec.proxied ? t.proxyOn : t.proxyOff;
+  } else {
+    entry.proxyBtn.hidden = true;
+  }
+
+  entry.copyBtn.textContent = t.copyBtn;
+  entry.editBtn.textContent = t.editBtn;
+  const confirming = deletingRecordId === rec.id;
+  entry.delBtn.textContent = confirming ? t.confirmDelBtn : t.delBtn;
+  entry.cancelDelBtn.hidden = !confirming;
+}
+
+function createDnsRowDom(rec) {
+  const row = document.createElement('div');
+  row.className = 'dns-row';
+  row.dataset.recId = rec.id;
+
+  const typeEl = document.createElement('span');
+  typeEl.className = 'rec-type';
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'rec-name';
+
+  const contentEl = document.createElement('span');
+  contentEl.className = 'rec-content';
+
+  const actions = document.createElement('div');
+  actions.className = 'rec-actions';
+
+  const proxyBtn = document.createElement('button');
+  proxyBtn.type = 'button';
+  proxyBtn.className = 'proxy-toggle';
+  proxyBtn.setAttribute('role', 'switch');
+
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.className = 'secondary sm';
+
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.className = 'secondary sm';
+
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'secondary sm danger-btn';
+
+  const cancelDelBtn = document.createElement('button');
+  cancelDelBtn.type = 'button';
+  cancelDelBtn.className = 'quiet sm';
+  cancelDelBtn.textContent = t.cancelBtn;
+  cancelDelBtn.hidden = true;
+
+  const entry = { row, typeEl, nameEl, contentEl, proxyBtn, copyBtn, editBtn, delBtn, cancelDelBtn, rec };
+
+  proxyBtn.onclick = async () => {
+    const cur = entry.rec;
+    proxyBtn.disabled = true;
+    setDnsError('');
+    try {
+      const res = await call('saveDnsRecord', {
+        zoneId: activeZoneId,
+        record: {
+          id: cur.id,
+          type: cur.type,
+          name: cur.name,
+          content: cur.content,
+          ttl: cur.ttl,
+          proxied: !cur.proxied,
+        },
+      });
+      const idx = dnsRecords.findIndex((r) => r.id === cur.id);
+      if (idx !== -1 && res?.record) dnsRecords[idx] = res.record;
+      reconcileDnsRows();
+    } catch (err) {
+      setDnsError(err?.message || t.err.unknown);
+    } finally {
+      proxyBtn.disabled = false;
+    }
   };
-  fill(el.tunnelid, cfg.tunnelId || '');
-  fill(el.configpath, cfg.configPath || '');
-  fill(el.accountid, cfg.accountId || '');
-  fill(el.tokenfile, cfg.tokenFile || '');
-  /* The default certificate lives in the Kiki home, so only a custom one is shown. */
-  fill(el.certpath, cfg.certificatePath && cfg.certificatePath.indexOf('.cloudflared') === -1 ? cfg.certificatePath : '');
-  fill(el.credfile, cfg.credentialsFile || '');
-  fill(el.binarypath, cfg.cloudflaredPath || '');
-  fill(el.publicurl, cfg.publicUrl || '');
-  el.autoStart.checked = cfg.autoStart !== false;
+
+  copyBtn.onclick = () => { void copySafe(entry.rec.content, copyBtn); };
+  editBtn.onclick = () => { openRecordEditor(entry.rec); };
+
+  delBtn.onclick = async () => {
+    const cur = entry.rec;
+    if (deletingRecordId !== cur.id) {
+      deletingRecordId = cur.id;
+      reconcileDnsRows();
+      return;
+    }
+    delBtn.disabled = true;
+    setDnsError('');
+    try {
+      await call('deleteDnsRecord', { zoneId: activeZoneId, recordId: cur.id });
+      deletingRecordId = '';
+      dnsRecords = dnsRecords.filter((r) => r.id !== cur.id);
+      reconcileDnsRows();
+      showDnsToast(t.recordDeleted);
+    } catch (err) {
+      setDnsError(err?.message || t.err.unknown);
+    } finally {
+      delBtn.disabled = false;
+    }
+  };
+
+  cancelDelBtn.onclick = () => {
+    deletingRecordId = '';
+    reconcileDnsRows();
+  };
+
+  actions.append(proxyBtn, copyBtn, editBtn, delBtn, cancelDelBtn);
+  row.append(typeEl, nameEl, contentEl, actions);
+  updateDnsRowDom(entry, rec);
+  return entry;
 }
 
-el.mode.addEventListener('change', (event) => {
-  if (event.target.name !== 'mode') return;
-  mode = event.target.value;
-  clearFormError();
-  render();
-});
-for (const [input, key] of [[el.token, 'tunnelToken'], [el.apitoken, 'apiToken']]) {
-  input.addEventListener('input', () => { clearedSecrets.delete(key); clearFormError(); render(); });
+function reconcileDnsRows() {
+  const host = $('dnsList');
+  const visible = visibleDnsRecords();
+  if (visible.length === 0) {
+    dnsRowMap.clear();
+    host.replaceChildren();
+    const empty = document.createElement('div');
+    empty.className = 'empty-box';
+    empty.textContent = zones.length === 0 ? t.zonesEmpty : t.dnsEmpty;
+    host.append(empty);
+    return;
+  }
+
+  for (const child of [...host.children]) {
+    if (!child.dataset || !child.dataset.recId) child.remove();
+  }
+
+  const nextIds = new Set(visible.map((r) => r.id));
+  for (const [id, entry] of dnsRowMap.entries()) {
+    if (!nextIds.has(id)) {
+      entry.row.remove();
+      dnsRowMap.delete(id);
+    }
+  }
+
+  let cursor = host.firstElementChild;
+  for (const rec of visible) {
+    let entry = dnsRowMap.get(rec.id);
+    if (!entry) {
+      entry = createDnsRowDom(rec);
+      dnsRowMap.set(rec.id, entry);
+    } else {
+      updateDnsRowDom(entry, rec);
+    }
+    if (entry.row !== cursor) host.insertBefore(entry.row, cursor);
+    else cursor = cursor.nextElementSibling;
+  }
 }
-for (const [button, key] of [[el.clearToken, 'tunnelToken'], [el.clearApiToken, 'apiToken']]) {
-  button.addEventListener('click', () => {
+
+function renderWorkerRoutes() {
+  const sec = $('routesSection');
+  const host = $('routesList');
+  host.replaceChildren();
+  if (!workerRoutes.length) {
+    sec.hidden = true;
+    return;
+  }
+  sec.hidden = false;
+  for (const r of workerRoutes) {
+    const row = document.createElement('div');
+    row.className = 'route-row';
+    const urlStr = /^https?:\/\//i.test(r.pattern) ? r.pattern : `https://${r.pattern.replace(/^\*\./, '')}`;
+    const info = document.createElement('span');
+    info.className = 'mono';
+    info.textContent = r.script ? `${r.pattern} → ${r.script}` : r.pattern;
+
+    const acts = document.createElement('span');
+    acts.className = 'rec-actions';
+    const cp = document.createElement('button');
+    cp.type = 'button';
+    cp.className = 'secondary sm';
+    cp.textContent = t.copyRouteBtn;
+    cp.onclick = () => { void copySafe(urlStr, cp); };
+
+    const op = document.createElement('button');
+    op.type = 'button';
+    op.className = 'secondary sm';
+    op.textContent = t.openBtn;
+    op.onclick = () => openExternal(urlStr.replace(/\*$/, ''));
+
+    acts.append(cp, op);
+    row.append(info, acts);
+    host.append(row);
+  }
+}
+
+/* --- EVENT WIRING --- */
+
+$('tabTunnel').onclick = () => switchTab('tunnel');
+$('tabDns').onclick = () => switchTab('dns');
+$('langBtn').onclick = () => {
+  lang = lang === 'zh' ? 'en' : 'zh';
+  safeStorage.set('cf.lang', lang);
+  applyStrings();
+  renderTunnel();
+  if (zones.length) reconcileDnsRows();
+  renderWorkerRoutes();
+};
+
+$('copyPublicUrlBtn').onclick = () => {
+  const val = $('public-url-val').textContent;
+  if (val) void copySafe(val, $('copyPublicUrlBtn'));
+};
+$('openPublicUrlBtn').onclick = () => {
+  const val = $('public-url-val').textContent;
+  if (val) openExternal(val);
+};
+
+$('mode').addEventListener('change', (ev) => {
+  if (ev.target.name !== 'mode') return;
+  mode = ev.target.value;
+  $('setup-reason').hidden = true;
+  renderTunnel();
+});
+
+for (const [inp, key] of [[$('token'), 'tunnelToken'], [$('apitoken'), 'apiToken']]) {
+  inp.addEventListener('input', () => { clearedSecrets.delete(key); $('setup-reason').hidden = true; renderTunnel(); });
+}
+
+for (const [b, key] of [[$('clear-token'), 'tunnelToken'], [$('clear-apitoken'), 'apiToken']]) {
+  b.addEventListener('click', () => {
     if (clearedSecrets.has(key)) clearedSecrets.delete(key);
     else {
       clearedSecrets.add(key);
-      (key === 'tunnelToken' ? el.token : el.apitoken).value = '';
+      (key === 'tunnelToken' ? $('token') : $('apitoken')).value = '';
     }
-    clearFormError();
-    render();
+    $('setup-reason').hidden = true;
+    renderTunnel();
   });
 }
 
-/* A sandboxed frame has no allow-forms, so there is no <form> to submit; the
-   primary button is the one action and Enter still reaches it. */
-el.save.addEventListener('click', async () => {
-  const issue = validate();
-  if (issue) { showFormError(issue); return; }
-  clearFormError();
+$('save').onclick = async () => {
+  const issue = validateTunnelForm();
+  if (issue) {
+    $('setup-reason').hidden = false;
+    $('setup-reason').dataset.tone = 'error';
+    $('setup-reason').textContent = issue;
+    return;
+  }
+  $('setup-reason').hidden = true;
   busy = t.saving;
-  render();
+  renderTunnel();
   try {
-    const next = await call('configure', { values: collect() });
-    status = next;
-    el.token.value = '';
-    el.apitoken.value = '';
+    const next = await call('configure', { values: collectTunnelValues() });
+    $('token').value = '';
+    $('apitoken').value = '';
     clearedSecrets.clear();
     syncFields();
     savedNote = ['running', 'starting', 'retrying'].includes(next?.service?.state) ? t.saved : t.savedOnly;
-    render();
-    announce(savedNote);
-  } catch (error) {
-    showFormError(normalizeError(error));
+    renderTunnel(next);
+  } catch (err) {
+    $('setup-reason').hidden = false;
+    $('setup-reason').dataset.tone = 'error';
+    $('setup-reason').textContent = err?.message || t.err.unknown;
   } finally {
     busy = '';
-    render();
+    renderTunnel();
   }
-});
+};
 
-/* The dashboard owns tunnel creation, DNS and billing, so this hands the user
-   to the official page instead of pretending to create a resource here. */
-/* Enter in a field runs the same single action as the primary button. */
-for (const node of [el.token, el.tunnelid, el.configpath, el.accountid, el.tokenfile, el.certpath, el.credfile, el.binarypath, el.publicurl, el.apitoken]) {
-  node.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter' || event.shiftKey) return;
-    event.preventDefault();
-    el.save.click();
+for (const node of [$('token'), $('tunnelid'), $('configpath'), $('accountid'), $('tokenfile'), $('certpath'), $('credfile'), $('binarypath'), $('publicurl'), $('apitoken')]) {
+  node.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter' || ev.shiftKey) return;
+    ev.preventDefault();
+    $('save').click();
   });
 }
 
-el.create.addEventListener('click', async () => {
+$('create').onclick = async () => {
   try {
-    const result = await call('setup');
-    if (result?.url) openExternal(result.url);
-    if (result?.docsUrl) el.docs.href = result.docsUrl;
-  } catch (error) {
-    showFormError(normalizeError(error));
+    const res = await call('setup');
+    if (res?.url) openExternal(res.url);
+    if (res?.docsUrl) $('docs').href = res.docsUrl;
+  } catch (err) {
+    $('setup-reason').hidden = false;
+    $('setup-reason').textContent = err?.message || t.err.unknown;
   }
-});
+};
 
-el.docs.addEventListener('click', (event) => {
-  event.preventDefault();
-  openExternal(el.docs.href);
-});
+$('docs').onclick = (ev) => { ev.preventDefault(); openExternal($('docs').href); };
 
-el.login.addEventListener('click', async () => {
+$('login').onclick = async () => {
   loginDismissed = false;
   lastLoginUrl = '';
   busy = t.loginWaiting;
-  render();
-  try {
-    const next = await call('login');
-    render(next);
-  } catch (error) {
-    showFormError(normalizeError(error));
-  } finally {
-    busy = '';
-    render();
-  }
-});
+  renderTunnel();
+  try { renderTunnel(await call('login')); }
+  catch (err) {
+    $('setup-reason').hidden = false;
+    $('setup-reason').dataset.tone = 'error';
+    $('setup-reason').textContent = err?.message || t.err.unknown;
+  } finally { busy = ''; renderTunnel(); }
+};
 
-el.cancelLogin.addEventListener('click', async () => {
+$('cancel-login').onclick = async () => {
   loginDismissed = true;
   lastLoginUrl = '';
-  await run('cancelLogin');
-});
+  await runLifecycle('cancelLogin');
+};
 
-el.loginLink.addEventListener('click', (event) => {
-  event.preventDefault();
-  openExternal(el.loginLink.href);
-});
+$('login-link').onclick = (ev) => { ev.preventDefault(); openExternal($('login-link').href); };
 
-/* Listing tunnels needs a saved API token or an existing certificate. A user
-   who typed one but has not saved yet would get a confusing refusal, so the
-   listing saves those credentials first and then asks. */
-el.reuse.addEventListener('click', async () => {
-  el.reusePanel.hidden = false;
-  el.tunnels.replaceChildren();
-  setText(el.reuseState, t.reuseLoading);
+$('reuse').onclick = async () => {
+  $('reuse-panel').hidden = false;
+  $('tunnels').replaceChildren();
+  $('reuse-state').textContent = t.reuseLoading;
   try {
-    const pendingValues = {};
-    const apiToken = el.apitoken.value.trim();
-    const accountId = el.accountid.value.trim();
-    if (apiToken) pendingValues.apiToken = apiToken;
-    if (accountId) pendingValues.accountId = accountId;
-    if (Object.keys(pendingValues).length > 0) {
-      const saved = await call('configure', { values: { mode, ...pendingValues } });
-      el.apitoken.value = '';
+    const pendingVals = {};
+    if ($('apitoken').value.trim()) pendingVals.apiToken = $('apitoken').value.trim();
+    if ($('accountid').value.trim()) pendingVals.accountId = $('accountid').value.trim();
+    if (Object.keys(pendingVals).length > 0) {
+      const saved = await call('configure', { values: { mode, ...pendingVals } });
+      $('apitoken').value = '';
       syncFields();
-      render(saved);
+      renderTunnel(saved);
     }
-    const result = await call('tunnels');
-    const items = Array.isArray(result?.items) ? result.items : [];
-    el.tunnels.replaceChildren();
-    setText(el.reuseState, items.length === 0 ? t.reuseEmpty : '');
-    for (const item of items) {
-      const row = document.createElement('li');
-      const node = document.createElement('button');
-      node.type = 'button';
-      const name = document.createElement('span');
-      name.className = 'tname';
-      name.textContent = item.name || item.id;
-      const id = document.createElement('span');
-      id.className = 'tid mono';
-      id.textContent = String(item.id || '').slice(0, 8);
-      node.append(name, id);
-      node.addEventListener('click', async () => {
-        node.disabled = true;
-        busy = t.saving;
-        render();
-        try {
-          const next = await call('selectTunnel', { id: item.id });
-          el.reusePanel.hidden = true;
-          clearFormError();
-          savedNote = t.saved;
-          render(next);
-          announce(t.saved);
-        } catch (error) {
-          showFormError(normalizeError(error));
-        } finally {
-          busy = '';
-          render();
-        }
-      });
-      row.append(node);
-      el.tunnels.append(row);
-    }
-  } catch (error) {
-    setText(el.reuseState, normalizeError(error));
+    const res = await call('tunnels');
+    cachedTunnels = Array.isArray(res?.items) ? res.items : [];
+    renderTunnelList();
+  } catch (err) {
+    $('reuse-state').textContent = err?.message || t.err.unknown;
   }
-});
+};
 
-el.reuseClose.addEventListener('click', () => { el.reusePanel.hidden = true; });
+$('tunnelFilter').oninput = () => renderTunnelList();
+$('reuse-close').onclick = () => { $('reuse-panel').hidden = true; };
 
-el.autoStart.addEventListener('change', async () => {
-  clearFormError();
-  const wanted = el.autoStart.checked;
+$('autoStart').onchange = async () => {
+  $('setup-reason').hidden = true;
+  const wanted = $('autoStart').checked;
+  try { renderTunnel(await call('configure', { values: { autoStart: wanted } })); }
+  catch (err) {
+    $('autoStart').checked = !wanted;
+    $('setup-reason').hidden = false;
+    $('setup-reason').textContent = err?.message || t.err.unknown;
+  }
+};
+
+// DNS events
+$('saveQuickApiTokenBtn').onclick = async () => {
+  const val = $('quickApiToken').value.trim();
+  if (!val) return;
+  $('saveQuickApiTokenBtn').disabled = true;
+  setDnsError('');
   try {
-    render(await call('configure', { values: { autoStart: wanted } }));
-  } catch (error) {
-    el.autoStart.checked = !wanted;
-    showFormError(normalizeError(error));
+    const next = await call('configure', { values: { apiToken: val } });
+    $('quickApiToken').value = '';
+    renderTunnel(next);
+    await loadZonesAndRecords();
+  } catch (err) {
+    setDnsError(err?.message || t.err.unknown);
+  } finally {
+    $('saveQuickApiTokenBtn').disabled = false;
   }
-});
+};
+
+$('zoneSelect').onchange = async () => {
+  activeZoneId = $('zoneSelect').value;
+  safeStorage.set('cf.zoneId', activeZoneId);
+  $('dnsEditor').hidden = true;
+  if (!activeZoneId) return;
+  setDnsError('');
+  try {
+    await loadZoneData(activeZoneId);
+  } catch (err) {
+    setDnsError(err?.message || t.err.unknown);
+  }
+};
+
+$('refreshZoneBtn').onclick = () => {
+  if (zones.length && activeZoneId) {
+    $('refreshZoneBtn').disabled = true;
+    $('refreshZoneBtn').dataset.busy = 'true';
+    setDnsError('');
+    loadZoneData(activeZoneId)
+      .catch((err) => setDnsError(err?.message || t.err.unknown))
+      .finally(() => {
+        $('refreshZoneBtn').disabled = false;
+        $('refreshZoneBtn').dataset.busy = 'false';
+      });
+  } else {
+    void loadZonesAndRecords();
+  }
+};
+
+$('addRecordBtn').onclick = () => openRecordEditor(null);
+$('cancelRecordBtn').onclick = () => { editingRecordId = ''; $('dnsEditor').hidden = true; };
+$('recType').onchange = () => syncEditorTypeControls();
+
+$('saveRecordBtn').onclick = async () => {
+  if (!activeZoneId) return;
+  const type = $('recType').value;
+  const record = {
+    ...(editingRecordId ? { id: editingRecordId } : {}),
+    type,
+    name: $('recName').value.trim(),
+    content: $('recContent').value.trim(),
+    ttl: Number($('recTtl').value) || 1,
+    ...(PROXIABLE.has(type) ? { proxied: $('recProxied').checked } : {}),
+    ...(type === 'MX' ? { priority: Number($('recPriority').value) || 10 } : {}),
+  };
+  $('saveRecordBtn').disabled = true;
+  setDnsError('');
+  try {
+    const res = await call('saveDnsRecord', { zoneId: activeZoneId, record });
+    if (res?.record) {
+      const idx = dnsRecords.findIndex((r) => r.id === res.record.id);
+      if (idx >= 0) dnsRecords[idx] = res.record;
+      else dnsRecords.unshift(res.record);
+    }
+    editingRecordId = '';
+    $('dnsEditor').hidden = true;
+    reconcileDnsRows();
+    showDnsToast(t.recordSaved);
+  } catch (err) {
+    setDnsError(err?.message || t.err.unknown);
+  } finally {
+    $('saveRecordBtn').disabled = false;
+  }
+};
+
+for (const pill of document.querySelectorAll('#typePills .type-pill')) {
+  pill.onclick = () => {
+    dnsTypeFilter = pill.dataset.type || 'ALL';
+    for (const p of document.querySelectorAll('#typePills .type-pill')) {
+      p.setAttribute('aria-pressed', p === pill ? 'true' : 'false');
+    }
+    reconcileDnsRows();
+  };
+}
+
+$('dnsSearch').oninput = () => {
+  dnsSearchQuery = $('dnsSearch').value.trim();
+  reconcileDnsRows();
+};
 
 window.addEventListener('message', (event) => {
   if (event.source !== window.parent || !event.data || event.data.channel !== CHANNEL) return;
+  if (parentOrigin && event.origin !== parentOrigin) return;
+  if (event.data.kind === 'presentation') {
+    applyPresentation(event.data.presentation, event.data.theme);
+    applyStrings();
+    renderTunnel();
+    return;
+  }
   if (event.data.kind === 'init') {
+    parentOrigin = event.origin;
     bridgeReady = true;
-    void refresh();
+    applyPresentation(event.data.presentation, event.data.theme);
+    applyStrings();
+    switchTab(activeTab);
+    void refreshStatus();
     return;
   }
   if (event.data.kind === 'response') {
@@ -1233,7 +2177,8 @@ window.addEventListener('message', (event) => {
 });
 
 applyStrings();
-setText(el.stat, t.readingState);
+switchTab(activeTab);
+$('stat').textContent = t.readingState;
 })();
 </script>
 </body>

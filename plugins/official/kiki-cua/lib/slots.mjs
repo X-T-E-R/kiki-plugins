@@ -47,20 +47,6 @@ export function buildCuaGuiSlots(pluginId = KIKI_CUA_PLUGIN_ID, liveSummary = nu
       },
     },
     {
-      slot: 'inspector-tab',
-      pluginId,
-      id: 'cua-preview-inspector',
-      title: {
-        default: 'Computer',
-        en: 'Computer',
-        zh: '电脑',
-      },
-      panelId: 'preview',
-      icon: 'monitor',
-      bridge: 'kiki.panel.v1',
-      order: 41,
-    },
-    {
       slot: 'tool-card-renderer',
       pluginId,
       id: 'cua-tool-card',
