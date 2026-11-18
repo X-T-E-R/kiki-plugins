@@ -41,8 +41,37 @@ function checkAdapter(field, definition, adapter) {
   }
 }
 
+const ALLOWED_SETTINGS_PROPERTY_KEYS = new Set([
+  'type',
+  'title',
+  'description',
+  'secret',
+  'default',
+  'hidden',
+  'group',
+  'groupTitle',
+  'localizations',
+  'enum',
+  'multiline',
+  'advanced',
+  'format',
+  'requiredUnless',
+]);
+
 export async function validateRegistration(manifest, register) {
   const extension = manifest['x-kiki'] ?? {};
+  if (extension.settings !== undefined) {
+    assert.equal(extension.settings.schemaVersion, 1, 'x-kiki.settings.schemaVersion must be 1');
+    const schema = extension.settings.schema;
+    assert.equal(schema?.type, 'object', 'x-kiki.settings.schema.type must be "object"');
+    assert.ok(schema?.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties), 'x-kiki.settings.schema.properties is required');
+    for (const [propKey, prop] of Object.entries(schema.properties)) {
+      assert.ok(['string', 'boolean', 'number'].includes(prop?.type), `x-kiki.settings.schema.properties.${propKey}.type must be string|boolean|number (got ${prop?.type})`);
+      for (const k of Object.keys(prop)) {
+        assert.ok(ALLOWED_SETTINGS_PROPERTY_KEYS.has(k), `Unsupported x-kiki.settings property key "${k}" on ${propKey}`);
+      }
+    }
+  }
   if (extension.dependencies !== undefined) {
     assert.ok(extension.dependencies && typeof extension.dependencies === 'object' && !Array.isArray(extension.dependencies), 'x-kiki.dependencies must map plugin ids to semver ranges');
     for (const [id, range] of Object.entries(extension.dependencies)) {

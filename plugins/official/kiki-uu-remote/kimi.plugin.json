@@ -76,10 +76,8 @@
             "description": "Automatically crop symmetric black margins so [0..1000] coordinates map 1:1 onto the remote desktop."
           },
           "takeoverThresholdPx": {
-            "type": "integer",
+            "type": "number",
             "default": 48,
-            "minimum": 8,
-            "maximum": 1000,
             "title": "Human takeover cursor threshold (px)",
             "description": "Physical cursor movement in pixels during active agent control that automatically locks Human Takeover."
           },
