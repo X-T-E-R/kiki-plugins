@@ -18,6 +18,9 @@ const imageModels = [
   'gpt-image-2',
   'gpt-image-2.5-sunburst',
   'gpt-image-2.5-flare',
+  'gpt-image-2.6',
+  'gpt-image-2.6-sunburst',
+  'gpt-image-2.6-flare',
 ];
 const speechModels = ['gpt-4o-mini-tts', 'tts-1', 'tts-1-hd'];
 const imageOptions = ['quality', 'background', 'output_compression', 'input_fidelity', 'user'];

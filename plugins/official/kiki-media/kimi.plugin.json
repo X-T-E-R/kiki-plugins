@@ -1,6 +1,6 @@
 {
   "name": "kiki-media",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Generate images, videos and speech with built-in services and your own scripts in one media plugin.",
   "license": "MIT AND Apache-2.0",
   "skills": "./skills/",
