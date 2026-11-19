@@ -7,7 +7,8 @@
     "node": ">=24.15.0"
   },
   "scripts": {
-    "build": "node scripts/pack.mjs",
+    "build": "node scripts/build-media.mjs && node scripts/pack.mjs",
+    "build:media": "node scripts/build-media.mjs",
     "check": "node scripts/check.mjs",
     "sync": "npm run sync:media && npm run sync:panels",
     "sync:media": "node scripts/sync-media.mjs",
@@ -18,6 +19,7 @@
   "devDependencies": {
     "@kiki/plugin-sdk": "file:vendor/kiki-plugin-sdk-0.1.1-host-5c649def1.tgz",
     "@types/node": "22.15.3",
+    "esbuild": "0.25.12",
     "iconv-lite": "0.7.3",
     "semver": "7.7.4",
     "typescript": "6.0.2",

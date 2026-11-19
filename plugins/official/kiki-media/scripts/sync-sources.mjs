@@ -122,15 +122,7 @@ for (const vendor of vendors) {
   properties[prefix + 'cleared'] = localized({ type: 'string', default: '[]', hidden: true, group: vendor, groupTitle: label }, groupTitle);
   sources.push({ id: vendor, label: original.interface.displayName, providerIds: original['x-kiki'].mediaProviders.map((definition) => `${vendor}-${definition.id}`), settingsPrefix: prefix, legacyPluginId: original.name, required: original['x-kiki'].settings.schema.required ?? [] });
   for (const definition of original['x-kiki'].mediaProviders) providers.push({ ...definition, id: `${vendor}-${definition.id}`, connectionSetting: prefix + definition.connectionSetting });
-  await output(
-    new URL(`lib/sources/${vendor}.mjs`, target),
-    `// GENERATED from ../../kiki-media-${vendor}/adapters.mjs. Run scripts/sync-media.mjs; do not edit this copy.\n${(await readFile(new URL('adapters.mjs', donor), 'utf8')).replace("'./runtime.mjs'", "'../runtime.mjs'")}`,
-  );
 }
-await output(
-  new URL('lib/runtime.mjs', target),
-  `// GENERATED from ../../media-runtime/runtime.mjs. Run scripts/sync-media.mjs; do not edit this copy.\n${await readFile(new URL('media-runtime/runtime.mjs', root), 'utf8')}`,
-);
 providers.push({ schemaVersion: 1, id: 'custom-script', label: 'Custom script', kinds: ['image', 'video', 'tts'], resumeVersion: 1 });
 const idsFor = (kind) => providers.filter((item) => item.kinds?.includes(kind)).map((item) => item.id);
 for (const [key, kind] of [['defaultImageProvider', 'image'], ['defaultVideoProvider', 'video'], ['defaultTtsProvider', 'tts']]) {
@@ -139,6 +131,7 @@ for (const [key, kind] of [['defaultImageProvider', 'image'], ['defaultVideoProv
 properties.scriptSources = localized({ type: 'string', default: '[]', title: 'Custom media scripts', multiline: true, advanced: true });
 manifest.version = '0.2.6';
 manifest['x-kiki'].engines.kiki = '>=0.4.3';
+manifest['x-kiki'].entry = './dist/index.mjs';
 manifest['x-kiki'].mediaProviders = providers;
 manifest['x-kiki'].mediaSources = sources;
 manifest['x-kiki'].mediaScriptProvider = 'custom-script';

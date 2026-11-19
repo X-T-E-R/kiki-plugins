@@ -50,7 +50,7 @@ test('change mapping includes unified media for every donor and metadata builds 
  const ids=['kiki-writing','kiki-extract','kiki-media','kiki-office','kiki-notion'];
  assert.deepEqual(changedPackages(['plugins/official/media-runtime/runtime.mjs'],ids).packages,['kiki-media']);
  assert.deepEqual(changedPackages(['plugins/marketplace.json'],ids),{packages:[],metadataOnly:true});
- for(const vendor of ['openai','google','ark','xai','minimax','stepfun','novita','agnes','newapi','comfyui']) assert.deepEqual(changedPackages([`plugins/official/kiki-media-${vendor}/adapters.mjs`],ids).packages,['kiki-media']);
+ for(const vendor of ['openai','google','ark','xai','minimax','stepfun','novita','agnes','newapi','comfyui']) assert.deepEqual(changedPackages([`plugins/official/kiki-media-${vendor}/src/adapters.mjs`],ids).packages,['kiki-media']);
  assert.equal(changedPackages(['sdk.lock.json'],ids).packages.length,5);
 });
 test('dev catalog digest matches exactly served immutable bytes and hides dotfiles',async()=>{

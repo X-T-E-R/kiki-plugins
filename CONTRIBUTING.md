@@ -9,9 +9,9 @@ Use a pull request. PR checks have read-only repository permissions and run loca
 3. If published runtime bytes change, increase that package's `kimi.plugin.json` version. Changing a description only in `plugins/marketplace.json` does not require repackaging.
 4. Run `npm run check -- <id>` and `npm test`.
 
-For shared media changes, edit `media-runtime/`, run `node plugins/official/media-runtime/distribute.mjs`, and increase every provider version whose published bytes changed. CI maps shared source changes to all ten providers. Do not edit their generated `runtime.mjs`, `entry.mjs`, `LICENSE`, or `NOTICE` copies directly.
+For shared media changes, edit `plugins/official/media-runtime/` or a provider's `src/adapters.mjs`, run `npm run sync:media` (which regenerates unified manifest metadata and bundles self-contained `dist/index.mjs` outputs via `scripts/build-media.mjs`), and increase every package version whose published bytes changed. CI maps shared source changes to `kiki-media` and all ten providers. Do not edit generated `dist/index.mjs`, `LICENSE`, or `NOTICE` outputs directly.
 
-The runtime ZIP whitelist includes the manifest, runtime entry/adapters, panel, icon, README, license/notices, `lib/`, `skills/`, and `vendor/`. It excludes tests, scripts, development dependency manifests, caches, and node_modules. Adding a new runtime location requires updating and testing `scripts/package-files.mjs`.
+The runtime ZIP whitelist includes the manifest, `dist/`, runtime entry/adapters, panel, icon, README, license/notices, `lib/`, `skills/`, and `vendor/`. It excludes `src/`, tests, scripts, development dependency manifests, caches, and node_modules. Adding a new runtime location requires updating and testing `scripts/package-files.mjs`.
 
 Extract vendor changes must preserve the fixed runtime lock and notices. Run `npm ci --ignore-scripts --prefix plugins/official/kiki-extract/runtime`, then `node plugins/official/kiki-extract/scripts/build-vendor.mjs`, and inspect the vendor diff before proposing a new Extract version.
 

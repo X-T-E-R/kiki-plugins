@@ -47,7 +47,7 @@ async function checkPackages(){
     await validateRegistration(m,module?.register);
     console.log('Validated package',p.id,m.version);
   }
-  if(!selected||packages.some(p=>p.source.startsWith('./official/')))run('plugins/official/media-runtime/distribute.mjs',['--check']);
+  if(!selected||packages.some(p=>p.source.startsWith('./official/')))run('scripts/build-media.mjs',['--check']);
   run('scripts/sync-panel-kit.mjs',['--check']);
   for(const id of ['kiki-extract','kiki-office','kiki-media','kiki-bilibili','kiki-voice','kiki-qq','kiki-phone','kiki-everything','kiki-cua','kiki-uu-remote','kiki-v42'])if(!selected||selected===id)run(`plugins/official/${id}/scripts/sync-manifest.mjs`,['--check']);
   if(!selected||selected==='kiki-everything')run('--test',['--test-timeout=15000','plugins/official/kiki-everything/test/everything.test.mjs']);
@@ -66,8 +66,8 @@ async function checkPackages(){
   if(!selected||selected==='kiki-office')run('--test',['plugins/official/kiki-office/test/office.test.mjs']);
   if(!selected||selected==='kiki-mail')run('plugins/official/kiki-mail/scripts/check.mjs');
   if(!selected||selected==='kiki-task-board')run('--test',['plugins/official/kiki-task-board/test/board.test.mjs','plugins/official/kiki-task-board/test/engine.test.mjs','plugins/official/kiki-task-board/test/panel-recovery.test.mjs']);
-  if(!selected||selected==='kiki-media') { run('plugins/official/kiki-media/scripts/sync-sources.mjs',['--check']); run('scripts/sync-media-catalog.mjs',['--check']); run('--test',['test/media-concurrency.test.mjs','plugins/official/kiki-media/test/settings-panel.test.mjs']); }
-  if(!selected||selected.startsWith('kiki-media-'))run('--test',['plugins/official/media-runtime/test/protocol.test.mjs']);
+  if(!selected||selected==='kiki-media') { run('plugins/official/kiki-media/scripts/sync-sources.mjs',['--check']); run('scripts/sync-media-catalog.mjs',['--check']); run('--test',['test/media-concurrency.test.mjs','test/media-runtime-sync.test.mjs','plugins/official/kiki-media/test/settings-panel.test.mjs']); }
+  if(!selected||selected==='kiki-media'||selected.startsWith('kiki-media-'))run('--test',['plugins/official/media-runtime/test/protocol.test.mjs']);
   if(!selected||selected==='magpie-harness-quota'){run('plugins/magpie-harness-quota/scripts/sync-manifest.mjs',['--check']);run('--test',['--test-timeout=60000','plugins/magpie-harness-quota/test/magpie-harness-quota.test.mjs','plugins/magpie-harness-quota/test/antigravity-direct-quota.test.mjs','plugins/magpie-harness-quota/test/antigravity-account-source.test.mjs','plugins/magpie-harness-quota/test/magpie-manage.test.mjs']);}
   if(!selected||selected==='model-dispatch-advisor'){run('plugins/model-dispatch-advisor/scripts/sync-manifest.mjs',['--check']);run('--test',['plugins/model-dispatch-advisor/test/model-dispatch-advisor.test.mjs']);}
   for(const p of packages.filter(p=>!p.source.startsWith('./official/')&&!['magpie-harness-quota','model-dispatch-advisor'].includes(p.id))){

@@ -11,7 +11,7 @@
     "engines": {
       "kiki": "^0.4.0"
     },
-    "entry": "./entry.mjs",
+    "entry": "./dist/index.mjs",
     "permissions": {
       "fs": "outside",
       "net": [

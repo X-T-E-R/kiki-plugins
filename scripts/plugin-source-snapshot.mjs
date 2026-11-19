@@ -78,7 +78,7 @@ async function collect() {
       sha256: await digestOf(root),
     });
   }
-  const runtime = await stat(join(SHARED_RUNTIME, 'distribute.mjs')).then((s) => s.isFile()).catch(() => false)
+  const runtime = await stat(join(SHARED_RUNTIME, 'runtime.mjs')).then((s) => s.isFile()).catch(() => false)
     ? [{
       id: '(shared) media-runtime',
       directory: 'media-runtime',

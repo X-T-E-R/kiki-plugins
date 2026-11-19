@@ -7,9 +7,9 @@ const checkMode = process.argv.includes('--check');
 const args = checkMode ? ['--check'] : [];
 
 const steps = [
-  'plugins/official/media-runtime/distribute.mjs',
   'plugins/official/kiki-media/scripts/sync-sources.mjs',
   'scripts/sync-media-catalog.mjs',
+  'scripts/build-media.mjs',
 ];
 
 for (const step of steps) {

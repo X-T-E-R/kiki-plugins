@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { handlePanelRequest } from '../entry.mjs';
+import { handlePanelRequest } from '../dist/index.mjs';
 
 const html = await readFile(new URL('../settings.html', import.meta.url), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));

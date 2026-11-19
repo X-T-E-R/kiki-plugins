@@ -62,8 +62,10 @@ export async function buildPluginMarketplaceCdn({ pluginsRoot, outDir, publicBas
     isRecord(entry) && typeof entry.source === 'string' &&
     /^\.\/official\/kiki-media(?:-(?:openai|google|ark|xai|minimax|stepfun|novita|agnes|newapi|comfyui))?$/.test(entry.source))) {
     await promisify(execFile)(process.execPath, [
-      resolveInsideRoot(pluginsRoot, 'official/media-runtime/distribute.mjs'),
+      resolve(SCRIPT_DIR, 'build-media.mjs'),
       '--check',
+      '--plugins-root',
+      pluginsRoot,
     ]);
   }
   if (parsed.plugins.some((entry) => entry.id === 'kiki-media' && entry.source === './official/kiki-media')) {

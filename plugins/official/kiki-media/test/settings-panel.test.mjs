@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 
-import { handlePanelRequest } from '../entry.mjs';
+import { handlePanelRequest } from '../dist/index.mjs';
 
 test('ships a settings panel and a catalog of real provider ids', async () => {
   const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));

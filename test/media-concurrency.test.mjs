@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { setImmediate as nextTurn } from 'node:timers/promises';
 import test from 'node:test';
-import { register } from '../plugins/official/kiki-media/entry.mjs';
-import { createProviderLimiter } from '../plugins/official/kiki-media/lib/provider-concurrency.mjs';
+import { register } from '../plugins/official/kiki-media/dist/index.mjs';
+import { createProviderLimiter } from '../plugins/official/kiki-media/src/provider-concurrency.mjs';
 
 const context = (settings = {}, signal = new AbortController().signal) => ({ settings, signal });
 const deferred = () => { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; };

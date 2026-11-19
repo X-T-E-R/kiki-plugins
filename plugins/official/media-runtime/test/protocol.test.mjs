@@ -1,7 +1,7 @@
 /* oxlint-disable unicorn/no-useless-spread -- RPC waiters remove themselves during iteration; iterate a snapshot. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, writeFile, cp } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile, cp, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
@@ -31,7 +31,7 @@ const sse = (events) =>
     headers: { 'content-type': 'text/event-stream' },
   });
 async function harness(vendor, responses, settings = {}) {
-  const { createAdapters } = await import(pathToFileURL(path.join(official, `kiki-media-${vendor}`, 'adapters.mjs')));
+  const { createAdapters } = await import(pathToFileURL(path.join(official, `kiki-media-${vendor}`, 'dist', 'index.mjs')));
   const calls = [];
   const fetchImpl = async (url, init) => {
     calls.push({ url, ...init });
@@ -527,9 +527,12 @@ await test('All isolated install directories load/register through actual hostRu
     const directory = await mkdtemp(path.join(scratch, 'installed-'));
     await cp(path.join(official, `kiki-media-${vendor}`), directory, { recursive: true });
     const manifest = JSON.parse(await readFile(path.join(directory, 'kimi.plugin.json'), 'utf8'));
-    assert.ok((await readFile(path.join(directory, 'runtime.mjs'), 'utf8')).startsWith('// GENERATED'));
+    assert.equal(manifest['x-kiki'].entry, './dist/index.mjs');
+    await assert.rejects(stat(path.join(directory, 'runtime.mjs')), { code: 'ENOENT' });
+    const entryPath = path.resolve(directory, manifest['x-kiki'].entry);
+    assert.ok((await readFile(entryPath, 'utf8')).startsWith('// GENERATED'));
     assert.match(await readFile(path.join(directory, 'LICENSE'), 'utf8'), /Permission is hereby granted/);
-    const entry = await import(pathToFileURL(path.join(directory, 'entry.mjs')));
+    const entry = await import(pathToFileURL(entryPath));
     const registered = [];
     entry.register({
       registerMediaProvider(definition, adapter) {
@@ -544,7 +547,7 @@ await test('All isolated install directories load/register through actual hostRu
         await registration.adapter.describe({}, { settings: {}, signal: new AbortController().signal })
       );
     const runner = path.resolve(process.env.KIKI_HOST_RUNNER);
-    const child = spawn(process.execPath, [runner, path.join(directory, 'entry.mjs')], {
+    const child = spawn(process.execPath, [runner, entryPath], {
       cwd: directory,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -713,7 +716,7 @@ await test('Installed host RPC executes image/speech/video with fake HTTP, never
     const runner = path.resolve(process.env.KIKI_HOST_RUNNER);
     const child = spawn(
       process.execPath,
-      ['--import', pathToFileURL(preloader).href, runner, path.join(directory, 'entry.mjs')],
+      ['--import', pathToFileURL(preloader).href, runner, path.join(directory, 'dist', 'index.mjs')],
       { cwd: directory, stdio: ['pipe', 'pipe', 'pipe'] }
     );
     const reader = createInterface({ input: child.stdout });
@@ -864,7 +867,7 @@ globalThis.fetch = async (url, init) => {
 import path from 'node:path';
 export function register(api) { api.registerMediaProvider({schemaVersion:1,id:'custom',label:'Independent script',kinds:['image'],resumeVersion:1}, {async describe() { return {}; }, async submit(input,ctx) {await mkdir(ctx.stagingDir,{recursive:true}); const file=path.join(ctx.stagingDir,'custom.png'); await writeFile(file,Buffer.from('${png.toString('base64')}','base64')); return {state:'complete',artifacts:[{path:file,name:'custom.png',mime:'image/png',kind:'image',role:'original',complete:true}]};}}); }`);
     const runner = path.resolve(process.env.KIKI_HOST_RUNNER);
-    const child = spawn(process.execPath, ['--import', pathToFileURL(preloader).href, runner, path.join(directory, 'entry.mjs')], { cwd: directory, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, ['--import', pathToFileURL(preloader).href, runner, arbitrary ? path.join(directory, 'entry.mjs') : path.join(directory, 'dist', 'index.mjs')], { cwd: directory, stdio: ['pipe', 'pipe', 'pipe'] });
     const reader = createInterface({ input: child.stdout });
     const messages = [], queue = [];
     let connectionCalls = 0, oauthRotation = 0, mode = 'api-key', stderr = '';
