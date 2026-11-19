@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { appendFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, mkdtemp, open, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 import test from 'node:test';
@@ -15,6 +15,7 @@ import {
   register,
 } from '../entry.mjs';
 import { buildErrorSignature, redactSecrets } from '../lib/signature.mjs';
+import { SOFT_MAX_INDEX_BYTES, createEmptyIndex, recordErrorSignatureInIndex, writeIndexAtomic } from '../lib/store.mjs';
 
 const pluginRoot = path.dirname(import.meta.dirname);
 const repoRoot = path.resolve(pluginRoot, '..', '..');
@@ -720,4 +721,281 @@ test('bounded ring storage caps samples at 5 per signature and evicts >30d hourl
     assert.ok(sampleRes.samples[4].argsPreview.includes('sample_4.txt'));
   });
 });
+
+test('P0-1: 18 MiB single line advances across 2 ticks with zero livelock and captures trailing error', async () => {
+  await withTempHome(async (kikiHome) => {
+    const now = Date.now();
+    const dir = path.join(kikiHome, 'sessions', 'ws_huge', 'session_huge', 'agents', 'main');
+    await mkdir(dir, { recursive: true });
+    const wirePath = path.join(dir, 'wire.jsonl');
+
+    // Initial tracked small file so it enters tracked incremental mode (not cold-tail jump).
+    const initialLine = `${loopToolCall('init_1', 'Read', { path: 'ok.txt' }, now - 3000)}\n${loopToolResult(
+      'init_1',
+      { isError: false, output: 'ok' },
+      now - 2900,
+    )}\n`;
+    await writeFile(wirePath, initialLine, 'utf8');
+
+    const svc = errorPulseServiceForTests({ kikiHome, now: () => now });
+    const initScan = await svc.executeTool({ action: 'scan_now', windowHours: 24 });
+    assert.equal(initScan.totals.calls, 1);
+
+    // Append an 18 MiB single JSONL line (> 16 MiB default tick budget and > 8 MiB MAX_SINGLE_LINE_BYTES)
+    // followed by a normal failing tool call/result.
+    const eighteenMiB = 18 * 1024 * 1024;
+    const hugePrefix = '{"type":"context.append_loop_event","event":{"type":"content.part","part":{"type":"text","text":"';
+    const hugeSuffix = '"}}}\n';
+    const padBuf = Buffer.alloc(eighteenMiB, 0x61); // 'a'
+    const trailingLines = `${loopToolCall('after_huge', 'Bash', { command: 'exit 7' }, now - 100)}\n${loopToolResult(
+      'after_huge',
+      { isError: true, output: '<system>ERROR: Tool execution failed.</system>\nAFTER_HUGE_LINE_ERROR\nExit code: 7' },
+      now - 50,
+    )}\n`;
+    const fh = await open(wirePath, 'a');
+    try {
+      await fh.write(Buffer.from(hugePrefix, 'utf8'));
+      await fh.write(padBuf);
+      await fh.write(Buffer.from(hugeSuffix + trailingLines, 'utf8'));
+    } finally {
+      await fh.close();
+    }
+
+    // Tick 1: consumes 16 MiB budget, advances offset ~16 MiB, sets partial=true & discardingLine=true
+    const tick1 = await svc.scanIncremental({ reason: 'scan_now', maxMegabytes: 16 });
+    assert.equal(tick1.scan.budgetPaused, true);
+    assert.equal(tick1.scan.bytesRead, 16 * 1024 * 1024);
+    const meta1 = tick1.index.files['ws_huge/session_huge/agents/main/wire.jsonl'];
+    assert.ok(meta1.offset >= 16 * 1024 * 1024, `Expected offset >= 16 MiB after tick 1, got ${meta1.offset}`);
+    assert.equal(meta1.partial, true);
+    assert.equal(meta1.discardingLine, true);
+
+    // Tick 2: resumes at ~16 MiB, skips remaining ~2 MiB of oversize line, clears discardingLine, captures trailing error
+    const tick2 = await svc.scanIncremental({ reason: 'scan_now', maxMegabytes: 16 });
+    assert.equal(tick2.scan.budgetPaused, false);
+    assert.ok(tick2.scan.bytesRead < 3 * 1024 * 1024, `Expected < 3 MiB read on tick 2, got ${tick2.scan.bytesRead}`);
+    const meta2 = tick2.index.files['ws_huge/session_huge/agents/main/wire.jsonl'];
+    assert.equal(meta2.partial, undefined);
+    assert.equal(meta2.discardingLine, undefined);
+    assert.equal(meta2.offset, meta2.size);
+
+    const summary = await svc.executeTool({ action: 'summary', windowHours: 24 });
+    assert.equal(summary.totals.errors, 1);
+    assert.equal(
+      summary.topSignatures.some((s) => s.signature.includes('AFTER_HUGE_LINE_ERROR')),
+      true,
+    );
+
+    // Tick 3: 0 bytes read (no livelock!)
+    const tick3 = await svc.executeTool({ action: 'scan_now', windowHours: 24 });
+    assert.equal(tick3.bytesRead, 0);
+    assert.equal(tick3.filesSkippedUnchanged, 1);
+  });
+});
+
+test('P0-2: bloated 12,000-entry index.files prunes archival entries and preserves 100% of active signatures', async () => {
+  await withTempHome(async (kikiHome) => {
+    const now = Date.now();
+    const indexPath = path.join(kikiHome, 'plugins', 'data', 'kiki-error-pulse', 'index-v1.json');
+
+    // Create a cold archival wire.jsonl (>10 days old) and an active wire.jsonl (now)
+    const coldDir = path.join(kikiHome, 'sessions', 'ws_cold', 'session_archival', 'agents', 'main');
+    const activeDir = path.join(kikiHome, 'sessions', 'ws_active', 'session_live', 'agents', 'main');
+    await mkdir(coldDir, { recursive: true });
+    await mkdir(activeDir, { recursive: true });
+    const coldWire = path.join(coldDir, 'wire.jsonl');
+    await writeFile(coldWire, `${loopToolCall('cold_1', 'Read', { path: 'old.txt' }, now - 10 * 86400_000)}\n`, 'utf8');
+    const tenDaysAgo = new Date(now - 10 * 86400_000);
+    await utimes(coldWire, tenDaysAgo, tenDaysAgo);
+
+    await writeFile(
+      path.join(activeDir, 'wire.jsonl'),
+      `${loopToolCall('live_1', 'Bash', { command: 'false' }, now - 1000)}\n${loopToolResult(
+        'live_1',
+        { isError: true, output: '<system>ERROR: Tool execution failed.</system>\nLIVE_ACTIVE_FAILURE\nExit code: 1' },
+        now - 900,
+      )}\n`,
+      'utf8',
+    );
+
+    // Seed a legacy bloated index with 12,000 entries: 8,000 >30d archival + 4,000 recent idle entries (total > 1.8 MiB)
+    // plus 40 active signatures that must be 100% preserved.
+    const index = createEmptyIndex();
+    const oldMtime = now - 45 * 86400_000;
+    for (let i = 0; i < 8000; i += 1) {
+      index.files[`ws_arch/sess_${i}/agents/main/wire.jsonl`] = {
+        size: 4096,
+        mtimeMs: oldMtime + i,
+        offset: 4096,
+        workspace: `workspace/arch_${i}`,
+      };
+    }
+    const recentMtime = now - 2 * 86400_000;
+    for (let i = 0; i < 4000; i += 1) {
+      index.files[`ws_recent/sess_${i}/agents/main/wire.jsonl`] = {
+        size: 8192,
+        mtimeMs: recentMtime + i,
+        offset: 8192,
+        workspace: `workspace/recent_bloated_project_name_${i}`,
+        tailState: {
+          pendingCalls: [[`call_${i}`, { tool: 'Read', argsPreview: 'p'.repeat(160), timestamp: recentMtime + i }]],
+        },
+      };
+    }
+    const expectedSigIds = [];
+    for (let i = 0; i < 40; i += 1) {
+      const sig = buildErrorSignature({ kind: 'tool', tool: 'Edit', rawError: `ACTIVE_SIG_CASE_${i}_FAILURE` });
+      expectedSigIds.push(sig.id);
+      recordErrorSignatureInIndex(
+        index,
+        {
+          sig,
+          sample: { workspace: 'ws_active', sessionId: 's1', agentId: 'main', timestamp: now - 5000 + i, tool: 'Edit', argsPreview: '', errorPreview: `ACTIVE_SIG_CASE_${i}_FAILURE` },
+          timestamp: now - 5000 + i,
+        },
+        now,
+      );
+    }
+
+    assert.ok(
+      Buffer.byteLength(JSON.stringify(index), 'utf8') > SOFT_MAX_INDEX_BYTES,
+      'Seeded bloated index should exceed SOFT_MAX_INDEX_BYTES before save',
+    );
+
+    // 1. Direct writeIndexAtomic must prune all 8,000 archival entries AND trim remaining bloated files under cap
+    //    while preserving 100% of the 40 active signatures!
+    await writeIndexAtomic(indexPath, index, now);
+    const persistedRaw = await readFile(indexPath, 'utf8');
+    assert.ok(Buffer.byteLength(persistedRaw, 'utf8') <= SOFT_MAX_INDEX_BYTES);
+    const persisted = JSON.parse(persistedRaw);
+    for (let i = 0; i < 8000; i += 1) {
+      assert.equal(persisted.files[`ws_arch/sess_${i}/agents/main/wire.jsonl`], undefined);
+    }
+    for (const sigId of expectedSigIds) {
+      assert.ok(persisted.signatures[sigId], `Active signature ${sigId} was evicted!`);
+    }
+    assert.equal(Object.keys(persisted.signatures).length, 40);
+
+    // 2. Full scan must NOT insert the cold >7d archival wire.jsonl into index.files!
+    const svc = errorPulseServiceForTests({ kikiHome, now: () => now });
+    const scanOut = await svc.scanIncremental({ reason: 'scan_now' });
+    assert.equal(scanOut.index.files['ws_cold/session_archival/agents/main/wire.jsonl'], undefined);
+    assert.ok(scanOut.index.files['ws_active/session_live/agents/main/wire.jsonl']);
+    for (const sigId of expectedSigIds) {
+      assert.ok(scanOut.index.signatures[sigId], `Active signature ${sigId} lost after scan!`);
+    }
+  });
+});
+
+test('P1-2: skips non-layout dirs (replay-checkpoints etc.), tolerates locked/vanished files, and catch-up jumps >64 MiB delta', async () => {
+  await withTempHome(async (kikiHome) => {
+    const now = Date.now();
+    const sessionDir = path.join(kikiHome, 'sessions', 'ws_layout', 'session_one');
+    const mainAgentDir = path.join(sessionDir, 'agents', 'main');
+    const lockedAgentDir = path.join(sessionDir, 'agents', 'locked_agent');
+    const noisyDirs = [
+      'replay-checkpoints',
+      'prompt-ingress',
+      'agent-outcomes',
+      'ego-scripts',
+      'ego-shots',
+      'request-identity',
+      'agent-message-receipts',
+      'media-originals',
+      'wire-segments',
+    ];
+    await mkdir(mainAgentDir, { recursive: true });
+    await mkdir(lockedAgentDir, { recursive: true });
+
+    // Place decoy wire.jsonl files inside every excluded subdirectory (must NEVER be discovered).
+    for (const noisy of noisyDirs) {
+      const d = path.join(sessionDir, noisy);
+      await mkdir(d, { recursive: true });
+      await writeFile(
+        path.join(d, 'wire.jsonl'),
+        `${loopToolCall(`noisy_${noisy}`, 'Bash', { command: 'bad' }, now - 100)}\n${loopToolResult(
+          `noisy_${noisy}`,
+          { isError: true, output: `<system>ERROR: Tool execution failed.</system>\nDECOY_${noisy}` },
+          now - 50,
+        )}\n`,
+        'utf8',
+      );
+    }
+
+    // Valid session-root wire.jsonl (<workspace>/<session>/wire.jsonl)
+    await writeFile(
+      path.join(sessionDir, 'wire.jsonl'),
+      `${loopToolCall('root_1', 'Read', { path: 'a.txt' }, now - 200)}\n${loopToolResult(
+        'root_1',
+        { isError: true, output: '<system>ERROR: Tool execution failed.</system>\nROOT_WIRE_ERROR' },
+        now - 180,
+      )}\n`,
+      'utf8',
+    );
+
+    // Valid main agent wire.jsonl
+    const mainWirePath = path.join(mainAgentDir, 'wire.jsonl');
+    await writeFile(
+      mainWirePath,
+      `${loopToolCall('main_1', 'Edit', { path: 'b.txt' }, now - 150)}\n${loopToolResult(
+        'main_1',
+        { isError: true, output: '<system>ERROR: Tool execution failed.</system>\nMAIN_AGENT_ERROR' },
+        now - 140,
+      )}\n`,
+      'utf8',
+    );
+
+    // Locked agent wire.jsonl (simulated EBUSY on openFile)
+    const lockedWirePath = path.join(lockedAgentDir, 'wire.jsonl');
+    await writeFile(lockedWirePath, `${loopToolCall('lock_1', 'Read', { path: 'c.txt' }, now - 120)}\n`, 'utf8');
+
+    const svc = errorPulseServiceForTests({
+      kikiHome,
+      now: () => now,
+      openFile: async (p, flags) => {
+        if (path.resolve(p) === path.resolve(lockedWirePath)) {
+          const err = new Error('EBUSY: resource busy or locked');
+          err.code = 'EBUSY';
+          throw err;
+        }
+        return open(p, flags);
+      },
+    });
+
+    const res = await svc.executeTool({ action: 'scan_now', windowHours: 24 });
+    assert.equal(res.totals.errors, 2);
+    assert.equal(res.topSignatures.some((s) => s.signature.includes('ROOT_WIRE_ERROR')), true);
+    assert.equal(res.topSignatures.some((s) => s.signature.includes('MAIN_AGENT_ERROR')), true);
+    assert.equal(res.topSignatures.some((s) => s.signature.includes('DECOY_')), false);
+
+    // Test tracked catch-up jump (> catchupJumpBytes delta): append >4 MiB of filler + fresh tail error
+    // with catchupJumpBytes set to 3 MiB so we verify tracked jump without writing 65 MiB in CI.
+    svc.deps.catchupJumpBytes = 3 * 1024 * 1024;
+    const filler = `${JSON.stringify({ type: 'context.append_loop_event', time: now - 100, event: { type: 'content.part', part: { type: 'text', text: 'z'.repeat(1000) } } })}\n`;
+    const skippedMidError = `${loopToolCall('mid_skip', 'Bash', { command: 'mid' }, now - 90)}\n${loopToolResult(
+      'mid_skip',
+      { isError: true, output: '<system>ERROR: Tool execution failed.</system>\nSKIPPED_MID_GAP_ERROR' },
+      now - 85,
+    )}\n`;
+    const freshTailError = `${loopToolCall('tail_jump', 'Bash', { command: 'tail' }, now - 20)}\n${loopToolResult(
+      'tail_jump',
+      { isError: true, output: '<system>ERROR: Tool execution failed.</system>\nFRESH_AFTER_JUMP_ERROR' },
+      now - 10,
+    )}\n`;
+    const gapChunks = [skippedMidError];
+    let gapBytes = Buffer.byteLength(skippedMidError, 'utf8');
+    while (gapBytes < 4.2 * 1024 * 1024) {
+      gapChunks.push(filler);
+      gapBytes += Buffer.byteLength(filler, 'utf8');
+    }
+    gapChunks.push(freshTailError);
+    await appendFile(mainWirePath, gapChunks.join(''), 'utf8');
+
+    const jumped = await svc.executeTool({ action: 'scan_now', windowHours: 24 });
+    assert.ok(jumped.bytesRead <= 2.1 * 1024 * 1024, `Expected catch-up jump <= 2.1 MiB, got ${jumped.bytesRead}`);
+    assert.equal(jumped.topSignatures.some((s) => s.signature.includes('FRESH_AFTER_JUMP_ERROR')), true);
+    assert.equal(jumped.topSignatures.some((s) => s.signature.includes('SKIPPED_MID_GAP_ERROR')), false);
+  });
+});
+
 

@@ -109,7 +109,9 @@ export function createCuaSlotHandlers(cuaService, { pluginId = KIKI_CUA_PLUGIN_I
   return {
     async 'E5:prompt-context'(payload = {}, context = {}) {
       try {
-        const inv = await cuaService.collectAllTargets({ context, fast: true });
+        const inv = typeof cuaService.peekTargets === 'function'
+          ? await cuaService.peekTargets({ context, maxAgeMs: 15_000, waitBudgetMs: 200 })
+          : await cuaService.collectAllTargets({ context, fast: true });
         const remote = inv.targets.filter((t) => t.providerId !== 'local' && t.online !== false);
         const active = inv.targets.find((t) => t.id === inv.selectedTargetId);
         if (remote.length === 0 && !active?.takeoverActive) {
@@ -146,7 +148,9 @@ export function createCuaSlotHandlers(cuaService, { pluginId = KIKI_CUA_PLUGIN_I
       if (kind === 'describe') {
         let liveSummary = null;
         try {
-          liveSummary = await cuaService.collectAllTargets({ context, fast: true });
+          liveSummary = typeof cuaService.peekTargets === 'function'
+            ? await cuaService.peekTargets({ context, maxAgeMs: 15_000, waitBudgetMs: 200 })
+            : await cuaService.collectAllTargets({ context, fast: true });
         } catch {}
         return {
           guiSlots: buildCuaGuiSlots(pluginId, liveSummary),

@@ -1,6 +1,9 @@
-import { recoveryFor } from '../lib/recovery.mjs';
+import { readStdinEvent, recoveryFor } from '../lib/recovery.mjs';
 
-let input = '';
-for await (const chunk of process.stdin) input += chunk;
-const output = recoveryFor(JSON.parse(input));
-if (output !== undefined) process.stdout.write(JSON.stringify(output));
+try {
+  const event = await readStdinEvent(process.stdin);
+  const output = recoveryFor(event);
+  if (output !== undefined) process.stdout.write(JSON.stringify(output));
+} catch {
+  // Never exit non-zero on malformed or unreadable hook stdin.
+}

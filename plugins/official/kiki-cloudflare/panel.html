@@ -1137,6 +1137,9 @@ let status = null;
 let mode = 'token';
 let busy = '';
 let pollTimer = null;
+let statusInFlight = null;
+let installing = false;
+let pageUnloaded = false;
 let savedNote = '';
 let fieldsFilled = false;
 let blocked = '';
@@ -1479,22 +1482,34 @@ function renderTunnel(next) {
 
 function schedulePoll() {
   clearTimeout(pollTimer);
+  pollTimer = null;
+  if (pageUnloaded || installing) return;
   const svc = status?.service;
   const login = status?.login;
   const watch = busy !== '' || login?.state === 'pending' || svc?.state === 'starting' || svc?.state === 'retrying';
-  if (watch) pollTimer = setTimeout(() => { void refreshStatus(); }, 2000);
+  if (watch) pollTimer = setTimeout(() => { pollTimer = null; void refreshStatus(); }, 2000);
 }
 
 async function refreshStatus() {
-  try {
-    renderTunnel(await call('status'));
-  } catch (err) {
-    blocked = err?.message || t.err.unknown;
-    $('dot').dataset.tone = 'error';
-    $('stat').textContent = t.unavailable;
-    $('root-reason').hidden = false;
-    $('root-reason').textContent = blocked;
-  }
+  if (pageUnloaded) return;
+  if (statusInFlight) return statusInFlight;
+  statusInFlight = (async () => {
+    try {
+      const next = await call('status');
+      if (!pageUnloaded) renderTunnel(next);
+    } catch (err) {
+      if (!pageUnloaded) {
+        blocked = err?.message || t.err.unknown;
+        $('dot').dataset.tone = 'error';
+        $('stat').textContent = t.unavailable;
+        $('root-reason').hidden = false;
+        $('root-reason').textContent = blocked;
+      }
+    } finally {
+      statusInFlight = null;
+    }
+  })();
+  return statusInFlight;
 }
 
 async function runLifecycle(action) {
@@ -1514,31 +1529,36 @@ async function runLifecycle(action) {
 }
 
 async function runInstall() {
+  installing = true;
+  clearTimeout(pollTimer);
+  pollTimer = null;
   busy = t.depInstalling;
   renderTunnel();
   try {
-    await installPrerequisite(PREREQUISITE);
-  } catch (err) {
-    busy = '';
-    depInstallError = err?.message || t.err.unknown;
-    renderTunnel();
-    return;
-  }
-  for (let i = 0; i < 20; i += 1) {
-    await new Promise((r) => setTimeout(r, 1500));
     try {
-      const next = await call('status');
-      if (next?.dependency?.state === 'ready') {
-        busy = '';
-        depInstallError = '';
-        savedNote = t.depInstalled;
-        renderTunnel(next);
-        return;
-      }
-    } catch {}
+      await installPrerequisite(PREREQUISITE);
+    } catch (err) {
+      depInstallError = err?.message || t.err.unknown;
+      return;
+    }
+    for (let i = 0; i < 20 && !pageUnloaded; i += 1) {
+      await new Promise((r) => setTimeout(r, 1500));
+      if (pageUnloaded) return;
+      try {
+        const next = await call('status');
+        if (next?.dependency?.state === 'ready') {
+          depInstallError = '';
+          savedNote = t.depInstalled;
+          status = next;
+          return;
+        }
+      } catch {}
+    }
+  } finally {
+    installing = false;
+    busy = '';
+    if (!pageUnloaded) renderTunnel();
   }
-  busy = '';
-  renderTunnel();
 }
 
 function renderTunnelList() {
@@ -2174,6 +2194,12 @@ window.addEventListener('message', (event) => {
     if (event.data.ok) slot.resolve(event.data.result);
     else slot.reject(new Error(event.data.error || t.err.unknown));
   }
+});
+
+window.addEventListener('pagehide', () => {
+  pageUnloaded = true;
+  clearTimeout(pollTimer);
+  pollTimer = null;
 });
 
 applyStrings();

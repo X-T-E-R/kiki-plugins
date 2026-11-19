@@ -202,3 +202,12 @@ void test('malformed, oversized and unknown OOXML parts fail before mutation', a
   await writeFile(file, zip('word/document.xml', 65 * 1024 * 1024));
   await assert.rejects(guardPackage(file), { code: 'PACKAGE_LIMIT' });
 });
+
+void test('runProcess rejects immediately on pre-aborted signal without spawning', async () => {
+  const ac = new AbortController();
+  ac.abort();
+  await assert.rejects(
+    () => runProcess('nonexistent-binary-should-not-spawn', ['--version'], { signal: ac.signal }),
+    { code: 'CANCELLED' },
+  );
+});

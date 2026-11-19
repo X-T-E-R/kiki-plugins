@@ -843,9 +843,15 @@ class MailService {
     for (const account of state.accounts) {
       if (!account.watch || !accountCapabilities(account).watch) continue;
       const controller = new AbortController();
-      const job = this.watchAccount(account, controller.signal);
+      const job = this.watchAccount(account, controller.signal).catch(() => {});
       this.watchers.push({ controller, job, accountId: account.id });
     }
+  }
+
+  jitteredDelay(baseMs) {
+    const raw = typeof this.deps.random === 'function' ? this.deps.random() : Math.random();
+    const factor = 0.8 + (Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 0.5) * 0.4;
+    return Math.min(WATCH_RETRY_MAX_MS, Math.max(100, Math.round(baseMs * factor)));
   }
 
   async watchAccount(account, signal) {
@@ -858,12 +864,12 @@ class MailService {
       } catch (error) {
         if (signal.aborted || this.closed) return;
         attempt += 1;
-        await this.recordEvent(account.id, { kind: 'watch-error', code: error.code || 'disconnected', message: error.message, attempt });
+        await this.recordEvent(account.id, { kind: 'watch-error', code: error.code || 'disconnected', message: error.message, attempt }).catch(() => {});
         if (['auth_failed', 'tls_required', 'cancelled', 'auth_missing', 'oauth_prerequisite', 'oauth_reauthorize', 'oauth_client_invalid', 'oauth_rejected', 'app_required', 'app_changed'].includes(error.code)) {
-          await this.recordEvent(account.id, { kind: 'watch-stopped', code: error.code, attempt });
+          await this.recordEvent(account.id, { kind: 'watch-stopped', code: error.code, attempt }).catch(() => {});
           return;
         }
-        const wait = pace.delay;
+        const wait = this.jitteredDelay(pace.delay);
         pace.delay = Math.min(pace.delay * 2, WATCH_RETRY_MAX_MS);
         if (await this.wait(signal, wait) || this.closed) return;
       }

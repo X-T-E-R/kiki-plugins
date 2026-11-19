@@ -12,6 +12,16 @@ export async function handlePanelRequest(action, args, context = {}) {
   try { return await sitesInstance(context.settings).action(action, args); }
   catch (error) { return { ok: false, error: errorView(error) }; }
 }
+export async function deactivate() {
+  const waits = [];
+  for (const sites of instances.values()) {
+    for (const controller of sites.active.values()) {
+      controller.abort();
+      if (controller.promise) waits.push(controller.promise);
+    }
+  }
+  await Promise.allSettled(waits);
+}
 export function register(api) {
   for (const definition of definitions) api.registerTool(definition, async (args, context) => {
     try {

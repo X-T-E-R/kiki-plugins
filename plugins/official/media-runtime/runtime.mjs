@@ -5,6 +5,15 @@ import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
+const REQUEST_TIMEOUT_MS = 120_000;
+const STREAM_TIMEOUT_MS = 300_000;
+
+function combineSignal(baseSignal, timeoutMs) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return baseSignal;
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return baseSignal ? AbortSignal.any([baseSignal, deadline]) : deadline;
+}
+
 export const mimeFor = (format) =>
   ({
     png: 'image/png',
@@ -102,7 +111,7 @@ export async function runtime(context, fetchImpl = globalThis.fetch, minimaxApiR
   check(/^https?:\/\//.test(base), 'Configure an HTTP(S) baseUrl');
   const auth = connection ? { ...connection.headers } : context.settings.apiKey ? { Authorization: `Bearer ${context.settings.apiKey}` } : {};
   const endpoint = (suffix) => `${base}/${suffix.replace(/^\/+/, '')}`;
-  const send = async (url, { method = 'GET', body, headers = {}, authenticate = true, followDownloadRedirects = false } = {}) => {
+  const send = async (url, { method = 'GET', body, headers = {}, authenticate = true, followDownloadRedirects = false, timeoutMs = REQUEST_TIMEOUT_MS } = {}) => {
     let requestHeaders = new Headers(headers);
     if (authenticate && new URL(url).origin === new URL(base).origin) {
       if (connection) {
@@ -119,32 +128,36 @@ export async function runtime(context, fetchImpl = globalThis.fetch, minimaxApiR
           submission: method === 'POST' ? 'not_sent' : 'accepted',
           code: 'local_stopped',
         });
+      const requestSignal = combineSignal(context.signal, timeoutMs);
       let response;
       try {
         response = await fetchImpl(currentUrl, {
           method,
           headers: Object.fromEntries(requestHeaders),
           body: body instanceof FormData ? body : body === undefined ? undefined : JSON.stringify(body),
-          signal: context.signal,
+          signal: requestSignal,
           // Native fetch strips Authorization but not arbitrary API-key/identity
           // headers on redirects. Handle only media/input GET redirects below.
           redirect: 'manual',
         });
       } catch {
+        const timedOut = !context.signal.aborted && Boolean(requestSignal?.aborted);
         throw Object.assign(
           new Error(
             context.signal.aborted
               ? 'Local reception stopped; remote generation may continue and incur charges'
+              : timedOut
+              ? 'Provider request timed out; do not resubmit automatically'
               : 'Network response lost; do not resubmit automatically'
           ),
           {
             submission: method === 'POST' ? 'unknown' : 'accepted',
-            code: context.signal.aborted ? 'local_stopped' : 'transport_error',
+            code: context.signal.aborted ? 'local_stopped' : timedOut ? 'timeout' : 'transport_error',
           }
         );
       }
       if ([301, 302, 303, 307, 308].includes(response.status)) {
-        await response.body?.cancel();
+        await response.body?.cancel().catch(() => {});
         if (!followDownloadRedirects || method !== 'GET')
           throw Object.assign(new Error('API endpoint redirected; configure its direct URL. The request was not forwarded.'), {
             code: 'http_redirect', submission: method === 'POST' ? 'unknown' : 'accepted',
@@ -165,7 +178,8 @@ export async function runtime(context, fetchImpl = globalThis.fetch, minimaxApiR
         currentUrl = next.href;
         continue;
       }
-      if (!response.ok)
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => {});
         throw Object.assign(new Error(`Provider HTTP ${response.status}`), {
           code: `http_${response.status}`,
           submission:
@@ -175,6 +189,7 @@ export async function runtime(context, fetchImpl = globalThis.fetch, minimaxApiR
               ? 'unknown'
               : 'accepted',
         });
+      }
       return response;
     }
   };
@@ -225,21 +240,23 @@ export async function runtime(context, fetchImpl = globalThis.fetch, minimaxApiR
     return { path: dest, name, mime, kind, role, complete, metadata };
   };
   const download = async (url, name, kind, headers = {}, mime) => {
-    const response = await send(url, { headers, followDownloadRedirects: true });
+    const response = await send(url, { headers, followDownloadRedirects: true, timeoutMs: STREAM_TIMEOUT_MS });
     if (!response.body)
       throw Object.assign(new Error('Empty download body'), { submission: 'accepted', code: 'empty_media' });
     const type = response.headers.get('content-type')?.split(';')[0];
-    if (type && /(?:json|text\/html)/.test(type))
+    if (type && /(?:json|text\/html)/.test(type)) {
+      await response.body?.cancel().catch(() => {});
       throw Object.assign(new Error('Download returned an error document, not media'), {
         code: 'invalid_media',
         submission: 'accepted',
       });
+    }
     await mkdir(context.stagingDir, { recursive: true });
     let dest = path.join(context.stagingDir, name);
     const temporary = `${dest}.part-${randomUUID()}`;
     try {
       await pipeline(Readable.fromWeb(response.body), createWriteStream(temporary, { flags: 'wx' }), {
-        signal: context.signal,
+        signal: combineSignal(context.signal, STREAM_TIMEOUT_MS),
       });
       const size = (await stat(temporary)).size;
       if (
@@ -291,7 +308,7 @@ export async function runtime(context, fetchImpl = globalThis.fetch, minimaxApiR
     check(ref.url, 'Missing input reference');
     const match = /^data:([^;,]+);base64,(.+)$/s.exec(ref.url);
     if (match) return { data: decode(match[2]), mime: match[1], name: 'input' };
-    const response = await send(ref.url, { authenticate: false, followDownloadRedirects: true });
+    const response = await send(ref.url, { authenticate: false, followDownloadRedirects: true, timeoutMs: STREAM_TIMEOUT_MS });
     return {
       data: Buffer.from(await response.arrayBuffer()),
       mime: response.headers.get('content-type')?.split(';')[0] ?? 'application/octet-stream',
@@ -308,28 +325,51 @@ export async function runtime(context, fetchImpl = globalThis.fetch, minimaxApiR
   const authHeaders = (fallback) => connection ? { ...auth } : fallback;
   return { endpoint, send, json, write, download, bytes, mediaUrl, authHeaders, baseUrl: base };
 }
-export async function* events(response, signal) {
+export async function* events(response, signal, idleTimeoutMs = STREAM_TIMEOUT_MS) {
   if (!response.body) throw new Error('Missing SSE stream');
   const decoder = new TextDecoder('utf-8', { fatal: true });
   let buffer = '';
-  for await (const chunk of response.body) {
-    signal.throwIfAborted();
-    buffer += decoder.decode(chunk, { stream: true });
-    let match;
-    while ((match = /\r?\n\r?\n/.exec(buffer))) {
-      const block = buffer.slice(0, match.index);
-      buffer = buffer.slice(match.index + match[0].length);
-      const data = block
-        .split(/\r?\n/)
-        .filter((line) => line.startsWith('data:'))
-        .map((line) => line.slice(5).trimStart())
-        .join('\n');
-      if (data) yield data;
+  let completed = false;
+  let timedOut = false;
+  let timer;
+  const arm = () => {
+    clearTimeout(timer);
+    if (Number.isFinite(idleTimeoutMs) && idleTimeoutMs > 0) {
+      timer = setTimeout(() => {
+        timedOut = true;
+        void response.body.cancel().catch(() => {});
+      }, idleTimeoutMs);
+      timer.unref?.();
     }
+  };
+  arm();
+  try {
+    for await (const chunk of response.body) {
+      arm();
+      signal.throwIfAborted();
+      buffer += decoder.decode(chunk, { stream: true });
+      let match;
+      while ((match = /\r?\n\r?\n/.exec(buffer))) {
+        const block = buffer.slice(0, match.index);
+        buffer = buffer.slice(match.index + match[0].length);
+        const data = block
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trimStart())
+          .join('\n');
+        if (data) yield data;
+      }
+    }
+    if (timedOut)
+      throw Object.assign(new Error('SSE stream timed out'), { code: 'timeout', submission: 'accepted' });
+    buffer += decoder.decode();
+    if (buffer.trim())
+      throw Object.assign(new Error('Truncated SSE event at EOF'), { code: 'incomplete_stream', submission: 'accepted' });
+    completed = true;
+  } finally {
+    clearTimeout(timer);
+    if (!completed) await response.body.cancel().catch(() => {});
   }
-  buffer += decoder.decode();
-  if (buffer.trim())
-    throw Object.assign(new Error('Truncated SSE event at EOF'), { code: 'incomplete_stream', submission: 'accepted' });
 }
 export async function imageResults(values, rt, format = 'png', usage) {
   if (!Array.isArray(values) || values.length === 0)
@@ -376,23 +416,41 @@ export async function videoDownload(handle, rt, url, headers = {}, effective, us
   }
 }
 
-export async function receiveAudio(response, context, name, mime, metadata) {
+export async function receiveAudio(response, context, name, mime, metadata, idleTimeoutMs = STREAM_TIMEOUT_MS) {
   const type = response.headers.get('content-type') ?? '';
-  if (!response.body || /(?:json|text\/html|text\/event-stream)/.test(type))
+  if (!response.body || /(?:json|text\/html|text\/event-stream)/.test(type)) {
+    await response.body?.cancel().catch(() => {});
     return failed({ code: 'invalid_media', message: 'Expected a binary audio response' });
+  }
   await mkdir(context.stagingDir, { recursive: true });
   const destination = path.join(context.stagingDir, name);
   const temporary = `${destination}.part-${randomUUID()}`;
   const file = await open(temporary, 'wx');
   let size = 0;
   let receptionError;
+  let timedOut = false;
+  let timer;
+  const arm = () => {
+    clearTimeout(timer);
+    if (Number.isFinite(idleTimeoutMs) && idleTimeoutMs > 0) {
+      timer = setTimeout(() => {
+        timedOut = true;
+        void response.body.cancel().catch(() => {});
+      }, idleTimeoutMs);
+      timer.unref?.();
+    }
+  };
+  arm();
   try {
     for await (const chunk of response.body) {
+      arm();
       context.signal.throwIfAborted();
       const bytes = Buffer.from(chunk);
       await file.write(bytes);
       size += bytes.length;
     }
+    if (timedOut)
+      throw Object.assign(new Error('Audio stream timed out'), { code: 'timeout' });
     const length = response.headers.get('content-length');
     if (!size || (length !== null && !response.headers.has('content-encoding') && size !== Number(length)))
       throw Object.assign(new Error('Audio is empty or truncated'), { code: 'truncated_media' });
@@ -401,11 +459,15 @@ export async function receiveAudio(response, context, name, mime, metadata) {
       new Error(
         context.signal.aborted
           ? 'Local audio reception stopped; remote synthesis may continue and incur charges'
+          : timedOut
+          ? 'Audio stream timed out'
           : error.message
       ),
-      { code: context.signal.aborted ? 'local_stopped' : error.code ?? 'incomplete_audio', submission: 'accepted' }
+      { code: context.signal.aborted ? 'local_stopped' : timedOut ? 'timeout' : error.code ?? 'incomplete_audio', submission: 'accepted' }
     );
   } finally {
+    clearTimeout(timer);
+    if (receptionError) await response.body.cancel().catch(() => {});
     await file.close();
   }
   const artifacts = [];

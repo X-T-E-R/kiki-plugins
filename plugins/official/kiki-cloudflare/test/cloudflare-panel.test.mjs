@@ -147,5 +147,47 @@ test('kiki-cloudflare panel.html follows Paper-and-Ink palette, sandbox safety, 
   assert.match(html, /safeStorage/);
   assert.match(html, /execCommand\('copy'\)/);
   assert.match(html, /plugin\.openExternal/);
+  assert.match(html, /statusInFlight/);
+  assert.match(html, /if \(pageUnloaded \|\| installing\) return/);
+  assert.match(html, /addEventListener\('pagehide'/);
   assert.equal(/\p{Extended_Pictographic}/u.test(html), false);
+});
+
+test('CloudflareAccount caps pagination at 100 pages, cancels non-OK bodies, and CloudflareService deactivates on context.signal abort', async (t) => {
+  const { CloudflareAccount } = await import('../lib/account.mjs');
+  let canceled = 0;
+  let pages = 0;
+  const errAccount = new CloudflareAccount({ apiToken: 'tok' }, {
+    fetchFn: async () => new Response(new ReadableStream({ pull() {}, cancel() { canceled += 1; } }), { status: 500 }),
+  });
+  await assert.rejects(() => errAccount.request('/zones'), /HTTP 500/);
+  assert.equal(canceled, 1);
+
+  const pagedAccount = new CloudflareAccount({ apiToken: 'tok' }, {
+    fetchFn: async () => {
+      pages += 1;
+      return Response.json({ success: true, result: [{ id: `z-${pages}`, name: `z${pages}.example.test` }], result_info: { total_pages: 500 } });
+    },
+  });
+  const list = await pagedAccount.list('/zones');
+  assert.equal(pages, 100);
+  assert.equal(list.length, 100);
+
+  const scratch = path.resolve('.tmp/cloudflare-plugin/signal-tests');
+  await mkdir(scratch, { recursive: true });
+  const root = await mkdtemp(path.join(scratch, 'run-'));
+  t.after(() => rm(root, { recursive: true, force: true, maxRetries: 6, retryDelay: 40 }));
+  const ac = new AbortController();
+  const service = new CloudflareService({ commandFn: async () => 'cloudflared version 2026.10.0' });
+  await service.activate({
+    settings: { autoStart: false },
+    userHome: root,
+    dataDir: path.join(root, 'data'),
+    signal: ac.signal,
+    updateSettings: async () => {},
+  });
+  assert.equal(service.closed, false);
+  ac.abort();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(service.closed, true);
 });

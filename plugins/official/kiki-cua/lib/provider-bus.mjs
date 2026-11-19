@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -114,8 +114,22 @@ export async function discoverCuaProviders({
   const providers = [];
   const rejected = [];
 
+  const STALE_TMP_TTL_MS = 60_000;
   for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+    if (!entry.isFile()) continue;
+    if (entry.name.endsWith('.tmp')) {
+      if (pruneDead) {
+        const tmpPath = path.join(busDir, entry.name);
+        try {
+          const st = await stat(tmpPath);
+          if (nowMs - st.mtimeMs > STALE_TMP_TTL_MS) {
+            await rm(tmpPath, { force: true }).catch(() => {});
+          }
+        } catch {}
+      }
+      continue;
+    }
+    if (!entry.name.endsWith('.json')) continue;
     const filePath = path.join(busDir, entry.name);
     let raw;
     try {

@@ -1,10 +1,16 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
-import { formatWithOptions, promisify } from 'node:util';
+import { formatWithOptions } from 'node:util';
 import { findAdb, phoneDataDir } from './environment.mjs';
+import { execAdb } from './adb.mjs';
 import { mobilecliBinary, runtimeInstalled, upstreamEnvironment } from './prepare.mjs';
+import {
+  DEFAULT_MOBILECLI_URL,
+  ensureMobilecliRuntimePatched,
+  ensureMobilecliServer,
+} from './mobilecli-server.mjs';
 import { nodeExecutable } from './node-executable.mjs';
 import {
   sampleGaussian,
@@ -24,7 +30,7 @@ export {
   sampleHumanDelayMs,
 } from './human-input.mjs';
 
-const defaultExecuteAdb = promisify(execFile);
+const defaultExecuteAdb = execAdb;
 const locatorTapHooks = new WeakMap();
 const defaultDelay = (ms, signal) => new Promise((resolve, reject) => {
   if (signal?.aborted) { reject(signal.reason ?? Object.assign(new Error('Aborted'), { name: 'AbortError' })); return; }
@@ -411,6 +417,7 @@ export async function executePhoneScript({ script, device: requested, platform =
   const output = [];
   let device;
   let driver;
+  let startedServer;
   const environmentKeys = ['PATH', 'ANDROID_HOME', 'ANDROID_SDK_ROOT', 'MOBILEMCP_DISABLE_TELEMETRY', 'npm_config_ignore_scripts', 'npm_config_cache'];
   const previousEnvironment = Object.fromEntries(environmentKeys.map(key => [key, process.env[key]]));
   try {
@@ -419,9 +426,23 @@ export async function executePhoneScript({ script, device: requested, platform =
     const adbBinary = context.settings?.adbPath || process.env.KIKI_PHONE_ADB_PATH || await findAdb({ dataDir });
     Object.assign(process.env, upstreamEnvironment(adbBinary, process.env, dataDir));
     const modules = path.join(dataDir, 'runtime/node_modules');
+    if (!support.driverModule) {
+      await ensureMobilecliRuntimePatched(dataDir).catch(() => {});
+    }
     const sdk = support.sdk || await import(pathToFileURL(path.join(modules, 'mobilewright/dist/index.js')));
     const { MobilecliDriver } = support.driverModule || await import(pathToFileURL(path.join(modules, '@mobilewright/driver-mobilecli/dist/index.js')));
-    driver = new MobilecliDriver({ mobilecliPath: await mobilecliBinary(dataDir) });
+    const cliPath = await mobilecliBinary(dataDir);
+    const hasCliBinary = await access(cliPath).then(() => true, () => false);
+    let serverUrl = DEFAULT_MOBILECLI_URL;
+    if (!support.driverModule && !support.sdk && script && hasCliBinary) {
+      const ensured = await ensureMobilecliServer({
+        binaryPath: cliPath,
+        env: process.env,
+      });
+      serverUrl = ensured.url;
+      if (ensured.started) startedServer = ensured.serverProcess;
+    }
+    driver = new MobilecliDriver({ mobilecliPath: cliPath, autoStart: false, url: serverUrl });
     const devices = (await driver.listDevices({ platform })).filter(item => item.state === 'online');
     let saved;
     try { saved = JSON.parse(await readFile(path.join(dataDir, 'selected-device.json'), 'utf8')); }
@@ -470,6 +491,7 @@ export async function executePhoneScript({ script, device: requested, platform =
   } finally {
     try { if (device) await device.close(); else await driver?.dispose(); }
     finally {
+      if (startedServer) await startedServer.kill().catch(() => {});
       for (const [key, value] of Object.entries(previousEnvironment)) {
         if (value === undefined) delete process.env[key]; else process.env[key] = value;
       }

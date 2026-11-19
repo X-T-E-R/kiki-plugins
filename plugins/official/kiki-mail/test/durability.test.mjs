@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { mailServiceForTests } from '../entry.mjs';
+import { withImap } from '../lib/imap.mjs';
 import { safeSegment, storageKey } from '../lib/paths.mjs';
 import { readEvents } from '../lib/service.mjs';
 import { startFixture } from './fixture.mjs';
@@ -421,7 +423,9 @@ test('watch keeps reconnecting after more than four drops and close stops it', {
     }, active.context);
     for (let index = 1; index <= 5; index += 1) {
       await waitFor(() => clock.waits.length >= index, `wait ${index}`);
-      assert.equal(clock.waits[index - 1], 1000 * (2 ** (index - 1)));
+      const base = 1000 * (2 ** (index - 1));
+      assert.ok(clock.waits[index - 1] >= Math.round(base * 0.8) && clock.waits[index - 1] <= Math.round(base * 1.2),
+        `expected jittered backoff near ${base}, got ${clock.waits[index - 1]}`);
       clock.release();
     }
     await waitFor(() => active.fx.state.idling > 0, 'healthy idle');
@@ -429,7 +433,7 @@ test('watch keeps reconnecting after more than four drops and close stops it', {
     assert.equal(clock.waits.length, 5);
     active.fx.dropSockets();
     await waitFor(() => clock.waits.length >= 6, 'reset wait');
-    assert.equal(clock.waits[5], 1000);
+    assert.ok(clock.waits[5] >= 800 && clock.waits[5] <= 1200, `expected reset jittered wait near 1000, got ${clock.waits[5]}`);
     const accepts = active.fx.state.imapAccepts;
     await active.service.deactivate();
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -489,5 +493,85 @@ test('authentication and missing STARTTLS stop watch without another wait', { ti
   } finally {
     await auth.stop();
     await tls.stop();
+  }
+});
+
+test('async IMAP ECONNRESET/ETIMEDOUT error events during idle are caught without uncaughtException', { timeout: 10000 }, async () => {
+  const uncaught = [];
+  const onUncaught = (err) => uncaught.push(err);
+  process.on('uncaughtException', onUncaught);
+  try {
+    for (const code of ['ECONNRESET', 'ETIMEDOUT']) {
+      let capturedClient;
+      await assert.rejects(
+        () => withImap(
+          {
+            id: 'ada',
+            user: 'ada@example.test',
+            imapHost: 'imap.example.test',
+            imapPort: 993,
+            imapSecure: true,
+            allowInsecureAuth: false,
+            timeoutMs: 5000,
+          },
+          { user: 'ada@example.test', pass: 'secret' },
+          {
+            createClient() {
+              const client = new EventEmitter();
+              client.secureConnection = true;
+              client.connect = async () => {};
+              client.idle = async () => {
+                await new Promise((resolve) => setTimeout(resolve, 10));
+                const err = Object.assign(new Error(`read ${code}`), { code });
+                client.emit('error', err);
+              };
+              client.logout = async () => {};
+              client.close = () => {};
+              capturedClient = client;
+              return client;
+            },
+          },
+          async (client) => {
+            await client.idle();
+          },
+        ),
+        (err) => err?.code === 'disconnected',
+      );
+      assert.equal(capturedClient.listenerCount('error'), 0, 'error listener must be cleaned up on teardown');
+    }
+    assert.deepEqual(uncaught, []);
+  } finally {
+    process.off('uncaughtException', onUncaught);
+  }
+});
+
+test('watchAccount survives recordEvent failures without unhandledRejection and applies jitter', { timeout: 20000 }, async () => {
+  const unhandled = [];
+  const onUnhandled = (err) => unhandled.push(err);
+  process.on('unhandledRejection', onUnhandled);
+  const clock = parkedWait();
+  const active = await session({
+    dropFirst: 2,
+    deps: { wait: clock.wait, random: () => 0.75 },
+    users: [{ user: 'ada@example.test', password: PASS, mailboxes: { INBOX: box([]) } }],
+  });
+  try {
+    active.service.recordEvent = async () => { throw new Error('disk full'); };
+    await active.service.panel('save', {
+      account: account(active.fx, 'ada', { watch: true, timeoutMs: 400 }),
+      watchEnabled: true,
+      credential: { password: PASS },
+    }, active.context);
+    await waitFor(() => clock.waits.length >= 1, 'first retry after recordEvent failure');
+    assert.equal(clock.waits[0], 1100);
+    clock.release();
+    await waitFor(() => clock.waits.length >= 2, 'second retry');
+    assert.equal(clock.waits[1], 2200);
+    clock.release();
+    await waitFor(() => active.fx.state.idling > 0, 'recovered idle');
+    assert.deepEqual(unhandled, []);
+  } finally {
+    await active.stop();
+    process.off('unhandledRejection', onUnhandled);
   }
 });

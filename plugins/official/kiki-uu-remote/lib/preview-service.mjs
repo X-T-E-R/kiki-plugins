@@ -1,6 +1,9 @@
 const STREAM_MAGIC_0 = 0x55; // 'U'
 const STREAM_MAGIC_1 = 0x52; // 'R'
 const MAX_BUFFERED_BYTES = 1_500_000;
+const PEEK_DEFAULT_MAX_AGE_MS = 15_000;
+const PEEK_DEFAULT_WAIT_BUDGET_MS = 200;
+const STREAM_TOPO_REFRESH_MS = 3_000;
 
 export function packStreamPngFrame({
   pngBuffer,
@@ -24,8 +27,88 @@ export function packStreamPngFrame({
   return Buffer.concat([header, pngBuffer]);
 }
 
-export function createUuPreviewService({ uuService, ensureProviderBus = async () => null } = {}) {
+export function createUuPreviewService({ uuService, ensureProviderBus = async () => null, nowFn = Date.now } = {}) {
   const activeStreams = new Set();
+  let cachedPeekState = { key: '', at: 0, value: null };
+  const peekFlights = new Map();
+
+  function emptyPeekSnapshot() {
+    return {
+      ok: true,
+      selectedSessionId: null,
+      sessions: [],
+      offscreenCount: 0,
+      pairedDevices: [],
+    };
+  }
+
+  function peekCacheKey(context = {}) {
+    const settings = context?.settings ?? {};
+    return `${String(settings.executablePath ?? '')}|${String(settings.cliPath ?? '')}`;
+  }
+
+  function raceTimeout(promise, ms, message) {
+    let timer;
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), ms);
+      timer.unref?.();
+    });
+    return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+  }
+
+  function triggerBackgroundPeekRefresh(context = {}) {
+    const key = peekCacheKey(context);
+    let flight = peekFlights.get(key);
+    if (!flight) {
+      flight = uuService.manageSessions(
+        {
+          action: 'list',
+          includeDevices: false,
+          probeContentRect: false,
+        },
+        context,
+      )
+        .then((sessionSummary) => {
+          const snapshot = {
+            ok: true,
+            selectedSessionId: sessionSummary.selectedSessionId ?? null,
+            sessions: Array.isArray(sessionSummary.sessions) ? sessionSummary.sessions : [],
+            offscreenCount: Number(sessionSummary.offscreenCount) || 0,
+            pairedDevices: [],
+          };
+          cachedPeekState = { key, at: nowFn(), value: snapshot };
+          return snapshot;
+        })
+        .finally(() => {
+          if (peekFlights.get(key) === flight) peekFlights.delete(key);
+        });
+      flight.catch(() => {});
+      peekFlights.set(key, flight);
+    }
+    return flight;
+  }
+
+  async function peekState(
+    { maxAgeMs = PEEK_DEFAULT_MAX_AGE_MS, waitBudgetMs = PEEK_DEFAULT_WAIT_BUDGET_MS } = {},
+    context = {},
+  ) {
+    const key = peekCacheKey(context);
+    const hasCached = cachedPeekState.value !== null && cachedPeekState.key === key;
+    if (hasCached && nowFn() - cachedPeekState.at < maxAgeMs) {
+      return cachedPeekState.value;
+    }
+    const flight = triggerBackgroundPeekRefresh(context);
+    if (hasCached || waitBudgetMs <= 0) {
+      return hasCached ? cachedPeekState.value : emptyPeekSnapshot();
+    }
+    try {
+      return await raceTimeout(flight, waitBudgetMs, 'uu-remote peek budget elapsed');
+    } catch {
+      return cachedPeekState.key === key && cachedPeekState.value !== null
+        ? cachedPeekState.value
+        : emptyPeekSnapshot();
+    }
+  }
 
   function nudgeStreams(sessionId = null, delayMs = 35) {
     for (const subscriber of activeStreams) {
@@ -47,7 +130,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
       uuService.getStatus({ includeCliStatus: false }, context),
     ]);
 
-    return {
+    const result = {
       ok: true,
       selectedSessionId: sessionSummary.selectedSessionId,
       sessions: sessionSummary.sessions,
@@ -58,6 +141,18 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
       runtime: statusSummary.runtime,
       providerBus: statusSummary.providerBus,
     };
+    cachedPeekState = {
+      key: peekCacheKey(context),
+      at: nowFn(),
+      value: {
+        ok: true,
+        selectedSessionId: result.selectedSessionId,
+        sessions: result.sessions,
+        offscreenCount: result.offscreenCount,
+        pairedDevices: result.pairedDevices,
+      },
+    };
+    return result;
   }
 
   async function captureFrame(args = {}, context = {}) {
@@ -225,6 +320,8 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
     const topo = await uuService.inspectTopology(context?.settings ?? {});
     const initialSession = await uuService.resolveTargetSession(targetSessionId, topo, context);
     targetSessionId = initialSession.id;
+    let cachedSession = initialSession;
+    let lastTopoAt = nowFn();
 
     const scheduleNext = (delayMs) => {
       if (closed) return;
@@ -269,7 +366,11 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
       }
       if (!msg || typeof msg !== 'object') return;
       if (msg.type === 'configure') {
-        if (msg.sessionId) targetSessionId = String(msg.sessionId);
+        if (msg.sessionId && String(msg.sessionId) !== targetSessionId) {
+          targetSessionId = String(msg.sessionId);
+          cachedSession = null;
+          lastTopoAt = 0;
+        }
         if (Number.isFinite(msg.maxWidth)) maxWidth = Math.max(320, Math.min(2560, msg.maxWidth));
         if (Number.isFinite(msg.maxHeight)) maxHeight = Math.max(240, Math.min(1600, msg.maxHeight));
         if (Number.isFinite(msg.fps)) fps = Math.max(1, Math.min(20, msg.fps));
@@ -311,10 +412,19 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
       }
 
       inFlight = true;
-      const started = Date.now();
+      const started = nowFn();
       try {
-        const curTopo = await uuService.inspectTopology(context?.settings ?? {});
-        const session = await uuService.resolveTargetSession(targetSessionId, curTopo, context);
+        let session = cachedSession;
+        const needTopoRefresh = !session
+          || session.id !== targetSessionId
+          || session.state !== 'active'
+          || started - lastTopoAt >= STREAM_TOPO_REFRESH_MS;
+        if (needTopoRefresh) {
+          const curTopo = await uuService.inspectTopology(context?.settings ?? {});
+          session = await uuService.resolveTargetSession(targetSessionId, curTopo, context);
+          cachedSession = session;
+          lastTopoAt = nowFn();
+        }
         if (session.state === 'active') {
           const obs = await uuService.observeSession(
             session,
@@ -341,6 +451,8 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
           );
         }
       } catch (error) {
+        cachedSession = null;
+        lastTopoAt = 0;
         if (!closed) {
           streamSession.sendText?.(
             JSON.stringify({
@@ -353,7 +465,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
         inFlight = false;
       }
 
-      const elapsed = Date.now() - started;
+      const elapsed = nowFn() - started;
       scheduleNext(Math.max(25, intervalMs - elapsed));
     };
 
@@ -390,6 +502,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
   }
 
   return {
+    peekState,
     listState,
     captureFrame,
     performAction,

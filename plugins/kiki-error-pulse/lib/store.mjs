@@ -77,11 +77,12 @@ async function replaceFileWindowsSafe(tmpPath, targetPath) {
   }
 }
 
-export async function writeIndexAtomic(indexPath, index, nowMs = Date.now()) {
+export async function writeIndexAtomic(indexPath, index, nowMs = Date.now(), options = {}) {
   pruneIndex(index, nowMs);
+  const maxBytes = typeof options.maxBytes === 'number' && options.maxBytes > 0 ? options.maxBytes : SOFT_MAX_INDEX_BYTES;
   let serialized = JSON.stringify(index);
-  if (Buffer.byteLength(serialized, 'utf8') > SOFT_MAX_INDEX_BYTES) {
-    trimIndexUnderByteCap(index);
+  if (Buffer.byteLength(serialized, 'utf8') > maxBytes) {
+    trimIndexUnderByteCap(index, { maxBytes, protectedFileKeys: options.protectedFileKeys });
     serialized = JSON.stringify(index);
   }
   await mkdir(path.dirname(indexPath), { recursive: true });
@@ -308,19 +309,108 @@ export function pruneIndex(index, nowMs = Date.now()) {
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, MAX_STREAK_EPISODES);
   }
+
+  let prunedFiles = 0;
+  if (index.files && typeof index.files === 'object') {
+    for (const [fileKey, fileMeta] of Object.entries(index.files)) {
+      if (!fileMeta || typeof fileMeta !== 'object') {
+        delete index.files[fileKey];
+        prunedFiles += 1;
+        continue;
+      }
+      const ts =
+        typeof fileMeta.mtimeMs === 'number' && fileMeta.mtimeMs > 0
+          ? fileMeta.mtimeMs
+          : typeof fileMeta.lastSeenAt === 'number' && fileMeta.lastSeenAt > 0
+            ? fileMeta.lastSeenAt
+            : 0;
+      if (ts > 0 && ts < minTs) {
+        delete index.files[fileKey];
+        prunedFiles += 1;
+        continue;
+      }
+      if (fileMeta.tailState && typeof fileMeta.tailState === 'object') {
+        if (Array.isArray(fileMeta.tailState.pendingCalls)) {
+          fileMeta.tailState.pendingCalls = fileMeta.tailState.pendingCalls.filter(
+            (pair) => Array.isArray(pair) && (!pair[1]?.timestamp || pair[1].timestamp >= minTs),
+          );
+          if (fileMeta.tailState.pendingCalls.length === 0) {
+            delete fileMeta.tailState.pendingCalls;
+          }
+        }
+        if (
+          fileMeta.tailState.activeStreak &&
+          typeof fileMeta.tailState.activeStreak.updatedAt === 'number' &&
+          fileMeta.tailState.activeStreak.updatedAt < minTs
+        ) {
+          delete fileMeta.tailState.activeStreak;
+        }
+        if (!fileMeta.tailState.pendingCalls && !fileMeta.tailState.activeStreak) {
+          delete fileMeta.tailState;
+        }
+      }
+    }
+  }
+  return { prunedFiles };
 }
 
-function trimIndexUnderByteCap(index) {
-  const sigEntries = Object.values(index.signatures).sort((a, b) => (a.lastSeenAt || 0) - (b.lastSeenAt || 0));
-  const dropCount = Math.ceil(sigEntries.length * 0.35);
-  for (let i = 0; i < dropCount; i += 1) {
-    delete index.signatures[sigEntries[i].id];
+export function trimIndexUnderByteCap(index, { maxBytes = SOFT_MAX_INDEX_BYTES, protectedFileKeys = null } = {}) {
+  const isProtected = (key, meta) => Boolean(meta?.partial || protectedFileKeys?.has(key));
+  const fileTs = (meta) =>
+    typeof meta?.mtimeMs === 'number' && meta.mtimeMs > 0
+      ? meta.mtimeMs
+      : typeof meta?.lastSeenAt === 'number' && meta.lastSeenAt > 0
+        ? meta.lastSeenAt
+        : 0;
+  const underCap = () => Buffer.byteLength(JSON.stringify(index), 'utf8') <= maxBytes;
+
+  // 1. Strip tailState from oldest non-dirty files first.
+  const filesWithTail = Object.entries(index.files || {})
+    .filter(([key, meta]) => meta?.tailState && !isProtected(key, meta))
+    .sort(([, a], [, b]) => fileTs(a) - fileTs(b));
+  for (const [, meta] of filesWithTail) {
+    delete meta.tailState;
   }
+  if (underCap()) return;
+
+  // 2. Evict oldest non-dirty index.files entries before touching any active signatures.
+  const evictableFiles = Object.entries(index.files || {})
+    .filter(([key, meta]) => !isProtected(key, meta))
+    .sort(([, a], [, b]) => fileTs(a) - fileTs(b));
+  let cursor = 0;
+  while (cursor < evictableFiles.length && !underCap()) {
+    const remaining = evictableFiles.length - cursor;
+    const batchSize = Math.max(1, Math.ceil(remaining * 0.25));
+    const end = Math.min(evictableFiles.length, cursor + batchSize);
+    for (let i = cursor; i < end; i += 1) {
+      delete index.files[evictableFiles[i][0]];
+    }
+    cursor = end;
+  }
+  if (underCap()) return;
+
+  // 3. Trim secondary caches (streak episodes, remaining tailState pendingCalls, excess samples).
   index.streakEpisodes = (index.streakEpisodes || []).slice(0, 50);
-  for (const fileMeta of Object.values(index.files)) {
+  for (const fileMeta of Object.values(index.files || {})) {
     if (fileMeta?.tailState?.pendingCalls?.length > 4) {
       fileMeta.tailState.pendingCalls = fileMeta.tailState.pendingCalls.slice(-4);
     }
+  }
+  for (const sig of Object.values(index.signatures || {})) {
+    if (Array.isArray(sig?.samples) && sig.samples.length > 2) {
+      sig.samples = sig.samples.slice(-2);
+    }
+  }
+  if (underCap()) return;
+
+  // 4. Last resort only: evict oldest signatures until under byte cap.
+  let sigEntries = Object.values(index.signatures || {}).sort((a, b) => (a.lastSeenAt || 0) - (b.lastSeenAt || 0));
+  while (sigEntries.length > 0 && !underCap()) {
+    const dropCount = Math.max(1, Math.ceil(sigEntries.length * 0.35));
+    for (let i = 0; i < dropCount && i < sigEntries.length; i += 1) {
+      delete index.signatures[sigEntries[i].id];
+    }
+    sigEntries = sigEntries.slice(dropCount);
   }
 }
 

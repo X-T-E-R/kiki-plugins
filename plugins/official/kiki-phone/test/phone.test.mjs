@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mobileMcpCommand } from '../lib/launch-mobile-mcp.mjs';
 import { definitions } from '../lib/definitions.mjs';
-import { adbArguments, runAdb } from '../lib/adb.mjs';
+import { adbArguments, execAdb, runAdb } from '../lib/adb.mjs';
+import { ensureMobilecliRuntimePatched, ensureMobilecliServer } from '../lib/mobilecli-server.mjs';
 import { register, prepareOptions } from '../entry.mjs';
 import { findAdb, mobileEnvironment } from '../lib/environment.mjs';
 import { preparePhone, installOfficialTools } from '../lib/prepare.mjs';
@@ -941,4 +942,126 @@ test('screen.tap, screen.swipe and locator.tap default to humanized gesture traj
   assert.equal(gestures.length, 4);
   assert.deepEqual(rawTaps.slice(-2), [{ x: 320, y: 640 }, { x: 540, y: 970 }]);
   assert.equal(rawSwipes.at(-1).direction, 'down');
+});
+
+test('P0-5: execAdb resolves in <200ms even when a child spawns a long-lived grandchild inheriting stdout/stderr', async () => {
+  // Spawn a child node process that spawns a detached background grandchild inheriting stdio pipes,
+  // prints the grandchild PID on stdout, and immediately exits.
+  const childScript = [
+    "const { spawn } = require('node:child_process');",
+    "const gc = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 15000)'], { stdio: ['ignore', 1, 2], detached: true, windowsHide: true });",
+    "gc.unref();",
+    "process.stdout.write('PID:' + gc.pid + '\\n');",
+    "process.stderr.write('warn-line\\n');",
+  ].join(' ');
+
+  const t0 = performance.now();
+  const { stdout, stderr } = await execAdb(process.execPath, ['-e', childScript], {
+    timeout: 5_000,
+    drainGraceMs: 40,
+    skipStartServer: true,
+  });
+  const elapsedMs = performance.now() - t0;
+
+  const pidMatch = stdout.match(/PID:(\d+)/);
+  assert.ok(pidMatch, `expected grandchild PID in stdout, got: ${JSON.stringify(stdout)}`);
+  const grandchildPid = Number(pidMatch[1]);
+  try {
+    assert.ok(elapsedMs < 200, `execAdb hung on inherited grandchild pipe: took ${elapsedMs.toFixed(1)}ms`);
+    assert.match(stderr, /warn-line/);
+  } finally {
+    try { process.kill(grandchildPid); } catch {}
+  }
+});
+
+test('P0-4: ensureMobilecliServer spawns with windowsHide:true + error handler and ensureMobilecliRuntimePatched patches server.js & driver.js', async () => {
+  const { EventEmitter } = await import('node:events');
+  const spawned = [];
+  let probeCount = 0;
+
+  const started = await ensureMobilecliServer({
+    binaryPath: '/mock/mobilecli.exe',
+    port: 12991,
+    pollIntervalMs: 10,
+    checkReachable: async () => {
+      probeCount += 1;
+      return probeCount >= 3;
+    },
+    spawnProcess: (file, args, opts) => {
+      spawned.push({ file, args, opts });
+      const proc = new EventEmitter();
+      proc.stdout = new EventEmitter();
+      proc.stderr = new EventEmitter();
+      proc.pid = 0;
+      proc.exitCode = null;
+      proc.killed = false;
+      proc.unref = () => {};
+      proc.kill = () => {
+        proc.killed = true;
+        proc.exitCode = 0;
+        proc.emit('exit', 0);
+      };
+      return proc;
+    },
+  });
+
+  try {
+    assert.equal(started.started, true);
+    assert.equal(started.url, 'ws://localhost:12991/ws');
+    assert.equal(spawned.length, 1);
+    assert.equal(spawned[0].opts.windowsHide, true);
+    assert.deepEqual(spawned[0].opts.stdio, ['ignore', 'pipe', 'pipe']);
+    assert.ok(started.serverProcess.process.listenerCount('error') >= 1);
+  } finally {
+    await started.serverProcess.kill();
+  }
+
+  // Spawn error must reject cleanly rather than throwing uncaughtException
+  await assert.rejects(
+    () => ensureMobilecliServer({
+      binaryPath: '/nonexistent/mobilecli.exe',
+      port: 12992,
+      pollIntervalMs: 10,
+      checkReachable: async () => false,
+      spawnProcess: () => {
+        const proc = new EventEmitter();
+        proc.stdout = new EventEmitter();
+        proc.stderr = new EventEmitter();
+        proc.kill = () => {};
+        queueMicrotask(() => proc.emit('error', Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' })));
+        return proc;
+      },
+    }),
+    /Failed to spawn mobilecli server/,
+  );
+
+  // Runtime patcher idempotently injects windowsHide: true into upstream server.js & driver.js
+  const dir = await scratch('patch-mobilecli-');
+  try {
+    const dist = join(dir, 'runtime/node_modules/@mobilewright/driver-mobilecli/dist');
+    await mkdir(dist, { recursive: true });
+    await writeFile(join(dist, 'server.js'), [
+      "const proc = spawn(binary, serverArgs, {",
+      "    stdio: 'pipe',",
+      "    detached: false,",
+      "});",
+    ].join('\n'));
+    await writeFile(join(dist, 'driver.js'), [
+      "const statusOutput = execFileSync(binary, ['agent', 'status'], { encoding: 'utf8' });",
+      "const output = execFileSync(binary, ['devices'], { encoding: 'utf8' });",
+    ].join('\n'));
+
+    const first = await ensureMobilecliRuntimePatched(dir);
+    assert.deepEqual(first, { serverPatched: true, driverPatched: true });
+    const patchedServer = await readFile(join(dist, 'server.js'), 'utf8');
+    const patchedDriver = await readFile(join(dist, 'driver.js'), 'utf8');
+    assert.match(patchedServer, /windowsHide:\s*true/);
+    assert.match(patchedServer, /proc\.on\('error'/);
+    assert.match(patchedDriver, /windowsHide:\s*true/);
+
+    const second = await ensureMobilecliRuntimePatched(dir);
+    assert.deepEqual(second, { serverPatched: false, driverPatched: false });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

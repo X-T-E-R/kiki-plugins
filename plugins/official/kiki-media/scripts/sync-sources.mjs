@@ -129,7 +129,7 @@ for (const [key, kind] of [['defaultImageProvider', 'image'], ['defaultVideoProv
   if (properties[key]) properties[key] = localized({ ...properties[key], enum: idsFor(kind) });
 }
 properties.scriptSources = localized({ type: 'string', default: '[]', title: 'Custom media scripts', multiline: true, advanced: true });
-manifest.version = '0.2.5';
+manifest.version = '0.2.6';
 manifest['x-kiki'].engines.kiki = '>=0.4.3';
 manifest['x-kiki'].mediaProviders = providers;
 manifest['x-kiki'].mediaSources = sources;

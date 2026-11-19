@@ -348,3 +348,25 @@ test('quick capture, gradual contract, archive/reopen same ID, and history conti
   assert.equal(next.generation, history.generation);
   assert.equal(next.revisions[0].revision, 3);
 });
+
+test('P1-4 & P2-5: uses bounded 1500ms busy_timeout and closes SQLite handle cleanly even on early failure/abort', async () => {
+  const source = await readFile(path.join(plugin, 'lib/ledger.mjs'), 'utf8');
+  assert.match(source, /PRAGMA busy_timeout=1500;/);
+  assert.doesNotMatch(source, /PRAGMA busy_timeout=5000;/);
+
+  const dir = path.join(temp, 'close-safety');
+  await mkdir(dir);
+  const ctx = { workspaceRoot: dir, approvedPaths: [], signal: new AbortController().signal };
+  await writeLedger({ workspace: '.', requestKey: 'close-init', actor: 'fixture', basis: 'test', operations: [create('c1')] }, ctx);
+
+  // Trigger early abort during exportPages and verify DB handle is closed cleanly (directory removable).
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(async () => {
+    for await (const _ of exportPages(dir, 'json', controller.signal, 1000)) {
+      // should abort before yielding
+    }
+  });
+  await assert.rejects(readLedger({ workspace: '.', view: 'get', id: 'nonexistent' }, ctx), (e) => e.code === 'item_not_found');
+  await rm(dir, { recursive: true, force: true });
+});

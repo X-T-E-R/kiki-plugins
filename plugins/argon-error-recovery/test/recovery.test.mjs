@@ -54,7 +54,7 @@ test('ships an installable dependency-free hook and exercises real stdin/stdout'
   const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(manifest.name, 'argon-error-recovery');
-  assert.equal(manifest.version, '0.3.0');
+  assert.equal(manifest.version, '0.3.1');
   assert.equal(pkg.version, manifest.version);
   assert.match(manifest.interface.displayName, /Unofficial/);
   assert.deepEqual(manifest.hooks, [{ event: 'StopFailure', command: 'node ./runtime.mjs', timeout: 5 }]);
@@ -73,5 +73,22 @@ test('ships an installable dependency-free hook and exercises real stdin/stdout'
     const result = spawnSync(process.execPath, ['./runtime.mjs'], { cwd: root, input: JSON.stringify(event), encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout, '');
+  }
+});
+
+test('P1-3: exits 0 cleanly on empty, malformed, null, or >1 MiB stdin without blocking', () => {
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  assert.equal(recoveryFor(null), undefined);
+  assert.equal(recoveryFor(undefined), undefined);
+  assert.equal(recoveryFor('string'), undefined);
+  assert.equal(recoveryFor(42), undefined);
+
+  const oversized = JSON.stringify({ ...input, pad: 'a'.repeat(1024 * 1024 + 64) });
+  for (const entry of ['./runtime.mjs', './scripts/recover.mjs']) {
+    for (const badInput of ['', '   ', '{not-json', 'null', '123', oversized]) {
+      const result = spawnSync(process.execPath, [entry], { cwd: root, input: badInput, encoding: 'utf8' });
+      assert.equal(result.status, 0, `${entry} failed on ${badInput.slice(0, 20)}: ${result.stderr}`);
+      assert.equal(result.stdout, '');
+    }
   }
 });

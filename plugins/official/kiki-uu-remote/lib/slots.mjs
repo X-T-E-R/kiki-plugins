@@ -121,10 +121,10 @@ export function createUuSlotHandlers(previewService, { pluginId = KIKI_UU_REMOTE
   return {
     async 'E5:prompt-context'(payload = {}, context = {}) {
       try {
-        const state = await previewService.listState(
-          { includeDevices: false },
-          { ...context, settings: context?.settings ?? payload?.settings ?? {} },
-        );
+        const mergedCtx = { ...context, settings: context?.settings ?? payload?.settings ?? {} };
+        const state = typeof previewService.peekState === 'function'
+          ? await previewService.peekState({ maxAgeMs: 15_000, waitBudgetMs: 200 }, mergedCtx)
+          : await previewService.listState({ includeDevices: false }, mergedCtx);
         if (!Array.isArray(state.sessions) || state.sessions.length === 0) {
           return { sections: [] };
         }
@@ -168,7 +168,9 @@ export function createUuSlotHandlers(previewService, { pluginId = KIKI_UU_REMOTE
       if (kind === 'describe') {
         let liveState = null;
         try {
-          liveState = await previewService.listState({ includeDevices: false }, mergedCtx);
+          liveState = typeof previewService.peekState === 'function'
+            ? await previewService.peekState({ maxAgeMs: 15_000, waitBudgetMs: 200 }, mergedCtx)
+            : await previewService.listState({ includeDevices: false }, mergedCtx);
         } catch {}
         return {
           guiSlots: buildUuGuiSlots(pluginId, liveState),

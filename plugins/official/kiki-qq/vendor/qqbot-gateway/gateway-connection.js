@@ -342,6 +342,13 @@ export class GatewayConnection {
         }
     }
     handleHello(ws, d, accessToken) {
+        const rawInterval = d?.heartbeat_interval;
+        if (typeof rawInterval !== "number" || !Number.isFinite(rawInterval) || rawInterval < 1000) {
+            this.opts.log?.error(`[${this.opts.account.accountId}] Invalid heartbeat_interval in HELLO: ${String(rawInterval)}`);
+            this.handleGatewayReconnect("Invalid heartbeat_interval in HELLO");
+            return;
+        }
+        const interval = Math.max(5000, Math.floor(rawInterval));
         const intents = this.opts.intents ?? FULL_INTENTS;
         if (this.sessionId && this.lastSeq !== null) {
             ws.send(JSON.stringify({
@@ -363,7 +370,6 @@ export class GatewayConnection {
                 },
             }));
         }
-        const interval = d.heartbeat_interval;
         if (this.heartbeatInterval) {
             clearInterval(this.heartbeatInterval);
         }

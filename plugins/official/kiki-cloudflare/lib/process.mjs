@@ -1,18 +1,49 @@
 import { spawn } from 'node:child_process';
+import path from 'node:path';
 
 export function spawnOwned(file, args, options = {}) {
   return spawn(file, args, { shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], ...options });
 }
 
+function killTree(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  if (process.platform === 'win32' && child.pid) {
+    const killer = spawn(path.join(process.env.SystemRoot || 'C:/Windows', 'System32/taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], {
+      windowsHide: true,
+      stdio: 'ignore',
+      shell: false,
+    });
+    killer.once('error', () => { try { child.kill('SIGKILL'); } catch {} });
+  } else {
+    try { child.kill('SIGKILL'); } catch {}
+  }
+}
+
 export async function stopOwned(child, timeoutMs = 5000) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
   await new Promise((resolve) => {
+    let settled = false;
     let timer;
-    const done = () => { clearTimeout(timer); resolve(); };
+    let fallbackTimer;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearTimeout(fallbackTimer);
+      child.off?.('exit', done);
+      child.off?.('close', done);
+      child.off?.('error', done);
+      resolve();
+    };
     child.once('exit', done);
+    child.once('close', done);
     child.once('error', done);
-    child.kill('SIGTERM');
-    timer = setTimeout(() => { child.kill('SIGKILL'); }, timeoutMs);
+    try { child.kill('SIGTERM'); } catch { done(); return; }
+    timer = setTimeout(() => {
+      killTree(child);
+      fallbackTimer = setTimeout(done, 2000);
+      fallbackTimer.unref();
+    }, timeoutMs);
     timer.unref();
   });
 }

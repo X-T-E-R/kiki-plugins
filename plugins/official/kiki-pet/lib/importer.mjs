@@ -8,8 +8,10 @@ import {importWebsite} from './sources.mjs';
 import {MAX_IMAGE_BYTES} from './network.mjs';
 export function runtimeExecutable(root){return path.join(root,'vendor','runtime',`${process.platform}-${process.arch}`,process.platform==='win32'?'kiki-pet-runtime.exe':'kiki-pet-runtime');}
 export async function validateImage(image,executable,{signal}={}){
+ signal?.throwIfAborted();
  if(image.length>MAX_IMAGE_BYTES)throw new Error('Image exceeds 11 MiB');
  return new Promise((resolve,reject)=>{
+  if(signal?.aborted)return reject(signal.reason??new Error('Aborted'));
   const child=spawn(executable,['--validate-image'],{stdio:['pipe','pipe','pipe'],windowsHide:true,signal});let out='',error='';
   const timer=setTimeout(()=>{child.kill();reject(new Error('Image decoder timed out'));},10000);timer.unref();
   child.stdout.on('data',chunk=>{out+=chunk;if(out.length>8192)child.kill();});child.stderr.on('data',chunk=>{error=(error+chunk).slice(-4096);});child.stdin.on('error',()=>{});

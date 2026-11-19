@@ -7,7 +7,7 @@ import { handlePanelRequest } from '../entry.mjs';
 
 test('ships a settings panel and a catalog of real provider ids', async () => {
   const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.version, '0.2.5');
+  assert.equal(manifest.version, '0.2.6');
   assert.equal(manifest['x-kiki'].engines.kiki, '>=0.4.3');
   assert.equal(manifest['x-kiki'].permissions.uiPanel, true);
   const panel = manifest['x-kiki'].panels.find((item) => item.id === 'settings');
@@ -86,7 +86,7 @@ test('marks only connection-replaceable required fields in every provider and pr
       const expected = required.includes(key) && ['apiKey', 'baseUrl'].includes(key) && properties.connectionId ? 'connectionId' : undefined;
       assert.equal(property.requiredUnless, expected, `${manifest.name}.${key}`);
       if (expected) {
-        assert.equal(manifest.version, vendor === 'openai' ? '0.1.3' : '0.1.2');
+        assert.equal(manifest.version, vendor === 'openai' ? '0.1.4' : '0.1.3');
         assert.equal(manifest['x-kiki'].engines.kiki, '>=0.4.3');
         const fullKey = `${vendor}__${key}`;
         assert.equal(unifiedProperties[fullKey].requiredUnless, `${vendor}__connectionId`);

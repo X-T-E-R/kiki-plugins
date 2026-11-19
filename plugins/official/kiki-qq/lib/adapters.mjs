@@ -137,7 +137,15 @@ function adapter(platform, definition, buildClient, deps) {
         state.client = client;
         const transport = platform === 'official' ? new OfficialGateway({ client, gatewayFactory: deps.gatewayFactory, intents: config.intents, maxInboundBytes: definition.maxInboundBytes }) : client;
         state.transport = transport;
-        const result = await transport.start({ signal, onError: deps.onError ?? (() => {}), emit(event) {
+        const onFatal = (error) => {
+          state.started = false;
+          state.controller.abort(error);
+          clearTimeout(state.timer);
+          state.release();
+          if (run === state) run = undefined;
+          state.client?.clear?.();
+        };
+        const result = await transport.start({ signal, onError: deps.onError ?? (() => {}), onFatal, emit(event) {
           const admitted = state.queue.then(async () => {
             if (signal.aborted) return;
             let code = 'hydrate_failed';

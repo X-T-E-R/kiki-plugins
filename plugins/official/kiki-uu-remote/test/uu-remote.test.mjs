@@ -248,7 +248,7 @@ test('manifest, sync-manifest --check, validateRegistration, packageFiles, and r
 
   const manifest = JSON.parse(await readFile(path.join(PLUGIN_ROOT, 'kimi.plugin.json'), 'utf8'));
   assert.equal(manifest.name, 'kiki-uu-remote');
-  assert.equal(manifest.version, '0.1.1');
+  assert.equal(manifest.version, '0.1.2');
   assert.equal(manifest.license, 'MIT');
   assert.equal(manifest['x-kiki'].activation, 'app');
   assert.deepEqual(manifest['x-kiki'].tools, definitions);
@@ -1144,3 +1144,234 @@ test(
     }
   },
 );
+
+test('P0-1: static CLI/install discovery caches 60s single-flight and E5/E12 peekState is non-blocking without calling getStatus', async (t) => {
+  let execCalls = 0;
+  const fakeExec = async (file, argv) => {
+    execCalls += 1;
+    await new Promise((r) => setTimeout(r, 15));
+    if (file === 'reg.exe') return { stdout: '    instDir    REG_SZ    C:\\UU\r\n', stderr: '' };
+    if (argv.includes('--version')) return { stdout: '4.46.1\r\n', stderr: '' };
+    return { stdout: 'C:\\UU\\bin\\uuyc-cli.exe\r\n', stderr: '' };
+  };
+
+  let fakeNow = 10_000;
+  const cli = createUuycCliClient({
+    hostPlatform: 'win32',
+    fileExists: (p) => p.includes('uuyc-cli.exe'),
+    executeFile: fakeExec,
+    staticCacheTtlMs: 60_000,
+    nowFn: () => fakeNow,
+  });
+
+  // Concurrent getVersion calls dedup to a single discovery + version execution
+  const [v1, v2] = await Promise.all([cli.getVersion({}), cli.getVersion({})]);
+  assert.equal(v1.version, '4.46.1');
+  assert.equal(v2.version, '4.46.1');
+  const callsAfterWarm = execCalls;
+  await cli.getVersion({});
+  assert.equal(execCalls, callsAfterWarm, 'Cached CLI version must not re-spawn subprocesses within 60s');
+
+  // Win32 installation discovery caches 60s single-flight
+  let regCalls = 0;
+  const winDriver = createWin32SystemDriver({
+    hostPlatform: 'win32',
+    fileExists: () => false,
+    executeFile: async () => {
+      regCalls += 1;
+      await new Promise((r) => setTimeout(r, 10));
+      throw new Error('not found');
+    },
+    installCacheTtlMs: 60_000,
+    nowFn: () => fakeNow,
+  });
+  await Promise.all([winDriver.discoverInstallation({}), winDriver.discoverInstallation({})]);
+  const regAfterFirst = regCalls;
+  await winDriver.discoverInstallation({});
+  assert.equal(regCalls, regAfterFirst, 'discoverInstallation must reuse 60s cache');
+
+  // E5 and E12 describe use peekState without calling getStatus and never block on slow refreshes
+  const dir = await makeTempDir(t, 'uu-p0-1-swr-');
+  const { driver } = createMockDriverFixture();
+  let statusCalls = 0;
+  let topoCalls = 0;
+  let topoDelayMs = 0;
+  const origInspect = driver.inspectTopology.bind(driver);
+  driver.inspectTopology = async (...args) => {
+    topoCalls += 1;
+    if (topoDelayMs > 0) await new Promise((r) => setTimeout(r, topoDelayMs));
+    return origInspect(...args);
+  };
+  const origDiscover = driver.discoverInstallation.bind(driver);
+  driver.discoverInstallation = async (...args) => {
+    statusCalls += 1;
+    return origDiscover(...args);
+  };
+
+  const uuService = createUuRemoteService({ systemDriver: driver, stateDir: dir });
+  const previewService = createUuPreviewService({ uuService, nowFn: () => fakeNow });
+  t.after(() => previewService.dispose());
+  const slots = createUuSlotHandlers(previewService);
+
+  const e5 = await slots['E5:prompt-context']({}, {});
+  assert.equal(e5.sections.length, 1);
+  assert.equal(statusCalls, 0, 'E5:prompt-context must not invoke getStatus/discoverInstallation');
+  assert.equal(topoCalls, 1);
+
+  const e12 = await slots['E12:server-gui-slots']({ kind: 'describe' }, {});
+  assert.ok(e12.guiSlots.some((s) => s.id === 'uu-active-capsule'));
+  assert.equal(statusCalls, 0, 'E12 describe must not invoke getStatus/discoverInstallation');
+  assert.equal(topoCalls, 1, 'E12 describe should hit 15s SWR cache from E5');
+
+  // Expire cache and simulate a slow 2s topology probe; stale peekState returns immediately (<100ms)
+  fakeNow += 20_000;
+  topoDelayMs = 1_500;
+  const t0 = performance.now();
+  const stale = await previewService.peekState({ maxAgeMs: 15_000, waitBudgetMs: 200 }, {});
+  const elapsed = performance.now() - t0;
+  assert.ok(elapsed < 100, `stale peekState must return immediately via SWR, took ${elapsed.toFixed(1)}ms`);
+  assert.equal(stale.sessions.length, 2);
+});
+
+test('P0-3: wedged Win32 PowerShell worker is force-killed on timeout/abort and next RPC spawns a clean worker', async () => {
+  const { EventEmitter } = await import('node:events');
+  const { PassThrough } = await import('node:stream');
+  const spawnedWorkers = [];
+  const taskkillCalls = [];
+
+  const driver = createWin32SystemDriver({
+    hostPlatform: 'win32',
+    workerIdleMs: 0,
+    spawnProcess: (file, args) => {
+      if (file === 'taskkill') {
+        taskkillCalls.push(args);
+        const k = new EventEmitter();
+        k.unref = () => {};
+        return k;
+      }
+      const stdout = new PassThrough();
+      const stderr = new PassThrough();
+      const stdin = new PassThrough();
+      const proc = new EventEmitter();
+      proc.pid = 40_000 + spawnedWorkers.length + 1;
+      proc.stdout = stdout;
+      proc.stderr = stderr;
+      proc.stdin = stdin;
+      proc.killed = false;
+      proc.unref = () => {};
+      proc.kill = () => {
+        proc.killed = true;
+        proc.emit('exit', 1, 'SIGKILL');
+      };
+      const workerIdx = spawnedWorkers.length;
+      spawnedWorkers.push(proc);
+
+      // Worker 0 hangs forever on every RPC; Worker 1 answers immediately
+      if (workerIdx >= 1) {
+        let buf = '';
+        stdin.on('data', (chunk) => {
+          buf += chunk.toString('utf8');
+          for (const line of buf.split('\n')) {
+            if (!line.trim()) continue;
+            try {
+              const req = JSON.parse(line);
+              stdout.write(JSON.stringify({ id: req.id, ok: true, result: { cursor: { x: 42, y: 84 }, foregroundHwnd: 1 } }) + '\n');
+            } catch {}
+          }
+          buf = '';
+        });
+      }
+      return proc;
+    },
+  });
+
+  // Queue two RPCs on wedged Worker 0; the first times out at 60ms and kills/detaches Worker 0,
+  // rejecting both pending calls cleanly
+  const p1 = driver.callWorker({ op: 'cursor_pos' }, 60);
+  const p2 = driver.callWorker({ op: 'cursor_pos' }, 5000);
+  await assert.rejects(p1, /timed out/);
+  await assert.rejects(p2, /timed out/);
+  assert.equal(spawnedWorkers.length, 1);
+  assert.equal(spawnedWorkers[0].killed, true);
+  assert.ok(taskkillCalls.some((a) => a.includes(String(spawnedWorkers[0].pid)) && a.includes('/T') && a.includes('/F')));
+
+  // Next RPC spawns fresh Worker 1 and succeeds
+  const recovered = await driver.getCursorState();
+  assert.equal(spawnedWorkers.length, 2);
+  assert.deepEqual(recovered.cursor, { x: 42, y: 84 });
+  await driver.dispose();
+});
+
+test('P1-2: openPanelStream skips per-frame inspectTopology until 3s or capture error, and panel.html wires visibilitychange/pagehide/backoff', async (t) => {
+  const dir = await makeTempDir(t, 'uu-p1-2-stream-');
+  const { driver } = createMockDriverFixture();
+  let topoCalls = 0;
+  let captureCalls = 0;
+  let failNextCapture = false;
+  let fakeNow = 50_000;
+
+  const origInspect = driver.inspectTopology.bind(driver);
+  driver.inspectTopology = async (...args) => {
+    topoCalls += 1;
+    return origInspect(...args);
+  };
+  const origCapture = driver.captureSessionStage.bind(driver);
+  driver.captureSessionStage = async (...args) => {
+    captureCalls += 1;
+    if (failNextCapture) {
+      failNextCapture = false;
+      throw new Error('simulated PrintWindow failure');
+    }
+    return origCapture(...args);
+  };
+
+  const uuService = createUuRemoteService({ systemDriver: driver, stateDir: dir, nowFn: () => fakeNow });
+  const previewService = createUuPreviewService({ uuService, nowFn: () => fakeNow });
+  t.after(() => previewService.dispose());
+
+  let closeHook = null;
+  const frames = [];
+  const warnings = [];
+  await previewService.openPanelStream(
+    'screen',
+    { sessionId: 'uu:24780134', fps: 20, maxWidth: 640 },
+    {
+      bufferedAmount: () => 0,
+      sendBinary(buf) {
+        frames.push(buf);
+        return true;
+      },
+      sendText(txt) {
+        warnings.push(txt);
+      },
+      onClose(fn) {
+        closeHook = fn;
+      },
+      onText() {},
+    },
+    {},
+  );
+
+  // Wait for at least 3 frames to pump within fakeNow (elapsed < 3s)
+  const deadline = Date.now() + 1500;
+  while (frames.length < 3 && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  assert.ok(frames.length >= 3, `expected >=3 frames, got ${frames.length}`);
+  assert.equal(topoCalls, 1, 'pumpFrame must NOT re-call inspectTopology on every frame within 3s');
+
+  // Trigger a capture error -> forces topology re-resolution on subsequent frame
+  failNextCapture = true;
+  const warnDeadline = Date.now() + 1500;
+  while (topoCalls < 2 && Date.now() < warnDeadline) {
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  closeHook?.();
+  assert.ok(topoCalls >= 2, 'capture error must trigger topology re-resolution');
+  assert.ok(warnings.some((w) => w.includes('streamWarning')));
+
+  const panelHtml = await readFile(path.join(PLUGIN_ROOT, 'panel.html'), 'utf8');
+  assert.match(panelHtml, /visibilitychange/);
+  assert.match(panelHtml, /pagehide/);
+  assert.match(panelHtml, /POLL_BACKOFF_MS\s*=\s*\[220,\s*500,\s*1000,\s*3000\]/);
+});

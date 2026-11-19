@@ -47,14 +47,17 @@ export class CloudflareAccount {
       Accept: 'application/json',
       ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
     };
+    const timeout = AbortSignal.timeout(15000);
+    const signal = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;
     const response = await this.fetch(`${this.baseUrl}${route}`, {
       method,
       headers,
       ...(opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
-      signal: opts.signal ?? AbortSignal.timeout(15000),
+      signal,
       redirect: 'error',
     });
     if (!response.ok) {
+      await response.body?.cancel().catch(() => {});
       const err = new Error(`Cloudflare API returned HTTP ${response.status}. Check token permissions and account selection.`);
       err.status = response.status;
       throw err;
@@ -68,14 +71,16 @@ export class CloudflareAccount {
   }
 
   async list(route, signal) {
+    const MAX_PAGES = 100;
     const items = [];
-    for (let page = 1;; page++) {
+    for (let page = 1; page <= MAX_PAGES; page++) {
       const json = await this.request(`${route}${route.includes('?') ? '&' : '?'}page=${page}&per_page=50`, signal);
       if (!Array.isArray(json.result)) throw new Error('Invalid Cloudflare list response.');
       items.push(...json.result);
       const info = json.result_info;
-      if (info?.total_pages !== undefined ? page >= info.total_pages : json.result.length < 50) return items;
+      if (info?.total_pages !== undefined ? page >= Math.min(info.total_pages, MAX_PAGES) : json.result.length < 50) return items;
     }
+    return items;
   }
 
   async accounts(signal) { return (await this.list('/accounts', signal)).map(({ id, name }) => ({ id, name })); }

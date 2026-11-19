@@ -22,6 +22,13 @@ function mediaSegment(message) {
   if (!['image', 'record', 'video'].includes(type)) return undefined;
   return { type, data: { file: `base64://${Buffer.from(message.bytes).toString('base64')}` } };
 }
+function isAuthRejection(error) {
+  if (!error) return false;
+  const status = Number(error.status ?? error.statusCode);
+  if (status === 401 || status === 403) return true;
+  if (error.code === 'HTTP_401' || error.code === 'HTTP_403' || error.code === 'AUTH_FAILED') return true;
+  return /unexpected server response:\s*(401|403)\b/i.test(String(error.message ?? ''));
+}
 export function createOneBotClient(config = {}, deps = {}) {
   const accessToken = config.accessToken ? String(config.accessToken) : undefined;
   const api = createHttpClient({ fetchImpl: deps.fetchImpl, baseUrl: config.baseUrl ?? 'http://127.0.0.1:5700', timeoutMs: config.timeoutMs ?? 30000,
@@ -101,13 +108,16 @@ export function createOneBotClient(config = {}, deps = {}) {
     connection.onFrame((frame) => { if (link === connection) receive(frame); });
     return { closed };
   }
-  async function start({ signal, emit, onError } = {}) {
+  async function start({ signal, emit, onError, onFatal } = {}) {
     signal?.throwIfAborted();
     if (controller) throw new Error('OneBot is already running');
     if (!config.useWebSocket) throw Object.assign(new Error('The bidirectional OneBot adapter requires a forward universal WebSocket URL. HTTP is used by read-only group tools.'), { code: 'CONFIGURATION' });
     controller = new AbortController();
     eventEmit = emit;
     eventError = onError ?? deps.onError ?? console.error;
+    const wait = deps.delay ?? delay;
+    const baseDelayMs = config.reconnectDelayMs ?? 1000;
+    const maxDelayMs = config.maxReconnectDelayMs ?? 60_000;
     const current = controller;
     const abort = () => current.abort();
     signal?.addEventListener('abort', abort, { once: true });
@@ -120,6 +130,7 @@ export function createOneBotClient(config = {}, deps = {}) {
     if (lifetime.aborted) cancelled();
     loop = (async () => {
       let initial = true;
+      let backoffAttempt = 0;
       while (!lifetime.aborted) {
         try {
           const { closed } = await open(lifetime);
@@ -128,18 +139,41 @@ export function createOneBotClient(config = {}, deps = {}) {
           const actual = numeric(self?.user_id, 'OneBot login user_id');
           if (accountId && accountId !== actual) throw Object.assign(new Error('OneBot account changed; check self ID and endpoint'), { code: 'ACCOUNT_CHANGED' });
           accountId = actual; verified = true; identified = true;
+          backoffAttempt = 0;
           for (const frame of earlyFrames.splice(0)) receive(frame);
           if (initial) { initial = false; lifetime.removeEventListener('abort', cancelled); firstResolve({ accountId }); }
           await closed;
         } catch (error) {
           link?.close(); disconnected();
+          if (isAuthRejection(error) && !error.code) error.code = 'AUTH_FAILED';
           if (initial) { firstReject(error); break; }
+          const fatal = error.code === 'ACCOUNT_CHANGED' || isAuthRejection(error);
+          if (fatal) {
+            current.abort(error);
+            try { onFatal?.(error); } catch {}
+            report(error);
+            break;
+          }
           if (!lifetime.aborted) report(error);
-          if (error.code === 'ACCOUNT_CHANGED') current.abort();
         }
-        if (!lifetime.aborted) await delay(config.reconnectDelayMs ?? 1000, undefined, { signal: lifetime }).catch(() => {});
+        if (!lifetime.aborted) {
+          const rawDelay = Math.min(maxDelayMs, baseDelayMs * (2 ** backoffAttempt));
+          backoffAttempt += 1;
+          const rand = typeof deps.random === 'function' ? deps.random() : Math.random();
+          const unit = Number.isFinite(rand) ? Math.min(1, Math.max(0, rand)) : 0.5;
+          const jittered = Math.min(maxDelayMs, Math.max(1, Math.round(rawDelay * (0.8 + unit * 0.4))));
+          await wait(jittered, undefined, { signal: lifetime }).catch(() => {});
+        }
       }
-    })().finally(() => { signal?.removeEventListener('abort', abort); lifetime.removeEventListener('abort', cancelled); });
+    })().finally(() => {
+      signal?.removeEventListener('abort', abort);
+      lifetime.removeEventListener('abort', cancelled);
+      if (controller === current) {
+        controller = undefined;
+        loop = undefined;
+        eventEmit = undefined;
+      }
+    });
     try { return await first; } catch (error) { await stop(); throw error; }
   }
   async function stop() {

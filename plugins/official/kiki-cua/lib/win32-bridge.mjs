@@ -29,6 +29,8 @@ export function parseKeyChordTokens(keyOrKeys) {
 export function createWin32Bridge({
   idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS,
   powershellExecutable = 'powershell.exe',
+  spawnProcess = spawn,
+  hostPlatform = process.platform,
 } = {}) {
   let proc = null;
   let startupPromise = null;
@@ -37,6 +39,21 @@ export function createWin32Bridge({
   let idleTimer = null;
   const pending = new Map();
   let stderrTail = '';
+
+  function killProcessTree(child) {
+    if (!child) return;
+    if (hostPlatform === 'win32' && child.pid) {
+      try {
+        const killer = spawnProcess('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+          stdio: 'ignore',
+          windowsHide: true,
+        });
+        killer?.on?.('error', () => {});
+        killer?.unref?.();
+      } catch {}
+    }
+    try { child.kill(); } catch {}
+  }
 
   function clearIdleTimer() {
     if (idleTimer) {
@@ -72,6 +89,17 @@ export function createWin32Bridge({
     syncChildRef();
   }
 
+  function killAndDetachWorker(child, reason) {
+    clearIdleTimer();
+    if (proc === child) {
+      proc = null;
+    }
+    rejectAllPending(reason);
+    if (!child) return;
+    try { child.stdin?.end?.(); } catch {}
+    killProcessTree(child);
+  }
+
   function resolvePowerShellPath() {
     if (powershellExecutable !== 'powershell.exe') return powershellExecutable;
     const sysRoot = process.env.SystemRoot || 'C:\\Windows';
@@ -89,7 +117,7 @@ export function createWin32Bridge({
     startupPromise = new Promise((resolve, reject) => {
       stderrTail = '';
       const exe = resolvePowerShellPath();
-      const child = spawn(
+      const child = spawnProcess(
         exe,
         [
           '-NoLogo',
@@ -114,7 +142,7 @@ export function createWin32Bridge({
       const bootTimer = setTimeout(() => {
         if (!readyResolved) {
           readyResolved = true;
-          try { child.kill(); } catch {}
+          killProcessTree(child);
           reject(new Error(`Win32 C# bridge startup timed out. Stderr: ${stderrTail.trim()}`));
         }
       }, 20_000);
@@ -196,17 +224,16 @@ export function createWin32Bridge({
 
     return new Promise((resolve, reject) => {
       const onAbort = () => {
-        pending.delete(id);
-        syncChildRef();
-        clearTimeout(timer);
-        reject(signal.reason || new Error('Win32 RPC aborted'));
+        const abortErr = signal.reason instanceof Error
+          ? signal.reason
+          : Object.assign(new Error(`Win32 RPC "${method}" aborted`), { name: 'AbortError' });
+        killAndDetachWorker(child, abortErr);
       };
       const timer = setTimeout(() => {
-        pending.delete(id);
-        syncChildRef();
-        signal?.removeEventListener?.('abort', onAbort);
-        reject(new Error(`Win32 bridge method "${method}" timed out after ${timeoutMs}ms`));
+        const timeoutErr = new Error(`Win32 bridge method "${method}" timed out after ${timeoutMs}ms`);
+        killAndDetachWorker(child, timeoutErr);
       }, timeoutMs);
+      timer.unref?.();
 
       if (signal) {
         signal.addEventListener('abort', onAbort, { once: true });
@@ -229,11 +256,9 @@ export function createWin32Bridge({
       try {
         child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n', 'utf8');
       } catch (writeErr) {
-        pending.delete(id);
-        syncChildRef();
         clearTimeout(timer);
         signal?.removeEventListener?.('abort', onAbort);
-        reject(writeErr);
+        killAndDetachWorker(child, writeErr);
       }
     });
   }
@@ -250,10 +275,15 @@ export function createWin32Bridge({
       }
     } catch {}
     await new Promise((resolve) => {
+      if (child.exitCode !== null || child.killed) {
+        resolve();
+        return;
+      }
       const killTimer = setTimeout(() => {
-        try { child.kill(); } catch {}
+        killProcessTree(child);
         resolve();
       }, 600);
+      killTimer.unref?.();
       child.once('exit', () => {
         clearTimeout(killTimer);
         resolve();

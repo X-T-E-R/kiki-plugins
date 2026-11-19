@@ -79,7 +79,10 @@ export class EsRunner {
       const stop = error => {
         finish(error);
         if (child) child.kill();
-        else this.#queue.splice(this.#queue.indexOf(start), 1);
+        else {
+          const idx = this.#queue.indexOf(start);
+          if (idx >= 0) this.#queue.splice(idx, 1);
+        }
       };
       const abort = () => stop(new EverythingError('CANCELLED', child ? 'Search cancelled. The local ES process was stopped; Everything may still finish the query internally.' : 'Search cancelled before ES started.'));
       const timer = setTimeout(() => stop(new EverythingError('ES_TIMEOUT', child

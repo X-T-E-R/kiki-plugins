@@ -804,7 +804,7 @@ test('stageLiveCompatPlugin refuses to overwrite existing non-empty custom direc
     const compatOutDir = path.join(dir, 'magpie-harness-quota-compat');
     const staged = await stageLiveCompatPlugin({ outputDir: compatOutDir });
     assert.equal(staged.pluginId, 'magpie-harness-quota');
-    assert.equal(staged.version, '0.1.4');
+    assert.equal(staged.version, '0.1.5');
 
     const hasRunner = await access(runnerPath).then(() => true, () => false);
     if (!hasRunner) {

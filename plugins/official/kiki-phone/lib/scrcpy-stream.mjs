@@ -1,12 +1,12 @@
-import { execFile, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { access, copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { promisify } from 'node:util';
+import { execAdb } from './adb.mjs';
 
-const defaultExecFile = promisify(execFile);
+const defaultExecFile = execAdb;
 
 export const SCRCPY_SERVER_VERSION = '4.0';
 export const SCRCPY_SERVER_URL = 'https://github.com/Genymobile/scrcpy/releases/download/v4.0/scrcpy-server-v4.0';

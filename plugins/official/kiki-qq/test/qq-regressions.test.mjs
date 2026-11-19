@@ -400,3 +400,189 @@ test('QQR-009: malformed delay values cannot escape the bounded receipt contract
     assert.match(receipt.detail, /automatic retry disabled/);
   }
 });
+
+test('QQR-010: OneBot uses capped exponential backoff with jitter and resets only after get_login_info succeeds', async (t) => {
+  const waits = [];
+  let attempt = 0;
+  const recovered = deferred();
+  const fakeConnect = async ({ signal }) => {
+    signal.throwIfAborted();
+    attempt += 1;
+    // Attempt 1: initial healthy connect, then drops
+    // Attempts 2..8: fail to verify exponential backoff up to 60s cap
+    // Attempt 9: healthy reconnect -> resets backoff to base
+    // Attempt 10: drops again -> verify reset back to ~1s
+    if (attempt >= 2 && attempt <= 8) throw new Error(`transient failure ${attempt}`);
+    let frameHandler, closeHandler;
+    const conn = {
+      send(frame) {
+        if (frame.action === 'get_login_info') {
+          queueMicrotask(() => {
+            frameHandler?.({ status: 'ok', retcode: 0, echo: frame.echo, data: { user_id: 999 } });
+            if (attempt === 1 || attempt === 9) setTimeout(() => closeHandler?.(), 1);
+            if (attempt === 10) recovered.resolve();
+          });
+        }
+      },
+      onFrame(fn) { frameHandler = fn; },
+      onClose(fn) { closeHandler = fn; },
+      onError() {},
+      close() { closeHandler?.(); },
+    };
+    return conn;
+  };
+  const client = createOneBotClient(
+    { wsUrl: 'ws://127.0.0.1:9999/', useWebSocket: true, reconnectDelayMs: 1000 },
+    {
+      connect: fakeConnect,
+      random: () => 0.5, // factor = 1.0 so exact capped values are deterministic
+      delay: async (ms, _val, { signal }) => {
+        if (signal?.aborted) return;
+        waits.push(ms);
+      },
+      onError: () => {},
+    },
+  );
+  t.after(() => client.stop());
+  await client.start({ signal: signal(), emit: async () => {} });
+  await recovered.promise;
+  await client.stop();
+  // After attempt 1 closes: 1000, then failures 2..8: 2000, 4000, 8000, 16000, 32000, 60000, 60000, then attempt 9 resets -> 1000
+  assert.deepEqual(waits.slice(0, 9), [1000, 2000, 4000, 8000, 16000, 32000, 60000, 60000, 1000]);
+});
+
+test('QQR-011: OneBot stops retrying on 401 auth rejection and clears adapter state on terminal exit', async (t) => {
+  let connectCount = 0;
+  let allowAuth = true;
+  const authFailed = deferred();
+  const fakeConnect = async ({ signal }) => {
+    signal.throwIfAborted();
+    connectCount += 1;
+    if (!allowAuth) throw new Error('Unexpected server response: 401');
+    let frameHandler, closeHandler;
+    return {
+      send(frame) {
+        if (frame.action === 'get_login_info') {
+          queueMicrotask(() => {
+            frameHandler?.({ status: 'ok', retcode: 0, echo: frame.echo, data: { user_id: 999 } });
+            if (connectCount === 1) {
+              allowAuth = false;
+              setTimeout(() => closeHandler?.(), 1);
+            }
+          });
+        }
+      },
+      onFrame(fn) { frameHandler = fn; },
+      onClose(fn) { closeHandler = fn; },
+      onError() {},
+      close() { closeHandler?.(); },
+    };
+  };
+  const errors = [];
+  const adapter = createOneBotAdapter({
+    connect: fakeConnect,
+    delay: async () => {},
+    onError: (err) => { errors.push(err); authFailed.resolve(); },
+  });
+  t.after(() => adapter.stop());
+  const settings = { onebot__wsUrl: 'ws://127.0.0.1:9999/', onebot__selfId: '999' };
+  await adapter.start({ messageLimits, settings, signal: signal(), emit: async () => {} });
+  await authFailed.promise;
+  await delay(20);
+  assert.equal(connectCount, 2, 'must stop immediately after 401 without further retries');
+  assert.equal(errors[0].code, 'AUTH_FAILED');
+  // Adapter run/started state must be cleared, not stuck in zombie state
+  const sendAfterFatal = await adapter.sendText(text(onebot));
+  assert.equal(sendAfterFatal.status, 'failed');
+  assert.match(sendAfterFatal.detail, /Adapter is not running/);
+  // Restarting without manual stop() must succeed once credentials are fixed
+  allowAuth = true;
+  const restarted = await adapter.start({ messageLimits, settings, signal: signal(), emit: async () => {} });
+  assert.equal(restarted.accountId, 'qq-onebot:999');
+  await adapter.stop();
+});
+
+test('QQR-012: OneBot ACCOUNT_CHANGED clears adapter state so adapter can restart cleanly', async (t) => {
+  let userId = 999;
+  const changed = deferred();
+  let firstSocket;
+  const wire = await wireFixture(t, (socket) => {
+    if (!firstSocket) firstSocket = socket;
+    socket.on('message', (bytes) => {
+      const frame = JSON.parse(String(bytes));
+      if (frame.action === 'get_login_info') {
+        socket.send(JSON.stringify({ status: 'ok', retcode: 0, echo: frame.echo, data: { user_id: userId } }));
+      }
+    });
+  });
+  const adapter = createOneBotAdapter({
+    delay: async () => {},
+    onError: (err) => { if (err.code === 'ACCOUNT_CHANGED') changed.resolve(); },
+  });
+  t.after(() => adapter.stop());
+  const settings = { onebot__wsUrl: wire.url, onebot__selfId: '999' };
+  await adapter.start({ messageLimits, settings, signal: signal(), emit: async () => {} });
+  userId = 998;
+  firstSocket.close();
+  await changed.promise;
+  const sendRes = await adapter.sendText(text(onebot));
+  assert.equal(sendRes.status, 'failed');
+  assert.match(sendRes.detail, /Adapter is not running/);
+  // Fix account and restart directly without getting "already running"
+  userId = 999;
+  const restarted = await adapter.start({ messageLimits, settings, signal: signal(), emit: async () => {} });
+  assert.equal(restarted.accountId, 'qq-onebot:999');
+  await adapter.stop();
+});
+
+test('QQR-013: Official Gateway rejects invalid heartbeat_interval (0/undefined) without 1ms flood and fails fast on 401 startup', async (t) => {
+  // Part A: heartbeat_interval: 0 must not trigger 1ms heartbeat flood; socket closes and reconnects cleanly
+  let connections = 0;
+  let heartbeatsReceived = 0;
+  const readySeen = deferred();
+  const wire = await wireFixture(t, (socket) => {
+    const num = ++connections;
+    if (num === 1) {
+      socket.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 0 } }));
+    } else {
+      socket.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 60000 } }));
+    }
+    socket.on('message', (bytes) => {
+      const frame = JSON.parse(String(bytes));
+      if (frame.op === 1) heartbeatsReceived += 1;
+      if (frame.op === 2 && num === 2) {
+        socket.send(JSON.stringify({ op: 0, t: 'READY', s: 1, d: { session_id: 'ok-sess', user: { id: 'bot' } } }));
+        readySeen.resolve();
+      }
+    });
+  });
+  const fixture = fetchFixture(t, [
+    { method: 'GET', url: 'https://api.fixture.test/gateway', response: { url: wire.url } },
+  ]);
+  const adapter = createOfficialAdapter(fixture);
+  t.after(() => adapter.stop());
+  await adapter.start({ messageLimits, signal: signal(), settings: SETTINGS, emit: async () => {} });
+  await readySeen.promise;
+  await delay(50);
+  assert.equal(connections, 2, 'invalid heartbeat_interval: 0 must close and reconnect');
+  assert.equal(heartbeatsReceived, 0, 'invalid heartbeat_interval: 0 must not flood heartbeats');
+  await adapter.stop();
+
+  // Part B: OfficialGateway.start() fails fast on 401 bad credentials instead of hanging indefinitely
+  let tokenAttempts = 0;
+  const badAuthAdapter = createOfficialAdapter({
+    fetchImpl: async (url) => {
+      tokenAttempts += 1;
+      assert.equal(String(url), 'https://token.fixture.test/app/getAppAccessToken');
+      return json({ message: 'invalid appSecret' }, 401);
+    },
+  });
+  t.after(() => badAuthAdapter.stop());
+  const startAt = Date.now();
+  await assert.rejects(
+    badAuthAdapter.start({ messageLimits, signal: signal(), settings: SETTINGS, emit: async () => {} }),
+    (err) => err?.status === 401 || err?.code === 'HTTP_401',
+  );
+  assert.equal(tokenAttempts, 1, 'bad credentials must fail fast on first attempt');
+  assert.ok(Date.now() - startAt < 2000, 'startup failure must not hang');
+});

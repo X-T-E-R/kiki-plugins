@@ -207,49 +207,33 @@ export class CockpitHarnessService {
     const backend = await this.#backend(context, signal);
     this.pendingPrepares++;
     this.inFlight++;
-    const request = backend.request('prepare', { engineId, accountId, instanceId, proxy });
-    let settled = false;
-    let aborted = false;
     let cleanupPending = false;
-    let rejectPending;
     const finishCleanupTracking = () => {
       if (!cleanupPending) return;
       cleanupPending = false;
       this.pendingCleanups--;
     };
-    const onAbort = () => {
-      if (settled) return;
-      aborted = true;
-      settled = true;
-      cleanupPending = true;
-      this.pendingCleanups++;
-      rejectPending?.(abortError());
-    };
-    signal.addEventListener('abort', onAbort, { once: true });
     try {
-      const result = await new Promise((resolve, reject) => {
-        rejectPending = reject;
-        request.then((value) => {
-          if (settled) {
-            if (aborted) {
+      const result = await backend.request(
+        'prepare',
+        { engineId, accountId, instanceId, proxy },
+        {
+          signal,
+          onLatePending: () => {
+            cleanupPending = true;
+            this.pendingCleanups++;
+          },
+          onLateSettle: (error, value) => {
+            if (!error && value) {
               void this.#releaseEventual(value, backend, true).finally(finishCleanupTracking);
+            } else {
+              finishCleanupTracking();
             }
-            return;
-          }
-          settled = true;
-          resolve(value);
-        }, (error) => {
-          if (settled) {
-            if (aborted) finishCleanupTracking();
-            return;
-          }
-          settled = true;
-          reject(error);
-        });
-        if (aborted || signal.aborted) onAbort();
-      });
+          },
+        },
+      );
       const prepared = preparedConnection(result);
-      if (signal.aborted || aborted) {
+      if (signal.aborted) {
         void this.#releaseEventual(prepared, backend);
         throw abortError();
       }
@@ -260,10 +244,9 @@ export class CockpitHarnessService {
       this.activeLeases.add(prepared.leaseId);
       return prepared;
     } catch (error) {
-      if (aborted || signal.aborted) throw abortError();
+      if (signal.aborted) throw abortError();
       throw error;
     } finally {
-      signal.removeEventListener('abort', onAbort);
       this.pendingPrepares--;
       this.inFlight--;
     }
@@ -412,7 +395,7 @@ export class CockpitHarnessService {
     this.activeLeases.add(leaseId);
     try {
       try {
-        await backend.request('release', { leaseId });
+        await backend.request('release', { leaseId }, { signal: AbortSignal.timeout(10_000) });
         this.activeLeases.delete(leaseId);
         this.cleanupFailures.delete(leaseId);
       } catch (error) {

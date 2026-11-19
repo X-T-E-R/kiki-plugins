@@ -6,9 +6,16 @@ import { connectionAccount } from './custom.mjs';
 export async function withImap(account, auth, options, fn) {
   account = connectionAccount(account);
   const client = (options.createClient ?? defaultClient)(account, auth);
+  let lastError;
+  const onError = (err) => {
+    lastError ??= err;
+  };
+  client.on?.('error', onError);
   let settled = false;
   const fail = () => {
-    if (!settled) void client.close();
+    if (!settled) {
+      try { void client.close(); } catch {}
+    }
   };
   options.signal?.addEventListener('abort', fail, { once: true });
   try {
@@ -17,19 +24,23 @@ export async function withImap(account, auth, options, fn) {
     if (!account.allowInsecureAuth && client.secureConnection !== true) {
       throw coded('tls_required', 'The IMAP server did not negotiate TLS. The password was not left on a clear connection.');
     }
-    return await fn(client);
+    const result = await fn(client);
+    if (lastError) throw lastError;
+    return result;
   } catch (error) {
+    const cause = error ?? lastError;
     if (options.signal?.aborted) throw coded('cancelled', 'The mail connection was cancelled.');
-    if (error?.code === 'tls_required' || error?.code === 'cancelled') throw error;
-    if (error?.tlsFailed) throw coded('tls_required', 'The IMAP server did not offer STARTTLS. Login was not attempted.');
-    if (error?.authenticationFailed) throw coded('auth_failed', 'IMAP authentication failed.');
-    const closed = /closed|socket|ECONN|timeout|ETIMEOUT|NoConnection/i.test(`${error?.code ?? ''} ${error?.message ?? ''}`);
+    if (cause?.code === 'tls_required' || cause?.code === 'cancelled') throw cause;
+    if (cause?.tlsFailed) throw coded('tls_required', 'The IMAP server did not offer STARTTLS. Login was not attempted.');
+    if (cause?.authenticationFailed) throw coded('auth_failed', 'IMAP authentication failed.');
+    const closed = /closed|socket|ECONN|timeout|ETIMED?OUT|EPIPE|EHOSTUNREACH|ENETUNREACH|NoConnection/i.test(`${cause?.code ?? ''} ${cause?.message ?? ''}`);
     if (closed) throw coded('disconnected', 'The IMAP server closed the connection.');
-    throw error;
+    throw cause;
   } finally {
     settled = true;
     options.signal?.removeEventListener('abort', fail);
-    await client.logout().catch(() => client.close());
+    await client.logout().catch(() => Promise.resolve().then(() => client.close()).catch(() => {}));
+    (client.off ?? client.removeListener)?.call(client, 'error', onError);
   }
 }
 

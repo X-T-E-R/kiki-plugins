@@ -56,7 +56,7 @@ export async function run(command, args, options = {}) {
   options.signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
     const child = spawn(resolved.command, [...resolved.prefix, ...args], { cwd: options.cwd, env: { ...process.env, ...options.env, CI: '1', NO_COLOR: '1' }, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '', stderr = '', stopped = false;
+    let stdout = '', stderr = '', stopped = false, settled = false;
     const stop = () => {
       if (stopped) return; stopped = true;
       if (process.platform === 'win32' && child.pid) {
@@ -65,15 +65,19 @@ export async function run(command, args, options = {}) {
       } else child.kill();
     };
     const timeout = setTimeout(stop, options.timeout || 20 * 60 * 1000);
+    const cleanup = () => { clearTimeout(timeout); options.signal?.removeEventListener('abort', stop); };
     options.signal?.addEventListener('abort', stop, { once: true });
     const capture = stream => chunk => {
       const text = chunk.toString(); if (stream === 'stdout') stdout = (stdout + text).slice(-1024 * 1024); else stderr = (stderr + text).slice(-1024 * 1024);
       options.onText?.(scrub(text, options.secrets));
     };
     child.stdout.on('data', capture('stdout')); child.stderr.on('data', capture('stderr'));
-    child.on('error', () => reject(new SitesError('cli_start_failed', 'The official CLI could not start.', 'Check cliPath and executable permissions.')));
+    child.on('error', () => {
+      if (settled) return; settled = true; cleanup();
+      reject(new SitesError('cli_start_failed', 'The official CLI could not start.', 'Check cliPath and executable permissions.'));
+    });
     child.on('close', code => {
-      clearTimeout(timeout); options.signal?.removeEventListener('abort', stop);
+      if (settled) return; settled = true; cleanup();
       if (stopped) { reject(new SitesError(options.signal?.aborted ? 'cancelled' : 'timeout', 'Stopped local waiting; a remote request may already exist.', 'Check the provider dashboard before retrying a deployment.')); return; }
       if (code !== 0) {
         const text = `${stdout}\n${stderr}`;
@@ -88,7 +92,10 @@ export async function request(url, { token, username, headers = {}, method = 'GE
   let response; const deadline = AbortSignal.timeout(45000); const combined = signal ? AbortSignal.any([signal, deadline]) : deadline;
   try { response = await fetchImpl(url, { method, signal: combined, headers: { Accept: 'application/json', ...(token ? { Authorization: username ? `Basic ${Buffer.from(`${username}:${token}`).toString('base64')}` : `Bearer ${token}` } : {}), ...headers, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined, redirect: 'error' }); }
   catch { if (signal?.aborted) throw new SitesError('cancelled', 'Stopped local waiting; the remote result may be unknown.', 'Check the provider before retrying.'); throw new SitesError('offline', 'The service could not be reached.', 'Check connectivity and retry the status check. Credentials were preserved.'); }
-  if (!response.ok) throw new SitesError(response.status === 401 ? 'expired' : response.status === 403 ? 'forbidden' : method !== 'GET' && response.status >= 500 ? 'result_unknown' : 'api_failed', `The service returned HTTP ${response.status}.`, response.status === 401 ? 'Sign in again or replace the API token.' : method !== 'GET' && response.status >= 500 ? 'Check the provider before deploying again; the request may have been accepted.' : 'Check the account permissions and target identifier.');
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {});
+    throw new SitesError(response.status === 401 ? 'expired' : response.status === 403 ? 'forbidden' : method !== 'GET' && response.status >= 500 ? 'result_unknown' : 'api_failed', `The service returned HTTP ${response.status}.`, response.status === 401 ? 'Sign in again or replace the API token.' : method !== 'GET' && response.status >= 500 ? 'Check the provider before deploying again; the request may have been accepted.' : 'Check the account permissions and target identifier.');
+  }
   try { return response.status === 204 ? {} : await response.json(); }
   catch { throw new SitesError(method === 'GET' ? 'invalid_api_output' : 'result_unknown', 'The service response could not be read.', method === 'GET' ? 'Retry the status check.' : 'Check the provider before deploying again; the request may have been accepted.'); }
 }

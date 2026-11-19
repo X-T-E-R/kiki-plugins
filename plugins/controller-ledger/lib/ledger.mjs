@@ -59,7 +59,7 @@ async function storage(args, context, write) {
 function openStore(file, write) {
   const db = new DatabaseSync(file, { readOnly: !write });
   try {
-    db.exec('PRAGMA busy_timeout=5000;');
+    db.exec('PRAGMA busy_timeout=1500;');
     if (write) {
       db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
       const version = db.prepare('PRAGMA user_version').get().user_version;
@@ -205,7 +205,12 @@ export async function writeLedger(args, context) {
       context.signal?.throwIfAborted();
       db.exec('COMMIT'); transaction = false;
       return receipt;
-    } finally { if (transaction) db.exec('ROLLBACK'); db.close(); }
+    } finally {
+      if (transaction) {
+        try { db.exec('ROLLBACK'); } catch { /* ignore rollback error during cleanup */ }
+      }
+      db.close();
+    }
   });
 }
 function compact(item, byId) {
@@ -337,19 +342,34 @@ export async function* exportPages(workspaceRoot, format, signal, pageChars = 24
   if (!Number.isSafeInteger(pageChars) || pageChars < 1000 || pageChars > 24000) fail('invalid_input', 'pageChars is out of range');
   const location = await storage(args, context, false);
   const db = location.exists ? openStore(location.file, false) : null;
+  let inTx = false;
   try {
-    db?.exec('BEGIN');
+    if (db) {
+      db.exec('BEGIN');
+      inTx = true;
+    }
     signal?.throwIfAborted();
     const version = generation(db);
     yield* exportChunks(db, location, version, args.format ?? 'json', signal, pageChars);
-  } finally { if (db) { db.exec('ROLLBACK'); db.close(); } }
+  } finally {
+    if (db) {
+      if (inTx) {
+        try { db.exec('ROLLBACK'); } catch { /* ignore rollback error during cleanup */ }
+      }
+      db.close();
+    }
+  }
 }
 export async function readLedger(args, context) {
   validate(args, definitions[0].parameters);
   const location = await storage(args, context, false);
   const db = location.exists ? openStore(location.file, false) : null;
+  let inTx = false;
   try {
-    db?.exec('BEGIN');
+    if (db) {
+      db.exec('BEGIN');
+      inTx = true;
+    }
     const currentGeneration = generation(db), view = args.view ?? 'overview';
     const fingerprint = hash({ view, id: args.id ?? null, query: args.query ?? null, includeCompleted: args.includeCompleted ?? false, limit: args.limit ?? (view === 'brief' ? 10 : 25) });
     let cursor = null;
@@ -389,5 +409,12 @@ export async function readLedger(args, context) {
     const next = offset + page.length < selected.length ? Buffer.from(json({ fingerprint, generation: version, offset: offset + page.length })).toString('base64url') : null;
     const counts = { active: items.filter((item) => !terminal.has(item.state)).length, completed: items.filter((item) => terminal.has(item.state)).length, ready: items.filter((item) => computed(item, byId).ready).length, pendingDecisions: items.filter((item) => item.kind === 'decision' && !terminal.has(item.state)).length };
     return { ...base, counts, total: selected.length, cursor: next, page: offset / limit + 1, ...payload(page, args, view === 'history' ? 'revisions' : 'items'), guidance: view === 'brief' ? 'Current work only; ready is calculated, not dispatched. Read get for complete evidence/refs or shortened fields; follow cursor for other active work. Explicit delivered ≠ accepted.' : undefined };
-  } finally { if (db) { db.exec('ROLLBACK'); db.close(); } }
+  } finally {
+    if (db) {
+      if (inTx) {
+        try { db.exec('ROLLBACK'); } catch { /* ignore rollback error during cleanup */ }
+      }
+      db.close();
+    }
+  }
 }

@@ -76,6 +76,81 @@ export function createCuaService({
   const liveStreamSubscribers = new Set();
 
   let fastSummaryCache = { at: 0, value: null };
+  let targetRefreshFlight = null;
+
+  function emptyTargetsSnapshot(context = null) {
+    return {
+      selectedTargetId: selectedTargetId || 'local:primary',
+      primaryMonitorId: 'local:monitor-0',
+      virtualScreen: { x: 0, y: 0, width: 0, height: 0 },
+      cursor: { x: 0, y: 0 },
+      targets: [],
+      providers: [],
+      rejectedLeases: [],
+      busDir: resolveCuaProviderBusDir({ env, context, dataDir: activeDataDir }),
+    };
+  }
+
+  function overlayLiveLedger(snapshot) {
+    if (!snapshot) return snapshot;
+    const primaryId = snapshot.primaryMonitorId || 'local:monitor-0';
+    const nextTargets = snapshot.targets.map((t) => {
+      const ledger = targetLedger.get(canonicalLedgerKey(t.id, primaryId));
+      if (!ledger) return t;
+      return {
+        ...t,
+        takeoverActive: ledger.takeoverActive,
+        controlledBy: ledger.controlledBy,
+        takeoverReason: ledger.takeoverReason,
+      };
+    });
+    const activeSel = selectedTargetId && nextTargets.some((t) => t.id === selectedTargetId)
+      ? selectedTargetId
+      : snapshot.selectedTargetId;
+    return {
+      ...snapshot,
+      selectedTargetId: activeSel,
+      targets: nextTargets,
+    };
+  }
+
+  function raceTimeout(promise, ms, message) {
+    let timer;
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), ms);
+      timer.unref?.();
+    });
+    return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+  }
+
+  function triggerBackgroundTargetRefresh(context = null) {
+    if (!targetRefreshFlight) {
+      targetRefreshFlight = collectAllTargets({ context, fast: false })
+        .finally(() => {
+          targetRefreshFlight = null;
+        });
+      targetRefreshFlight.catch(() => {});
+    }
+    return targetRefreshFlight;
+  }
+
+  async function peekTargets({ context = null, maxAgeMs = 15_000, waitBudgetMs = 200 } = {}) {
+    await ensureSelectionLoaded(context);
+    const hasCached = fastSummaryCache.value !== null;
+    if (hasCached && Date.now() - fastSummaryCache.at < maxAgeMs) {
+      return overlayLiveLedger(fastSummaryCache.value);
+    }
+    const flight = triggerBackgroundTargetRefresh(context);
+    if (hasCached || waitBudgetMs <= 0) {
+      return hasCached ? overlayLiveLedger(fastSummaryCache.value) : emptyTargetsSnapshot(context);
+    }
+    try {
+      const fresh = await raceTimeout(flight, waitBudgetMs, 'cua peekTargets wait budget elapsed');
+      return overlayLiveLedger(fresh);
+    } catch {
+      return fastSummaryCache.value ? overlayLiveLedger(fastSummaryCache.value) : emptyTargetsSnapshot(context);
+    }
+  }
 
   function getDriver() {
     if (!driver) {
@@ -1391,6 +1466,8 @@ export function createCuaService({
     async function pushFrameOnce() {
       if (closed || inFlight || session.signal?.aborted) return;
       if (typeof session.bufferedAmount === 'function' && session.bufferedAmount() > 1.5 * 1024 * 1024) {
+        loopTimer = setTimeout(pushFrameOnce, intervalMs * 2);
+        loopTimer.unref?.();
         return;
       }
       inFlight = true;
@@ -1507,6 +1584,7 @@ export function createCuaService({
   return {
     activate,
     dispose,
+    peekTargets,
     collectAllTargets,
     captureTargetObservation,
     executeTool(name, args, context) {

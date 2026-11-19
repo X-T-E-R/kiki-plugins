@@ -88,3 +88,31 @@ test('kiki-sites panel.html follows Paper-and-Ink palette, dark mode, sandbox sa
   assert.match(html, /plugin\.openExternal/);
   assert.equal(/\p{Extended_Pictographic}/u.test(html), false);
 });
+
+test('kiki-sites cancels non-OK response bodies and deactivate() aborts active background jobs', async (t) => {
+  const { request } = await import('../lib/runtime.mjs');
+  const { deactivate, sitesInstance } = await import('../entry.mjs');
+  let canceled = 0;
+  await assert.rejects(
+    () => request('https://api.example.test/fail', {
+      fetchImpl: async () => new Response(new ReadableStream({ pull() {}, cancel() { canceled += 1; } }), { status: 503 }),
+    }),
+    (err) => err.code === 'api_failed',
+  );
+  assert.equal(canceled, 1);
+
+  const scratch = path.resolve('.tmp/sites-plugin/deactivate-tests');
+  await mkdir(scratch, { recursive: true });
+  const root = await mkdtemp(path.join(scratch, 'run-'));
+  t.after(() => rm(root, { recursive: true, force: true, maxRetries: 6, retryDelay: 40 }));
+  const sites = sitesInstance({ dataDirectory: path.join(root, 'data') });
+  let aborted = false;
+  const controller = new AbortController();
+  controller.promise = new Promise((resolve) => {
+    controller.signal.addEventListener('abort', () => { aborted = true; resolve(); }, { once: true });
+  });
+  sites.active.set('job-deactivate-test', controller);
+  await deactivate();
+  assert.equal(aborted, true);
+  sites.active.delete('job-deactivate-test');
+});

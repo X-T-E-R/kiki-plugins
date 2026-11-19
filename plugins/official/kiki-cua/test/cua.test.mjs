@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -59,7 +59,7 @@ test('manifest, sync-manifest --check, validateRegistration, packageFiles, and v
 
   const manifest = JSON.parse(await readFile(path.join(pluginRoot, 'kimi.plugin.json'), 'utf8'));
   assert.equal(manifest.name, 'kiki-cua');
-  assert.equal(manifest.version, '0.1.1');
+  assert.equal(manifest.version, '0.1.2');
   assert.equal(manifest.license, 'MIT');
   assert.equal(manifest.icon, './icon.svg');
   assert.deepEqual(manifest.skills, ['./skills']);
@@ -1066,6 +1066,201 @@ test('Kiki hostRunner JSON-RPC lifecycle (handshake, register, activate, panel-r
   } finally {
     rl.close();
     try { child.kill(); } catch {}
+    await rm(workDir, { recursive: true, force: true });
+  }
+});
+
+test('P0-2: peekTargets SWR bounds E5/E12 latency under slow cold driver and stale refresh', async () => {
+  const workDir = await makeIsolatedTmpDir('cua-p0-2-swr');
+  try {
+    const mockLocal = createMockLocalDriver();
+    let monitorCalls = 0;
+    let monitorDelayMs = 1_500;
+    const origListMonitors = mockLocal.listMonitors.bind(mockLocal);
+    mockLocal.listMonitors = async (...args) => {
+      monitorCalls += 1;
+      if (monitorDelayMs > 0) await new Promise((r) => setTimeout(r, monitorDelayMs));
+      return origListMonitors(...args);
+    };
+
+    const service = createCuaService({
+      localDriver: mockLocal,
+      env: { KIKI_CUA_BUS_DIR: path.join(workDir, 'empty-bus') },
+      dataDir: path.join(workDir, 'state'),
+    });
+    const { createCuaSlotHandlers } = await import('../lib/slots.mjs');
+    const slotHandlers = createCuaSlotHandlers(service);
+
+    // Cold call hits 200ms budget instead of blocking for 1500ms
+    const t0 = performance.now();
+    const [coldE5, coldE12] = await Promise.all([
+      slotHandlers['E5:prompt-context']({}, {}),
+      slotHandlers['E12:server-gui-slots']({ kind: 'describe' }, {}),
+    ]);
+    const coldMs = performance.now() - t0;
+    assert.ok(coldMs < 500, `Cold E5/E12 must respect 200ms waitBudgetMs, took ${coldMs.toFixed(1)}ms`);
+    assert.equal(monitorCalls, 1, 'Concurrent cold E5/E12 must deduplicate into a single background refresh');
+    assert.deepEqual(coldE5.sections, []);
+    assert.ok(Array.isArray(coldE12.guiSlots));
+
+    // Warm cache with fast driver, then expire and verify stale SWR returns immediately without blocking
+    monitorDelayMs = 0;
+    await new Promise((r) => setTimeout(r, 1_550));
+    const warm = await service.peekTargets({ maxAgeMs: 15_000, waitBudgetMs: 200 });
+    assert.ok(warm.targets.some((t) => t.id === 'local:primary'));
+
+    monitorDelayMs = 1_500;
+    const t1 = performance.now();
+    const stale = await service.peekTargets({ maxAgeMs: 0, waitBudgetMs: 200 });
+    const staleMs = performance.now() - t1;
+    assert.ok(staleMs < 100, `Stale SWR peekTargets must return immediately, took ${staleMs.toFixed(1)}ms`);
+    assert.ok(stale.targets.some((t) => t.id === 'local:primary'));
+
+    await service.dispose();
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
+});
+
+test('P0-3: wedged Win32 bridge PowerShell worker is killed on timeout/abort and respawns cleanly', async () => {
+  const { EventEmitter } = await import('node:events');
+  const { PassThrough } = await import('node:stream');
+  const workers = [];
+  const taskkillArgs = [];
+
+  const bridge = createWin32Bridge({
+    idleTimeoutMs: 0,
+    hostPlatform: 'win32',
+    spawnProcess: (file, args) => {
+      if (file === 'taskkill') {
+        taskkillArgs.push(args);
+        const k = new EventEmitter();
+        k.unref = () => {};
+        return k;
+      }
+      const stdin = new PassThrough();
+      const stdout = new PassThrough();
+      const stderr = new PassThrough();
+      stdin.setDefaultEncoding = () => {};
+      const child = new EventEmitter();
+      child.pid = 51_000 + workers.length + 1;
+      child.stdin = stdin;
+      child.stdout = stdout;
+      child.stderr = stderr;
+      child.exitCode = null;
+      child.killed = false;
+      child.ref = () => {};
+      child.unref = () => {};
+      child.kill = () => {
+        child.killed = true;
+        child.exitCode = 1;
+        child.emit('exit', 1, 'SIGKILL');
+      };
+      const idx = workers.length;
+      workers.push(child);
+
+      // Emit ready line right away
+      queueMicrotask(() => {
+        stdout.write(JSON.stringify({ method: 'ready' }) + '\n');
+      });
+
+      // Worker 0 hangs on RPCs; Worker 1 responds normally
+      if (idx >= 1) {
+        let buf = '';
+        stdin.on('data', (chunk) => {
+          buf += chunk.toString('utf8');
+          for (const line of buf.split('\n')) {
+            if (!line.trim()) continue;
+            try {
+              const req = JSON.parse(line);
+              if (req.method === 'shutdown') {
+                child.kill();
+                return;
+              }
+              stdout.write(JSON.stringify({ jsonrpc: '2.0', id: req.id, result: { x: 123, y: 456 } }) + '\n');
+            } catch {}
+          }
+          buf = '';
+        });
+      }
+      return child;
+    },
+  });
+
+  // Two overlapping calls on wedged worker 0 -> timeout kills & detaches worker 0 and rejects both
+  const p1 = bridge.getCursorPos({ timeoutMs: 60 });
+  const p2 = bridge.getCursorPos({ timeoutMs: 5000 });
+  await assert.rejects(p1, /timed out/);
+  await assert.rejects(p2, /timed out/);
+  assert.equal(workers.length, 1);
+  assert.equal(workers[0].killed, true);
+  assert.ok(taskkillArgs.some((a) => a.includes(String(workers[0].pid)) && a.includes('/T') && a.includes('/F')));
+
+  // Next call spawns clean worker 1 and succeeds
+  const pos = await bridge.getCursorPos({ timeoutMs: 1000 });
+  assert.equal(workers.length, 2);
+  assert.deepEqual(pos, { x: 123, y: 456 });
+
+  await bridge.dispose();
+});
+
+test('P1-1 & P1-5: openPanelStream resumes after backpressure clears and discoverCuaProviders prunes stale .tmp files', async () => {
+  const workDir = await makeIsolatedTmpDir('cua-p1-1-p1-5');
+  const busDir = path.join(workDir, 'bus');
+  try {
+    await mkdir(busDir, { recursive: true });
+    const staleTmp = path.join(busDir, 'old-provider.json.1234.abcd.tmp');
+    const freshTmp = path.join(busDir, 'fresh-provider.json.1234.ef01.tmp');
+    await writeFile(staleTmp, '{}');
+    await writeFile(freshTmp, '{}');
+    const twoMinAgo = new Date(Date.now() - 120_000);
+    await utimes(staleTmp, twoMinAgo, twoMinAgo);
+
+    const disc = await discoverCuaProviders({ busDir });
+    assert.equal(disc.providers.length, 0);
+    assert.equal(disc.rejected.length, 0, '.tmp files must be ignored, not reported as rejected leases');
+    await assert.rejects(() => stat(staleTmp), { code: 'ENOENT' }, 'stale .tmp >60s must be pruned');
+    assert.equal(existsSync(freshTmp), true, 'fresh .tmp <60s must be preserved');
+
+    // P1-1: backpressure spike (>1.5 MiB) must reschedule loopTimer instead of freezing stream
+    const mockLocal = createMockLocalDriver();
+    const service = createCuaService({
+      localDriver: mockLocal,
+      env: { KIKI_CUA_BUS_DIR: busDir },
+      dataDir: path.join(workDir, 'state'),
+    });
+
+    let buffered = 2 * 1024 * 1024;
+    const sent = [];
+    const ac = new AbortController();
+    const opened = await service.openPanelStream(
+      'screen',
+      { targetId: 'local:primary', maxWidth: 640, fps: 12 },
+      {
+        signal: ac.signal,
+        bufferedAmount: () => buffered,
+        sendBinary(buf) { sent.push(buf); },
+        sendText() {},
+      },
+      {},
+    );
+
+    // Wait while backpressured -> 0 frames sent
+    await new Promise((r) => setTimeout(r, 120));
+    assert.equal(sent.length, 0);
+
+    // Clear backpressure -> rescheduled timer must resume frame delivery automatically
+    buffered = 0;
+    const deadline = Date.now() + 1_200;
+    while (sent.length === 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    assert.ok(sent.length >= 1, 'Stream must resume automatically after backpressure clears');
+
+    ac.abort();
+    opened.onClose();
+    await service.dispose();
+  } finally {
     await rm(workDir, { recursive: true, force: true });
   }
 });

@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import { definitions } from '../lib/definitions.mjs';
 const manifest = {
-  name: 'controller-ledger', version: '0.1.1',
+  name: 'controller-ledger', version: '0.1.2',
   description: 'Workspace-scoped, incremental controller work ledger with dependencies, decisions and evidence.',
   license: 'MIT',
   interface: { displayName: 'Controller Ledger', shortDescription: '局部更新工作、依赖、决定与证据' },

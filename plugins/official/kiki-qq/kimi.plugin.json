@@ -1,6 +1,6 @@
 {
   "name": "kiki-qq",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "QQ Bot and OneBot 11 channels with optional official QR setup, messaging, media receipts and read-only OneBot group tools.",
   "license": "MIT",
   "icon": "./icon.svg",

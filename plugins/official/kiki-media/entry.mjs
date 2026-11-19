@@ -97,14 +97,14 @@ async function inspectSource(manifest, args = {}, context = {}) {
       probe = { state: 'connection_managed', connectionId: String(effective.connectionId) };
     } else {
       const started = Date.now();
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 5000);
+      const timeoutSignal = AbortSignal.timeout(15_000);
+      const probeSignal = context.signal ? AbortSignal.any([context.signal, timeoutSignal]) : timeoutSignal;
       try {
         if (voiceAdapter) {
           const vRes = await voiceAdapter.voices({}, {
             settings: effective,
             connection: context.connection,
-            signal: controller.signal,
+            signal: probeSignal,
           });
           liveVoices = (vRes.voices ?? []).slice(0, 24).map((v) => ({ id: String(v.id), label: String(v.label || v.id) }));
           probe = { state: 'ok', latencyMs: Date.now() - started, detail: `${liveVoices.length} voices` };
@@ -131,9 +131,10 @@ async function inspectSource(manifest, args = {}, context = {}) {
               method: 'GET',
               headers,
               redirect: 'manual',
-              signal: controller.signal,
+              signal: probeSignal,
             });
             const latencyMs = Date.now() - started;
+            await res.body?.cancel().catch(() => {});
             if (res.ok) {
               probe = { state: 'ok', status: res.status, latencyMs };
             } else {
@@ -145,10 +146,12 @@ async function inspectSource(manifest, args = {}, context = {}) {
         probe = {
           state: 'failed',
           latencyMs: Date.now() - started,
-          detail: controller.signal.aborted ? 'Timed out' : (err instanceof Error ? err.message : 'Unreachable'),
+          detail: context.signal?.aborted
+            ? 'Cancelled'
+            : timeoutSignal.aborted
+              ? 'Timed out'
+              : (err instanceof Error ? err.message : 'Unreachable'),
         };
-      } finally {
-        clearTimeout(timer);
       }
     }
   }

@@ -13,6 +13,20 @@ function validateTimeout(value) {
   return value;
 }
 
+function terminateChild(child) {
+  if (!child) return;
+  if (process.platform === 'win32' && child.pid) {
+    const killer = spawn(path.join(process.env.SystemRoot || 'C:/Windows', 'System32/taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], {
+      windowsHide: true,
+      stdio: 'ignore',
+      shell: false,
+    });
+    killer.once('error', () => { try { child.kill(); } catch {} });
+  } else {
+    try { child.kill(); } catch {}
+  }
+}
+
 export function createCli({ settings = {}, workspaceRoot, signal, spawnImpl = spawn } = {}) {
   const home = String(settings.cliHome || '').trim();
   if (!home || !path.isAbsolute(home)) throw new BilibiliError('CONFIGURATION', 'Set cliHome to an explicit absolute bili-agent profile directory. No default home is read.');
@@ -32,7 +46,7 @@ export function createCli({ settings = {}, workspaceRoot, signal, spawnImpl = sp
         if (error) reject(error); else resolve(result);
       };
       const uncertain = (code, message) => new BilibiliError(code, message, { submission: write && started ? 'unknown' : 'not_sent' });
-      const abort = () => { child?.kill(); finish(uncertain('LOCAL_ABORTED', 'Local wait cancelled. Inspect the platform before repeating an unknown write.')); };
+      const abort = () => { terminateChild(child); finish(uncertain('LOCAL_ABORTED', 'Local wait cancelled. Inspect the platform before repeating an unknown write.')); };
       signal?.addEventListener('abort', abort, { once: true });
       try {
         child = spawnImpl(executable, ['--compact', ...args], {
@@ -46,10 +60,10 @@ export function createCli({ settings = {}, workspaceRoot, signal, spawnImpl = sp
         return;
       }
       child.once('spawn', () => { started = true; });
-      timer = setTimeout(() => { child.kill(); finish(uncertain('TIMEOUT', 'bili timed out. An unknown write must not be retried automatically.')); }, timeoutMs);
+      timer = setTimeout(() => { terminateChild(child); finish(uncertain('TIMEOUT', 'bili timed out. An unknown write must not be retried automatically.')); }, timeoutMs);
       child.stdout.on('data', (bytes) => {
         stdout += decoder.write(bytes);
-        if (stdout.length > 32 * 1024 * 1024) { child.kill(); finish(uncertain('OUTPUT_LIMIT', 'bili output exceeded 32 MiB.')); }
+        if (stdout.length > 32 * 1024 * 1024) { terminateChild(child); finish(uncertain('OUTPUT_LIMIT', 'bili output exceeded 32 MiB.')); }
       });
       child.stderr.resume?.();
       child.once('error', (error) => finish(error.code === 'ENOENT'

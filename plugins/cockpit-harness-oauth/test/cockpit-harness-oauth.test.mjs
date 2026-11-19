@@ -268,3 +268,59 @@ test('NDJSON preserves account labels when a UTF-8 character crosses pipe chunks
   child.exitCode = 0;
   child.emit('exit', 0, null);
 });
+
+test('P0-3: close() kills an unresponsive backend after the grace timer and settles without hanging', async () => {
+  // 1. Real unresponsive child process that ignores stdin EOF
+  const sleeper = () => spawn(
+    process.execPath,
+    ['-e', 'process.stdin.resume(); setInterval(() => {}, 60_000);'],
+    { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true },
+  );
+  const realBackend = new NdjsonBackend({ spawnFn: sleeper, closeGraceMs: 120, forceSettleMs: 500 });
+  await realBackend.start({ backendPath: '/fixture/backend', sidecarPath: '/fixture/sidecar' });
+  const t0 = Date.now();
+  await realBackend.close();
+  const elapsed = Date.now() - t0;
+  assert.ok(elapsed < 2000, `close() took too long on unresponsive child: ${elapsed}ms`);
+  assert.equal(realBackend.running, false);
+
+  // 2. Synthetic zombie child that ignores kill() still settles within bounded settle timer
+  let killCalled = false;
+  const zombie = new EventEmitter();
+  zombie.stdin = new PassThrough();
+  zombie.stdout = new PassThrough();
+  zombie.stderr = new PassThrough();
+  zombie.exitCode = null;
+  zombie.kill = () => { killCalled = true; };
+  const zombieBackend = new NdjsonBackend({ spawnFn: () => zombie, closeGraceMs: 50, forceSettleMs: 80 });
+  await zombieBackend.start({ backendPath: '/fixture/backend', sidecarPath: '/fixture/sidecar' });
+  const t1 = Date.now();
+  await zombieBackend.close();
+  const zombieElapsed = Date.now() - t1;
+  assert.equal(killCalled, true);
+  assert.ok(zombieElapsed < 1000, `zombie close() hung: ${zombieElapsed}ms`);
+  assert.equal(zombieBackend.running, false);
+});
+
+test('P1-1: request() enforces timeout (default 30s, overridable per call) and cleans up pending entry', async () => {
+  const child = new EventEmitter();
+  child.stdin = new PassThrough();
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.exitCode = null;
+  child.kill = () => {};
+  const backend = new NdjsonBackend({ spawnFn: () => child, requestTimeoutMs: 5000 });
+  await backend.start({ backendPath: '/fixture/backend', sidecarPath: '/fixture/sidecar' });
+  assert.equal(backend.requestTimeoutMs, 5000);
+
+  const defaultBackend = new NdjsonBackend({ spawnFn: () => child });
+  assert.equal(defaultBackend.requestTimeoutMs, 30_000);
+
+  await assert.rejects(
+    backend.request('list', { engineId: 'agy-cli' }, { timeoutMs: 80 }),
+    (err) => err.code === 'BACKEND_TIMEOUT' && /timed out after 80ms/i.test(err.message),
+  );
+  assert.equal(backend.pending.size, 0);
+  child.exitCode = 0;
+  child.emit('exit', 0, null);
+});

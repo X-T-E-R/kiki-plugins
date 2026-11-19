@@ -598,6 +598,7 @@
   const STREAM_MAGIC_0 = 0x55;
   const STREAM_MAGIC_1 = 0x52;
   const POLL_INTERVAL_MS = 220;
+  const POLL_BACKOFF_MS = [220, 500, 1000, 3000];
   const isZh = /^zh\b/i.test(navigator.language || '');
 
   // Sandbox-safe storage (origin is 'null' inside <iframe sandbox="allow-scripts">)
@@ -698,6 +699,7 @@
     streamGen: 0,
     pollTimer: null,
     pollInFlight: false,
+    pollErrorStreak: 0,
     dragStart: null,
     fpsSamples: [],
   };
@@ -1055,11 +1057,12 @@
   }
 
   async function captureSingleFrame(sessionId) {
-    if (state.pollInFlight || !sessionId) return;
+    if (state.pollInFlight || !sessionId) return true;
     state.pollInFlight = true;
     try {
       const frame = await panelCall('frame', { sessionId, maxWidth: 1280, maxHeight: 800 });
       if (frame?.ok && frame.dataUrl) {
+        state.pollErrorStreak = 0;
         if (frame.logicalSize?.width && frame.logicalSize?.height) {
           const changed = frame.logicalSize.width !== state.logicalSize.width ||
             frame.logicalSize.height !== state.logicalSize.height;
@@ -1069,9 +1072,15 @@
         }
         applyTakeoverUi(frame.takeoverActive);
         await paintPngBytes(decodeBase64DataUrl(frame.dataUrl));
+        return true;
       }
+      state.pollErrorStreak = Math.min(POLL_BACKOFF_MS.length - 1, state.pollErrorStreak + 1);
+      if (frame?.error) setStatus(frame.error, 'error');
+      return false;
     } catch (err) {
+      state.pollErrorStreak = Math.min(POLL_BACKOFF_MS.length - 1, state.pollErrorStreak + 1);
       setStatus(err.message || 'Frame capture failed', 'error');
+      return false;
     } finally {
       state.pollInFlight = false;
     }
@@ -1098,10 +1107,11 @@
     if (!document.hidden) {
       await captureSingleFrame(sessionId);
     }
-    if (gen === state.streamGen && state.live) {
+    if (gen === state.streamGen && state.live && !document.hidden) {
+      const delayMs = POLL_BACKOFF_MS[Math.min(POLL_BACKOFF_MS.length - 1, state.pollErrorStreak)] || POLL_INTERVAL_MS;
       state.pollTimer = setTimeout(() => {
         void startPollingFallback(gen, sessionId);
-      }, POLL_INTERVAL_MS);
+      }, delayMs);
     }
   }
 
@@ -1685,6 +1695,36 @@
       sendInteractiveInput({ subAction: 'key', key: btn.dataset.key });
     });
   }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (state.streamActive && state.streamPort) {
+        try {
+          state.streamPort.postMessage(JSON.stringify({ type: 'configure', paused: true }));
+        } catch {}
+      }
+      if (state.pollTimer) {
+        clearTimeout(state.pollTimer);
+        state.pollTimer = null;
+      }
+    } else if (state.live) {
+      if (state.streamActive && state.streamPort) {
+        try {
+          state.streamPort.postMessage(JSON.stringify({ type: 'configure', paused: false }));
+        } catch {}
+      } else {
+        const sel = currentSession();
+        if (sel && sel.state === 'active') {
+          state.pollErrorStreak = 0;
+          void startLiveForSession(sel);
+        }
+      }
+    }
+  });
+
+  window.addEventListener('pagehide', () => {
+    stopLiveTransport();
+  });
 
   setTimeout(() => {
     if (!booted) {

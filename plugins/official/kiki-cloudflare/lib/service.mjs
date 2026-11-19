@@ -69,6 +69,19 @@ export class CloudflareService {
       this.settings = next; this.dep = undefined;
       const wasClosed = this.closed;
       this.closed = false;
+      this.detachSignal?.();
+      this.detachSignal = undefined;
+      if (context.signal) {
+        const onAbort = () => { void this.deactivate(); };
+        if (context.signal.aborted) {
+          this.closed = true;
+          await this.stopInternal(false);
+          await this.cancelLogin();
+          return this.status();
+        }
+        context.signal.addEventListener('abort', onAbort, { once: true });
+        this.detachSignal = () => context.signal.removeEventListener('abort', onAbort);
+      }
       if (changed && this.child) await this.stopInternal(false);
       if (wasClosed) this.service.manualStop = false;
       if (this.configured() && this.settings.autoStart !== false && !this.service.manualStop) await this.startInternal();
@@ -161,10 +174,16 @@ export class CloudflareService {
     const probe = async () => {
       if (this.generation !== generation || this.child !== child) return;
       let ready = false;
-      try { ready = (await this.fetch(`http://127.0.0.1:${this.metricsPort}/ready`, { signal: AbortSignal.timeout(2000), redirect: 'error' })).status === 200; } catch {}
+      try {
+        const res = await this.fetch(`http://127.0.0.1:${this.metricsPort}/ready`, { signal: AbortSignal.timeout(2000), redirect: 'error' });
+        ready = res.status === 200;
+        await res.body?.cancel().catch(() => {});
+      } catch {}
       if (this.generation !== generation || this.child !== child) return;
       this.service.ready = ready; this.service.state = ready ? 'running' : 'starting';
-      this.probeTimer = setTimeout(probe, this.probeMs);
+      const nextProbeMs = ready ? Math.max(this.probeMs, Math.min(this.probeMs * 10, 15_000)) : this.probeMs;
+      this.probeTimer = setTimeout(probe, nextProbeMs);
+      this.probeTimer.unref?.();
     };
     void probe();
   }
@@ -230,6 +249,8 @@ export class CloudflareService {
   }
   async deactivate() {
     this.closed = true;
+    this.detachSignal?.();
+    this.detachSignal = undefined;
     await this.serial(async () => { await this.stopInternal(false); await this.cancelLogin(); });
   }
   async panel(action, args = {}) {

@@ -71,27 +71,51 @@ export async function installPinnedBinary({ consent, destination, fetchRelease =
   return destination;
 }
 
+function terminateChild(child) {
+  if (!child) return;
+  if (process.platform === 'win32' && child.pid) {
+    const killer = spawn(path.join(process.env.SystemRoot || 'C:/Windows', 'System32/taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], {
+      windowsHide: true,
+      stdio: 'ignore',
+      shell: false,
+    });
+    killer.once('error', () => { try { child.kill(); } catch {} });
+  } else {
+    try { child.kill(); } catch {}
+  }
+}
+
 export async function runProcess(binary, args, { input, signal, maxBytes = 64 * 1024, timeoutMs = 30_000 } = {}) {
+  if (signal?.aborted) {
+    throw new OfficeError('CANCELLED', 'OfficeCLI call was cancelled.', 'Retry the operation if it is still needed.');
+  }
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...ENV } });
     let stdout = '';
     let stderr = '';
     let failed;
-    const timeout = setTimeout(() => { failed = new OfficeError('ENGINE_TIMEOUT', 'OfficeCLI timed out.', 'Try a smaller document or a narrower selection.'); child.kill(); }, timeoutMs);
-    const abort = () => { failed = new OfficeError('CANCELLED', 'OfficeCLI call was cancelled.', 'Retry the operation if it is still needed.'); child.kill(); };
+    let settled = false;
+    const finish = (err, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      signal?.removeEventListener('abort', abort);
+      if (err) reject(err);
+      else resolve(value);
+    };
+    const timeout = setTimeout(() => { failed = new OfficeError('ENGINE_TIMEOUT', 'OfficeCLI timed out.', 'Try a smaller document or a narrower selection.'); terminateChild(child); }, timeoutMs);
+    const abort = () => { failed = new OfficeError('CANCELLED', 'OfficeCLI call was cancelled.', 'Retry the operation if it is still needed.'); terminateChild(child); };
     signal?.addEventListener('abort', abort, { once: true });
     child.stdin.on('error', () => undefined);
     child.stdout.on('data', (chunk) => {
       stdout += chunk.toString();
-      if (Buffer.byteLength(stdout) > maxBytes) { failed = new OfficeError('RESULT_TOO_LARGE', 'OfficeCLI output exceeds the fixed window.', 'Narrow the query or specify a smaller view range.'); child.kill(); }
+      if (Buffer.byteLength(stdout) > maxBytes) { failed = new OfficeError('RESULT_TOO_LARGE', 'OfficeCLI output exceeds the fixed window.', 'Narrow the query or specify a smaller view range.'); terminateChild(child); }
     });
     child.stderr.on('data', (chunk) => { stderr = (stderr + chunk.toString()).slice(-4096); });
-    child.on('error', (error) => { failed = error; });
+    child.on('error', (error) => { finish(failed ?? error); });
     child.on('close', (code) => {
-      clearTimeout(timeout);
-      signal?.removeEventListener('abort', abort);
-      if (failed) reject(failed);
-      else resolve({ code, stdout, stderr });
+      if (failed) finish(failed);
+      else finish(undefined, { code, stdout, stderr });
     });
     if (input === undefined) child.stdin.end();
     else child.stdin.end(input);

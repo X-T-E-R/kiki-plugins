@@ -985,3 +985,37 @@ await test('Native fetch redirect boundary preserves originals without forwardin
     t.diagnostic('Native localhost: API redirect rejected, same-origin auth retained, cross-origin headers cleared, user-input/CDN originals preserved.');
   } finally { await Promise.all([close(source), close(target)]); }
 });
+
+await test('Runtime cancels non-OK and early-exit response bodies and enforces per-request timeout', async () => {
+  const { runtime, receiveAudio } = await import('../runtime.mjs');
+  const stagingDir = await mkdtemp(path.join(scratch, 'body-cancel-'));
+  let canceled = 0;
+  const trackedResponse = (status, contentType) => {
+    const stream = new ReadableStream({
+      pull() {},
+      cancel() { canceled += 1; },
+    });
+    return new Response(stream, { status, headers: { 'content-type': contentType } });
+  };
+  let seenSignal;
+  const ctx = {
+    signal: new AbortController().signal,
+    settings: { baseUrl: 'https://api.example.test/v1', apiKey: 'YOUR_API_KEY' },
+    stagingDir,
+    jobId: 'cancel-fixture',
+    progress() {},
+  };
+  const rt = await runtime(ctx, async (_url, init) => {
+    seenSignal = init.signal;
+    if (canceled === 0) return trackedResponse(502, 'application/json');
+    return trackedResponse(200, 'text/html');
+  });
+  await assert.rejects(() => rt.send('https://api.example.test/v1/images'), (err) => err.code === 'http_502');
+  assert.equal(canceled, 1, 'non-OK response body must be cancelled');
+  assert.notEqual(seenSignal, ctx.signal, 'fetch signal must combine context.signal with a per-request timeout');
+  await assert.rejects(() => rt.download('https://cdn.example.test/out.png', 'out.png', 'image'), (err) => err.code === 'invalid_media');
+  assert.equal(canceled, 2, 'download error-document response body must be cancelled');
+  const audioOutcome = await receiveAudio(trackedResponse(200, 'application/json'), ctx, 'a.mp3', 'audio/mpeg');
+  assert.equal(audioOutcome.state, 'failed');
+  assert.equal(canceled, 3, 'receiveAudio early-exit response body must be cancelled');
+});

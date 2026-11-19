@@ -217,10 +217,18 @@ async function destroyChild(child) {
   try { child.stdin?.destroy(); } catch { /* already closed */ }
   if (child.exitCode !== null || child.signalCode) return;
   try { child.kill(); } catch { return; }
-  await Promise.race([
-    once(child, 'exit').catch(() => undefined),
-    new Promise((resolve) => setTimeout(resolve, 2000)),
-  ]);
+  let timer;
+  try {
+    await Promise.race([
+      once(child, 'exit').catch(() => undefined),
+      new Promise((resolve) => {
+        timer = setTimeout(resolve, 2000);
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**

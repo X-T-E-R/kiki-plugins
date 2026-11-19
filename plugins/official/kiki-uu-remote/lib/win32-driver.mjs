@@ -103,10 +103,29 @@ export function createWin32SystemDriver({
   executeFile = defaultExecFile,
   spawnProcess = spawn,
   workerIdleMs = WORKER_IDLE_TTL_MS,
+  installCacheTtlMs = 60_000,
+  nowFn = Date.now,
 } = {}) {
   let worker = null;
   let reqCounter = 0;
   let idleTimer = null;
+  const installCache = new Map();
+  const installFlights = new Map();
+
+  function killProcessTree(proc) {
+    if (!proc) return;
+    if (hostPlatform === 'win32' && proc.pid) {
+      try {
+        const killer = spawnProcess('taskkill', ['/PID', String(proc.pid), '/T', '/F'], {
+          stdio: 'ignore',
+          windowsHide: true,
+        });
+        killer?.on?.('error', () => {});
+        killer?.unref?.();
+      } catch {}
+    }
+    try { proc.kill(); } catch {}
+  }
 
   function clearWorkerIdle() {
     if (idleTimer) {
@@ -128,9 +147,27 @@ export function createWin32SystemDriver({
   function rejectPending(w, error) {
     for (const [, entry] of w.pending) {
       clearTimeout(entry.timer);
+      entry.cleanupAbort?.();
       entry.reject(error);
     }
     w.pending.clear();
+  }
+
+  function killAndDetachWorker(w, reasonError) {
+    if (!w) return;
+    if (worker === w) {
+      worker = null;
+      clearWorkerIdle();
+    }
+    if (w.closed) {
+      rejectPending(w, reasonError);
+      return;
+    }
+    w.closed = true;
+    rejectPending(w, reasonError);
+    try { w.rl.close(); } catch {}
+    try { w.child.stdin.end(); } catch {}
+    killProcessTree(w.child);
   }
 
   function ensureWorker() {
@@ -177,6 +214,7 @@ export function createWin32SystemDriver({
       if (!entry) return;
       pending.delete(msg.id);
       clearTimeout(entry.timer);
+      entry.cleanupAbort?.();
       if (msg.ok) {
         entry.resolve(msg.result);
       } else {
@@ -208,28 +246,66 @@ export function createWin32SystemDriver({
     return state;
   }
 
-  function callWorker(payload, timeoutMs = 15_000) {
+  function callWorker(payload, timeoutMs = 15_000, { signal } = {}) {
+    if (signal?.aborted) {
+      return Promise.reject(
+        signal.reason instanceof Error
+          ? signal.reason
+          : Object.assign(new Error('Win32 worker call aborted'), { name: 'AbortError' }),
+      );
+    }
     const w = ensureWorker();
     const id = ++reqCounter;
     return new Promise((resolve, reject) => {
+      const onAbort = () => {
+        const abortErr = signal.reason instanceof Error
+          ? signal.reason
+          : Object.assign(new Error(`Win32 worker aborted on op=${payload.op}`), { name: 'AbortError' });
+        killAndDetachWorker(w, abortErr);
+      };
+      const cleanupAbort = () => {
+        signal?.removeEventListener?.('abort', onAbort);
+      };
       const timer = setTimeout(() => {
-        w.pending.delete(id);
-        reject(new Error(`Win32 worker timed out on op=${payload.op} after ${timeoutMs}ms`));
+        const timeoutErr = new Error(`Win32 worker timed out on op=${payload.op} after ${timeoutMs}ms`);
+        killAndDetachWorker(w, timeoutErr);
       }, timeoutMs);
       timer.unref?.();
-      w.pending.set(id, { resolve, reject, timer });
+      signal?.addEventListener?.('abort', onAbort, { once: true });
+      w.pending.set(id, { resolve, reject, timer, cleanupAbort });
       try {
         w.child.stdin.write(JSON.stringify({ id, ...payload }) + '\n', 'utf8');
       } catch (err) {
         clearTimeout(timer);
+        cleanupAbort();
         w.pending.delete(id);
+        killAndDetachWorker(w, err);
         reject(err);
       }
     });
   }
 
   async function discoverInstallation(settings = {}) {
-    return discoverGameViewerInstall({ settings, hostPlatform, env, fileExists, executeFile });
+    const key = String(settings?.executablePath ?? '').trim();
+    const cached = installCache.get(key);
+    if (cached && installCacheTtlMs > 0 && nowFn() - cached.at < installCacheTtlMs) {
+      return cached.value;
+    }
+    if (installFlights.has(key)) {
+      return installFlights.get(key);
+    }
+    const flight = discoverGameViewerInstall({ settings, hostPlatform, env, fileExists, executeFile })
+      .then((value) => {
+        if (installCacheTtlMs > 0) {
+          installCache.set(key, { at: nowFn(), value });
+        }
+        return value;
+      })
+      .finally(() => {
+        if (installFlights.get(key) === flight) installFlights.delete(key);
+      });
+    installFlights.set(key, flight);
+    return flight;
   }
 
   async function inspectTopology(settings = {}) {
@@ -366,17 +442,7 @@ export function createWin32SystemDriver({
     const current = worker;
     worker = null;
     if (!current || current.closed) return;
-    current.closed = true;
-    rejectPending(current, new Error('Win32 driver disposed.'));
-    try {
-      current.rl.close();
-    } catch {}
-    try {
-      current.child.stdin.end();
-    } catch {}
-    try {
-      current.child.kill();
-    } catch {}
+    killAndDetachWorker(current, new Error('Win32 driver disposed.'));
   }
 
   return {
@@ -392,6 +458,7 @@ export function createWin32SystemDriver({
     sendInputBatch,
     openClientExecutable,
     openProtocolUri,
+    callWorker,
     dispose,
   };
 }

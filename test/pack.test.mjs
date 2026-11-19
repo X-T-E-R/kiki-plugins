@@ -187,7 +187,7 @@ test('packs a non-catalog OAuth plugin as a standalone install ZIP', async () =>
 test('packs magpie-harness-quota and model-dispatch-advisor cleanly without leaking tests or scripts', async () => {
   const outDir = await mkdtemp(resolve('.tmp/local-dispatch-pack-'));
   try {
-    for (const [id, version] of [['magpie-harness-quota', '0.1.4'], ['model-dispatch-advisor', '0.1.1']]) {
+    for (const [id, version] of [['magpie-harness-quota', '0.1.5'], ['model-dispatch-advisor', '0.1.2']]) {
       const zipFile = await packLocalPlugin({ id, outDir });
       assert.equal(zipFile, join(outDir, `${id}-${version}.zip`));
       const names = await new Promise((resolveEntries, reject) => {

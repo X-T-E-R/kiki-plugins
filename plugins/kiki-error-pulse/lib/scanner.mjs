@@ -1,4 +1,4 @@
-import { open as openFile, readdir, readFile, stat as statFile } from 'node:fs/promises';
+import { lstat as lstatFile, open as openFile, readdir, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -11,6 +11,7 @@ import {
 } from './signature.mjs';
 import {
   MAX_PENDING_CALLS_SAVED,
+  pruneIndex,
   queryIndexReport,
   readIndexFile,
   recordErrorSignatureInIndex,
@@ -26,9 +27,15 @@ export const DEFAULT_MAX_MEGABYTES_PER_TICK = 16;
 export const READ_CHUNK_BYTES = 256 * 1024;
 export const COLD_LARGE_FILE_BYTES = 4 * 1024 * 1024;
 export const COLD_TAIL_WINDOW_BYTES = 2 * 1024 * 1024;
+export const TRACKED_CATCHUP_JUMP_BYTES = 64 * 1024 * 1024;
 export const MAX_SINGLE_LINE_BYTES = 8 * 1024 * 1024;
 export const TIME_SLICE_BUDGET_MS = 6;
 export const FILES_PER_YIELD = 3;
+
+const TRANSIENT_FS_ERROR_CODES = new Set(['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'EBUSY']);
+function isSkippableFsError(error) {
+  return Boolean(error && typeof error.code === 'string' && TRANSIENT_FS_ERROR_CODES.has(error.code));
+}
 
 function clampInt(value, fallback, min, max) {
   const num = Number(value);
@@ -228,6 +235,7 @@ export class ErrorPulseService {
     }
     const loaded = await readIndexFile(paths.indexPath);
     if (loaded.exists) {
+      pruneIndex(loaded.index, this.now());
       this.cachedIndex = loaded.index;
       this.cachedIndexPath = paths.indexPath;
     }
@@ -306,6 +314,19 @@ export class ErrorPulseService {
     const nowMs = this.now();
     const paths = resolvePulsePaths(effContext, this.deps);
     const { exists: indexExisted, index } = await readIndexFile(paths.indexPath);
+    const { prunedFiles: retentionPrunedFiles } = pruneIndex(index, nowMs);
+
+    const fsReaddir = this.deps.readdir ?? readdir;
+    const fsStat = this.deps.statFile ?? lstatFile;
+    const fsOpen = this.deps.openFile ?? openFile;
+    const maxSingleLineBytes =
+      typeof this.deps.maxSingleLineBytes === 'number' && this.deps.maxSingleLineBytes >= 256
+        ? Math.trunc(this.deps.maxSingleLineBytes)
+        : MAX_SINGLE_LINE_BYTES;
+    const catchupJumpBytes =
+      typeof this.deps.catchupJumpBytes === 'number' && this.deps.catchupJumpBytes > 0
+        ? Math.trunc(this.deps.catchupJumpBytes)
+        : TRACKED_CATCHUP_JUMP_BYTES;
 
     const chunkBytes =
       typeof this.deps.chunkBytes === 'number' && this.deps.chunkBytes >= 64
@@ -329,62 +350,90 @@ export class ErrorPulseService {
       }
     };
 
-    // 1. Discover wire.jsonl paths cooperatively with directory pruning & bounded concurrency.
-    const SKIP_SUBDIRS = new Set([
-      'tasks',
-      'attachments',
-      'media',
-      'engine-v1',
-      'tool-results',
-      'blobs',
-      'snapshots',
-      'checkpoints',
-      'cache',
-      'notes',
-      'todos',
-      'logs',
-      'tmp',
-      '.tmp',
-    ]);
+    const safeReadDir = async (dir) => {
+      try {
+        return await fsReaddir(dir, { withFileTypes: true });
+      } catch (error) {
+        if (isSkippableFsError(error)) return [];
+        throw error;
+      }
+    };
+
+    const probeWireFile = async (fullPath) => {
+      try {
+        const st = await fsStat(fullPath);
+        if (!st || (typeof st.isSymbolicLink === 'function' && st.isSymbolicLink()) || !st.isFile()) {
+          return null;
+        }
+        const relKey = path.relative(paths.sessionsDir, fullPath).replace(/\\/g, '/');
+        return { fullPath, relKey, st };
+      } catch (error) {
+        if (isSkippableFsError(error)) return null;
+        throw error;
+      }
+    };
+
+    // 1. Discover wire.jsonl strictly in the actual Kiki session layout:
+    //    <workspace>/<session>/wire.jsonl and <workspace>/<session>/agents/<agent>/wire.jsonl
+    //    Never descend into replay-checkpoints, prompt-ingress, agent-outcomes, ego-scripts,
+    //    ego-shots, request-identity, agent-message-receipts, media-originals, or wire-segments.
     const discoveredWireFiles = [];
-    let frontier = [{ dir: paths.sessionsDir, depth: 0 }];
-    while (frontier.length > 0) {
+    const workspaceDirs = [];
+    const rootEntries = await safeReadDir(paths.sessionsDir);
+    for (const entry of rootEntries) {
+      if (entry.isSymbolicLink() || !entry.isDirectory()) continue;
+      if (entry.name === 'tmp' || entry.name === '.tmp') continue;
+      workspaceDirs.push(path.join(paths.sessionsDir, entry.name));
+    }
+
+    const sessionDirs = [];
+    for (let i = 0; i < workspaceDirs.length; i += 16) {
       signal.throwIfAborted();
-      const nextFrontier = [];
-      for (let i = 0; i < frontier.length; i += 16) {
-        signal.throwIfAborted();
-        const batch = frontier.slice(i, i + 16);
-        const batchEntries = await Promise.all(
-          batch.map(async ({ dir, depth }) => {
-            try {
-              const entries = await readdir(dir, { withFileTypes: true });
-              return { dir, depth, entries };
-            } catch (error) {
-              if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR' || error?.code === 'EACCES') {
-                return { dir, depth, entries: [] };
-              }
-              throw error;
-            }
-          }),
-        );
-        for (const { dir, depth, entries } of batchEntries) {
-          for (const entry of entries) {
-            if (entry.isSymbolicLink()) continue;
-            const fullPath = path.join(dir, entry.name);
-            if (entry.isFile()) {
-              if (entry.name === 'wire.jsonl') {
-                const relKey = path.relative(paths.sessionsDir, fullPath).replace(/\\/g, '/');
-                discoveredWireFiles.push({ fullPath, relKey });
-              }
-            } else if (entry.isDirectory() && depth < 6 && !SKIP_SUBDIRS.has(entry.name)) {
-              nextFrontier.push({ dir: fullPath, depth: depth + 1 });
+      const batch = workspaceDirs.slice(i, i + 16);
+      const batchResults = await Promise.all(
+        batch.map(async (wsDir) => ({ wsDir, entries: await safeReadDir(wsDir) })),
+      );
+      for (const { wsDir, entries } of batchResults) {
+        for (const entry of entries) {
+          if (entry.isSymbolicLink() || !entry.isDirectory()) continue;
+          if (entry.name === 'tmp' || entry.name === '.tmp') continue;
+          sessionDirs.push(path.join(wsDir, entry.name));
+        }
+      }
+      dirOpsSinceYield += batch.length;
+      if (dirOpsSinceYield >= 32) await maybeYield(false);
+    }
+
+    for (let i = 0; i < sessionDirs.length; i += 16) {
+      signal.throwIfAborted();
+      const batch = sessionDirs.slice(i, i + 16);
+      const batchResults = await Promise.all(
+        batch.map(async (sessionDir) => {
+          const found = [];
+          const rootWire = await probeWireFile(path.join(sessionDir, 'wire.jsonl'));
+          if (rootWire) found.push(rootWire);
+
+          const agentsDir = path.join(sessionDir, 'agents');
+          const agentEntries = await safeReadDir(agentsDir);
+          const agentDirs = agentEntries
+            .filter((entry) => !entry.isSymbolicLink() && entry.isDirectory())
+            .map((entry) => path.join(agentsDir, entry.name));
+          if (agentDirs.length > 0) {
+            const agentWires = await Promise.all(
+              agentDirs.map((agentDir) => probeWireFile(path.join(agentDir, 'wire.jsonl'))),
+            );
+            for (const wire of agentWires) {
+              if (wire) found.push(wire);
             }
           }
-        }
-        dirOpsSinceYield += batch.length;
-        if (dirOpsSinceYield >= 32) await maybeYield(false);
+          return found;
+        }),
+      );
+      for (const items of batchResults) {
+        for (const wire of items) discoveredWireFiles.push(wire);
       }
-      frontier = nextFrontier;
+      dirOpsSinceYield += batch.length;
+      if (dirOpsSinceYield >= 32) await maybeYield(false);
     }
     discoveredWireFiles.sort((a, b) => (a.relKey < b.relKey ? -1 : a.relKey > b.relKey ? 1 : 0));
 
@@ -392,56 +441,31 @@ export class ErrorPulseService {
     let filesSkippedUnchanged = 0;
     let totalBytesRead = 0;
     let budgetPaused = false;
-    let dirtyMarkedSkipped = 0;
     const seenKeys = new Set();
+    const newlyScannedKeys = new Set();
     const scratchBuf = Buffer.allocUnsafe(chunkBytes);
     const coldBootstrapCutoffMs = nowMs - 7 * 24 * 3600 * 1000;
     const dirtyFiles = [];
 
-    for (let i = 0; i < discoveredWireFiles.length; i += 32) {
-      signal.throwIfAborted();
-      const batch = discoveredWireFiles.slice(i, i + 32);
-      const stats = await Promise.all(
-        batch.map(async ({ fullPath, relKey }) => {
-          try {
-            const st = await statFile(fullPath);
-            return { fullPath, relKey, st };
-          } catch (error) {
-            if (error?.code === 'ENOENT') return null;
-            throw error;
-          }
-        }),
-      );
-      for (const item of stats) {
-        if (!item) continue;
-        const { fullPath, relKey, st } = item;
-        seenKeys.add(relKey);
-        const saved = index.files[relKey];
-        // O(1) unchanged check: zero open(), zero read()!
-        if (
-          saved &&
-          !saved.partial &&
-          st.size === saved.size &&
-          Math.floor(st.mtimeMs) === Math.floor(saved.mtimeMs)
-        ) {
-          filesSkippedUnchanged += 1;
-          continue;
-        }
-        // On cold bootstrap, skip archival logs unmodified in the last 7 days without reading bytes.
-        if (!saved && st.mtimeMs > 0 && st.mtimeMs < coldBootstrapCutoffMs) {
-          index.files[relKey] = {
-            size: st.size,
-            mtimeMs: st.mtimeMs,
-            offset: st.size,
-          };
-          dirtyMarkedSkipped += 1;
-          filesSkippedUnchanged += 1;
-          continue;
-        }
-        dirtyFiles.push({ fullPath, relKey, st, saved });
+    for (const { fullPath, relKey, st } of discoveredWireFiles) {
+      seenKeys.add(relKey);
+      const saved = index.files[relKey];
+      // O(1) unchanged check: zero open(), zero read()!
+      if (
+        saved &&
+        !saved.partial &&
+        st.size === saved.size &&
+        Math.floor(st.mtimeMs) === Math.floor(saved.mtimeMs)
+      ) {
+        filesSkippedUnchanged += 1;
+        continue;
       }
-      dirOpsSinceYield += batch.length;
-      if (dirOpsSinceYield >= 64) await maybeYield(false);
+      // Skip cold/archival logs unmodified within the cold bootstrap window without inserting into index.files.
+      if (!saved && st.mtimeMs > 0 && st.mtimeMs < coldBootstrapCutoffMs) {
+        filesSkippedUnchanged += 1;
+        continue;
+      }
+      dirtyFiles.push({ fullPath, relKey, st, saved });
     }
 
     // Prioritize newest active session logs first so bounded ticks always capture fresh errors immediately.
@@ -475,8 +499,14 @@ export class ErrorPulseService {
         } else {
           startOffset = 0;
         }
+      } else if (st.size - saved.offset > catchupJumpBytes) {
+        // Tracked file grew by >64 MiB since last cursor: jump directly to fresh tail window.
+        runtimeState = { pendingCalls: new Map(), activeStreak: null };
+        startOffset = Math.max(0, st.size - COLD_TAIL_WINDOW_BYTES);
+        skipFirstPartialLine = startOffset > 0;
       } else {
         startOffset = saved.offset;
+        skipFirstPartialLine = Boolean(saved.discardingLine);
         runtimeState = hydrateFileRuntimeState(saved);
       }
 
@@ -485,6 +515,7 @@ export class ErrorPulseService {
           size: st.size,
           mtimeMs: st.mtimeMs,
           offset: startOffset,
+          ...(saved?.discardingLine ? { discardingLine: true } : {}),
           ...(saved?.workspace ? { workspace: saved.workspace } : {}),
           ...(saved?.tailState ? { tailState: saved.tailState } : {}),
         };
@@ -610,7 +641,14 @@ export class ErrorPulseService {
         }
       };
 
-      const fh = await openFile(fullPath, 'r');
+      let fh;
+      try {
+        fh = await fsOpen(fullPath, 'r');
+      } catch (error) {
+        if (isSkippableFsError(error)) continue;
+        throw error;
+      }
+      let skippedFileOnError = false;
       try {
         while (pos < st.size) {
           signal.throwIfAborted();
@@ -650,14 +688,17 @@ export class ErrorPulseService {
           const lastNl = slice.lastIndexOf(0x0a);
           if (lastNl === -1) {
             if (!oversizeLineDiscard) {
-              if (carryLen + slice.length > MAX_SINGLE_LINE_BYTES) {
+              if (carryLen + slice.length > maxSingleLineBytes) {
                 oversizeLineDiscard = true;
                 carryChunks = [];
                 carryLen = 0;
+                committedOffset = pos;
               } else {
                 carryChunks.push(Buffer.from(slice));
                 carryLen += slice.length;
               }
+            } else {
+              committedOffset = pos;
             }
             await maybeYield(false);
             continue;
@@ -711,10 +752,33 @@ export class ErrorPulseService {
 
           await maybeYield(false);
         }
+      } catch (error) {
+        if (isSkippableFsError(error)) {
+          skippedFileOnError = true;
+        } else {
+          throw error;
+        }
       } finally {
-        await fh.close();
+        await fh.close().catch(() => {});
       }
 
+      if (skippedFileOnError) continue;
+
+      // Guard against livelock even when a single line exceeds a smaller custom tick budget.
+      if (
+        hitBudgetInFile &&
+        !oversizeLineDiscard &&
+        !skipFirstPartialLine &&
+        committedOffset === startOffset &&
+        carryLen >= budgetBytes
+      ) {
+        oversizeLineDiscard = true;
+        carryChunks = [];
+        carryLen = 0;
+        committedOffset = pos;
+      }
+
+      const isDiscardingLine = oversizeLineDiscard || skipFirstPartialLine;
       const isPartial = hitBudgetInFile && pos < st.size;
       const tailState = serializeTailState(runtimeState);
       index.files[relKey] = {
@@ -722,9 +786,11 @@ export class ErrorPulseService {
         mtimeMs: st.mtimeMs,
         offset: committedOffset,
         ...(isPartial ? { partial: true } : {}),
+        ...(isDiscardingLine ? { discardingLine: true } : {}),
         ...(workspaceLabel ? { workspace: workspaceLabel } : {}),
         ...(tailState ? { tailState } : {}),
       };
+      newlyScannedKeys.add(relKey);
 
       filesScanned += 1;
       filesSinceYield += 1;
@@ -736,7 +802,7 @@ export class ErrorPulseService {
     }
 
     // Prune deleted session files only when the full directory list was walked without pausing early.
-    let prunedFiles = 0;
+    let prunedFiles = retentionPrunedFiles;
     if (!budgetPaused) {
       for (const existingKey of Object.keys(index.files)) {
         if (!seenKeys.has(existingKey)) {
@@ -764,8 +830,8 @@ export class ErrorPulseService {
     index.lastScan = scanMeta;
 
     // Persist atomically when new bytes/deletions occurred, on explicit scan_now, or on initial index creation.
-    if (filesScanned > 0 || prunedFiles > 0 || dirtyMarkedSkipped > 0 || reason === 'scan_now' || !indexExisted) {
-      await writeIndexAtomic(paths.indexPath, index, finishedNowMs);
+    if (filesScanned > 0 || prunedFiles > 0 || reason === 'scan_now' || !indexExisted) {
+      await writeIndexAtomic(paths.indexPath, index, finishedNowMs, { protectedFileKeys: newlyScannedKeys });
     }
     this.cachedIndex = index;
     this.cachedIndexPath = paths.indexPath;

@@ -1,6 +1,6 @@
 {
   "name": "kiki-error-pulse",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Non-blocking incremental error telemetry, normalized failure signatures, and retry-streak radar across Kiki session logs.",
   "license": "MIT",
   "icon": "./icon.svg",

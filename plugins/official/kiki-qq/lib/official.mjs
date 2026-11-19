@@ -134,11 +134,19 @@ export function createOfficialClient(config = {}, deps = {}) {
     gatewayUrl, answerCallback, clearToken() { cachedToken = undefined; }, clear() { cachedToken = undefined; replies.clear(); references.clear(); } };
 }
 
+function isFatalStartupCredentialError(error) {
+  if (!error) return false;
+  const status = Number(error.status ?? error.statusCode);
+  if (status === 401 || status === 403) return true;
+  if (['HTTP_401', 'HTTP_403', 'AUTH_RESPONSE_INVALID', 'CONFIGURATION', 'PLATFORM_REJECTED'].includes(error.code)) return true;
+  return /\b(401|403|unauthorized|forbidden|invalid.*(?:secret|credential|token|appid)|appSecret)\b/i.test(String(error.message ?? ''));
+}
+
 export class OfficialGateway {
-  constructor({ client, gatewayFactory = (options) => new GatewayConnection(options), intents = DEFAULT_INTENTS, maxInboundBytes = 8 * 1024 * 1024 } = {}) {
-    Object.assign(this, { client, gatewayFactory, intents, maxInboundBytes });
+  constructor({ client, gatewayFactory = (options) => new GatewayConnection(options), intents = DEFAULT_INTENTS, maxInboundBytes = 8 * 1024 * 1024, maxStartupAttempts = 3 } = {}) {
+    Object.assign(this, { client, gatewayFactory, intents, maxInboundBytes, maxStartupAttempts });
   }
-  async start({ signal, emit, onError = console.error }) {
+  async start({ signal, emit, onError = console.error, onFatal }) {
     if (this.controller) throw new Error('Official gateway is already running');
     signal?.throwIfAborted();
     this.controller = new AbortController();
@@ -151,10 +159,36 @@ export class OfficialGateway {
     try {
       return await new Promise((resolve, reject) => {
         let ready = false;
-        const aborted = () => reject(Object.assign(new Error('Official gateway stopped before READY'), { code: 'ABORTED' }));
-        const fail = (error) => { lifetime.removeEventListener('abort', aborted); if (ready) onError(error); else reject(error); };
+        let settled = false;
+        let startupFailures = 0;
+        const rejectStart = (error) => {
+          if (settled) return;
+          settled = true;
+          lifetime.removeEventListener('abort', aborted);
+          reject(error);
+        };
+        const aborted = () => rejectStart(Object.assign(new Error('Official gateway stopped before READY'), { code: 'ABORTED' }));
+        const fail = (error) => {
+          lifetime.removeEventListener('abort', aborted);
+          if (ready) {
+            try { onFatal?.(error); } catch {}
+            onError(error);
+          } else {
+            rejectStart(error);
+          }
+        };
+        const failStartup = (error) => {
+          rejectStart(error);
+          controller.abort(error);
+        };
         lifetime.addEventListener('abort', aborted, { once: true });
-        const onReady = () => { if (lifetime.aborted) return; ready = true; lifetime.removeEventListener('abort', aborted); resolve({ accountId: this.client.appId }); };
+        const onReady = () => {
+          if (lifetime.aborted || settled) return;
+          ready = true;
+          settled = true;
+          lifetime.removeEventListener('abort', aborted);
+          resolve({ accountId: this.client.appId });
+        };
         const events = (raw, eventType, message) => {
           if (lifetime.aborted) return;
           return Promise.all(this.client.normalize(raw, { eventType, message, maxInboundBytes: this.maxInboundBytes }).map(emit));
@@ -166,7 +200,26 @@ export class OfficialGateway {
           getGatewayUrl: () => this.client.gatewayUrl(lifetime), onReady, onResumed: onReady,
           onMessage: (message) => events(message.raw, message.rawEventType, message),
           onInteraction: (event) => events(event, 'INTERACTION_CREATE'),
-          onRawEvent: () => {}, onError,
+          onRawEvent: () => {},
+          onDisconnected: (event) => {
+            if (ready || lifetime.aborted || settled) return;
+            startupFailures += 1;
+            if ((event?.code === 4004 && startupFailures >= 2) || startupFailures >= this.maxStartupAttempts) {
+              const err = Object.assign(new Error(`Official gateway disconnected before READY (${event?.code ?? 'unknown'}): ${event?.reason ?? ''}`.trim()), {
+                code: event?.code === 4004 ? 'AUTH_FAILED' : 'STARTUP_FAILED',
+                closeCode: event?.code,
+              });
+              failStartup(err);
+            }
+          },
+          onError: (error) => {
+            if (ready) { onError(error); return; }
+            if (lifetime.aborted || settled) return;
+            startupFailures += 1;
+            if (isFatalStartupCredentialError(error) || startupFailures >= this.maxStartupAttempts) {
+              failStartup(error);
+            }
+          },
         });
         this.run = connection.start().then(() => { if (!ready) aborted(); }, fail);
         if (lifetime.aborted) aborted();

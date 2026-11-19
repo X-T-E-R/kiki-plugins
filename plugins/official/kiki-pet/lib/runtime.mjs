@@ -37,10 +37,17 @@ export class PetRuntime{
  }
  fail(error,generation){if(generation!==this.generation)return;const child=this.child;this.child=null;++this.generation;clearInterval(this.watchdog);this.status={status:'failed',error};if(child)this.stopping=this.terminate(child);this.onChange?.();}
  async terminate(child){
-  if(child.exitCode!==null||child.signalCode!==null)return;
-  const finished=new Promise(resolve=>child.once('close',resolve));
-  if(child.stdin.writable)child.stdin.end(JSON.stringify({type:'shutdown'})+'\n');
-  const timer=setTimeout(()=>child.kill('SIGKILL'),1500);timer.unref();await finished;clearTimeout(timer);
+  if(!child||child.exitCode!==null||child.signalCode!==null)return;
+  await new Promise(resolve=>{
+   let done=false,killTimer,fallbackTimer;
+   const finish=()=>{if(done)return;done=true;clearTimeout(killTimer);clearTimeout(fallbackTimer);child.off?.('close',finish);child.off?.('exit',finish);child.off?.('error',finish);resolve();};
+   child.once('close',finish);child.once('exit',finish);child.once('error',finish);
+   try{if(child.stdin?.writable)child.stdin.end(JSON.stringify({type:'shutdown'})+'\n');}catch{}
+   killTimer=setTimeout(()=>{
+    try{child.kill('SIGKILL');}catch{}
+    fallbackTimer=setTimeout(finish,2000);fallbackTimer.unref();
+   },1500);killTimer.unref();
+  });
  }
  async stop(){
   const child=this.child;this.child=null;++this.generation;clearInterval(this.watchdog);

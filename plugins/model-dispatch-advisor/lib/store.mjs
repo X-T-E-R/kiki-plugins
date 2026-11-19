@@ -114,6 +114,22 @@ function enqueueFileMutation(filePath, fn) {
   return tracked;
 }
 
+async function renameWithWindowsRetry(tempFile, targetPath, maxAttempts = 5) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await rename(tempFile, targetPath);
+      return;
+    } catch (error) {
+      const retryable = error?.code === 'EPERM' || error?.code === 'EACCES';
+      if (!retryable || attempt >= maxAttempts) throw error;
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, attempt * 20);
+        timer.unref?.();
+      });
+    }
+  }
+}
+
 export class PreferenceStore {
   constructor({ kikiHome, dataDir, now = () => new Date().toISOString() } = {}) {
     this.filePath = resolvePluginDataFile({ kikiHome, dataDir });
@@ -150,7 +166,7 @@ export class PreferenceStore {
     const payload = `${JSON.stringify(state, null, 2)}\n`;
     await writeFile(tempFile, payload, 'utf8');
     try {
-      await rename(tempFile, this.filePath);
+      await renameWithWindowsRetry(tempFile, this.filePath);
     } catch (error) {
       await rm(tempFile, { force: true }).catch(() => undefined);
       throw advisorError(

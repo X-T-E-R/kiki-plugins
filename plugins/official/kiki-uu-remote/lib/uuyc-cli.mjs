@@ -214,9 +214,39 @@ export function createUuycCliClient({
   env = process.env,
   fileExists = existsSync,
   executeFile = defaultExecFile,
+  staticCacheTtlMs = 60_000,
+  nowFn = Date.now,
 } = {}) {
+  const cliCache = new Map();
+  const cliFlights = new Map();
+  const versionCache = new Map();
+  const versionFlights = new Map();
+
+  function settingsKey(settings = {}) {
+    return `${String(settings?.cliPath ?? '').trim()}|${String(settings?.executablePath ?? '').trim()}`;
+  }
+
   async function resolveCli(settings = {}) {
-    return discoverUuycCli({ settings, hostPlatform, env, fileExists, executeFile });
+    const key = settingsKey(settings);
+    const cached = cliCache.get(key);
+    if (cached && staticCacheTtlMs > 0 && nowFn() - cached.at < staticCacheTtlMs) {
+      return cached.value;
+    }
+    if (cliFlights.has(key)) {
+      return cliFlights.get(key);
+    }
+    const flight = discoverUuycCli({ settings, hostPlatform, env, fileExists, executeFile })
+      .then((value) => {
+        if (staticCacheTtlMs > 0) {
+          cliCache.set(key, { at: nowFn(), value });
+        }
+        return value;
+      })
+      .finally(() => {
+        if (cliFlights.get(key) === flight) cliFlights.delete(key);
+      });
+    cliFlights.set(key, flight);
+    return flight;
   }
 
   async function execJson(cliPath, args, opts = {}) {
@@ -225,27 +255,48 @@ export function createUuycCliClient({
   }
 
   async function getVersion(settings = {}, opts = {}) {
-    const found = await resolveCli(settings);
-    if (!found.available || !found.path) {
-      return { available: false, path: null, source: found.source, version: null };
+    const key = settingsKey(settings);
+    const cached = versionCache.get(key);
+    if (!opts.force && cached && staticCacheTtlMs > 0 && nowFn() - cached.at < staticCacheTtlMs) {
+      return cached.value;
     }
-    try {
-      const { stdout } = await runCliBinary(found.path, ['--version'], {
-        executeFile,
-        timeoutMs: opts.timeoutMs ?? 4000,
-        signal: opts.signal,
+    if (!opts.force && versionFlights.has(key)) {
+      return versionFlights.get(key);
+    }
+    const flight = (async () => {
+      const found = await resolveCli(settings);
+      if (!found.available || !found.path) {
+        return { available: false, path: null, source: found.source, version: null };
+      }
+      try {
+        const { stdout } = await runCliBinary(found.path, ['--version'], {
+          executeFile,
+          timeoutMs: opts.timeoutMs ?? 4000,
+          signal: opts.signal,
+        });
+        const version = stdout.trim().split(/\r?\n/)[0]?.trim() || null;
+        return { available: true, path: found.path, source: found.source, version };
+      } catch (error) {
+        return {
+          available: true,
+          path: found.path,
+          source: found.source,
+          version: null,
+          error: error.message || String(error),
+        };
+      }
+    })()
+      .then((value) => {
+        if (staticCacheTtlMs > 0) {
+          versionCache.set(key, { at: nowFn(), value });
+        }
+        return value;
+      })
+      .finally(() => {
+        if (versionFlights.get(key) === flight) versionFlights.delete(key);
       });
-      const version = stdout.trim().split(/\r?\n/)[0]?.trim() || null;
-      return { available: true, path: found.path, source: found.source, version };
-    } catch (error) {
-      return {
-        available: true,
-        path: found.path,
-        source: found.source,
-        version: null,
-        error: error.message || String(error),
-      };
-    }
+    versionFlights.set(key, flight);
+    return flight;
   }
 
   async function getStatus(settings = {}, opts = {}) {

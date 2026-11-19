@@ -1,6 +1,6 @@
 {
   "name": "argon-error-recovery",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Unofficial Argon recovery: retry in place without retained output, or continue from retained output.",
   "license": "MIT",
   "author": "Community",

@@ -1,8 +1,28 @@
 // Public builds ship with no deployment-specific model aliases. Add private aliases downstream.
 const TARGET_MODEL_ALIASES = new Set([]);
 const MISSING_TERMINAL_MESSAGE_RE = /^(?:Anthropic error:\s*)?antigravity_missing_terminal\s*:/;
+export const MAX_STDIN_BYTES = 1024 * 1024;
+
+export async function readStdinEvent(stream = process.stdin, maxBytes = MAX_STDIN_BYTES) {
+  const chunks = [];
+  let totalBytes = 0;
+  for await (const chunk of stream) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buf.length;
+    if (totalBytes > maxBytes) return undefined;
+    chunks.push(buf);
+  }
+  const raw = Buffer.concat(chunks).toString('utf8').trim();
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+}
 
 export function recoveryFor(event) {
+  if (!event || typeof event !== 'object') return undefined;
   if (event.hook_event_name !== 'StopFailure' || event.recoverable !== true || event.recovery_attempts !== 0) return undefined;
   const missingTerminal = event.upstream_error_code === 'antigravity_missing_terminal' || (
     event.upstream_error_code == null &&

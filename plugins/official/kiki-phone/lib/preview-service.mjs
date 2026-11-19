@@ -1,15 +1,19 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { access, readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { findAdb, phoneDataDir } from './environment.mjs';
-import { adbArguments } from './adb.mjs';
+import { adbArguments, execAdb } from './adb.mjs';
 import { mobilecliBinary, parseDevices, runtimeInstalled, upstreamEnvironment } from './prepare.mjs';
+import {
+  DEFAULT_MOBILECLI_URL,
+  disposeMobilecliServers,
+  ensureMobilecliRuntimePatched,
+  ensureMobilecliServer,
+} from './mobilecli-server.mjs';
 import { parseAndroidScreenState } from './phone-run.mjs';
 import { createScrcpyManager } from './scrcpy-stream.mjs';
 
-const defaultExecFile = promisify(execFile);
+const defaultExecFile = execAdb;
 const SESSION_IDLE_MS = 60_000;
 const DEFAULT_METADATA_TTL_MS = 4_500;
 
@@ -311,6 +315,7 @@ export function createPhonePreviewService({
     if (loadDriverModule) return loadDriverModule({ dataDir, adbBinary });
     const sharedEnv = upstreamEnvironment(adbBinary, process.env, dataDir);
     Object.assign(process.env, sharedEnv);
+    await ensureMobilecliRuntimePatched(dataDir).catch(() => {});
     const modPath = path.join(dataDir, 'runtime/node_modules/@mobilewright/driver-mobilecli/dist/index.js');
     return import(pathToFileURL(modPath).href);
   }
@@ -346,8 +351,18 @@ export function createPhonePreviewService({
     const adbBinary = settings?.adbPath || await findAdb({ dataDir }).catch(() => undefined);
     const { MobilecliDriver } = await resolveDriverClass(dataDir, adbBinary);
     const cliPath = await mobilecliBinary(dataDir);
-    const driver = new MobilecliDriver({ mobilecliPath: cliPath });
-    await driver.connect({ platform, deviceId });
+    const hasCliBinary = !loadDriverModule && await access(cliPath).then(() => true, () => false);
+    let serverUrl = DEFAULT_MOBILECLI_URL;
+    if (hasCliBinary) {
+      const started = await ensureMobilecliServer({
+        binaryPath: cliPath,
+        env: upstreamEnvironment(adbBinary, process.env, dataDir),
+        platform: hostPlatform,
+      });
+      serverUrl = started.url;
+    }
+    const driver = new MobilecliDriver({ mobilecliPath: cliPath, autoStart: false, url: serverUrl });
+    await driver.connect({ platform, deviceId, url: serverUrl });
     const entry = {
       key,
       platform,
@@ -1258,6 +1273,7 @@ export function createPhonePreviewService({
       ...[...captureSessions.keys()].map((key) => closeLaneSession(captureSessions, key)),
       ...[...actionSessions.keys()].map((key) => closeLaneSession(actionSessions, key)),
       scrcpy.dispose(),
+      loadDriverModule ? Promise.resolve() : disposeMobilecliServers(),
     ]);
   }
 

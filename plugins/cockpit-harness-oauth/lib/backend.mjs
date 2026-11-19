@@ -1,6 +1,9 @@
 import { spawn as nodeSpawn } from 'node:child_process';
 
 const MAX_LINE_BYTES = 4 * 1024 * 1024;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_CLOSE_GRACE_MS = 2_000;
+const DEFAULT_FORCE_SETTLE_MS = 1_500;
 
 function abortError() {
   const error = new Error('Cockpit OAuth operation was cancelled.');
@@ -23,9 +26,18 @@ function responseError(value) {
  * process owns that state and is closed by the plugin lifecycle.
  */
 export class NdjsonBackend {
-  constructor({ spawnFn = nodeSpawn, onExit } = {}) {
+  constructor({
+    spawnFn = nodeSpawn,
+    onExit,
+    requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+    closeGraceMs = DEFAULT_CLOSE_GRACE_MS,
+    forceSettleMs = DEFAULT_FORCE_SETTLE_MS,
+  } = {}) {
     this.spawn = spawnFn;
     this.onExit = onExit;
+    this.requestTimeoutMs = requestTimeoutMs;
+    this.closeGraceMs = closeGraceMs;
+    this.forceSettleMs = forceSettleMs;
     this.child = undefined;
     this.closed = true;
     this.closing = false;
@@ -80,7 +92,7 @@ export class NdjsonBackend {
     child.stdin?.on('error', () => ended(new Error('cockpit-harness-oauth input closed unexpectedly.')));
   }
 
-  request(method, params, { signal } = {}) {
+  request(method, params, { signal, timeoutMs, onLatePending, onLateSettle } = {}) {
     if (!this.running || !this.child?.stdin || this.closing) {
       return Promise.reject(this.endReason ?? new Error('Cockpit OAuth backend is not running.'));
     }
@@ -88,24 +100,65 @@ export class NdjsonBackend {
     const id = ++this.nextId;
     const wireId = String(id);
     const payload = JSON.stringify({ id: wireId, method, params });
+    const effectiveTimeoutMs =
+      typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0
+        ? timeoutMs
+        : this.requestTimeoutMs;
     return new Promise((resolve, reject) => {
       let settled = false;
+      let lateSettled = false;
+      let timer;
+      const lateFinish = (error, result) => {
+        if (lateSettled) return;
+        lateSettled = true;
+        clearTimeout(timer);
+        this.pending.delete(wireId);
+        onLateSettle?.(error, result);
+      };
       const finish = (error, result) => {
         if (settled) return;
         settled = true;
+        clearTimeout(timer);
         this.pending.delete(wireId);
         signal?.removeEventListener('abort', abort);
         if (error) reject(error); else resolve(result);
       };
-      const abort = () => finish(abortError());
+      const abort = () => {
+        if (settled) return;
+        settled = true;
+        signal?.removeEventListener('abort', abort);
+        if (typeof onLateSettle === 'function') {
+          this.pending.set(wireId, lateFinish);
+          onLatePending?.();
+        } else {
+          clearTimeout(timer);
+          this.pending.delete(wireId);
+        }
+        reject(abortError());
+      };
       this.pending.set(wireId, finish);
       signal?.addEventListener('abort', abort, { once: true });
+      if (effectiveTimeoutMs > 0) {
+        timer = setTimeout(() => {
+          const timeoutError = new Error(`Cockpit OAuth backend request "${method}" timed out after ${effectiveTimeoutMs}ms.`);
+          timeoutError.code = 'BACKEND_TIMEOUT';
+          const handler = this.pending.get(wireId);
+          if (handler) handler(timeoutError);
+        }, effectiveTimeoutMs);
+        timer.unref?.();
+      }
       try {
         this.child.stdin.write(`${payload}\n`, (error) => {
-          if (error) finish(new Error('Cockpit OAuth backend input failed.'));
+          if (error) {
+            const inputErr = new Error('Cockpit OAuth backend input failed.');
+            const handler = this.pending.get(wireId);
+            if (handler) handler(inputErr);
+          }
         });
       } catch {
-        finish(new Error('Cockpit OAuth backend input failed.'));
+        const inputErr = new Error('Cockpit OAuth backend input failed.');
+        const handler = this.pending.get(wireId);
+        if (handler) handler(inputErr);
       }
     });
   }
@@ -117,16 +170,45 @@ export class NdjsonBackend {
     this.closing = true;
     this.endPromise = new Promise((resolve) => {
       let settled = false;
+      let graceTimer;
+      let settleTimer;
       const done = () => {
         if (settled) return;
         settled = true;
+        clearTimeout(graceTimer);
+        clearTimeout(settleTimer);
+        child.removeListener?.('exit', done);
+        child.removeListener?.('close', done);
+        child.removeListener?.('error', done);
         resolve();
+      };
+      const forceKill = () => {
+        if (settled) return;
+        try { child.kill?.(); } catch { /* ignore */ }
+        if (process.platform === 'win32' && Number.isInteger(child.pid) && child.pid > 0) {
+          try {
+            const killer = nodeSpawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+              shell: false,
+              windowsHide: true,
+              stdio: 'ignore',
+            });
+            killer.on?.('error', () => {});
+            killer.unref?.();
+          } catch { /* ignore */ }
+        }
+        settleTimer = setTimeout(done, this.forceSettleMs);
+        settleTimer.unref?.();
       };
       child.once?.('exit', done);
       child.once?.('close', done);
       child.once?.('error', done);
-      if (child.exitCode !== null && child.exitCode !== undefined) done();
-      try { child.stdin?.end(); } catch { done(); }
+      if (child.exitCode !== null && child.exitCode !== undefined) {
+        done();
+        return;
+      }
+      graceTimer = setTimeout(forceKill, this.closeGraceMs);
+      graceTimer.unref?.();
+      try { child.stdin?.end(); } catch { forceKill(); }
     }).finally(() => {
       this.endPromise = undefined;
       if (this.child === child && !this.closed) this.#ended(child, new Error('cockpit-harness-oauth did not close cleanly.'));

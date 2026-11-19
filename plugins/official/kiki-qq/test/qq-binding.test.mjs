@@ -35,7 +35,7 @@ test('activation/status do not start SDK; exact manifest and lifecycle exports a
   assert.equal(before.phase, 'idle'); assert.equal(before.configured, true); assert.equal(before.appId, old.official__appId);
   assert.equal(f.callbacks.length, 0); assert.equal(f.writes.length, 0); privateWire(before);
   const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.version, '0.4.1'); assert.equal(manifest['x-kiki'].activation, 'app'); assert.equal(manifest['x-kiki'].permissions.uiPanel, true);
+  assert.equal(manifest.version, '0.4.2'); assert.equal(manifest['x-kiki'].activation, 'app'); assert.equal(manifest['x-kiki'].permissions.uiPanel, true);
   assert.deepEqual(manifest['x-kiki'].panels, [{ schemaVersion: 1, id: 'qq-connection', label: 'QQ connection', slot: 'settings', path: './settings.html' }]);
   const entry = await import('../entry.mjs');
   for (const key of ['activate', 'deactivate', 'handlePanelRequest']) assert.equal(typeof entry[key], 'function');

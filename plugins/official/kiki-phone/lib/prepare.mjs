@@ -3,6 +3,8 @@ import { promisify } from 'node:util';
 import { copyFile, mkdir, mkdtemp, writeFile, readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { findAdb, phoneDataDir, saveAdb, mobileEnvironment } from './environment.mjs';
+import { execAdb } from './adb.mjs';
+import { ensureMobilecliRuntimePatched } from './mobilecli-server.mjs';
 
 const exec = promisify(execFile);
 export const PLATFORM_TOOLS_URL = 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip';
@@ -86,6 +88,7 @@ export async function preparePhone({ download = false, adbPath, warmup = true, p
     const options = { env, signal, encoding: 'utf8', windowsHide: true, timeout: 30_000 };
     const npm = npmCommand(['--version'], env, platform);
     result.npm = (await execute(npm.file, npm.args, options)).stdout.trim();
+    const runAdbCmd = execute === exec ? execAdb : execute;
     let binary = targetPlatform === 'ios' ? undefined : await findAdb({ adbPath, dataDir, env, platform });
     if (targetPlatform !== 'ios') {
       if (!binary && !download) return { ...result, status: 'download_consent_required', download: { url: PLATFORM_TOOLS_URL, license: LICENSE_URL }, message: 'ADB was not found. Approve downloading Google platform-tools, set the plugin adbPath, or run the local setup script with --adb.' };
@@ -93,7 +96,7 @@ export async function preparePhone({ download = false, adbPath, warmup = true, p
         if (platform !== 'win32') throw new Error('Install official Android platform-tools for your OS, then rerun preparation. Automatic download currently supports Windows.');
         binary = await install({ consent: download, dataDir, execute });
       }
-      const version = (await execute(binary, ['version'], options)).stdout.trim();
+      const version = (await runAdbCmd(binary, ['version'], options)).stdout.trim();
       if (!/^Android Debug Bridge version \d+\.\d+\.\d+(?:\r?\n|$)/.test(version)) throw new Error('Selected executable did not report an Android Debug Bridge version. Choose an official adb in plugin settings or with --adb in the local setup script.');
       binary = await canonicalAdb(binary, dataDir);
       await saveAdb(binary, dataDir);
@@ -108,8 +111,11 @@ export async function preparePhone({ download = false, adbPath, warmup = true, p
       await execute(upstream.file, upstream.args, { ...options, cwd: runtime, env: sharedEnv, timeout: 240_000 });
     }
     result.runtimeInstalled = await facadeRuntimeInstalled(dataDir);
+    if (result.runtimeInstalled) {
+      await ensureMobilecliRuntimePatched(dataDir).catch(() => {});
+    }
     if (targetPlatform === 'ios') return { ...result, status: 'runtime_ready', message: 'Upstream packages are prepared. iOS UI use still requires a trusted device and a valid signed DeviceKit agent.' };
-    const { stdout, stderr } = await execute(binary, ['devices', '-l'], { ...options, env: sharedEnv });
+    const { stdout, stderr } = await runAdbCmd(binary, ['devices', '-l'], { ...options, env: sharedEnv });
     result.devices = parseDevices(stdout);
     result.stdout = stdout;
     result.stderr = stderr;

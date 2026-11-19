@@ -30,7 +30,6 @@ import https from 'node:https';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import tls from 'node:tls';
 import { pathToFileURL } from 'node:url';
 
 export const COLLECTOR_PROTOCOL_ID = 'magpie-antigravity-direct-quota';

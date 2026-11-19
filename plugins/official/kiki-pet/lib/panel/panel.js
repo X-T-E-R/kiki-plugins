@@ -543,16 +543,46 @@ function render(snapshot) {
   state.stage.setAnimation(anim, snapshot);
 }
 
-async function refresh() {
-  if (document.hidden) return;
-  try {
-    const snapshot = await callState();
-    render(snapshot);
-  } catch (error) {
-    const err = $('[data-runtime-error]');
-    err.textContent = errorText(error);
-    err.hidden = false;
+let pollTimer = 0;
+let refreshInFlight = null;
+let pageUnloaded = false;
+
+function clearPoll() {
+  if (pollTimer) {
+    clearTimeout(pollTimer);
+    pollTimer = 0;
   }
+}
+
+function schedulePoll() {
+  clearPoll();
+  if (pageUnloaded || document.hidden) return;
+  pollTimer = setTimeout(() => {
+    pollTimer = 0;
+    void refresh();
+  }, POLL_MS);
+}
+
+async function refresh() {
+  if (pageUnloaded || document.hidden) return;
+  if (refreshInFlight) return refreshInFlight;
+  clearPoll();
+  refreshInFlight = (async () => {
+    try {
+      const snapshot = await callState();
+      if (!pageUnloaded) render(snapshot);
+    } catch (error) {
+      if (!pageUnloaded) {
+        const err = $('[data-runtime-error]');
+        err.textContent = errorText(error);
+        err.hidden = false;
+      }
+    } finally {
+      refreshInFlight = null;
+      schedulePoll();
+    }
+  })();
+  return refreshInFlight;
 }
 
 // ------------------------------------------------------------------ error ---
@@ -674,10 +704,20 @@ function boot() {
   // repaint the stage without waiting for the next 2s poll.
   state.stage.onNeedSprite = () => { setTimeout(() => void state.stage.load(state.snapshot), 120); };
   wire();
-  setInterval(refresh, POLL_MS);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) clearPoll();
+    else void refresh();
+  });
+  window.addEventListener('pagehide', () => {
+    pageUnloaded = true;
+    clearPoll();
+    if (state.stage?.raf) {
+      cancelAnimationFrame(state.stage.raf);
+      state.stage.raf = 0;
+    }
+  });
   // Host posts init before or after our first state call; neither is required.
-  refresh();
+  void refresh();
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
