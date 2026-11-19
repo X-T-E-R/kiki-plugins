@@ -1,3 +1,4 @@
+// GENERATED from ../../kiki-media-comfyui/adapters.mjs. Run scripts/sync-media.mjs; do not edit this copy.
 import { runtime, check, options, fields, guarded, pending, failed } from '../runtime.mjs';
 import { randomUUID } from 'node:crypto';
 

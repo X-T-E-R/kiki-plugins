@@ -1,3 +1,4 @@
+// GENERATED from ../../kiki-media-ark/adapters.mjs. Run scripts/sync-media.mjs; do not edit this copy.
 import {
   runtime,
   check,

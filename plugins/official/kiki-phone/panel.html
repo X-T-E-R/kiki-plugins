@@ -5,70 +5,110 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Phone Preview</title>
 <style>
+  /* @kiki-panel-kit:theme:start */
+  /* GENERATED from shared/panel-kit/theme.css — run `npm run sync:panels`; do not edit this block. */
   :root {
     color-scheme: light dark;
-    --bg: #f6f4ef;
-    --paper: #fcfbf8;
-    --panel: #efece4;
-    --ink: #1b1a17;
-    --ink-soft: #5c5850;
-    --ink-faint: #8c867b;
-    --line: rgba(27, 26, 23, 0.11);
-    --line-strong: rgba(27, 26, 23, 0.22);
-    --accent: #2c5e4f;
+    font-synthesis: none;
+    --bg: var(--color-canvas, #f6f4ef);
+    --paper: var(--color-paper, #fcfbf8);
+    --panel: var(--color-panel, #efece4);
+    --ink: var(--color-ink, #1b1a17);
+    --ink-soft: var(--color-ink-soft, #5c5850);
+    --ink-faint: var(--color-ink-faint, #8c867b);
+    --line: var(--color-hairline, rgba(27, 26, 23, 0.10));
+    --line-strong: var(--color-hairline-strong, rgba(27, 26, 23, 0.18));
+    --accent: var(--color-accent, #2c5e4f);
+    --accent-deep: var(--color-accent-deep, #22493d);
+    --accent-soft: rgba(44, 94, 79, 0.10);
+    --on-accent: var(--color-on-accent, #fcfbf8);
+    --ok: var(--color-success, #2c6e49);
+    --warn: var(--color-amber-ink, #8a5a19);
+    --warn-bg: var(--color-amber-card, rgba(138, 90, 25, 0.11));
+    --danger: var(--color-danger, #a63429);
+    --danger-bg: rgba(166, 52, 41, 0.09);
+    --wash: rgba(27, 26, 23, 0.04);
+    --sans: "Instrument Sans", ui-sans-serif, system-ui, "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    --display: "Newsreader", Georgia, "Songti SC", "Noto Serif SC", serif;
+    --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --radius: 6px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: var(--color-canvas, #141413);
+      --paper: var(--color-paper, #1c1b19);
+      --panel: var(--color-panel, #252320);
+      --ink: var(--color-ink, #edeae2);
+      --ink-soft: var(--color-ink-soft, #b2aca0);
+      --ink-faint: var(--color-ink-faint, #7b766c);
+      --line: var(--color-hairline, rgba(237, 234, 226, 0.10));
+      --line-strong: var(--color-hairline-strong, rgba(237, 234, 226, 0.18));
+      --accent: var(--color-accent, #58a88f);
+      --accent-deep: var(--color-accent-deep, #6ebe9f);
+      --accent-soft: rgba(88, 168, 143, 0.15);
+      --on-accent: var(--color-on-accent, #141413);
+      --ok: var(--color-success, #6bbf8e);
+      --warn: var(--color-amber-ink, #dca056);
+      --warn-bg: var(--color-amber-card, rgba(220, 160, 86, 0.14));
+      --danger: var(--color-danger, #e27a6e);
+      --danger-bg: rgba(226, 122, 110, 0.14);
+      --wash: rgba(237, 234, 226, 0.05);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: var(--color-canvas, #141413);
+    --paper: var(--color-paper, #1c1b19);
+    --panel: var(--color-panel, #252320);
+    --ink: var(--color-ink, #edeae2);
+    --ink-soft: var(--color-ink-soft, #b2aca0);
+    --ink-faint: var(--color-ink-faint, #7b766c);
+    --line: var(--color-hairline, rgba(237, 234, 226, 0.10));
+    --line-strong: var(--color-hairline-strong, rgba(237, 234, 226, 0.18));
+    --accent: var(--color-accent, #58a88f);
+    --accent-deep: var(--color-accent-deep, #6ebe9f);
+    --accent-soft: rgba(88, 168, 143, 0.15);
+    --on-accent: var(--color-on-accent, #141413);
+    --ok: var(--color-success, #6bbf8e);
+    --warn: var(--color-amber-ink, #dca056);
+    --warn-bg: var(--color-amber-card, rgba(220, 160, 86, 0.14));
+    --danger: var(--color-danger, #e27a6e);
+    --danger-bg: rgba(226, 122, 110, 0.14);
+    --wash: rgba(237, 234, 226, 0.05);
+  }
+
+  :root[data-theme="light"] {
+    color-scheme: light;
+  }
+  /* @kiki-panel-kit:theme:end */
+  :root {
     --accent-soft: rgba(44, 94, 79, 0.12);
     --amber: #b85d19;
     --amber-soft: rgba(184, 93, 25, 0.14);
-    --danger: #b53d2e;
-    --ok: #297a54;
     --bezel: #161618;
     --bezel-edge: #2f2f35;
     --shadow: 0 18px 42px -18px rgba(18, 17, 15, 0.28), 0 2px 6px rgba(18, 17, 15, 0.08);
-    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    --font: var(--sans);
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #141413;
-      --paper: #1c1b19;
-      --panel: #252320;
-      --ink: #edeae2;
-      --ink-soft: #b2aca0;
-      --ink-faint: #7b766c;
-      --line: rgba(237, 234, 226, 0.11);
-      --line-strong: rgba(237, 234, 226, 0.24);
-      --accent: #58a88f;
       --accent-soft: rgba(88, 168, 143, 0.16);
       --amber: #e5934a;
       --amber-soft: rgba(229, 147, 74, 0.18);
-      --danger: #e26c5c;
-      --ok: #4cb782;
       --bezel: #0b0b0c;
       --bezel-edge: #38383f;
       --shadow: 0 22px 48px -18px rgba(0, 0, 0, 0.72), 0 0 0 1px rgba(255, 255, 255, 0.05);
     }
   }
   :root[data-theme="dark"] {
-    --bg: #141413;
-    --paper: #1c1b19;
-    --panel: #252320;
-    --ink: #edeae2;
-    --ink-soft: #b2aca0;
-    --ink-faint: #7b766c;
-    --line: rgba(237, 234, 226, 0.11);
-    --line-strong: rgba(237, 234, 226, 0.24);
-    --accent: #58a88f;
     --accent-soft: rgba(88, 168, 143, 0.16);
     --amber: #e5934a;
     --amber-soft: rgba(229, 147, 74, 0.18);
-    --danger: #e26c5c;
-    --ok: #4cb782;
     --bezel: #0b0b0c;
     --bezel-edge: #38383f;
     --shadow: 0 22px 48px -18px rgba(0, 0, 0, 0.72), 0 0 0 1px rgba(255, 255, 255, 0.05);
-  }
-  :root[data-theme="light"] {
-    color-scheme: light;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
@@ -672,7 +712,468 @@
 
 <script>
 (() => {
-  const CHANNEL = 'kiki.panel.v1';
+  /* @kiki-panel-kit:runtime:start */
+  // GENERATED from shared/panel-kit/{storage,theme,rpc}.mjs — run `npm run sync:panels`; do not edit this block.
+  const KikiPanelKit = (() => {
+    /**
+     * Opaque ('null'-origin) sandbox-safe storage, clipboard copy, and ID helpers
+     * for Kiki plugin panels running inside <iframe sandbox="allow-scripts">.
+     */
+
+    function createSafeStorage(targetWindow) {
+      const mem = new Map();
+      const resolveStorage = () => {
+        const win = targetWindow !== undefined ? targetWindow : (typeof window !== 'undefined' ? window : null);
+        if (!win) return null;
+        try {
+          return win.localStorage || null;
+        } catch {
+          return null;
+        }
+      };
+      return {
+        get(key) {
+          const k = String(key);
+          try {
+            const s = resolveStorage();
+            if (s) {
+              const v = s.getItem(k);
+              if (v !== null) return v;
+            }
+          } catch {}
+          return mem.has(k) ? mem.get(k) : null;
+        },
+        set(key, value) {
+          const k = String(key);
+          const str = String(value);
+          mem.set(k, str);
+          try {
+            const s = resolveStorage();
+            if (s) s.setItem(k, str);
+          } catch {}
+        },
+        remove(key) {
+          const k = String(key);
+          mem.delete(k);
+          try {
+            const s = resolveStorage();
+            if (s) s.removeItem(k);
+          } catch {}
+        },
+      };
+    }
+
+    const safeStorage = createSafeStorage();
+
+    async function copyTextSafe(text, options = {}) {
+      const str = String(text ?? '');
+      const feedbackEl = options.labelEl || options.button || null;
+      const copiedLabel = typeof options.copiedLabel === 'string' ? options.copiedLabel : '';
+      const resetMs = Number.isFinite(options.resetMs) ? options.resetMs : 1200;
+      const markCopied = () => {
+        if (!feedbackEl || !copiedLabel) return;
+        const prev = feedbackEl.textContent;
+        feedbackEl.textContent = copiedLabel;
+        if (typeof setTimeout === 'function') {
+          setTimeout(() => {
+            feedbackEl.textContent = prev;
+          }, resetMs);
+        }
+      };
+
+      try {
+        const nav = options.navigatorObj !== undefined
+          ? options.navigatorObj
+          : (typeof navigator !== 'undefined' ? navigator : null);
+        if (nav && nav.clipboard && typeof nav.clipboard.writeText === 'function') {
+          await nav.clipboard.writeText(str);
+          markCopied();
+          return true;
+        }
+      } catch {}
+
+      try {
+        const doc = options.documentObj !== undefined
+          ? options.documentObj
+          : (typeof document !== 'undefined' ? document : null);
+        if (!doc || !doc.body || typeof doc.createElement !== 'function' || typeof doc.execCommand !== 'function') {
+          return false;
+        }
+        const ta = doc.createElement('textarea');
+        ta.value = str;
+        if (typeof ta.setAttribute === 'function') ta.setAttribute('readonly', '');
+        if (ta.style) {
+          ta.style.position = 'fixed';
+          ta.style.top = '-9999px';
+          ta.style.opacity = '0';
+          ta.style.pointerEvents = 'none';
+        }
+        doc.body.append(ta);
+        if (typeof ta.select === 'function') ta.select();
+        let ok = false;
+        try {
+          ok = Boolean(doc.execCommand('copy'));
+          if (ok) markCopied();
+        } catch {}
+        if (typeof ta.remove === 'function') ta.remove();
+        return ok;
+      } catch {
+        return false;
+      }
+    }
+
+    function randomId(prefix = '') {
+      const c = typeof crypto !== 'undefined' ? crypto : null;
+      let core = '';
+      if (c && typeof c.randomUUID === 'function') {
+        core = c.randomUUID();
+      } else if (c && typeof c.getRandomValues === 'function' && typeof Uint8Array === 'function') {
+        const bytes = new Uint8Array(12);
+        c.getRandomValues(bytes);
+        core = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+      } else {
+        core = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      }
+      return prefix ? `${prefix}${core}` : core;
+    }
+
+    /**
+     * Unified 4-way presentation and theme synchronization for Kiki plugin panels:
+     * 1) URL ?theme=dark|light initial hydration
+     * 2) Host theme / colorScheme switching (dark / light / auto)
+     * 3) Host appearance skin CSS custom property injection (--color-*)
+     * 4) Host locale propagation callback
+     */
+
+    function applyThemeName(theme, root) {
+      const el = root || (typeof document !== 'undefined' ? document.documentElement : null);
+      if (!el) return null;
+      if (theme === 'dark' || theme === 'light') {
+        if (typeof el.setAttribute === 'function') el.setAttribute('data-theme', theme);
+        if (el.dataset) el.dataset.theme = theme;
+        return theme;
+      }
+      if (theme === 'auto' || theme === 'system') {
+        if (typeof el.removeAttribute === 'function') el.removeAttribute('data-theme');
+        if (el.dataset) delete el.dataset.theme;
+        return 'auto';
+      }
+      return null;
+    }
+
+    function initThemeFromUrl(options = {}) {
+      try {
+        if (typeof URLSearchParams !== 'function') return null;
+        let urlTheme = null;
+        if (options.search !== undefined) {
+          urlTheme = new URLSearchParams(options.search).get('theme');
+        } else if (typeof window !== 'undefined' && window.location && typeof window.location.search === 'string') {
+          urlTheme = new URLSearchParams(window.location.search).get('theme');
+        } else if (typeof location !== 'undefined' && typeof location.search === 'string') {
+          urlTheme = new URLSearchParams(location.search).get('theme');
+        }
+        if (urlTheme === 'dark' || urlTheme === 'light') {
+          return applyThemeName(urlTheme, options.root);
+        }
+      } catch {}
+      return null;
+    }
+
+    function applyPresentation(presentation, options = {}) {
+      const opts = typeof options === 'string' ? { fallbackTheme: options } : (options || {});
+      const el = opts.root || (typeof document !== 'undefined' ? document.documentElement : null);
+      const pres = presentation && typeof presentation === 'object' ? presentation : null;
+      const theme = applyThemeName(
+        (pres && (pres.theme || pres.colorScheme)) || opts.fallbackTheme,
+        el,
+      );
+
+      const tokenPrefix = typeof opts.tokenPrefix === 'string' ? opts.tokenPrefix : '--color-';
+      const appliedTokens = [];
+      if (el && el.style && typeof el.style.setProperty === 'function' && pres && pres.tokens && typeof pres.tokens === 'object') {
+        for (const [key, value] of Object.entries(pres.tokens)) {
+          if (typeof key === 'string' && key.startsWith(tokenPrefix) && typeof value === 'string' && value.trim()) {
+            el.style.setProperty(key, value.trim());
+            appliedTokens.push(key);
+          }
+        }
+      }
+
+      let locale = null;
+      if (pres && typeof pres.locale === 'string' && pres.locale.trim()) {
+        locale = pres.locale.trim();
+        if (typeof opts.onLocale === 'function') {
+          opts.onLocale(locale);
+        }
+      }
+
+      return { theme, locale, appliedTokens };
+    }
+
+    /**
+     * Standardized kiki.panel.v1 postMessage RPC client and MessageChannel stream helper.
+     * Enforces default request timeout protection so pending requests never leak or wedge UI state.
+     */
+
+
+    const PANEL_CHANNEL = 'kiki.panel.v1';
+    const DEFAULT_RPC_TIMEOUT_MS = 20_000;
+
+    function createPanelClient(options = {}) {
+      const channel = options.channel || PANEL_CHANNEL;
+      const defaultTimeoutMs = Number.isFinite(options.defaultTimeoutMs)
+        ? options.defaultTimeoutMs
+        : DEFAULT_RPC_TIMEOUT_MS;
+      const defaultTimeoutMessage = options.timeoutMessage || 'Request timed out';
+      const defaultErrorMessage = options.errorMessage || 'Bridge error';
+      const autoApplyPresentation = options.autoApplyPresentation !== false;
+
+      const win = options.windowObj !== undefined
+        ? options.windowObj
+        : (typeof window !== 'undefined' ? window : null);
+      const par = options.parentObj !== undefined
+        ? options.parentObj
+        : ((win && win.parent) || (typeof parent !== 'undefined' ? parent : null));
+
+      let seq = 0;
+      let parentOrigin = '';
+      let ready = false;
+      let disposed = false;
+      const pending = new Map();
+
+      const resolveTestBridge = () => {
+        if (typeof options.testBridge === 'function') return options.testBridge;
+        if (typeof options.testBridge === 'string' && win && typeof win[options.testBridge] === 'function') {
+          return win[options.testBridge];
+        }
+        return null;
+      };
+
+      const isStandalone = () => {
+        if (ready) return false;
+        if (resolveTestBridge()) return false;
+        if (!par || typeof par.postMessage !== 'function') return true;
+        if (win && par === win && options.allowSelfParent !== true) return true;
+        return false;
+      };
+
+      const handlePresentation = (data, event) => {
+        const pres = data && typeof data.presentation === 'object' && data.presentation
+          ? data.presentation
+          : data;
+        if (autoApplyPresentation && pres) {
+          applyPresentation(pres, {
+            fallbackTheme: data && data.theme,
+            root: options.root,
+            onLocale: options.onLocale,
+          });
+        }
+        if (typeof options.onPresentation === 'function') {
+          options.onPresentation(pres, data, event);
+        }
+      };
+
+      const onMessage = (event) => {
+        if (disposed || !event) return;
+        if (par && event.source && event.source !== par) return;
+        const data = event.data;
+        if (!data || data.channel !== channel) return;
+        if (parentOrigin && typeof event.origin === 'string' && event.origin && event.origin !== parentOrigin) return;
+        if (typeof event.origin === 'string' && event.origin && event.origin !== 'null') {
+          parentOrigin = event.origin;
+        }
+
+        if (data.kind === 'presentation' || data.kind === 'theme') {
+          handlePresentation(data, event);
+          return;
+        }
+
+        if (data.kind === 'init') {
+          ready = true;
+          if (data.presentation || data.theme || data.colorScheme || data.tokens || data.locale) {
+            handlePresentation(data, event);
+          }
+          if (typeof options.onInit === 'function') {
+            options.onInit(data, event);
+          }
+          return;
+        }
+
+        if (data.kind === 'response') {
+          const entry = pending.get(data.id);
+          if (!entry) {
+            if (event.ports && event.ports[0]) {
+              try {
+                event.ports[0].postMessage({ __kikiStreamControl: 'close' });
+                event.ports[0].close();
+              } catch {}
+            }
+            return;
+          }
+          pending.delete(data.id);
+          if (entry.timer !== null && typeof clearTimeout === 'function') {
+            clearTimeout(entry.timer);
+          }
+          if (data.ok === true) {
+            if (entry.withPort) {
+              entry.resolve({ result: data.result, port: (event.ports && event.ports[0]) || null });
+            } else {
+              entry.resolve(data.result);
+            }
+          } else {
+            const msg = (typeof data.error === 'string' && data.error)
+              || (data.error && typeof data.error.message === 'string' && data.error.message)
+              || defaultErrorMessage;
+            entry.reject(new Error(msg));
+          }
+          return;
+        }
+
+        if (typeof options.onEvent === 'function') {
+          options.onEvent(data, event);
+        }
+      };
+
+      if (win && typeof win.addEventListener === 'function') {
+        win.addEventListener('message', onMessage);
+      }
+
+      function request(method, payload = {}, opts = {}) {
+        const withPort = Boolean(opts.withPort);
+        const bridge = resolveTestBridge();
+        if (bridge) {
+          return Promise.resolve(bridge(method, payload, withPort));
+        }
+        if (disposed) {
+          return Promise.reject(new Error('Panel bridge disposed'));
+        }
+        if (isStandalone()) {
+          return Promise.reject(new Error(options.standaloneErrorMessage || 'Standalone preview mode'));
+        }
+
+        const id = ++seq;
+        const timeoutMs = opts.timeoutMs !== undefined ? opts.timeoutMs : defaultTimeoutMs;
+        const targetOrigin = !parentOrigin || parentOrigin === 'null' ? '*' : parentOrigin;
+
+        return new Promise((resolve, reject) => {
+          let timer = null;
+          if (typeof setTimeout === 'function' && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+            timer = setTimeout(() => {
+              if (!pending.has(id)) return;
+              pending.delete(id);
+              const err = new Error(opts.timeoutMessage || defaultTimeoutMessage);
+              err.code = 'timeout';
+              reject(err);
+            }, timeoutMs);
+          }
+          pending.set(id, { resolve, reject, timer, withPort });
+          try {
+            par.postMessage({ channel, kind: 'request', id, method, ...payload }, targetOrigin);
+          } catch (err) {
+            pending.delete(id);
+            if (timer !== null && typeof clearTimeout === 'function') clearTimeout(timer);
+            reject(err);
+          }
+        });
+      }
+
+      function dispose() {
+        if (disposed) return;
+        disposed = true;
+        if (win && typeof win.removeEventListener === 'function') {
+          win.removeEventListener('message', onMessage);
+        }
+        for (const [id, entry] of pending) {
+          pending.delete(id);
+          if (entry.timer !== null && typeof clearTimeout === 'function') {
+            clearTimeout(entry.timer);
+          }
+          entry.reject(new Error('Panel bridge disposed'));
+        }
+      }
+
+      return {
+        channel,
+        request,
+        call: (action, args = {}, opts = {}) => request('plugin.call', { action, args }, opts),
+        getSettings: (opts = {}) => request('plugin.settings.get', {}, opts),
+        patchSettings: (values, opts = {}) => request('plugin.settings.patch', { values }, opts),
+        setDirty: (dirty, opts = {}) => request('plugin.dirty', { dirty: Boolean(dirty) }, opts),
+        installPrerequisite: (prerequisiteId, consent = true, opts = {}) =>
+          request('plugin.installPrerequisite', { prerequisiteId, consent }, opts),
+        sendSessionMessage: (text, sessionId, opts = {}) =>
+          request('session.sendMessage', { ...(sessionId ? { sessionId } : {}), text }, opts),
+        openStream: (stream, args = {}, opts = {}) =>
+          request('plugin.openStream', { stream, args }, { timeoutMs: 4000, ...opts, withPort: true }),
+        isReady: () => ready,
+        isStandalone,
+        getOrigin: () => parentOrigin,
+        pendingCount: () => pending.size,
+        dispose,
+      };
+    }
+
+    async function openManagedStream(client, stream, args = {}, handlers = {}) {
+      const { result, port } = await client.openStream(stream, args, handlers.openOpts || {});
+      if (!port) {
+        throw new Error('Host did not transfer a stream port');
+      }
+
+      let closed = false;
+      const close = (notifyHost = true) => {
+        if (closed) return;
+        closed = true;
+        try {
+          if (notifyHost && typeof port.postMessage === 'function') {
+            port.postMessage({ __kikiStreamControl: 'close' });
+          }
+        } catch {}
+        try {
+          port.onmessage = null;
+          port.onmessageerror = null;
+          if (typeof port.close === 'function') port.close();
+        } catch {}
+      };
+
+      port.onmessage = (event) => {
+        const data = event ? event.data : undefined;
+        if (data && typeof data === 'object' && data.__kikiStreamEvent === 'close') {
+          close(false);
+          if (typeof handlers.onClose === 'function') {
+            handlers.onClose(data.reason || 'closed');
+          }
+          return;
+        }
+        if (typeof handlers.onMessage === 'function') {
+          handlers.onMessage(data, event);
+        }
+      };
+
+      port.onmessageerror = (event) => {
+        if (typeof handlers.onError === 'function') {
+          handlers.onError(event);
+        }
+      };
+
+      return { port, result, close };
+    }
+
+    return {
+      createSafeStorage,
+      safeStorage,
+      copyTextSafe,
+      randomId,
+      applyThemeName,
+      initThemeFromUrl,
+      applyPresentation,
+      PANEL_CHANNEL,
+      DEFAULT_RPC_TIMEOUT_MS,
+      createPanelClient,
+      openManagedStream,
+    };
+  })();
+  /* @kiki-panel-kit:runtime:end */
+  const { safeStorage, copyTextSafe, initThemeFromUrl, applyPresentation, createPanelClient } = KikiPanelKit;
   const RATE_WINDOW_MS = 10000;
   const FRAME_BUDGET_IN_WINDOW = 112;
   const MIN_POLL_INTERVAL_MS = 88;
@@ -682,74 +1183,9 @@
   const SCROLL_MAGIC = 0x53;
   const isZh = /^zh\b/i.test(navigator.language || '');
 
-  const memoryStore = new Map();
-  const safeStorage = {
-    get(key) {
-      try {
-        const val = window['local' + 'Storage'].getItem(key);
-        return val !== null ? val : (memoryStore.get(key) ?? null);
-      } catch {
-        return memoryStore.get(key) ?? null;
-      }
-    },
-    set(key, value) {
-      const str = String(value);
-      memoryStore.set(key, str);
-      try {
-        window['local' + 'Storage'].setItem(key, str);
-      } catch {}
-    },
-    remove(key) {
-      memoryStore.delete(key);
-      try {
-        window['local' + 'Storage'].removeItem(key);
-      } catch {}
-    },
-  };
+  initThemeFromUrl();
 
-  async function copyTextSafe(text) {
-    const str = String(text ?? '');
-    if (!str) return false;
-    try {
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        await navigator.clipboard.writeText(str);
-        return true;
-      }
-    } catch {}
-    try {
-      const ta = document.createElement('textarea');
-      ta.value = str;
-      ta.setAttribute('readonly', '');
-      ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none;';
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      const ok = document.execCommand('copy');
-      ta.remove();
-      return Boolean(ok);
-    } catch {
-      return false;
-    }
-  }
-
-  function applyThemeName(theme) {
-    if (theme === 'dark' || theme === 'light') {
-      document.documentElement.setAttribute('data-theme', theme);
-    } else if (theme === 'auto' || theme === 'system') {
-      document.documentElement.removeAttribute('data-theme');
-    }
-  }
-
-  try {
-    const urlTheme = new URLSearchParams(window.location.search).get('theme');
-    if (urlTheme === 'dark' || urlTheme === 'light') {
-      applyThemeName(urlTheme);
-    }
-  } catch {}
-
-  let reqSeq = 0;
   let booted = false;
-  const pending = new Map();
   const rpcStamps = [];
 
   function pruneRpcWindow(now = Date.now()) {
@@ -759,66 +1195,32 @@
     return rpcStamps.length;
   }
 
-  function applyPresentation(pres) {
-    if (!pres || typeof pres !== 'object') return;
-    applyThemeName(pres.theme || pres.colorScheme);
-  }
-
-  window.addEventListener('message', (event) => {
-    if (event.source !== window.parent) return;
-    const data = event.data;
-    if (!data || data.channel !== CHANNEL) return;
-    if (data.kind === 'presentation' || data.kind === 'theme') {
-      applyPresentation(data.presentation || data);
-      return;
-    }
-    if (data.kind === 'init') {
+  const CHANNEL = KikiPanelKit.PANEL_CHANNEL;
+  const bridge = createPanelClient({
+    channel: CHANNEL,
+    defaultTimeoutMs: 20000,
+    timeoutMessage: 'Bridge request timed out',
+    errorMessage: 'Bridge request failed',
+    testBridge: '__kikiPhoneTestBridge',
+    onPresentation: (pres, data) => {
+      applyPresentation(pres, { fallbackTheme: data?.theme });
+    },
+    onInit: (data) => {
       state.standaloneMode = false;
-      applyPresentation(data.presentation || data);
+      applyPresentation(data.presentation || data, { fallbackTheme: data.theme });
       void startBoot();
-      return;
-    }
-    if (data.kind !== 'response') return;
-    const entry = pending.get(data.id);
-    if (!entry) {
-      if (event.ports && event.ports[0]) {
-        try {
-          event.ports[0].postMessage({ __kikiStreamControl: 'close' });
-          event.ports[0].close();
-        } catch {}
-      }
-      return;
-    }
-    pending.delete(data.id);
-    clearTimeout(entry.timer);
-    if (data.ok) {
-      entry.resolve(entry.withPort ? { result: data.result, port: (event.ports && event.ports[0]) || null } : data.result);
-    } else {
-      entry.reject(new Error((typeof data.error === 'string' ? data.error : data.error?.message) || 'Bridge request failed'));
-    }
+    },
   });
 
   const isDisconnectedStandalone = () => state.standaloneMode && typeof window.__kikiPhoneTestBridge !== 'function';
 
   function bridgeCall(method, payload = {}, timeoutMs = 20000, withPort = false) {
-    if (typeof window.__kikiPhoneTestBridge === 'function') {
-      return Promise.resolve(window.__kikiPhoneTestBridge(method, payload, withPort));
+    if (typeof window.__kikiPhoneTestBridge !== 'function' && !isDisconnectedStandalone()) {
+      const now = Date.now();
+      pruneRpcWindow(now);
+      rpcStamps.push(now);
     }
-    if (isDisconnectedStandalone()) {
-      return Promise.reject(new Error('Standalone preview mode'));
-    }
-    const id = ++reqSeq;
-    const now = Date.now();
-    pruneRpcWindow(now);
-    rpcStamps.push(now);
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        pending.delete(id);
-        reject(new Error('Bridge request timed out'));
-      }, timeoutMs);
-      pending.set(id, { resolve, reject, timer, withPort });
-      window.parent.postMessage({ channel: CHANNEL, kind: 'request', id, method, ...payload }, '*');
-    });
+    return bridge.request(method, payload, { timeoutMs, withPort });
   }
 
   const panelCall = (action, args = {}, timeoutMs = 20000) =>

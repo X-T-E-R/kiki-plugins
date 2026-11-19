@@ -1,3 +1,4 @@
+// GENERATED from ../../kiki-media-novita/adapters.mjs. Run scripts/sync-media.mjs; do not edit this copy.
 import { runtime, check, options, fields, oneOf, guarded, pending, failed } from '../runtime.mjs';
 export function createAdapters(fetchImpl) {
   return {

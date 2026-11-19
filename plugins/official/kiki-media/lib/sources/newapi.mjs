@@ -1,3 +1,4 @@
+// GENERATED from ../../kiki-media-newapi/adapters.mjs. Run scripts/sync-media.mjs; do not edit this copy.
 import { runtime, check, options, range, guarded, pending, failed, videoDownload } from '../runtime.mjs';
 export function createAdapters(fetchImpl) {
   return {

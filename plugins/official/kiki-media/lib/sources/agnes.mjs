@@ -1,3 +1,4 @@
+// GENERATED from ../../kiki-media-agnes/adapters.mjs. Run scripts/sync-media.mjs; do not edit this copy.
 import { runtime, check, options, oneOf, range, guarded, pending, failed, videoDownload } from '../runtime.mjs';
 const models = ['agnes-video-2.5', 'agnes-video-2.5-flash', 'agnes-video-v2.0'];
 export function createAdapters(fetchImpl) {

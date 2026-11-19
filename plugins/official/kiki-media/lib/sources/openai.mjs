@@ -1,3 +1,4 @@
+// GENERATED from ../../kiki-media-openai/adapters.mjs. Run scripts/sync-media.mjs; do not edit this copy.
 import {
   runtime,
   check,

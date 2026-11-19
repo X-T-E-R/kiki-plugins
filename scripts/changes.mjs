@@ -10,7 +10,7 @@ export function changedPackages(paths, ids) {
     if(/^plugins\/official\/kiki-media-[^/]+\//.test(p)&&ids.includes('kiki-media'))selected.add('kiki-media');
     const id=p.match(/^plugins\/official\/([^/]+)\//)?.[1];
     if(ids.includes(id)){selected.add(id);continue;}
-    if(/^(scripts\/|test\/|vendor\/|sdk\.lock|package|\.github\/)/.test(p))for(const id of ids)selected.add(id);
+    if(/^(scripts\/|shared\/|test\/|vendor\/|sdk\.lock|package|\.github\/)/.test(p))for(const id of ids)selected.add(id);
   }
   return {packages:[...selected].sort(),metadataOnly};
 }

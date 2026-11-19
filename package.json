@@ -9,6 +9,9 @@
   "scripts": {
     "build": "node scripts/pack.mjs",
     "check": "node scripts/check.mjs",
+    "sync": "npm run sync:media && npm run sync:panels",
+    "sync:media": "node scripts/sync-media.mjs",
+    "sync:panels": "node scripts/sync-panel-kit.mjs",
     "test": "node --test test/*.test.mjs",
     "dev": "node scripts/dev-plugin-marketplace-server.mjs"
   },

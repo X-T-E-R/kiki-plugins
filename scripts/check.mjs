@@ -48,6 +48,7 @@ async function checkPackages(){
     console.log('Validated package',p.id,m.version);
   }
   if(!selected||packages.some(p=>p.source.startsWith('./official/')))run('plugins/official/media-runtime/distribute.mjs',['--check']);
+  run('scripts/sync-panel-kit.mjs',['--check']);
   for(const id of ['kiki-extract','kiki-office','kiki-media','kiki-bilibili','kiki-voice','kiki-qq','kiki-phone','kiki-everything','kiki-cua','kiki-uu-remote'])if(!selected||selected===id)run(`plugins/official/${id}/scripts/sync-manifest.mjs`,['--check']);
   if(!selected||selected==='kiki-everything')run('--test',['--test-timeout=15000','plugins/official/kiki-everything/test/everything.test.mjs']);
   if(!selected||selected==='kiki-cua')run('--test',['--test-timeout=30000','plugins/official/kiki-cua/test/cua.test.mjs']);

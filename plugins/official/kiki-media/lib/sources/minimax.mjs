@@ -1,3 +1,4 @@
+// GENERATED from ../../kiki-media-minimax/adapters.mjs. Run scripts/sync-media.mjs; do not edit this copy.
 import {
   runtime,
   check,

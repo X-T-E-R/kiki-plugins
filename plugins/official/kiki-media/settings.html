@@ -511,56 +511,469 @@
   </div>
 </main>
 <script>
-const CHANNEL = 'kiki.panel.v1';
-const lifecycle = new Set(['enabled', 'removed', 'cleared']);
+/* @kiki-panel-kit:runtime:start */
+// GENERATED from shared/panel-kit/{storage,theme,rpc}.mjs — run `npm run sync:panels`; do not edit this block.
+const KikiPanelKit = (() => {
+  /**
+   * Opaque ('null'-origin) sandbox-safe storage, clipboard copy, and ID helpers
+   * for Kiki plugin panels running inside <iframe sandbox="allow-scripts">.
+   */
 
-const memStore = new Map();
-const safeStorage = {
-  get(key) {
-    try {
-      const store = window.localStorage;
-      if (!store) throw new Error('unavailable');
-      const v = store.getItem(key);
-      return v === null ? (memStore.has(key) ? memStore.get(key) : null) : v;
-    } catch {
-      return memStore.has(key) ? memStore.get(key) : null;
-    }
-  },
-  set(key, value) {
-    const str = String(value);
-    memStore.set(key, str);
-    try {
-      const store = window.localStorage;
-      if (store) store.setItem(key, str);
-    } catch {}
-  },
-};
-
-async function copyText(str) {
-  try {
-    if (typeof navigator === 'object' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-      await navigator.clipboard.writeText(str);
-      return true;
-    }
-  } catch {}
-  try {
-    if (!document.body || typeof document.execCommand !== 'function') return false;
-    const area = document.createElement('textarea');
-    area.value = str;
-    if (area.style) {
-      area.style.position = 'fixed';
-      area.style.opacity = '0';
-      area.style.pointerEvents = 'none';
-    }
-    document.body.append(area);
-    if (typeof area.select === 'function') area.select();
-    const ok = document.execCommand('copy');
-    if (typeof area.remove === 'function') area.remove();
-    return Boolean(ok);
-  } catch {
-    return false;
+  function createSafeStorage(targetWindow) {
+    const mem = new Map();
+    const resolveStorage = () => {
+      const win = targetWindow !== undefined ? targetWindow : (typeof window !== 'undefined' ? window : null);
+      if (!win) return null;
+      try {
+        return win.localStorage || null;
+      } catch {
+        return null;
+      }
+    };
+    return {
+      get(key) {
+        const k = String(key);
+        try {
+          const s = resolveStorage();
+          if (s) {
+            const v = s.getItem(k);
+            if (v !== null) return v;
+          }
+        } catch {}
+        return mem.has(k) ? mem.get(k) : null;
+      },
+      set(key, value) {
+        const k = String(key);
+        const str = String(value);
+        mem.set(k, str);
+        try {
+          const s = resolveStorage();
+          if (s) s.setItem(k, str);
+        } catch {}
+      },
+      remove(key) {
+        const k = String(key);
+        mem.delete(k);
+        try {
+          const s = resolveStorage();
+          if (s) s.removeItem(k);
+        } catch {}
+      },
+    };
   }
-}
+
+  const safeStorage = createSafeStorage();
+
+  async function copyTextSafe(text, options = {}) {
+    const str = String(text ?? '');
+    const feedbackEl = options.labelEl || options.button || null;
+    const copiedLabel = typeof options.copiedLabel === 'string' ? options.copiedLabel : '';
+    const resetMs = Number.isFinite(options.resetMs) ? options.resetMs : 1200;
+    const markCopied = () => {
+      if (!feedbackEl || !copiedLabel) return;
+      const prev = feedbackEl.textContent;
+      feedbackEl.textContent = copiedLabel;
+      if (typeof setTimeout === 'function') {
+        setTimeout(() => {
+          feedbackEl.textContent = prev;
+        }, resetMs);
+      }
+    };
+
+    try {
+      const nav = options.navigatorObj !== undefined
+        ? options.navigatorObj
+        : (typeof navigator !== 'undefined' ? navigator : null);
+      if (nav && nav.clipboard && typeof nav.clipboard.writeText === 'function') {
+        await nav.clipboard.writeText(str);
+        markCopied();
+        return true;
+      }
+    } catch {}
+
+    try {
+      const doc = options.documentObj !== undefined
+        ? options.documentObj
+        : (typeof document !== 'undefined' ? document : null);
+      if (!doc || !doc.body || typeof doc.createElement !== 'function' || typeof doc.execCommand !== 'function') {
+        return false;
+      }
+      const ta = doc.createElement('textarea');
+      ta.value = str;
+      if (typeof ta.setAttribute === 'function') ta.setAttribute('readonly', '');
+      if (ta.style) {
+        ta.style.position = 'fixed';
+        ta.style.top = '-9999px';
+        ta.style.opacity = '0';
+        ta.style.pointerEvents = 'none';
+      }
+      doc.body.append(ta);
+      if (typeof ta.select === 'function') ta.select();
+      let ok = false;
+      try {
+        ok = Boolean(doc.execCommand('copy'));
+        if (ok) markCopied();
+      } catch {}
+      if (typeof ta.remove === 'function') ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+
+  function randomId(prefix = '') {
+    const c = typeof crypto !== 'undefined' ? crypto : null;
+    let core = '';
+    if (c && typeof c.randomUUID === 'function') {
+      core = c.randomUUID();
+    } else if (c && typeof c.getRandomValues === 'function' && typeof Uint8Array === 'function') {
+      const bytes = new Uint8Array(12);
+      c.getRandomValues(bytes);
+      core = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    } else {
+      core = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+    return prefix ? `${prefix}${core}` : core;
+  }
+
+  /**
+   * Unified 4-way presentation and theme synchronization for Kiki plugin panels:
+   * 1) URL ?theme=dark|light initial hydration
+   * 2) Host theme / colorScheme switching (dark / light / auto)
+   * 3) Host appearance skin CSS custom property injection (--color-*)
+   * 4) Host locale propagation callback
+   */
+
+  function applyThemeName(theme, root) {
+    const el = root || (typeof document !== 'undefined' ? document.documentElement : null);
+    if (!el) return null;
+    if (theme === 'dark' || theme === 'light') {
+      if (typeof el.setAttribute === 'function') el.setAttribute('data-theme', theme);
+      if (el.dataset) el.dataset.theme = theme;
+      return theme;
+    }
+    if (theme === 'auto' || theme === 'system') {
+      if (typeof el.removeAttribute === 'function') el.removeAttribute('data-theme');
+      if (el.dataset) delete el.dataset.theme;
+      return 'auto';
+    }
+    return null;
+  }
+
+  function initThemeFromUrl(options = {}) {
+    try {
+      if (typeof URLSearchParams !== 'function') return null;
+      let urlTheme = null;
+      if (options.search !== undefined) {
+        urlTheme = new URLSearchParams(options.search).get('theme');
+      } else if (typeof window !== 'undefined' && window.location && typeof window.location.search === 'string') {
+        urlTheme = new URLSearchParams(window.location.search).get('theme');
+      } else if (typeof location !== 'undefined' && typeof location.search === 'string') {
+        urlTheme = new URLSearchParams(location.search).get('theme');
+      }
+      if (urlTheme === 'dark' || urlTheme === 'light') {
+        return applyThemeName(urlTheme, options.root);
+      }
+    } catch {}
+    return null;
+  }
+
+  function applyPresentation(presentation, options = {}) {
+    const opts = typeof options === 'string' ? { fallbackTheme: options } : (options || {});
+    const el = opts.root || (typeof document !== 'undefined' ? document.documentElement : null);
+    const pres = presentation && typeof presentation === 'object' ? presentation : null;
+    const theme = applyThemeName(
+      (pres && (pres.theme || pres.colorScheme)) || opts.fallbackTheme,
+      el,
+    );
+
+    const tokenPrefix = typeof opts.tokenPrefix === 'string' ? opts.tokenPrefix : '--color-';
+    const appliedTokens = [];
+    if (el && el.style && typeof el.style.setProperty === 'function' && pres && pres.tokens && typeof pres.tokens === 'object') {
+      for (const [key, value] of Object.entries(pres.tokens)) {
+        if (typeof key === 'string' && key.startsWith(tokenPrefix) && typeof value === 'string' && value.trim()) {
+          el.style.setProperty(key, value.trim());
+          appliedTokens.push(key);
+        }
+      }
+    }
+
+    let locale = null;
+    if (pres && typeof pres.locale === 'string' && pres.locale.trim()) {
+      locale = pres.locale.trim();
+      if (typeof opts.onLocale === 'function') {
+        opts.onLocale(locale);
+      }
+    }
+
+    return { theme, locale, appliedTokens };
+  }
+
+  /**
+   * Standardized kiki.panel.v1 postMessage RPC client and MessageChannel stream helper.
+   * Enforces default request timeout protection so pending requests never leak or wedge UI state.
+   */
+
+
+  const PANEL_CHANNEL = 'kiki.panel.v1';
+  const DEFAULT_RPC_TIMEOUT_MS = 20_000;
+
+  function createPanelClient(options = {}) {
+    const channel = options.channel || PANEL_CHANNEL;
+    const defaultTimeoutMs = Number.isFinite(options.defaultTimeoutMs)
+      ? options.defaultTimeoutMs
+      : DEFAULT_RPC_TIMEOUT_MS;
+    const defaultTimeoutMessage = options.timeoutMessage || 'Request timed out';
+    const defaultErrorMessage = options.errorMessage || 'Bridge error';
+    const autoApplyPresentation = options.autoApplyPresentation !== false;
+
+    const win = options.windowObj !== undefined
+      ? options.windowObj
+      : (typeof window !== 'undefined' ? window : null);
+    const par = options.parentObj !== undefined
+      ? options.parentObj
+      : ((win && win.parent) || (typeof parent !== 'undefined' ? parent : null));
+
+    let seq = 0;
+    let parentOrigin = '';
+    let ready = false;
+    let disposed = false;
+    const pending = new Map();
+
+    const resolveTestBridge = () => {
+      if (typeof options.testBridge === 'function') return options.testBridge;
+      if (typeof options.testBridge === 'string' && win && typeof win[options.testBridge] === 'function') {
+        return win[options.testBridge];
+      }
+      return null;
+    };
+
+    const isStandalone = () => {
+      if (ready) return false;
+      if (resolveTestBridge()) return false;
+      if (!par || typeof par.postMessage !== 'function') return true;
+      if (win && par === win && options.allowSelfParent !== true) return true;
+      return false;
+    };
+
+    const handlePresentation = (data, event) => {
+      const pres = data && typeof data.presentation === 'object' && data.presentation
+        ? data.presentation
+        : data;
+      if (autoApplyPresentation && pres) {
+        applyPresentation(pres, {
+          fallbackTheme: data && data.theme,
+          root: options.root,
+          onLocale: options.onLocale,
+        });
+      }
+      if (typeof options.onPresentation === 'function') {
+        options.onPresentation(pres, data, event);
+      }
+    };
+
+    const onMessage = (event) => {
+      if (disposed || !event) return;
+      if (par && event.source && event.source !== par) return;
+      const data = event.data;
+      if (!data || data.channel !== channel) return;
+      if (parentOrigin && typeof event.origin === 'string' && event.origin && event.origin !== parentOrigin) return;
+      if (typeof event.origin === 'string' && event.origin && event.origin !== 'null') {
+        parentOrigin = event.origin;
+      }
+
+      if (data.kind === 'presentation' || data.kind === 'theme') {
+        handlePresentation(data, event);
+        return;
+      }
+
+      if (data.kind === 'init') {
+        ready = true;
+        if (data.presentation || data.theme || data.colorScheme || data.tokens || data.locale) {
+          handlePresentation(data, event);
+        }
+        if (typeof options.onInit === 'function') {
+          options.onInit(data, event);
+        }
+        return;
+      }
+
+      if (data.kind === 'response') {
+        const entry = pending.get(data.id);
+        if (!entry) {
+          if (event.ports && event.ports[0]) {
+            try {
+              event.ports[0].postMessage({ __kikiStreamControl: 'close' });
+              event.ports[0].close();
+            } catch {}
+          }
+          return;
+        }
+        pending.delete(data.id);
+        if (entry.timer !== null && typeof clearTimeout === 'function') {
+          clearTimeout(entry.timer);
+        }
+        if (data.ok === true) {
+          if (entry.withPort) {
+            entry.resolve({ result: data.result, port: (event.ports && event.ports[0]) || null });
+          } else {
+            entry.resolve(data.result);
+          }
+        } else {
+          const msg = (typeof data.error === 'string' && data.error)
+            || (data.error && typeof data.error.message === 'string' && data.error.message)
+            || defaultErrorMessage;
+          entry.reject(new Error(msg));
+        }
+        return;
+      }
+
+      if (typeof options.onEvent === 'function') {
+        options.onEvent(data, event);
+      }
+    };
+
+    if (win && typeof win.addEventListener === 'function') {
+      win.addEventListener('message', onMessage);
+    }
+
+    function request(method, payload = {}, opts = {}) {
+      const withPort = Boolean(opts.withPort);
+      const bridge = resolveTestBridge();
+      if (bridge) {
+        return Promise.resolve(bridge(method, payload, withPort));
+      }
+      if (disposed) {
+        return Promise.reject(new Error('Panel bridge disposed'));
+      }
+      if (isStandalone()) {
+        return Promise.reject(new Error(options.standaloneErrorMessage || 'Standalone preview mode'));
+      }
+
+      const id = ++seq;
+      const timeoutMs = opts.timeoutMs !== undefined ? opts.timeoutMs : defaultTimeoutMs;
+      const targetOrigin = !parentOrigin || parentOrigin === 'null' ? '*' : parentOrigin;
+
+      return new Promise((resolve, reject) => {
+        let timer = null;
+        if (typeof setTimeout === 'function' && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+          timer = setTimeout(() => {
+            if (!pending.has(id)) return;
+            pending.delete(id);
+            const err = new Error(opts.timeoutMessage || defaultTimeoutMessage);
+            err.code = 'timeout';
+            reject(err);
+          }, timeoutMs);
+        }
+        pending.set(id, { resolve, reject, timer, withPort });
+        try {
+          par.postMessage({ channel, kind: 'request', id, method, ...payload }, targetOrigin);
+        } catch (err) {
+          pending.delete(id);
+          if (timer !== null && typeof clearTimeout === 'function') clearTimeout(timer);
+          reject(err);
+        }
+      });
+    }
+
+    function dispose() {
+      if (disposed) return;
+      disposed = true;
+      if (win && typeof win.removeEventListener === 'function') {
+        win.removeEventListener('message', onMessage);
+      }
+      for (const [id, entry] of pending) {
+        pending.delete(id);
+        if (entry.timer !== null && typeof clearTimeout === 'function') {
+          clearTimeout(entry.timer);
+        }
+        entry.reject(new Error('Panel bridge disposed'));
+      }
+    }
+
+    return {
+      channel,
+      request,
+      call: (action, args = {}, opts = {}) => request('plugin.call', { action, args }, opts),
+      getSettings: (opts = {}) => request('plugin.settings.get', {}, opts),
+      patchSettings: (values, opts = {}) => request('plugin.settings.patch', { values }, opts),
+      setDirty: (dirty, opts = {}) => request('plugin.dirty', { dirty: Boolean(dirty) }, opts),
+      installPrerequisite: (prerequisiteId, consent = true, opts = {}) =>
+        request('plugin.installPrerequisite', { prerequisiteId, consent }, opts),
+      sendSessionMessage: (text, sessionId, opts = {}) =>
+        request('session.sendMessage', { ...(sessionId ? { sessionId } : {}), text }, opts),
+      openStream: (stream, args = {}, opts = {}) =>
+        request('plugin.openStream', { stream, args }, { timeoutMs: 4000, ...opts, withPort: true }),
+      isReady: () => ready,
+      isStandalone,
+      getOrigin: () => parentOrigin,
+      pendingCount: () => pending.size,
+      dispose,
+    };
+  }
+
+  async function openManagedStream(client, stream, args = {}, handlers = {}) {
+    const { result, port } = await client.openStream(stream, args, handlers.openOpts || {});
+    if (!port) {
+      throw new Error('Host did not transfer a stream port');
+    }
+
+    let closed = false;
+    const close = (notifyHost = true) => {
+      if (closed) return;
+      closed = true;
+      try {
+        if (notifyHost && typeof port.postMessage === 'function') {
+          port.postMessage({ __kikiStreamControl: 'close' });
+        }
+      } catch {}
+      try {
+        port.onmessage = null;
+        port.onmessageerror = null;
+        if (typeof port.close === 'function') port.close();
+      } catch {}
+    };
+
+    port.onmessage = (event) => {
+      const data = event ? event.data : undefined;
+      if (data && typeof data === 'object' && data.__kikiStreamEvent === 'close') {
+        close(false);
+        if (typeof handlers.onClose === 'function') {
+          handlers.onClose(data.reason || 'closed');
+        }
+        return;
+      }
+      if (typeof handlers.onMessage === 'function') {
+        handlers.onMessage(data, event);
+      }
+    };
+
+    port.onmessageerror = (event) => {
+      if (typeof handlers.onError === 'function') {
+        handlers.onError(event);
+      }
+    };
+
+    return { port, result, close };
+  }
+
+  return {
+    createSafeStorage,
+    safeStorage,
+    copyTextSafe,
+    randomId,
+    applyThemeName,
+    initThemeFromUrl,
+    applyPresentation,
+    PANEL_CHANNEL,
+    DEFAULT_RPC_TIMEOUT_MS,
+    createPanelClient,
+    openManagedStream,
+  };
+})();
+/* @kiki-panel-kit:runtime:end */
+const { safeStorage, copyTextSafe: copyText, initThemeFromUrl, createPanelClient } = KikiPanelKit;
+const lifecycle = new Set(['enabled', 'removed', 'cleared']);
 
 function makeSvg(paths, size = 14) {
   if (typeof document.createElementNS !== 'function') return document.createElement('span');
@@ -583,8 +996,6 @@ function makeSvg(paths, size = 14) {
   return svg;
 }
 
-let seq = 1;
-const waiting = new Map();
 let catalog = { sources: [], providers: [] };
 let connectionCatalog = { models: [], connections: [] };
 let connectionState = 'idle';
@@ -673,15 +1084,8 @@ function applyPresentation(presentation) {
     }
   }
 }
-try {
-  if (typeof URLSearchParams !== 'undefined' && typeof location === 'object' && location && location.search) {
-    const qTheme = new URLSearchParams(location.search).get('theme');
-    if (qTheme === 'dark' || qTheme === 'light') {
-      hostTheme = qTheme;
-      document.documentElement.dataset.theme = qTheme;
-    }
-  }
-} catch {}
+const initialUrlTheme = initThemeFromUrl();
+if (initialUrlTheme === 'dark' || initialUrlTheme === 'light') hostTheme = initialUrlTheme;
 if (!hostTheme && typeof matchMedia === 'function') {
   const osDark = matchMedia('(prefers-color-scheme: dark)');
   const followOs = () => { if (!hostTheme) document.documentElement.dataset.theme = osDark.matches ? 'dark' : 'light'; };
@@ -692,24 +1096,32 @@ if (!hostTheme && typeof matchMedia === 'function') {
 }
 document.documentElement.lang = locale === 'zh' ? 'zh-CN' : 'en';
 
-function ask(method, extra, timeoutMs = 10000) {
-  const id = seq++;
-  return new Promise((resolve, reject) => {
-    let timer = 0;
-    if (timeoutMs > 0) {
-      timer = setTimeout(() => {
-        if (waiting.has(id)) {
-          waiting.delete(id);
-          reject(new Error(t('timeoutError')));
-        }
-      }, timeoutMs);
+const bridge = createPanelClient({
+  defaultTimeoutMs: 10000,
+  autoApplyPresentation: false,
+  onInit: (data) => {
+    if (data.theme === 'light' || data.theme === 'dark') {
+      hostTheme = data.theme;
+      document.documentElement.dataset.theme = data.theme;
     }
-    waiting.set(id, {
-      resolve: (res) => { clearTimeout(timer); resolve(res); },
-      reject: (err) => { clearTimeout(timer); reject(err); },
-    });
-    parent.postMessage({ channel: CHANNEL, kind: 'request', id, method, ...extra }, '*');
-  });
+    applyPresentation(data.presentation);
+    document.getElementById('loading').textContent = t('loading');
+    document.getElementById('loading').hidden = false;
+    if (!booted) void boot();
+    else render();
+  },
+  onPresentation: (_pres, data) => {
+    if (data.theme === 'light' || data.theme === 'dark') {
+      hostTheme = data.theme;
+      document.documentElement.dataset.theme = data.theme;
+    }
+    applyPresentation(data.presentation);
+    if (booted) render();
+  },
+});
+
+function ask(method, extra, timeoutMs = 10000) {
+  return bridge.request(method, extra || {}, { timeoutMs, timeoutMessage: t('timeoutError'), errorMessage: 'failed' });
 }
 function properties() { return view.schema?.schema?.properties ?? {}; }
 
@@ -1499,32 +1911,6 @@ if (typeof window.addEventListener === 'function') {
   });
 }
 
-window.addEventListener('message', (event) => {
-  const data = event.data;
-  if (!data || data.channel !== CHANNEL) return;
-  if (data.theme === 'light' || data.theme === 'dark') {
-    hostTheme = data.theme;
-    document.documentElement.dataset.theme = data.theme;
-  }
-  if (data.kind === 'init') {
-    applyPresentation(data.presentation);
-    document.getElementById('loading').textContent = t('loading');
-    document.getElementById('loading').hidden = false;
-    if (!booted) void boot();
-    else render();
-    return;
-  }
-  if (data.kind === 'presentation' || data.kind === 'theme') {
-    applyPresentation(data.presentation);
-    if (booted) render();
-    return;
-  }
-  if (data.kind !== 'response') return;
-  const item = waiting.get(data.id);
-  if (!item) return;
-  waiting.delete(data.id);
-  if (data.ok) item.resolve(data.result); else item.reject(new Error(data.error || 'failed'));
-});
 document.getElementById('loading').textContent = t('loading');
 </script>
 </body>

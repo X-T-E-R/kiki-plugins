@@ -1,0 +1,75 @@
+:root {
+  color-scheme: light dark;
+  font-synthesis: none;
+  --bg: var(--color-canvas, #f6f4ef);
+  --paper: var(--color-paper, #fcfbf8);
+  --panel: var(--color-panel, #efece4);
+  --ink: var(--color-ink, #1b1a17);
+  --ink-soft: var(--color-ink-soft, #5c5850);
+  --ink-faint: var(--color-ink-faint, #8c867b);
+  --line: var(--color-hairline, rgba(27, 26, 23, 0.10));
+  --line-strong: var(--color-hairline-strong, rgba(27, 26, 23, 0.18));
+  --accent: var(--color-accent, #2c5e4f);
+  --accent-deep: var(--color-accent-deep, #22493d);
+  --accent-soft: rgba(44, 94, 79, 0.10);
+  --on-accent: var(--color-on-accent, #fcfbf8);
+  --ok: var(--color-success, #2c6e49);
+  --warn: var(--color-amber-ink, #8a5a19);
+  --warn-bg: var(--color-amber-card, rgba(138, 90, 25, 0.11));
+  --danger: var(--color-danger, #a63429);
+  --danger-bg: rgba(166, 52, 41, 0.09);
+  --wash: rgba(27, 26, 23, 0.04);
+  --sans: "Instrument Sans", ui-sans-serif, system-ui, "Segoe UI", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --display: "Newsreader", Georgia, "Songti SC", "Noto Serif SC", serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --radius: 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: var(--color-canvas, #141413);
+    --paper: var(--color-paper, #1c1b19);
+    --panel: var(--color-panel, #252320);
+    --ink: var(--color-ink, #edeae2);
+    --ink-soft: var(--color-ink-soft, #b2aca0);
+    --ink-faint: var(--color-ink-faint, #7b766c);
+    --line: var(--color-hairline, rgba(237, 234, 226, 0.10));
+    --line-strong: var(--color-hairline-strong, rgba(237, 234, 226, 0.18));
+    --accent: var(--color-accent, #58a88f);
+    --accent-deep: var(--color-accent-deep, #6ebe9f);
+    --accent-soft: rgba(88, 168, 143, 0.15);
+    --on-accent: var(--color-on-accent, #141413);
+    --ok: var(--color-success, #6bbf8e);
+    --warn: var(--color-amber-ink, #dca056);
+    --warn-bg: var(--color-amber-card, rgba(220, 160, 86, 0.14));
+    --danger: var(--color-danger, #e27a6e);
+    --danger-bg: rgba(226, 122, 110, 0.14);
+    --wash: rgba(237, 234, 226, 0.05);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: var(--color-canvas, #141413);
+  --paper: var(--color-paper, #1c1b19);
+  --panel: var(--color-panel, #252320);
+  --ink: var(--color-ink, #edeae2);
+  --ink-soft: var(--color-ink-soft, #b2aca0);
+  --ink-faint: var(--color-ink-faint, #7b766c);
+  --line: var(--color-hairline, rgba(237, 234, 226, 0.10));
+  --line-strong: var(--color-hairline-strong, rgba(237, 234, 226, 0.18));
+  --accent: var(--color-accent, #58a88f);
+  --accent-deep: var(--color-accent-deep, #6ebe9f);
+  --accent-soft: rgba(88, 168, 143, 0.15);
+  --on-accent: var(--color-on-accent, #141413);
+  --ok: var(--color-success, #6bbf8e);
+  --warn: var(--color-amber-ink, #dca056);
+  --warn-bg: var(--color-amber-card, rgba(220, 160, 86, 0.14));
+  --danger: var(--color-danger, #e27a6e);
+  --danger-bg: rgba(226, 122, 110, 0.14);
+  --wash: rgba(237, 234, 226, 0.05);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}

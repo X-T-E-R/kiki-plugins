@@ -11,7 +11,8 @@ entry.description = 'One media plugin with OpenAI, Google, Ark, xAI, MiniMax, St
 entry.keywords = ['media', 'image', 'video', 'speech', 'tts', 'scripts', ...manifest['x-kiki'].mediaSources.map((source) => source.id)];
 entry.localizations.zh.description = '一个媒体插件，内置 OpenAI、Google、Ark、xAI、MiniMax、StepFun、Novita、Agnes、NewAPI 和 ComfyUI 来源。可在媒体页分别配置、启停或移除，也可添加自己的本地脚本。需要支持媒体来源分组及脚本来源管理的 Kiki 宿主。云端生成需媒体 API 权限，并可能产生费用。';
 entry.localizations.zh.keywords = ['媒体', '图像', '视频', '语音', '脚本', ...manifest['x-kiki'].mediaSources.map((source) => source.id)];
+const normalize = (text) => text.replaceAll('\r\n', '\n');
 const expected = JSON.stringify(catalog, null, 2) + '\n';
 if (process.argv.includes('--check')) {
-  if (await readFile(file, 'utf8') !== expected) throw new Error('Unified media catalog is stale');
+  if (normalize(await readFile(file, 'utf8')) !== expected) throw new Error('Unified media catalog is stale');
 } else await writeFile(file, expected);

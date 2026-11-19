@@ -7,10 +7,12 @@ const properties = Object.fromEntries(Object.entries(manifest['x-kiki'].settings
 const coreRequired = (manifest['x-kiki'].settings.schema.required ?? []).filter((key) => !vendors.some((vendor) => key.startsWith(`${vendor}__`)));
 const providers = [];
 const sources = [];
+const normalize = (text) => text.replaceAll('\r\n', '\n');
 async function output(url, content) {
+  const normalized = normalize(content);
   if (process.argv.includes('--check')) {
-    if (await readFile(url, 'utf8') !== content) throw new Error(`Unified media source drift: ${url}`);
-  } else { await mkdir(new URL('./', url), { recursive: true }); await writeFile(url, content); }
+    if (normalize(await readFile(url, 'utf8')) !== normalized) throw new Error(`Unified media source drift: ${url}`);
+  } else { await mkdir(new URL('./', url), { recursive: true }); await writeFile(url, normalized); }
 }
 /* The unified manifest is the only place a reader sees the media family's
  * settings text, and it is read in two languages. Provider manifests stay
@@ -120,9 +122,15 @@ for (const vendor of vendors) {
   properties[prefix + 'cleared'] = localized({ type: 'string', default: '[]', hidden: true, group: vendor, groupTitle: label }, groupTitle);
   sources.push({ id: vendor, label: original.interface.displayName, providerIds: original['x-kiki'].mediaProviders.map((definition) => `${vendor}-${definition.id}`), settingsPrefix: prefix, legacyPluginId: original.name, required: original['x-kiki'].settings.schema.required ?? [] });
   for (const definition of original['x-kiki'].mediaProviders) providers.push({ ...definition, id: `${vendor}-${definition.id}`, connectionSetting: prefix + definition.connectionSetting });
-  await output(new URL(`lib/sources/${vendor}.mjs`, target), (await readFile(new URL('adapters.mjs', donor), 'utf8')).replace("'./runtime.mjs'", "'../runtime.mjs'"));
+  await output(
+    new URL(`lib/sources/${vendor}.mjs`, target),
+    `// GENERATED from ../../kiki-media-${vendor}/adapters.mjs. Run scripts/sync-media.mjs; do not edit this copy.\n${(await readFile(new URL('adapters.mjs', donor), 'utf8')).replace("'./runtime.mjs'", "'../runtime.mjs'")}`,
+  );
 }
-await output(new URL('lib/runtime.mjs', target), await readFile(new URL('media-runtime/runtime.mjs', root), 'utf8'));
+await output(
+  new URL('lib/runtime.mjs', target),
+  `// GENERATED from ../../media-runtime/runtime.mjs. Run scripts/sync-media.mjs; do not edit this copy.\n${await readFile(new URL('media-runtime/runtime.mjs', root), 'utf8')}`,
+);
 providers.push({ schemaVersion: 1, id: 'custom-script', label: 'Custom script', kinds: ['image', 'video', 'tts'], resumeVersion: 1 });
 const idsFor = (kind) => providers.filter((item) => item.kinds?.includes(kind)).map((item) => item.id);
 for (const [key, kind] of [['defaultImageProvider', 'image'], ['defaultVideoProvider', 'video'], ['defaultTtsProvider', 'tts']]) {

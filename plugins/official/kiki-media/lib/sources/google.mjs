@@ -1,3 +1,4 @@
+// GENERATED from ../../kiki-media-google/adapters.mjs. Run scripts/sync-media.mjs; do not edit this copy.
 import { runtime, check, options, fields, oneOf, guarded, decode, pending, failed, videoDownload } from '../runtime.mjs';
 
 const models = [

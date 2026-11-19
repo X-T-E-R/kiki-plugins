@@ -1,3 +1,4 @@
+// GENERATED from ../../media-runtime/runtime.mjs. Run scripts/sync-media.mjs; do not edit this copy.
 import { readFile, writeFile, mkdir, rename, stat, rm, open } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { Readable } from 'node:stream';

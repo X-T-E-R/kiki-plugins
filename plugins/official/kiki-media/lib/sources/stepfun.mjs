@@ -1,3 +1,4 @@
+// GENERATED from ../../kiki-media-stepfun/adapters.mjs. Run scripts/sync-media.mjs; do not edit this copy.
 // Modified HTTP protocol adaptation: Android callbacks/DTO/runtime and EOF-as-success behavior are not retained.
 import { runtime, check, options, oneOf, range, guarded, decode, events, failed, mimeFor, receiveAudio } from '../runtime.mjs';
 import { open, mkdir, rename } from 'node:fs/promises';
