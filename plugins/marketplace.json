@@ -595,6 +595,45 @@
       }
     },
     {
+      "id": "kiki-v42",
+      "tier": "official",
+      "displayName": "Vibe42 Remote Workbench",
+      "version": "0.3.0",
+      "description": "Orchestrate Vibe42 remote Computers, Workspaces, coding Agent seats, COW workspace copies, remote desktops, mobile screens, and TCP port tunnels.",
+      "keywords": [
+        "vibe42",
+        "v42",
+        "remote",
+        "seats",
+        "terminal",
+        "desktop",
+        "port-forward",
+        "cua"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "relevance": {
+        "commands": [
+          "v42"
+        ]
+      },
+      "source": "./official/kiki-v42",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-v42",
+      "localizations": {
+        "zh": {
+          "description": "编排 Vibe42 远端电脑、工作区、编码工位、COW 隔离副本、远程桌面、真机屏幕与本地端口隧道。",
+          "keywords": [
+            "Vibe42",
+            "远端工位",
+            "跨设备",
+            "端口转发",
+            "远程桌面",
+            "CUA"
+          ]
+        }
+      }
+    },
+    {
       "id": "kimi-datasource",
       "tier": "official",
       "displayName": "Kimi Datasource",

@@ -252,7 +252,8 @@ test('buildPanelKitAssets produces classic-JS inline bundle with zero Emoji and 
   assert.equal(typeof ctx.exportedKit.openManagedStream, 'function');
 
   const { synced } = await syncPanelKit({ check: true });
-  assert.equal(synced.length, 13, `Expected all 13 business panels synced, got ${synced.length}`);
+  assert.equal(synced.length, 14, `Expected all 14 business panels synced, got ${synced.length}`);
+  assert.ok(synced.includes('plugins/official/kiki-v42/panel.html'));
 });
 
 test('kiki-cua handles dynamic presentation tokens and kiki-cloudflare enforces RPC timeout', async () => {

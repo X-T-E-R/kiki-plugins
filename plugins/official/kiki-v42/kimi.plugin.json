@@ -1,0 +1,684 @@
+{
+  "name": "kiki-v42",
+  "version": "0.3.0",
+  "description": "Orchestrate Vibe42 remote Computers, coding Agent seats, COW workspace copies, persistent remote desktop and mobile screens, and TCP port tunnels with leased-seat visibility and CUA Provider Bus v1 integration.",
+  "license": "MIT",
+  "icon": "./icon.svg",
+  "author": "Kiki",
+  "interface": {
+    "displayName": "Vibe42 Remote Workbench",
+    "shortDescription": "Remote coding seats, COW copies, desktop/mobile screens, and port tunnels",
+    "developerName": "Kiki",
+    "localization": {
+      "zh-CN": {
+        "displayName": "Vibe42 远端实况工作台",
+        "shortDescription": "跨设备编码工位、COW 隔离副本、远程桌面与真机屏幕协同"
+      }
+    }
+  },
+  "skills": [
+    "./skills"
+  ],
+  "systemPrompt": "Use the v42-fleet skill when orchestrating remote Vibe42 Computers, coding seats, COW workspace copies, remote desktops, mobile devices, or port forwards. Prefer v42_fleet to inspect online Computers and leased seats; v42_seat_run to dispatch/steer/pin seats; v42_seat_inspect with since_cursor for incremental updates; v42_seat_resolve only for non-privileged questions or COW copy actions (never attempt to self-approve remote approval/login prompts; ask the user to approve in the Vibe42 Workbench panel); and v42_env_transfer for cp/sync, screenshots, and port tunnels. Respect 409 human_controlling takeover locks unless the user explicitly asks to override.",
+  "x-kiki": {
+    "engines": {
+      "kiki": "^0.4.0"
+    },
+    "entry": "./entry.mjs",
+    "activation": "app",
+    "promptContext": true,
+    "slots": [
+      "E5:prompt-context",
+      "E8:tool-pipeline",
+      "E12:server-gui-slots"
+    ],
+    "permissions": {
+      "fs": "outside",
+      "net": [
+        "127.0.0.1"
+      ],
+      "exec": [
+        "v42"
+      ],
+      "uiPanel": true
+    },
+    "panels": [
+      {
+        "schemaVersion": 1,
+        "id": "workbench",
+        "label": "Vibe42 Workbench",
+        "slot": "workspace",
+        "path": "./panel.html",
+        "assets": [
+          "./lib/panel.css",
+          "./lib/panel-app.js"
+        ]
+      }
+    ],
+    "settings": {
+      "schemaVersion": 1,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "v42BinPath": {
+            "type": "string",
+            "title": "v42 CLI Path",
+            "description": "Optional explicit path to the v42 executable. Leave empty to auto-discover the installed Vibe42 Companion binary and signed-in session.",
+            "default": "",
+            "group": "connection",
+            "groupTitle": "Runtime & Bridge",
+            "localizations": {
+              "zh-CN": {
+                "title": "v42 CLI 路径",
+                "description": "可选显式指定 v42 可执行文件路径；留空时自动发现本机已安装的 Vibe42 Companion 与已登录会话。",
+                "groupTitle": "运行时与桥接"
+              }
+            }
+          },
+          "companionRoot": {
+            "type": "string",
+            "title": "Vibe42 Companion Root",
+            "description": "Optional explicit Vibe42 Companion install directory passed via --companion-root. Leave empty for automatic cross-platform discovery.",
+            "default": "",
+            "group": "connection",
+            "groupTitle": "Runtime & Bridge",
+            "advanced": true,
+            "localizations": {
+              "zh-CN": {
+                "title": "Vibe42 Companion 根目录",
+                "description": "可选显式指定传递给 --companion-root 的 Companion 安装目录；留空时跨平台自动探测。",
+                "groupTitle": "运行时与桥接"
+              }
+            }
+          },
+          "gatewayEndpoint": {
+            "type": "string",
+            "title": "Structured AgentView Bridge",
+            "description": "Optional loopback HTTP endpoint (http://127.0.0.1:<port>) for structured AgentView streaming; falls back to v42 CLI.",
+            "default": "",
+            "group": "connection",
+            "groupTitle": "Runtime & Bridge",
+            "advanced": true,
+            "localizations": {
+              "zh-CN": {
+                "title": "结构化 AgentView 桥接端点",
+                "description": "可选本地回环 HTTP 端点（http://127.0.0.1:<port>）；未配置时自动使用 v42 CLI。",
+                "groupTitle": "运行时与桥接"
+              }
+            }
+          },
+          "autoWaitMs": {
+            "type": "number",
+            "title": "Auto Wait Window (ms)",
+            "description": "Wait window in milliseconds for v42_seat_run wait_mode='auto' before returning a background working receipt.",
+            "default": 25000,
+            "group": "orchestration",
+            "groupTitle": "Orchestration",
+            "localizations": {
+              "zh-CN": {
+                "title": "自动等待窗口（毫秒）",
+                "description": "v42_seat_run 在 auto 模式下等待远端回合落定的毫秒上限，超时后转后台回执。",
+                "groupTitle": "编排策略"
+              }
+            }
+          },
+          "cuaExposeAllOnline": {
+            "type": "boolean",
+            "title": "Expose All Online Screens to CUA Bus",
+            "description": "Include all online Vibe42 desktops and mobile devices in kiki.cua.provider.v1 /v1/targets even before pinning.",
+            "default": true,
+            "group": "cua",
+            "groupTitle": "CUA Provider Bus",
+            "localizations": {
+              "zh-CN": {
+                "title": "向 CUA 总线暴露全部在线屏幕",
+                "description": "在 kiki.cua.provider.v1 的 /v1/targets 中同时列出在线远程桌面与手机屏幕。",
+                "groupTitle": "CUA 屏幕总线"
+              }
+            }
+          }
+        }
+      }
+    },
+    "sessionSources": [
+      {
+        "schemaVersion": 1,
+        "id": "v42-agent-seat",
+        "label": "Vibe42 Agent Seat",
+        "formatVersion": "v42-seat-v1"
+      }
+    ],
+    "tools": [
+      {
+        "schemaVersion": 1,
+        "name": "v42_fleet",
+        "description": "Discover Vibe42 Computers, Workspaces, coding seats, mobile devices, workspace memos, and active loopback port forwards. Read-only discovery across managed leases and optional unmanaged seats.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "enum": [
+                "summary",
+                "workspaces",
+                "seats",
+                "devices",
+                "memos",
+                "forwards"
+              ],
+              "default": "summary",
+              "description": "Resource view to inspect across the Vibe42 fleet."
+            },
+            "computer": {
+              "type": "string",
+              "description": "Optional Computer ID or name filter; omit to inspect all Computers in the active Team."
+            },
+            "workspace": {
+              "type": "string",
+              "description": "Optional Workspace ID or name filter."
+            },
+            "status_filter": {
+              "type": "string",
+              "enum": [
+                "all",
+                "working",
+                "blocked",
+                "done",
+                "idle"
+              ],
+              "default": "all",
+              "description": "Filter seats by current execution state."
+            },
+            "include_unmanaged": {
+              "type": "boolean",
+              "default": true,
+              "description": "Include active remote seats and devices not yet leased or pinned to this Kiki session."
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "accesses": [
+          {
+            "kind": "all"
+          }
+        ],
+        "disclosure": "inline",
+        "concurrencySafe": true
+      },
+      {
+        "schemaVersion": 1,
+        "name": "v42_seat_run",
+        "description": "Create, dispatch, steer, interrupt, configure, pin, or unpin a remote Vibe42 coding seat (or remote desktop/mobile target). Waits up to 25s by default in auto mode before returning a deterministic background receipt with seat_ref and cursor. Respects active human takeover leases.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "dispatch",
+                "steer",
+                "interrupt",
+                "control",
+                "pin",
+                "unpin"
+              ],
+              "description": "Seat orchestration or session-lease action."
+            },
+            "seat_ref": {
+              "type": "string",
+              "description": "Target reference: \"<computer>:<terminalId>\" for a seat, \"<computer>:desktop\" for a remote desktop, or \"<computer>:mobile:<deviceId>\" for a mobile target."
+            },
+            "expected_session": {
+              "type": "string",
+              "description": "Optional expected remote agent session ID; fails with session_changed if the seat rotated sessions."
+            },
+            "computer": {
+              "type": "string",
+              "description": "Computer ID or name when dispatching a new seat or pinning a target."
+            },
+            "workspace": {
+              "type": "string",
+              "description": "Workspace ID or name on the target Computer."
+            },
+            "cwd": {
+              "type": "string",
+              "description": "Working directory on the target Computer when not using a named Workspace."
+            },
+            "agent": {
+              "type": "string",
+              "enum": [
+                "claude-code",
+                "codex",
+                "opencode",
+                "omp",
+                "agy",
+                "grok",
+                "kiki"
+              ],
+              "description": "Coding agent launcher for newly created seats."
+            },
+            "isolated_copy": {
+              "type": "boolean",
+              "description": "Run the new seat inside a copy-on-write isolated workspace copy when supported."
+            },
+            "title": {
+              "type": "string",
+              "description": "Display title for a newly opened or pinned seat."
+            },
+            "prompt": {
+              "type": "string",
+              "description": "Self-contained task assignment or follow-up instruction for dispatch/steer."
+            },
+            "steer_mode": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "queue",
+                "interject"
+              ],
+              "default": "auto",
+              "description": "Mid-turn delivery mode: interject for Codex/OMP or queue for sequential turns."
+            },
+            "local_attachments": {
+              "type": "array",
+              "maxItems": 16,
+              "items": {
+                "type": "string",
+                "description": "Workspace-relative or approved local file path to upload and attach to the prompt."
+              },
+              "description": "Local files staged to the remote Computer before sending the prompt."
+            },
+            "wait_mode": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "async",
+                "turn"
+              ],
+              "default": "auto",
+              "description": "auto waits up to 25s streaming progress before returning a background receipt; async returns immediately; turn waits up to 120s."
+            },
+            "control": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "model",
+                    "effort",
+                    "mode",
+                    "compact"
+                  ],
+                  "description": "Seat runtime parameter or compaction trigger."
+                },
+                "value": {
+                  "type": "string",
+                  "description": "Target model ID, effort level, mode name, or compaction note."
+                }
+              },
+              "required": [
+                "kind",
+                "value"
+              ],
+              "additionalProperties": false,
+              "description": "Control payload used when action is \"control\"."
+            },
+            "idempotency_key": {
+              "type": "string",
+              "description": "Optional idempotency key deduplicated in the 64-slot ring buffer to prevent duplicate prompt injection on retry."
+            },
+            "override_human_lease": {
+              "type": "boolean",
+              "default": false,
+              "description": "Only set true when the user explicitly instructed overriding an active human takeover lock."
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        "accesses": [
+          {
+            "kind": "all"
+          }
+        ],
+        "disclosure": "inline"
+      },
+      {
+        "schemaVersion": 1,
+        "name": "v42_seat_inspect",
+        "description": "Inspect structured AgentView turns, transcript rows, folded output tokens, subagent traces, media artifacts, copy-on-write diffs, or live terminal screen lines for a Vibe42 seat.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "seat_ref": {
+              "type": "string",
+              "description": "Seat reference in \"<computer>:<terminalId>\" format."
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "turns",
+                "rows",
+                "more",
+                "subagent",
+                "media",
+                "copy_diff",
+                "terminal_screen"
+              ],
+              "default": "turns",
+              "description": "Inspection view to retrieve."
+            },
+            "since_cursor": {
+              "type": "string",
+              "description": "Monotonic cursor from an earlier receipt for incremental turn or row reads."
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "description": "Maximum turns, rows, or terminal scrollback lines to return."
+            },
+            "more_token": {
+              "type": "string",
+              "description": "Expansion token when mode is \"more\"."
+            },
+            "subagent_id": {
+              "type": "string",
+              "description": "Remote subagent identifier when mode is \"subagent\"."
+            },
+            "media_id": {
+              "type": "string",
+              "description": "Remote media artifact identifier or path when mode is \"media\"."
+            },
+            "copy_id": {
+              "type": "string",
+              "description": "Optional isolated copy number or directory when mode is \"copy_diff\"."
+            },
+            "path": {
+              "type": "string",
+              "description": "Optional relative file path when inspecting a specific file diff in mode \"copy_diff\"."
+            }
+          },
+          "required": [
+            "seat_ref"
+          ],
+          "additionalProperties": false
+        },
+        "accesses": [
+          {
+            "kind": "all"
+          }
+        ],
+        "disclosure": "deferred",
+        "concurrencySafe": true
+      },
+      {
+        "schemaVersion": 1,
+        "name": "v42_seat_resolve",
+        "description": "Answer non-privileged technical questions on a blocked Vibe42 seat or manage its copy-on-write isolated workspace copy. Security rule: approval and login requests can never be approved by the model and require human action in the Vibe42 Workbench.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "seat_ref": {
+              "type": "string",
+              "description": "Seat reference in \"<computer>:<terminalId>\" format."
+            },
+            "expected_session": {
+              "type": "string",
+              "description": "Optional expected remote agent session ID."
+            },
+            "pending_id": {
+              "type": "string",
+              "description": "Identifier of the pending question interaction on the seat."
+            },
+            "resolution": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "answers",
+                    "dismiss"
+                  ],
+                  "description": "Allowed model resolution kinds. Privileged approvals are intentionally excluded."
+                },
+                "answers": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ]
+                  },
+                  "description": "Question key to selected answer(s) map when kind is \"answers\"."
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false,
+              "description": "Structured response for a non-privileged pending question."
+            },
+            "copy_action": {
+              "type": "string",
+              "enum": [
+                "status",
+                "save_snapshot",
+                "apply_to_workspace",
+                "push"
+              ],
+              "description": "Copy-on-write isolated workspace operation."
+            },
+            "copy_message": {
+              "type": "string",
+              "description": "Snapshot note for save_snapshot or branch/commit context for push."
+            },
+            "copy_branch": {
+              "type": "string",
+              "description": "Target Git branch name when copy_action is \"push\"."
+            },
+            "copy_id": {
+              "type": "string",
+              "description": "Optional isolated copy number or directory."
+            }
+          },
+          "required": [
+            "seat_ref"
+          ],
+          "additionalProperties": false
+        },
+        "accesses": [
+          {
+            "kind": "all"
+          }
+        ],
+        "disclosure": "deferred"
+      },
+      {
+        "schemaVersion": 1,
+        "name": "v42_env_transfer",
+        "description": "Transfer or synchronize files between the local workspace and a remote Vibe42 Computer, capture remote desktop or mobile screenshots, and start, stop, or list loopback port-forward tunnels.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "pull",
+                "push",
+                "sync_to_remote",
+                "desktop_screenshot",
+                "mobile_screenshot",
+                "port_forward_start",
+                "port_forward_stop",
+                "port_forward_list"
+              ],
+              "description": "Cross-device file, visual capture, or loopback tunnel action."
+            },
+            "computer": {
+              "type": "string",
+              "description": "Target Vibe42 Computer ID or name."
+            },
+            "local_path": {
+              "type": "string",
+              "description": "Workspace-relative or approved absolute local file/directory path for pull, push, or sync_to_remote."
+            },
+            "remote_path": {
+              "type": "string",
+              "description": "Absolute path on the remote Computer for pull, push, or sync_to_remote."
+            },
+            "mobile_device_id": {
+              "type": "string",
+              "description": "Mobile device ID (for example \"adb:serial\" or simulator UDID) for mobile_screenshot."
+            },
+            "window_id": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Optional remote desktop window ID from desktop windows discovery."
+            },
+            "display_id": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Optional remote desktop display ID."
+            },
+            "remote_port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "description": "Remote loopback TCP port on the Computer for port_forward_start or port_forward_stop."
+            },
+            "local_port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "description": "Optional local loopback TCP port on 127.0.0.1; auto-allocated when omitted."
+            }
+          },
+          "required": [
+            "action",
+            "computer"
+          ],
+          "additionalProperties": false
+        },
+        "accesses": [
+          {
+            "kind": "all"
+          }
+        ],
+        "disclosure": "deferred"
+      }
+    ],
+    "guiSlots": [
+      {
+        "slot": "composer-toolbar",
+        "pluginId": "kiki-v42",
+        "id": "v42-workbench-toolbar",
+        "label": {
+          "default": "Vibe42",
+          "en": "Vibe42",
+          "zh": "远端工位"
+        },
+        "tooltip": {
+          "default": "Open Vibe42 live remote workbench in workspace",
+          "en": "Open Vibe42 live remote workbench in workspace",
+          "zh": "在右侧宽舞台打开 Vibe42 远端实况工作台"
+        },
+        "icon": "terminal",
+        "tone": "neutral",
+        "order": 32,
+        "action": {
+          "kind": "open_plugin_panel",
+          "panelId": "workbench"
+        }
+      },
+      {
+        "slot": "slash-command",
+        "pluginId": "kiki-v42",
+        "id": "v42-workbench-slash",
+        "icon": "terminal",
+        "command": "v42-workbench",
+        "description": {
+          "default": "Open the Vibe42 remote seats, desktop, mobile, and port-forward workbench",
+          "en": "Open the Vibe42 remote seats, desktop, mobile, and port-forward workbench",
+          "zh": "在宽舞台打开 Vibe42 远端工位、桌面、真机与端口转发工作台"
+        },
+        "needsSession": false,
+        "action": {
+          "kind": "open_plugin_panel",
+          "panelId": "workbench"
+        }
+      },
+      {
+        "slot": "tool-card-renderer",
+        "pluginId": "kiki-v42",
+        "id": "v42-tool-card",
+        "icon": "terminal",
+        "toolNames": [
+          "v42_fleet",
+          "v42_seat_run",
+          "v42_seat_inspect",
+          "v42_seat_resolve",
+          "v42_env_transfer"
+        ],
+        "actionVerb": {
+          "default": "Vibe42 Fleet",
+          "en": "Vibe42 Fleet",
+          "zh": "远端编排"
+        },
+        "targetFieldPath": "args.seat_ref",
+        "summaryFields": [
+          {
+            "label": {
+              "default": "Action",
+              "en": "Action",
+              "zh": "动作"
+            },
+            "sourcePath": "args.action",
+            "format": "badge"
+          },
+          {
+            "label": {
+              "default": "Computer",
+              "en": "Computer",
+              "zh": "设备"
+            },
+            "sourcePath": "args.computer",
+            "format": "code"
+          },
+          {
+            "label": {
+              "default": "Mode",
+              "en": "Mode",
+              "zh": "模式"
+            },
+            "sourcePath": "args.mode",
+            "format": "badge"
+          }
+        ],
+        "detailFields": []
+      }
+    ],
+    "routes": [
+      {
+        "method": "GET",
+        "subpath": "/workbench/state",
+        "scopeAcl": "session"
+      },
+      {
+        "method": "POST",
+        "subpath": "/workbench/action",
+        "scopeAcl": "session"
+      }
+    ]
+  }
+}
