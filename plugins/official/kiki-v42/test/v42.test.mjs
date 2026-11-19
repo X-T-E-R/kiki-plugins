@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
-import { mkdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import readline from 'node:readline';
 import test from 'node:test';
@@ -1177,6 +1177,99 @@ test('Gate 9: Companion-root auto-discovery, --agent-name kiki, resources termin
     };
     await client.terminalSend('mac-studio', '@3', { text: 'echo hi', keys: ['tab'], enter: true });
     assert.deepEqual(capturedArgvs[0], ['term', 'send', '--key', 'tab', '--enter', 'mac-studio', '@3', '--', 'echo hi']);
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+});
+
+test('P1: copyTransfer/syncTransfer immediately unlink newly created 0-byte transfer locks without racing concurrent transfers, and startup resolveTarget prunes stale locks', async () => {
+  const scratch = path.join(testScratchBase, `transfer-lock-cleanup-${Date.now()}`);
+  const compRoot = path.join(scratch, 'companion');
+  const cliDir = path.join(compRoot, 'cli');
+  await mkdir(path.join(compRoot, 'data'), { recursive: true });
+  await mkdir(cliDir, { recursive: true });
+
+  const listLocks = async () => (await readdir(cliDir)).filter((name) => /^transfer-[0-9a-f]+\.lock$/i.test(name)).sort();
+
+  try {
+    // 1. One-shot startup / v42_fleet resolveTarget prunes pre-existing stale (>60s) locks without calling cp/sync
+    const startupStale = path.join(cliDir, 'transfer-0000111122223333.lock');
+    await writeFile(startupStale, '', 'utf8');
+    const twoMinAgo = new Date(Date.now() - 120_000);
+    await utimes(startupStale, twoMinAgo, twoMinAgo);
+
+    const client = new V42Client({
+      env: { KIKI_V42_BIN: mockV42Script, V42_COMPANION_ROOT: compRoot },
+    });
+    const resolved = await client.resolveTarget({ skipWhoamiProbe: true });
+    assert.equal(path.resolve(resolved.companionRoot), path.resolve(compRoot));
+    // Wait briefly for the one-shot async startup prune
+    for (let i = 0; i < 20; i += 1) {
+      if ((await listLocks()).length === 0) break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    assert.deepEqual(await listLocks(), [], 'resolveTarget must prune stale >60s transfer locks on first resolution');
+
+    // 2. Successful copyTransfer immediately leaves 0 newly created transfer-*.lock files
+    client.runJson = async (argv) => {
+      if (argv[0] === 'cp') {
+        await writeFile(path.join(cliDir, 'transfer-a1b2c3d4e5f60001.lock'), '', 'utf8');
+        return { copied: 1 };
+      }
+      if (argv[0] === 'sync') {
+        await writeFile(path.join(cliDir, 'transfer-a1b2c3d4e5f60002.lock'), '', 'utf8');
+        throw new Error('simulated sync failure');
+      }
+      return {};
+    };
+    const cpRes = await client.copyTransfer('local/a.txt', 'mac-studio:/tmp/a.txt', { skipWhoamiProbe: true });
+    assert.deepEqual(cpRes, { copied: 1 });
+    assert.deepEqual(await listLocks(), [], 'copyTransfer must leave 0 residual transfer-*.lock files immediately after settling');
+
+    // 3. Failed/aborted syncTransfer also immediately leaves 0 newly created transfer-*.lock files
+    await assert.rejects(
+      () => client.syncTransfer('local/dir', 'mac-studio:/tmp/dir', { skipWhoamiProbe: true }),
+      /simulated sync failure/,
+    );
+    assert.deepEqual(await listLocks(), [], 'failed syncTransfer must leave 0 residual transfer-*.lock files immediately after settling');
+
+    // 4. Concurrent cp + sync do not delete each other's active lock while the second is in flight,
+    //    and preserve a pre-existing fresh (<60s) external lock while cleaning both newly created locks once active hits 0
+    const externalFreshLock = 'transfer-eeeeeeeeeeeeeeee.lock';
+    await writeFile(path.join(cliDir, externalFreshLock), '', 'utf8');
+
+    let releaseSecond;
+    const secondGate = new Promise((resolve) => { releaseSecond = resolve; });
+    const lockA = 'transfer-1111111111111111.lock';
+    const lockB = 'transfer-2222222222222222.lock';
+    let firstCreated;
+    const bothStarted = new Promise((resolve) => { firstCreated = resolve; });
+    let startedCount = 0;
+
+    client.runJson = async (argv) => {
+      if (argv[0] === 'cp') {
+        await writeFile(path.join(cliDir, lockA), '', 'utf8');
+        startedCount += 1;
+        if (startedCount === 2) firstCreated();
+        await bothStarted;
+        return { ok: 'cp' };
+      }
+      await writeFile(path.join(cliDir, lockB), '', 'utf8');
+      startedCount += 1;
+      if (startedCount === 2) firstCreated();
+      await secondGate;
+      return { ok: 'sync' };
+    };
+
+    const pCp = client.copyTransfer('local/1', 'mac-studio:/tmp/1', { skipWhoamiProbe: true });
+    const pSync = client.syncTransfer('local/2', 'mac-studio:/tmp/2', { skipWhoamiProbe: true });
+    await pCp;
+    // While pSync is still active, lockB MUST remain untouched!
+    assert.ok((await listLocks()).includes(lockB), 'Active concurrent transfer lock must not be deleted before active count hits 0');
+    releaseSecond();
+    await pSync;
+    // Once active count hits 0, both lockA and lockB are gone, while external fresh lock remains safe
+    assert.deepEqual(await listLocks(), [externalFreshLock], 'All newly created locks must be unlinked once concurrent batch hits active=0');
   } finally {
     await rm(scratch, { recursive: true, force: true });
   }

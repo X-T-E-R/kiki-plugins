@@ -116,7 +116,25 @@ async function isDirectory(candidate) {
   }
 }
 
-export async function pruneStaleTransferLocks(companionRoot, { maxAgeMs = 3_600_000 } = {}) {
+const TRANSFER_LOCK_RE = /^transfer-[0-9a-f]+\.lock$/i;
+
+async function listTransferLocks(companionRoot) {
+  const names = new Set();
+  if (!companionRoot || typeof companionRoot !== 'string') return names;
+  const cliDir = path.join(path.resolve(companionRoot), 'cli');
+  try {
+    const entries = await readdir(cliDir);
+    for (const name of entries) {
+      if (TRANSFER_LOCK_RE.test(name)) names.add(name);
+    }
+  } catch {}
+  return names;
+}
+
+export async function pruneStaleTransferLocks(
+  companionRoot,
+  { maxAgeMs = 3_600_000, excludeNames = null } = {},
+) {
   if (!companionRoot || typeof companionRoot !== 'string') return { removed: 0 };
   const cliDir = path.join(path.resolve(companionRoot), 'cli');
   let entries;
@@ -125,14 +143,17 @@ export async function pruneStaleTransferLocks(companionRoot, { maxAgeMs = 3_600_
   } catch {
     return { removed: 0 };
   }
-  const cutoff = Date.now() - Math.max(60_000, Number(maxAgeMs) || 3_600_000);
+  const numericAge = Number(maxAgeMs);
+  const immediate = Number.isFinite(numericAge) && numericAge <= 0;
+  const cutoff = immediate ? Number.POSITIVE_INFINITY : Date.now() - Math.max(1_000, Number.isFinite(numericAge) ? numericAge : 3_600_000);
   let removed = 0;
   for (const name of entries) {
-    if (!/^transfer-[0-9a-f]+\.lock$/i.test(name)) continue;
+    if (!TRANSFER_LOCK_RE.test(name)) continue;
+    if (excludeNames && excludeNames.has(name)) continue;
     const fullPath = path.join(cliDir, name);
     try {
       const info = await stat(fullPath);
-      if (info.isFile() && info.size === 0 && info.mtimeMs < cutoff) {
+      if (info.isFile() && info.size === 0 && (immediate || info.mtimeMs < cutoff)) {
         await rm(fullPath, { force: true });
         removed += 1;
       }
@@ -1038,14 +1059,26 @@ export class V42Client {
     this.resourcesCache = new Map();
     this.resourcesInFlight = new Map();
     this.transferInFlight = new Map();
+    this.transferLockTracker = new Map();
+    this.prunedCompanionRoots = new Set();
   }
 
   async resolveTarget(context = {}) {
-    return resolveV42Target({
+    const target = await resolveV42Target({
       settings: context.settings,
       env: this.env,
       skipWhoamiProbe: context.skipWhoamiProbe,
     });
+    if (target?.companionRoot) {
+      const normalizedRoot = path.resolve(target.companionRoot);
+      if (!this.prunedCompanionRoots.has(normalizedRoot)) {
+        this.prunedCompanionRoots.add(normalizedRoot);
+        if ((this.transferLockTracker.get(normalizedRoot)?.active ?? 0) === 0) {
+          void pruneStaleTransferLocks(normalizedRoot, { maxAgeMs: 60_000 }).catch(() => {});
+        }
+      }
+    }
+    return target;
   }
 
   async resolveBinary(context = {}) {
@@ -1418,46 +1451,69 @@ export class V42Client {
     return this.runJson(argv, { ...ctx, resolvedTarget: target });
   }
 
-  async copyTransfer(source, destination, { recursive = true, restart = false, ...ctx } = {}) {
-    const key = `cp\0${source}\0${destination}\0${recursive ? '1' : '0'}`;
+  async runTransferWithLockCleanup(key, argv, ctx, defaultTimeoutMs) {
     if (this.transferInFlight.has(key)) {
       return this.transferInFlight.get(key);
     }
     const target = await this.resolveTarget(ctx);
-    const argv = ['cp'];
-    if (recursive) argv.push('-r');
-    if (restart) argv.push('--restart');
-    argv.push(String(source), String(destination));
-    const run = this.runJson(argv, { ...ctx, resolvedTarget: target, timeoutMs: ctx.timeoutMs || 120_000 })
-      .finally(() => {
-        this.transferInFlight.delete(key);
-        if (target?.companionRoot) {
-          void pruneStaleTransferLocks(target.companionRoot).catch(() => {});
+    const companionRoot = target?.companionRoot ? path.resolve(target.companionRoot) : null;
+    let tracker = null;
+    if (companionRoot) {
+      tracker = this.transferLockTracker.get(companionRoot);
+      if (!tracker) {
+        const preExisting = await listTransferLocks(companionRoot);
+        tracker = this.transferLockTracker.get(companionRoot);
+        if (!tracker) {
+          tracker = { active: 0, preExisting };
+          this.transferLockTracker.set(companionRoot, tracker);
         }
-      });
+      }
+      tracker.active += 1;
+    }
+    const run = (async () => {
+      try {
+        return await this.runJson(argv, {
+          ...ctx,
+          resolvedTarget: target,
+          timeoutMs: ctx.timeoutMs || defaultTimeoutMs,
+        });
+      } finally {
+        this.transferInFlight.delete(key);
+        if (companionRoot && tracker) {
+          tracker.active = Math.max(0, tracker.active - 1);
+          if (tracker.active === 0) {
+            this.transferLockTracker.delete(companionRoot);
+            try {
+              await pruneStaleTransferLocks(companionRoot, {
+                maxAgeMs: 0,
+                excludeNames: tracker.preExisting,
+              });
+              await pruneStaleTransferLocks(companionRoot, { maxAgeMs: 60_000 });
+            } catch {}
+          }
+        }
+      }
+    })();
     this.transferInFlight.set(key, run);
     return run;
   }
 
+  async copyTransfer(source, destination, { recursive = true, restart = false, ...ctx } = {}) {
+    const key = `cp\0${source}\0${destination}\0${recursive ? '1' : '0'}`;
+    const argv = ['cp'];
+    if (recursive) argv.push('-r');
+    if (restart) argv.push('--restart');
+    argv.push(String(source), String(destination));
+    return this.runTransferWithLockCleanup(key, argv, ctx, 120_000);
+  }
+
   async syncTransfer(source, destination, { deleteExtra = false, restart = false, ...ctx } = {}) {
     const key = `sync\0${source}\0${destination}\0${deleteExtra ? '1' : '0'}`;
-    if (this.transferInFlight.has(key)) {
-      return this.transferInFlight.get(key);
-    }
-    const target = await this.resolveTarget(ctx);
     const argv = ['sync'];
     if (deleteExtra) argv.push('--delete');
     if (restart) argv.push('--restart');
     argv.push(String(source), String(destination));
-    const run = this.runJson(argv, { ...ctx, resolvedTarget: target, timeoutMs: ctx.timeoutMs || 180_000 })
-      .finally(() => {
-        this.transferInFlight.delete(key);
-        if (target?.companionRoot) {
-          void pruneStaleTransferLocks(target.companionRoot).catch(() => {});
-        }
-      });
-    this.transferInFlight.set(key, run);
-    return run;
+    return this.runTransferWithLockCleanup(key, argv, ctx, 180_000);
   }
 
   async listRemoteDir(location, { all = false, long = true, ...ctx } = {}) {
