@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.repository_owner == 'X-T-E-R' && github.actor == 'X-T-E-R' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","ccp","cpu"]') || 'ubuntu-24.04' }}
     outputs:
       matrix: ${{ steps.changes.outputs.matrix }}
     steps:
@@ -26,7 +26,7 @@ jobs:
           echo "matrix=$(node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync("changes.json")).matrix))')" >> "$GITHUB_OUTPUT"
   package:
     needs: changes
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.repository_owner == 'X-T-E-R' && github.actor == 'X-T-E-R' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","ccp","cpu"]') || 'ubuntu-24.04' }}
     strategy:
       fail-fast: false
       matrix:
@@ -45,7 +45,7 @@ jobs:
           PACKAGE: ${{ matrix.package }}
         run: node scripts/check.mjs "$PACKAGE"
   archives:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.repository_owner == 'X-T-E-R' && github.actor == 'X-T-E-R' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","ccp","cpu"]') || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@v4
         with:
