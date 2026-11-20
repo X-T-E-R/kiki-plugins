@@ -120,10 +120,24 @@ export function createPhoneSlotHandlers(previewService, { pluginId = KIKI_PHONE_
         const state = typeof previewService.peekState === 'function'
           ? await previewService.peekState({ settings, maxAgeMs: 15_000 })
           : await previewService.listState({ settings, fast: true });
-        const online = state.devices.filter((d) => d.state === 'online');
+        const rankType = (t) => (t === 'real' ? 0 : 1);
+        const online = (Array.isArray(state?.devices) ? state.devices : [])
+          .filter((d) => d && d.state === 'online')
+          .sort((a, b) =>
+            rankType(a.type) - rankType(b.type)
+            || String(a.name || a.id).localeCompare(String(b.name || b.id))
+            || String(a.platform || '').localeCompare(String(b.platform || ''))
+            || String(a.id || '').localeCompare(String(b.id || '')),
+          );
         if (online.length === 0) return { sections: [] };
         const summary = online
-          .map((d) => `${d.name} (${d.platform}, id=${d.id}, ${d.screenSize.width}x${d.screenSize.height}${state.selected?.id === d.id ? ', selected' : ''})`)
+          .map((d) => {
+            const width = d.screenSize?.width ?? (d.platform === 'ios' ? 1179 : 1080);
+            const height = d.screenSize?.height ?? (d.platform === 'ios' ? 2556 : 2400);
+            const isSelected = state.selected?.id === d.id
+              && (!state.selected?.platform || state.selected.platform === d.platform);
+            return `${d.name} (${d.platform}, id=${d.id}, ${width}x${height}${isSelected ? ', selected' : ''})`;
+          })
           .join('; ');
         return {
           sections: [

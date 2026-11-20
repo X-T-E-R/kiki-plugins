@@ -74,6 +74,8 @@ export function createPhonePreviewService(options?: {
   loadDriverModule?: (ctx: { dataDir: string; adbBinary?: string }) => Promise<unknown>;
   scrcpyManager?: Record<string, (...args: unknown[]) => unknown>;
   metadataTtlMs?: number;
+  fastStateTtlMs?: number;
+  fastProbeTimeoutMs?: number;
 }): {
   activate(context?: Record<string, unknown>): Promise<void>;
   peekState(options?: { settings?: Record<string, unknown>; maxAgeMs?: number; waitBudgetMs?: number }): Promise<Record<string, unknown>>;

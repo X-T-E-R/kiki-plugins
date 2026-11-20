@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   fitDeviceFrame,
   normalizePointerToDevice,
@@ -734,4 +735,274 @@ test('panel.html stays within the Kiki 256 KiB single-file srcDoc limit, speaks 
     assert.doesNotMatch(html, /protocol:\s*'kiki\.panel\.v1'/);
     assert.doesNotMatch(html, /[\u{1F300}-\u{1FAFF}]/u);
     assert.ok(SCRCPY_SERVER_SHA256.length === 64);
+});
+
+async function createRepoScratchDir(prefix) {
+  const parent = fileURLToPath(new URL('../../../../.tmp/phone-preview-tests', import.meta.url));
+  await mkdir(parent, { recursive: true });
+  return mkdtemp(join(parent, prefix));
+}
+
+test('listState({ fast: true }) and E5:prompt-context retain cached rich metadata when mobilecli times out while propagating live ADB state transitions', async () => {
+  const dataDir = await createRepoScratchDir('rich-cache-');
+  let mobilecliShouldHang = false;
+  let mobilecliCalls = 0;
+  let getpropCalls = 0;
+  let adbRows = [
+    'SYNTH-SER-01 device product:synth_p1 model:TEST_CODE_01 device:d1 transport_id:1',
+    'SYNTH-SER-02 device product:synth_p2 model:TEST_CODE_02 device:d2 transport_id:2',
+  ];
+
+  const preview = createPhonePreviewService({
+    dataDir,
+    hostPlatform: 'win32',
+    fastStateTtlMs: 0,
+    fastProbeTimeoutMs: 50,
+    loadDriverModule: async () => ({
+      MobilecliDriver: class FlakyDriver {
+        async listDevices() {
+          mobilecliCalls += 1;
+          if (mobilecliShouldHang) {
+            await new Promise((resolve) => {
+              const timer = setTimeout(resolve, 400);
+              timer.unref?.();
+            });
+            return [];
+          }
+          return [
+            {
+              id: 'SYNTH-SER-01',
+              name: 'Synth Flagship Ultra',
+              platform: 'android',
+              type: 'real',
+              state: 'online',
+              version: '15',
+              orientation: 'portrait',
+              screenSize: { width: 1440, height: 3200 },
+            },
+            {
+              id: 'SYNTH-SER-02',
+              name: 'Synth Compact Pro',
+              platform: 'android',
+              type: 'real',
+              state: 'online',
+              version: '14',
+              orientation: 'landscape',
+              screenSize: { width: 1260, height: 2800 },
+            },
+          ];
+        }
+        async dispose() {}
+      },
+    }),
+    executeFile: async (file, argv) => {
+      assert.equal(file, '/mock/adb');
+      if (argv[0] === 'devices' && argv[1] === '-l') {
+        return { stdout: `List of devices attached\n${adbRows.join('\n')}\n`, stderr: '' };
+      }
+      if (argv.includes('getprop') || argv.includes('wm')) {
+        getpropCalls += 1;
+        return { stdout: '', stderr: '' };
+      }
+      throw new Error(`Unexpected adb command: ${argv.join(' ')}`);
+    },
+  });
+
+  try {
+    const slots = createPhoneSlotHandlers(preview);
+    const settings = { adbPath: '/mock/adb' };
+
+    // Probe 1: mobilecli succeeds and populates per-device rich metadata cache
+    const state1 = await preview.listState({ settings, fast: true });
+    assert.equal(state1.ok, true);
+    assert.equal(state1.devices.length, 2);
+    const dev1Before = state1.devices.find((d) => d.id === 'SYNTH-SER-01');
+    const dev2Before = state1.devices.find((d) => d.id === 'SYNTH-SER-02');
+    assert.equal(dev1Before.name, 'Synth Flagship Ultra');
+    assert.deepEqual(dev1Before.screenSize, { width: 1440, height: 3200 });
+    assert.equal(dev2Before.name, 'Synth Compact Pro');
+    assert.deepEqual(dev2Before.screenSize, { width: 1260, height: 2800 });
+    assert.equal(dev2Before.orientation, 'landscape');
+
+    const e5Baseline = await slots['E5:prompt-context']({}, { settings });
+    assert.equal(e5Baseline.sections.length, 1);
+    assert.match(e5Baseline.sections[0].content, /Synth Flagship Ultra \(android, id=SYNTH-SER-01, 1440x3200/);
+    assert.match(e5Baseline.sections[0].content, /Synth Compact Pro \(android, id=SYNTH-SER-02, 1260x2800/);
+
+    // Probe 2: mobilecli times out under fast:true while adb devices -l reports raw model:TEST_CODE_01/02
+    mobilecliShouldHang = true;
+    const state2 = await preview.listState({ settings, fast: true });
+    assert.match(state2.diagnostics.mobilecliError, /timed out/);
+    const dev1AfterTimeout = state2.devices.find((d) => d.id === 'SYNTH-SER-01');
+    const dev2AfterTimeout = state2.devices.find((d) => d.id === 'SYNTH-SER-02');
+    assert.equal(dev1AfterTimeout.name, 'Synth Flagship Ultra');
+    assert.deepEqual(dev1AfterTimeout.screenSize, { width: 1440, height: 3200 });
+    assert.equal(dev1AfterTimeout.version, '15');
+    assert.equal(dev2AfterTimeout.name, 'Synth Compact Pro');
+    assert.deepEqual(dev2AfterTimeout.screenSize, { width: 1260, height: 2800 });
+    assert.equal(dev2AfterTimeout.orientation, 'landscape');
+    assert.equal(getpropCalls, 0, 'Already mobilecli-enriched serials must not spawn adb shell getprop');
+
+    const e5AfterTimeout = await slots['E5:prompt-context']({}, { settings });
+    assert.deepEqual(e5AfterTimeout, e5Baseline);
+    assert.equal(e5AfterTimeout.sections[0].content, e5Baseline.sections[0].content);
+
+    // Repeated peekState + listState({ fast: true }) cycles alternating timeout/success produce byte-identical E5 output
+    for (const hang of [true, false, true]) {
+      mobilecliShouldHang = hang;
+      await preview.listState({ settings, fast: true });
+      const peeked = await preview.peekState({ settings, maxAgeMs: 60_000 });
+      assert.equal(peeked.devices.find((d) => d.id === 'SYNTH-SER-01')?.name, 'Synth Flagship Ultra');
+      const e5Cycle = await slots['E5:prompt-context']({}, { settings });
+      assert.equal(e5Cycle.sections[0].content, e5Baseline.sections[0].content);
+    }
+    assert.ok(mobilecliCalls >= 5);
+
+    // Probe 3: while mobilecli times out, adb state transitions online -> offline / unauthorized propagate accurately
+    mobilecliShouldHang = true;
+    adbRows = [
+      'SYNTH-SER-01 offline transport_id:1',
+      'SYNTH-SER-02 unauthorized usb:1-2 transport_id:2',
+    ];
+    const state3 = await preview.listState({ settings, fast: true });
+    const dev1Offline = state3.devices.find((d) => d.id === 'SYNTH-SER-01');
+    const dev2Unauth = state3.devices.find((d) => d.id === 'SYNTH-SER-02');
+    assert.equal(dev1Offline.state, 'offline');
+    assert.equal(dev1Offline.name, 'Synth Flagship Ultra');
+    assert.deepEqual(dev1Offline.screenSize, { width: 1440, height: 3200 });
+    assert.equal(dev2Unauth.state, 'unauthorized');
+    assert.equal(dev2Unauth.name, 'Synth Compact Pro');
+    assert.deepEqual(dev2Unauth.screenSize, { width: 1260, height: 2800 });
+
+    const e5Offline = await slots['E5:prompt-context']({}, { settings });
+    assert.deepEqual(e5Offline, { sections: [] });
+
+    // Probe 4: devices return online while mobilecli still times out -> byte-identical E5 prompt restored
+    adbRows = [
+      'SYNTH-SER-01 device product:synth_p1 model:TEST_CODE_01 device:d1 transport_id:1',
+      'SYNTH-SER-02 device product:synth_p2 model:TEST_CODE_02 device:d2 transport_id:2',
+    ];
+    const state4 = await preview.listState({ settings, fast: true });
+    assert.equal(state4.devices.every((d) => d.state === 'online'), true);
+    const e5Restored = await slots['E5:prompt-context']({}, { settings });
+    assert.equal(e5Restored.sections[0].content, e5Baseline.sections[0].content);
+    assert.equal(getpropCalls, 0);
+  } finally {
+    await preview.dispose();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('cold ADB-only fast probes enrich marketname + wm size once per serial and stay byte-identical after slow mobilecli completes', async () => {
+  const dataDir = await createRepoScratchDir('cold-adb-enrich-');
+  let mobilecliReady = false;
+  const shellInvocations = [];
+
+  const preview = createPhonePreviewService({
+    dataDir,
+    hostPlatform: 'win32',
+    fastStateTtlMs: 0,
+    fastProbeTimeoutMs: 50,
+    loadDriverModule: async () => ({
+      MobilecliDriver: class ColdDriver {
+        async listDevices() {
+          if (!mobilecliReady) {
+            await new Promise((resolve) => {
+              const timer = setTimeout(resolve, 400);
+              timer.unref?.();
+            });
+            return [];
+          }
+          return [
+            {
+              id: 'SYNTH-COLD-01',
+              name: 'Synth Cold Flagship',
+              platform: 'android',
+              type: 'real',
+              state: 'online',
+              screenSize: { width: 1200, height: 2670 },
+            },
+            {
+              id: 'SYNTH-COLD-02',
+              name: 'Synth Fallback Model',
+              platform: 'android',
+              type: 'real',
+              state: 'online',
+              screenSize: { width: 1080, height: 2340 },
+            },
+          ];
+        }
+        async dispose() {}
+      },
+    }),
+    executeFile: async (file, argv) => {
+      assert.equal(file, '/mock/adb');
+      if (argv[0] === 'devices' && argv[1] === '-l') {
+        return {
+          stdout: [
+            'List of devices attached',
+            'SYNTH-COLD-01 device product:cold1 model:TEST_COLD_01 device:c1',
+            'SYNTH-COLD-02 device product:cold2 model:TEST_COLD_02 device:c2',
+            '',
+          ].join('\n'),
+          stderr: '',
+        };
+      }
+      if (argv[0] === '-s' && argv[2] === 'shell') {
+        const serial = argv[1];
+        const cmd = argv.slice(3).join(' ');
+        shellInvocations.push(`${serial}:${cmd}`);
+        if (serial === 'SYNTH-COLD-01' && cmd === 'getprop ro.product.marketname') {
+          return { stdout: 'Synth Cold Flagship\r\n', stderr: '' };
+        }
+        if (serial === 'SYNTH-COLD-01' && cmd === 'wm size') {
+          return { stdout: 'Physical size: 1440x3200\nOverride size: 1200x2670\n', stderr: '' };
+        }
+        if (serial === 'SYNTH-COLD-02' && cmd === 'getprop ro.product.marketname') {
+          return { stdout: '\n', stderr: '' };
+        }
+        if (serial === 'SYNTH-COLD-02' && cmd === 'getprop ro.product.model') {
+          return { stdout: 'Synth Fallback Model\n', stderr: '' };
+        }
+        if (serial === 'SYNTH-COLD-02' && cmd === 'wm size') {
+          return { stdout: 'Physical size: 1080x2340\n', stderr: '' };
+        }
+      }
+      throw new Error(`Unexpected adb command: ${argv.join(' ')}`);
+    },
+  });
+
+  try {
+    const slots = createPhoneSlotHandlers(preview);
+    const settings = { adbPath: '/mock/adb' };
+
+    // Cold fast probe 1: mobilecli times out -> one-shot ADB getprop + wm size enrichment
+    const cold1 = await preview.listState({ settings, fast: true });
+    const c1 = cold1.devices.find((d) => d.id === 'SYNTH-COLD-01');
+    const c2 = cold1.devices.find((d) => d.id === 'SYNTH-COLD-02');
+    assert.equal(c1.name, 'Synth Cold Flagship');
+    assert.deepEqual(c1.screenSize, { width: 1200, height: 2670 });
+    assert.equal(c2.name, 'Synth Fallback Model');
+    assert.deepEqual(c2.screenSize, { width: 1080, height: 2340 });
+
+    const e5Cold1 = await slots['E5:prompt-context']({}, { settings });
+    const countAfterFirstProbe = shellInvocations.length;
+    assert.equal(countAfterFirstProbe, 5, 'Expected marketname+wm for serial 1 and marketname+model+wm for serial 2');
+
+    // Cold fast probe 2 & 3: mobilecli still times out -> zero additional getprop/wm calls, byte-identical E5
+    await preview.listState({ settings, fast: true });
+    await preview.listState({ settings, fast: true });
+    assert.equal(shellInvocations.length, countAfterFirstProbe, 'Repeated fast probes must not re-spawn adb shell getprop');
+    const e5Cold2 = await slots['E5:prompt-context']({}, { settings });
+    assert.equal(e5Cold2.sections[0].content, e5Cold1.sections[0].content);
+
+    // Slow mobilecli finally completes -> zero prompt-context flap
+    mobilecliReady = true;
+    await preview.listState({ settings, fast: false });
+    const e5AfterMobilecli = await slots['E5:prompt-context']({}, { settings });
+    assert.equal(e5AfterMobilecli.sections[0].content, e5Cold1.sections[0].content);
+  } finally {
+    await preview.dispose();
+    await rm(dataDir, { recursive: true, force: true });
+  }
 });
