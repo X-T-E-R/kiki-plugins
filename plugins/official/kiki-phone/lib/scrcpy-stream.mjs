@@ -75,6 +75,8 @@ export const ANDROID_KEYCODE = Object.freeze({
 
 const POINTER_ID_GENERIC_FINGER = -2n;
 const CONTROL_IDLE_TTL_MS = 90_000;
+const MAX_REPLAY_EPOCH_DELTAS = 12;
+const DEFAULT_CLIENT_READY_FALLBACK_MS = 250;
 
 export function sha256Hex(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
@@ -1150,7 +1152,7 @@ export function createScrcpyManager({
               keyEpochDeltas = [];
               epochBroken = false;
             } else if (lastKeyPacket && !epochBroken) {
-              if (keyEpochDeltas.length < 60) {
+              if (keyEpochDeltas.length < MAX_REPLAY_EPOCH_DELTAS) {
                 keyEpochDeltas.push(pkt);
               } else {
                 keyEpochDeltas = [];
@@ -1239,7 +1241,9 @@ export function createScrcpyManager({
           if (!msg || typeof msg !== 'object') return;
           switch (msg.type) {
             case 'clientReady':
-              replayCurrentEpoch();
+              if (!streamFlushed || msg.force === true) {
+                replayCurrentEpoch();
+              }
               break;
             case 'button':
             case 'key':
@@ -1302,7 +1306,7 @@ export function createScrcpyManager({
       maxWidth = 1080,
       bitRate = 8_000_000,
       fallbackSize,
-      clientReadyFallbackMs = 60,
+      clientReadyFallbackMs = DEFAULT_CLIENT_READY_FALLBACK_MS,
     },
     session,
     context = {},

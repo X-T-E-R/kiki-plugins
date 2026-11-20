@@ -1613,10 +1613,33 @@
     sendStreamJson({ type: 'resetVideo' });
   }
 
-  async function ensureVideoDecoder(codecString) {
+  async function ensureVideoDecoder(codecString, gen) {
     const codec = codecString || 'avc1.640020';
+    if (
+      gen !== state.streamGeneration
+      || !state.streamActive
+      || (state.configuringCodec && state.configuringCodec !== codec)
+    ) {
+      return null;
+    }
     if (state.videoDecoder && state.videoDecoder.state === 'configured' && state.configuredCodec === codec) {
       return state.videoDecoder;
+    }
+    let config = { codec, optimizeForLatency: true, hardwareAcceleration: 'prefer-hardware' };
+    try {
+      const sup = await VideoDecoder.isConfigSupported(config);
+      if (!sup?.supported) {
+        config = { codec, optimizeForLatency: true, hardwareAcceleration: 'no-preference' };
+      }
+    } catch {
+      config = { codec, optimizeForLatency: true, hardwareAcceleration: 'no-preference' };
+    }
+    if (
+      gen !== state.streamGeneration
+      || !state.streamActive
+      || (state.configuringCodec && state.configuringCodec !== codec)
+    ) {
+      return null;
     }
     if (!state.videoDecoder || state.videoDecoder.state === 'closed') {
       state.videoDecoder = new VideoDecoder({
@@ -1629,18 +1652,6 @@
           requestStreamVideoReset();
         },
       });
-    }
-    let config = { codec, optimizeForLatency: true, hardwareAcceleration: 'prefer-hardware' };
-    try {
-      const sup = await VideoDecoder.isConfigSupported(config);
-      if (!sup?.supported) {
-        config = { codec, optimizeForLatency: true, hardwareAcceleration: 'no-preference' };
-      }
-    } catch {
-      config = { codec, optimizeForLatency: true, hardwareAcceleration: 'no-preference' };
-    }
-    if (!state.videoDecoder || state.videoDecoder.state === 'closed') {
-      return null;
     }
     state.videoDecoder.configure(config);
     state.configuredCodec = codec;
@@ -1662,7 +1673,7 @@
       return state.configuringDecoderPromise;
     }
     state.configuringCodec = codec;
-    const promise = ensureVideoDecoder(codec).then((dec) => {
+    const promise = ensureVideoDecoder(codec, gen).then((dec) => {
       if (gen !== state.streamGeneration || !state.streamActive || !dec || dec.state !== 'configured') return;
       if (state.configuringCodec !== codec) return;
       state.configuringDecoderPromise = null;
@@ -1686,9 +1697,8 @@
         requestStreamVideoReset();
       }
     }).catch(() => {
-      if (state.configuringCodec === codec) {
-        state.configuringDecoderPromise = null;
-      }
+      if (gen !== state.streamGeneration || state.configuringCodec !== codec) return;
+      state.configuringDecoderPromise = null;
       state.pendingDecodeChunks.length = 0;
       state.waitingForKeyframe = true;
     });
@@ -2690,7 +2700,7 @@
     } else if (state.live) {
       if (state.streamActive) {
         state.waitingForKeyframe = true;
-        sendStreamJson({ type: 'clientReady' });
+        sendStreamJson({ type: 'clientReady', force: true });
       } else {
         scheduleNextPoll(10);
       }

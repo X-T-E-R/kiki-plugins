@@ -1150,20 +1150,35 @@ test('scrcpy-stream replays latest keyframe epoch on clientReady, falls back for
     assert.equal(sent[1].readDoubleBE(8), 17666);
     assert.equal(sent[2].readDoubleBE(8), 34333);
 
-    // Overflowing delta epoch (>60 deltas) then receiving a late clientReady sends keyframe + RESET_VIDEO
-    for (let i = 0; i < 62; i++) {
+    // Duplicate non-forced clientReady after initial flush must be a no-op
+    sent.length = 0;
+    onTextHandler(JSON.stringify({ type: 'clientReady' }));
+    assert.equal(sent.length, 0, 'Duplicate non-forced clientReady must not replay');
+
+    // Sending 10 more deltas reaches exact cap (12 deltas -> 13 frames total <= 13), so forced replay stays bounded
+    for (let i = 0; i < 10; i++) {
       videoSocket.emit('data', makeFramePacket({ key: false, ptsUs: BigInt(50000 + i * 16666), payload: Buffer.from([0x00, 0x00, 0x00, 0x01, 0x41, i & 0xff]) }));
     }
     sent.length = 0;
     controlSocket.writes.length = 0;
-    onTextHandler(JSON.stringify({ type: 'clientReady' }));
-    assert.equal(sent.length, 1, 'Broken delta epoch replays only lastKeyPacket and requests RESET_VIDEO');
+    onTextHandler(JSON.stringify({ type: 'clientReady', force: true }));
+    assert.equal(sent.length, 13, 'Explicit force replay at cap must emit 1 keyframe + 12 deltas (<=13)');
+    assert.equal(sent[0][1], 1);
+    assert.equal(controlSocket.writes.some((w) => w.length === 1 && w[0] === CONTROL_MSG.RESET_VIDEO), false);
+
+    // 13th delta overflows cap (>12) -> forced clientReady sends only lastKeyPacket + RESET_VIDEO (never bursts >13)
+    videoSocket.emit('data', makeFramePacket({ key: false, ptsUs: 250000n, payload: Buffer.from([0x00, 0x00, 0x00, 0x01, 0x41, 0xfe]) }));
+    sent.length = 0;
+    controlSocket.writes.length = 0;
+    onTextHandler(JSON.stringify({ type: 'clientReady', force: true }));
+    assert.equal(sent.length, 1, 'Broken delta epoch (>12) replays only lastKeyPacket and requests RESET_VIDEO');
     assert.equal(sent[0][1], 1);
     assert.ok(controlSocket.writes.some((w) => w.length === 1 && w[0] === CONTROL_MSG.RESET_VIDEO));
     abort1.abort();
 
-    // Legacy client that never sends clientReady receives keyframe automatically via fallback timer
+    // Legacy client: fallback timer flushes once; late non-forced clientReady is a no-op; force:true replays
     const legacySent = [];
+    let legacyOnText = null;
     const abort2 = new AbortController();
     await scrcpyManager.openVideoStream(
       { adbBinary: '/mock/adb', serial: 'SYNTH-STREAM-02', clientReadyFallbackMs: 25 },
@@ -1171,7 +1186,7 @@ test('scrcpy-stream replays latest keyframe epoch on clientReady, falls back for
         sendBinary: (pkt) => { legacySent.push(Buffer.from(pkt)); return true; },
         sendText: () => true,
         close: () => {},
-        onText: () => () => {},
+        onText: (fn) => { legacyOnText = fn; return () => {}; },
         onBinary: () => () => {},
         onClose: () => () => {},
         bufferedAmount: () => 0,
@@ -1182,6 +1197,10 @@ test('scrcpy-stream replays latest keyframe epoch on clientReady, falls back for
     await new Promise((r) => setTimeout(r, 60));
     assert.equal(legacySent.length, 3, 'Legacy client receives buffered epoch after fallback timer');
     assert.equal(legacySent[0][1], 1);
+    legacyOnText(JSON.stringify({ type: 'clientReady' }));
+    assert.equal(legacySent.length, 3, 'Late initial clientReady after fallback flush must not duplicate replay');
+    legacyOnText(JSON.stringify({ type: 'clientReady', force: true }));
+    assert.equal(legacySent.length, 6, 'Explicit clientReady with force:true (e.g. tab resume) replays epoch');
     abort2.abort();
   } finally {
     await scrcpyManager.dispose();
@@ -1593,4 +1612,217 @@ test('P1-2: authoritative unplug prunes richDeviceCache, fast:false refreshes wm
     await preview.dispose();
     await rm(dataDir, { recursive: true, force: true });
   }
+});
+
+test('P1-4: out-of-order VideoDecoder.isConfigSupported resolution never overwrites newer codec or next streamGeneration', async () => {
+  const html = await readFile(new URL('../panel.html', import.meta.url), 'utf8');
+  const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
+  assert.ok(scriptMatch, 'Expected inline script block in panel.html');
+
+  const configuredCalls = [];
+  const decodedChunks = [];
+  const postedToServer = [];
+  const supportResolvers = new Map();
+  let streamPortRef = null;
+  let visibilityHandler = null;
+  let pagehideHandler = null;
+
+  const makeEl = (id) => ({
+    id,
+    hidden: false,
+    disabled: false,
+    value: '',
+    textContent: '',
+    width: 0,
+    height: 0,
+    style: {},
+    classList: { toggle() {}, add() {}, remove() {} },
+    setAttribute() {},
+    getAttribute() { return ''; },
+    addEventListener() {},
+    removeEventListener() {},
+    replaceChildren() {},
+    append() {},
+    appendChild() {},
+    focus() {},
+    setPointerCapture() {},
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 360, height: 800 }),
+    getContext: () => ({ drawImage() {} }),
+  });
+  const elements = new Map();
+  const getEl = (id) => {
+    if (!elements.has(id)) elements.set(id, makeEl(id));
+    return elements.get(id);
+  };
+
+  class FakeEncodedVideoChunk {
+    constructor(init) {
+      this.type = init.type;
+      this.timestamp = init.timestamp;
+      this.data = new Uint8Array(init.data);
+    }
+  }
+
+  class RacingVideoDecoder {
+    constructor() {
+      this.state = 'unconfigured';
+      this.decodeQueueSize = 0;
+    }
+    static isConfigSupported(cfg) {
+      return new Promise((resolve) => {
+        const list = supportResolvers.get(cfg.codec) ?? [];
+        list.push(() => resolve({ supported: true }));
+        supportResolvers.set(cfg.codec, list);
+      });
+    }
+    configure(cfg) {
+      this.state = 'configured';
+      configuredCalls.push(cfg.codec);
+    }
+    decode(chunk) {
+      decodedChunks.push({ type: chunk.type, timestamp: chunk.timestamp });
+    }
+    close() {
+      this.state = 'closed';
+    }
+  }
+
+  const fakeDocument = {
+    hidden: false,
+    documentElement: { setAttribute() {}, style: { setProperty() {} } },
+    activeElement: null,
+    getElementById: getEl,
+    querySelectorAll: () => [],
+    createElement: () => makeEl('dyn'),
+    addEventListener(name, fn) {
+      if (name === 'visibilitychange') visibilityHandler = fn;
+    },
+  };
+
+  const fakeWindow = {
+    location: { search: '' },
+    navigator: { language: 'en-US' },
+    performance,
+    parent: null,
+    VideoDecoder: RacingVideoDecoder,
+    EncodedVideoChunk: FakeEncodedVideoChunk,
+    ResizeObserver: class { observe() {} },
+    addEventListener(name, fn) {
+      if (name === 'pagehide') pagehideHandler = fn;
+    },
+    removeEventListener() {},
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame() {},
+    __kikiPhoneTestBridge(method, payload) {
+      if (method === 'plugin.call' && payload.action === 'state') {
+        return Promise.resolve({
+          ok: true,
+          selected: { id: 'SYNTH-RACE-01', platform: 'android' },
+          devices: [{ id: 'SYNTH-RACE-01', name: 'Synth Race Phone', platform: 'android', type: 'real', state: 'online', screenSize: { width: 1080, height: 2400 } }],
+          diagnostics: { android: { available: true }, ios: { simulatorsSupported: false } },
+        });
+      }
+      if (method === 'plugin.openStream') {
+        streamPortRef = {
+          onmessage: null,
+          start() {},
+          postMessage(msg) { postedToServer.push(msg); },
+          close() {},
+        };
+        return Promise.resolve({
+          result: { protocol: 'h264-scrcpy-v1', width: 1080, height: 2400, codec: 'h264', codecProfile: 'avc1.42e01f' },
+          port: streamPortRef,
+        });
+      }
+      return Promise.resolve({ ok: true });
+    },
+  };
+  fakeWindow.parent = fakeWindow;
+
+  const sandbox = {
+    window: fakeWindow,
+    self: fakeWindow,
+    document: fakeDocument,
+    navigator: fakeWindow.navigator,
+    performance,
+    ResizeObserver: fakeWindow.ResizeObserver,
+    VideoDecoder: RacingVideoDecoder,
+    EncodedVideoChunk: FakeEncodedVideoChunk,
+    requestAnimationFrame: fakeWindow.requestAnimationFrame,
+    cancelAnimationFrame: fakeWindow.cancelAnimationFrame,
+    URLSearchParams,
+    setTimeout,
+    clearTimeout,
+    console,
+    ArrayBuffer,
+    Uint8Array,
+    DataView,
+    Blob,
+    atob,
+  };
+
+  vm.runInNewContext(scriptMatch[1], sandbox);
+  for (let i = 0; i < 40 && !supportResolvers.has('avc1.42e01f'); i++) {
+    await new Promise((r) => setTimeout(r, 15));
+  }
+  assert.ok(streamPortRef && supportResolvers.has('avc1.42e01f'), 'Initial handshake codec configure should be pending');
+
+  const makePkt = (isKey, ptsUs, spsBytes) => {
+    const payload = isKey ? [0, 0, 0, 1, 0x67, ...spsBytes, 0, 0, 0, 1, 0x65, 0xaa] : [0, 0, 0, 1, 0x41, 0xbb];
+    const ab = new ArrayBuffer(16 + payload.length);
+    const dv = new DataView(ab);
+    dv.setUint8(0, FRAME_PACKET_MAGIC);
+    dv.setUint8(1, isKey ? 1 : 0);
+    dv.setUint16(2, 1080, false);
+    dv.setUint16(4, 2400, false);
+    dv.setFloat64(8, ptsUs, false);
+    new Uint8Array(ab, 16).set(payload);
+    return ab;
+  };
+
+  // Keyframe arrives with actual SPS avc1.640020 while initial avc1.42e01f check is still pending
+  streamPortRef.onmessage({ data: makePkt(true, 1000, [0x64, 0x00, 0x20]) });
+  streamPortRef.onmessage({ data: makePkt(false, 2000) });
+  assert.ok(supportResolvers.has('avc1.640020'), 'Keyframe codec avc1.640020 configure should be pending');
+
+  // Resolve newer avc1.640020 FIRST -> configures avc1.640020 and decodes [key, delta1]
+  supportResolvers.get('avc1.640020').shift()();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.deepEqual(configuredCalls, ['avc1.640020']);
+  assert.deepEqual(decodedChunks, [
+    { type: 'key', timestamp: 1000 },
+    { type: 'delta', timestamp: 2000 },
+  ]);
+
+  // Now resolve the slower stale avc1.42e01f promise -> MUST NOT overwrite avc1.640020 or reset waitingForKeyframe!
+  supportResolvers.get('avc1.42e01f').shift()();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.deepEqual(configuredCalls, ['avc1.640020'], 'Stale slower isConfigSupported must never reconfigure decoder');
+
+  // Subsequent delta still decodes cleanly without being dropped
+  streamPortRef.onmessage({ data: makePkt(false, 3000) });
+  assert.deepEqual(decodedChunks, [
+    { type: 'key', timestamp: 1000 },
+    { type: 'delta', timestamp: 2000 },
+    { type: 'delta', timestamp: 3000 },
+  ]);
+
+  // Verify visibilitychange resume sends { type: 'clientReady', force: true }
+  postedToServer.length = 0;
+  fakeDocument.hidden = true;
+  visibilityHandler();
+  fakeDocument.hidden = false;
+  visibilityHandler();
+  assert.ok(
+    postedToServer.some((m) => typeof m === 'string' && JSON.parse(m).type === 'clientReady' && JSON.parse(m).force === true),
+    'visibilitychange resume must send clientReady with force:true',
+  );
+
+  // Verify stale generation resolution after pagehide/stopStreamMode never configures decoder
+  streamPortRef.onmessage({ data: makePkt(true, 4000, [0x4d, 0x40, 0x1f]) });
+  assert.ok(supportResolvers.has('avc1.4d401f'));
+  pagehideHandler();
+  supportResolvers.get('avc1.4d401f').shift()();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.deepEqual(configuredCalls, ['avc1.640020'], 'Stopped generation must never configure decoder after pagehide');
 });
