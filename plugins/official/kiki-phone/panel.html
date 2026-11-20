@@ -1177,7 +1177,7 @@
   const RATE_WINDOW_MS = 10000;
   const FRAME_BUDGET_IN_WINDOW = 112;
   const MIN_POLL_INTERVAL_MS = 88;
-  const STREAM_HANDSHAKE_TIMEOUT_MS = 2000;
+  const STREAM_HANDSHAKE_TIMEOUT_MS = 8000;
   const FRAME_MAGIC = 0x4b;
   const TOUCH_MAGIC = 0x54;
   const SCROLL_MAGIC = 0x53;
@@ -1250,6 +1250,12 @@
     streamGeneration: 0,
     videoDecoder: null,
     configuredCodec: '',
+    configuringDecoderPromise: null,
+    configuringCodec: '',
+    pendingDecodeChunks: [],
+    pendingVideoFrame: null,
+    renderRaf: 0,
+    lastResetRequestAt: 0,
     waitingForKeyframe: true,
     hostStreamUnsupported: false,
     pendingMove: null,
@@ -1521,11 +1527,63 @@
     return '';
   }
 
+  function cancelPendingVideoFrame() {
+    if (state.renderRaf) {
+      cancelAnimationFrame(state.renderRaf);
+      state.renderRaf = 0;
+    }
+    if (state.pendingVideoFrame) {
+      try { state.pendingVideoFrame.close(); } catch {}
+      state.pendingVideoFrame = null;
+    }
+  }
+
+  function presentPendingVideoFrame() {
+    state.renderRaf = 0;
+    const frame = state.pendingVideoFrame;
+    state.pendingVideoFrame = null;
+    if (!frame) return;
+    try {
+      const w = frame.displayWidth || frame.codedWidth;
+      const h = frame.displayHeight || frame.codedHeight;
+      if (w && h) {
+        if (el.screenCanvas.width !== w || el.screenCanvas.height !== h) {
+          el.screenCanvas.width = w;
+          el.screenCanvas.height = h;
+        }
+        updateScreenDimensions(w, h);
+        canvasCtx.drawImage(frame, 0, 0, w, h);
+        recordRenderedFrame();
+      }
+    } finally {
+      frame.close();
+    }
+  }
+
+  function enqueueDecodedVideoFrame(videoFrame) {
+    if (!state.streamActive || document.hidden) {
+      try { videoFrame.close(); } catch {}
+      return;
+    }
+    if (state.pendingVideoFrame) {
+      try { state.pendingVideoFrame.close(); } catch {}
+    }
+    state.pendingVideoFrame = videoFrame;
+    if (!state.renderRaf) {
+      state.renderRaf = requestAnimationFrame(presentPendingVideoFrame);
+    }
+  }
+
   function stopStreamMode(sendClose = true) {
     state.streamGeneration++;
     state.streamActive = false;
     state.waitingForKeyframe = true;
     state.configuredCodec = '';
+    state.configuringDecoderPromise = null;
+    state.configuringCodec = '';
+    state.pendingDecodeChunks.length = 0;
+    state.lastResetRequestAt = 0;
+    cancelPendingVideoFrame();
     if (state.moveRaf) {
       cancelAnimationFrame(state.moveRaf);
       state.moveRaf = 0;
@@ -1548,6 +1606,13 @@
     }
   }
 
+  function requestStreamVideoReset() {
+    const now = performance.now();
+    if (now - state.lastResetRequestAt < 400) return;
+    state.lastResetRequestAt = now;
+    sendStreamJson({ type: 'resetVideo' });
+  }
+
   async function ensureVideoDecoder(codecString) {
     const codec = codecString || 'avc1.640020';
     if (state.videoDecoder && state.videoDecoder.state === 'configured' && state.configuredCodec === codec) {
@@ -1556,25 +1621,12 @@
     if (!state.videoDecoder || state.videoDecoder.state === 'closed') {
       state.videoDecoder = new VideoDecoder({
         output(videoFrame) {
-          try {
-            const w = videoFrame.displayWidth || videoFrame.codedWidth;
-            const h = videoFrame.displayHeight || videoFrame.codedHeight;
-            if (w && h) {
-              if (el.screenCanvas.width !== w || el.screenCanvas.height !== h) {
-                el.screenCanvas.width = w;
-                el.screenCanvas.height = h;
-              }
-              updateScreenDimensions(w, h);
-              canvasCtx.drawImage(videoFrame, 0, 0, w, h);
-              recordRenderedFrame();
-            }
-          } finally {
-            videoFrame.close();
-          }
+          enqueueDecodedVideoFrame(videoFrame);
         },
         error() {
           state.waitingForKeyframe = true;
-          sendStreamJson({ type: 'resetVideo' });
+          state.pendingDecodeChunks.length = 0;
+          requestStreamVideoReset();
         },
       });
     }
@@ -1587,10 +1639,61 @@
     } catch {
       config = { codec, optimizeForLatency: true, hardwareAcceleration: 'no-preference' };
     }
+    if (!state.videoDecoder || state.videoDecoder.state === 'closed') {
+      return null;
+    }
     state.videoDecoder.configure(config);
     state.configuredCodec = codec;
     state.waitingForKeyframe = true;
     return state.videoDecoder;
+  }
+
+  function feedDecoderChunk(dec, chunk) {
+    dec.decode(new EncodedVideoChunk({
+      type: chunk.isKey ? 'key' : 'delta',
+      timestamp: chunk.ptsUs,
+      data: chunk.data,
+    }));
+  }
+
+  function startDecoderConfigure(codecString, gen) {
+    const codec = codecString || 'avc1.640020';
+    if (state.configuringDecoderPromise && state.configuringCodec === codec) {
+      return state.configuringDecoderPromise;
+    }
+    state.configuringCodec = codec;
+    const promise = ensureVideoDecoder(codec).then((dec) => {
+      if (gen !== state.streamGeneration || !state.streamActive || !dec || dec.state !== 'configured') return;
+      if (state.configuringCodec !== codec) return;
+      state.configuringDecoderPromise = null;
+      const queued = state.pendingDecodeChunks.splice(0);
+      if (queued.length === 0) return;
+      let startIdx = -1;
+      for (let i = queued.length - 1; i >= 0; i--) {
+        if (queued[i].isKey) { startIdx = i; break; }
+      }
+      if (startIdx === -1) {
+        state.waitingForKeyframe = true;
+        return;
+      }
+      try {
+        state.waitingForKeyframe = false;
+        for (let i = startIdx; i < queued.length; i++) {
+          feedDecoderChunk(dec, queued[i]);
+        }
+      } catch {
+        state.waitingForKeyframe = true;
+        requestStreamVideoReset();
+      }
+    }).catch(() => {
+      if (state.configuringCodec === codec) {
+        state.configuringDecoderPromise = null;
+      }
+      state.pendingDecodeChunks.length = 0;
+      state.waitingForKeyframe = true;
+    });
+    state.configuringDecoderPromise = promise;
+    return promise;
   }
 
   function handleStreamBinaryFrame(arrayBuffer, gen) {
@@ -1606,37 +1709,42 @@
     if (w && h) updateScreenDimensions(w, h);
     if (document.hidden) {
       state.waitingForKeyframe = true;
+      state.pendingDecodeChunks.length = 0;
+      cancelPendingVideoFrame();
       return;
     }
 
     if (isKey) {
       const detectedCodec = extractAvcCodecFromAnnexB(nalu) || state.configuredCodec || 'avc1.640020';
-      if (!state.videoDecoder || state.videoDecoder.state !== 'configured' || state.configuredCodec !== detectedCodec) {
-        void ensureVideoDecoder(detectedCodec).then((dec) => {
-          if (gen !== state.streamGeneration || dec.state !== 'configured') return;
-          state.waitingForKeyframe = false;
-          dec.decode(new EncodedVideoChunk({ type: 'key', timestamp: ptsUs, data: nalu }));
-        }).catch(() => {});
+      const needsConfigure = !state.videoDecoder
+        || state.videoDecoder.state !== 'configured'
+        || state.configuredCodec !== detectedCodec
+        || Boolean(state.configuringDecoderPromise);
+      if (needsConfigure) {
+        state.pendingDecodeChunks = [{ isKey: true, ptsUs, data: nalu }];
+        state.waitingForKeyframe = false;
+        void startDecoderConfigure(detectedCodec, gen);
         return;
       }
       state.waitingForKeyframe = false;
+    } else if (state.configuringDecoderPromise) {
+      if (state.pendingDecodeChunks.length > 0 && state.pendingDecodeChunks.length < 90) {
+        state.pendingDecodeChunks.push({ isKey: false, ptsUs, data: nalu });
+      }
+      return;
     } else if (state.waitingForKeyframe || !state.videoDecoder || state.videoDecoder.state !== 'configured') {
       return;
-    } else if (state.videoDecoder.decodeQueueSize > 8) {
+    } else if (state.videoDecoder.decodeQueueSize > 16) {
       state.waitingForKeyframe = true;
-      sendStreamJson({ type: 'resetVideo' });
+      requestStreamVideoReset();
       return;
     }
 
     try {
-      state.videoDecoder.decode(new EncodedVideoChunk({
-        type: isKey ? 'key' : 'delta',
-        timestamp: ptsUs,
-        data: nalu,
-      }));
+      feedDecoderChunk(state.videoDecoder, { isKey, ptsUs, data: nalu });
     } catch {
       state.waitingForKeyframe = true;
-      sendStreamJson({ type: 'resetVideo' });
+      requestStreamVideoReset();
     }
   }
 
@@ -1701,7 +1809,7 @@
         platform: active.platform,
         maxFps: 60,
         maxWidth: 1080,
-        bitRate: 4000000,
+        bitRate: 8000000,
       }, STREAM_HANDSHAKE_TIMEOUT_MS);
 
       if (gen !== state.streamGeneration || !state.live) {
@@ -1727,9 +1835,6 @@
 
       if (result?.width && result?.height) {
         updateScreenDimensions(result.width, result.height);
-      }
-      if (result?.codecProfile) {
-        await ensureVideoDecoder(result.codecProfile).catch(() => {});
       }
 
       port.onmessage = (ev) => {
@@ -1758,12 +1863,17 @@
       };
       if (typeof port.start === 'function') port.start();
 
+      if (result?.codecProfile) {
+        void startDecoderConfigure(result.codecProfile, gen);
+      }
+      sendStreamJson({ type: 'clientReady' });
+
       syncInteractiveUi();
       updateResolutionBar();
       return true;
     } catch (err) {
       const msg = String(err?.message || '');
-      if (/unsupported method|timed out/i.test(msg)) {
+      if (/unsupported method|unknown method|not supported/i.test(msg)) {
         state.hostStreamUnsupported = true;
       }
       return false;
@@ -1940,7 +2050,7 @@
         maxWidth: 720,
         live: state.live && !state.streamActive,
       });
-      if (state.streamActive && !force) return;
+      if (state.streamActive) return;
       if (res?.ok && res.dataUrl) {
         await drawDataUrlToCanvas(res.dataUrl);
         state.asleep = Boolean(res.powerState && !res.powerState.awake);
@@ -1971,12 +2081,19 @@
     const active = activeOnlineDevice();
     if (!active || isDisconnectedStandalone()) return;
 
+    if (
+      state.live
+      && active.platform === 'android'
+      && typeof window.VideoDecoder === 'function'
+      && (!state.hostStreamUnsupported || forceRetryStream)
+    ) {
+      const streamed = await tryConnectHardwareStream(forceRetryStream);
+      if (streamed) return;
+    }
+
     void refreshFrame(true);
     if (state.live) {
       scheduleNextPoll(MIN_POLL_INTERVAL_MS);
-    }
-    if (state.live && active.platform === 'android') {
-      await tryConnectHardwareStream(forceRetryStream);
     }
   }
 
@@ -2568,10 +2685,12 @@
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       clearPollTimer();
+      cancelPendingVideoFrame();
+      state.pendingDecodeChunks.length = 0;
     } else if (state.live) {
       if (state.streamActive) {
         state.waitingForKeyframe = true;
-        sendStreamJson({ type: 'resetVideo' });
+        sendStreamJson({ type: 'clientReady' });
       } else {
         scheduleNextPoll(10);
       }

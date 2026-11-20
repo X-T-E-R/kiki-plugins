@@ -106,6 +106,7 @@ export function createScrcpyManager(options?: {
       maxWidth?: number;
       bitRate?: number;
       fallbackSize?: { width: number; height: number };
+      clientReadyFallbackMs?: number;
     },
     session: PanelStreamSession,
     context?: { signal?: AbortSignal },

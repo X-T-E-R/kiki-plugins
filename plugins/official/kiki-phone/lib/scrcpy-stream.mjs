@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { access, copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -550,6 +550,7 @@ async function connectFirstSocketWithDummyByte(createSocket, port, { timeoutMs =
     try {
       const result = await new Promise((resolve, reject) => {
         const sock = createSocket({ host: '127.0.0.1', port });
+        sock.setNoDelay?.(true);
         let settled = false;
         const timer = setTimeout(() => {
           if (!settled) {
@@ -564,11 +565,15 @@ async function connectFirstSocketWithDummyByte(createSocket, port, { timeoutMs =
           if (settled) return;
           settled = true;
           clearTimeout(timer);
+          sock.removeListener('connect', onConnect);
           sock.removeListener('data', onData);
           sock.removeListener('error', onErr);
           sock.removeListener('close', onClose);
           sock.removeListener('end', onClose);
           fn(val);
+        };
+        const onConnect = () => {
+          sock.setNoDelay?.(true);
         };
         const onData = (chunk) => {
           sock.setNoDelay?.(true);
@@ -582,6 +587,7 @@ async function connectFirstSocketWithDummyByte(createSocket, port, { timeoutMs =
           sock.destroy();
           finish(reject, new Error('scrcpy socket closed before dummy byte'));
         };
+        sock.once('connect', onConnect);
         sock.once('data', onData);
         sock.once('error', onErr);
         sock.once('close', onClose);
@@ -599,6 +605,7 @@ async function connectFirstSocketWithDummyByte(createSocket, port, { timeoutMs =
 async function connectSecondarySocket(createSocket, port, { timeoutMs = 1_500 } = {}) {
   return new Promise((resolve, reject) => {
     const sock = createSocket({ host: '127.0.0.1', port });
+    sock.setNoDelay?.(true);
     const timer = setTimeout(() => {
       sock.destroy();
       reject(new Error('scrcpy control socket connection timed out'));
@@ -741,6 +748,19 @@ export function createScrcpyManager({
         allowDownload,
         signal,
       });
+      const localSize = await stat(jarPath).then((s) => s.size, () => 0);
+      if (localSize > 0) {
+        const remoteStat = await executeFile(adbBinary, ['-s', serial, 'shell', 'stat', '-c', '%s', SCRCPY_DEVICE_JAR_PATH], {
+          encoding: 'utf8',
+          windowsHide: true,
+          timeout: 3_000,
+          signal,
+        }).then((res) => Number(String(res?.stdout ?? '').trim().split(/\s+/)[0]), () => 0);
+        if (remoteStat === localSize) {
+          pushedSerials.add(key);
+          return SCRCPY_DEVICE_JAR_PATH;
+        }
+      }
       await executeFile(adbBinary, ['-s', serial, 'push', jarPath, SCRCPY_DEVICE_JAR_PATH], {
         encoding: 'utf8',
         windowsHide: true,
@@ -885,24 +905,27 @@ export function createScrcpyManager({
     void acquireControl({ adbBinary, serial, fallbackSize }).catch(() => {});
   }
 
-  async function openVideoStream(
-    { adbBinary, serial, maxFps = 60, maxWidth = 1080, bitRate = 4_000_000, fallbackSize },
+  async function openVideoStreamAttempt(
+    {
+      deviceJar,
+      adbBinary,
+      serial,
+      safeFps,
+      safeMaxSize,
+      safeBitRate,
+      codecOptions,
+      fallbackSize,
+      clientReadyFallbackMs,
+      closeSessionOnInitFailure = true,
+    },
     session,
     context = {},
   ) {
-    if (!adbBinary) throw new Error('Android ADB is not configured. Run phone_prepare first.');
-    if (!serial) throw new Error('No Android serial specified for screen stream.');
-
     const signal = context?.signal;
     signal?.throwIfAborted?.();
 
-    const deviceJar = await ensureDeviceJar(adbBinary, serial, signal);
     const scid = (randomBytes(4).readUInt32BE(0) & 0x7fffffff).toString(16).padStart(8, '0');
     const port = await allocatePort();
-
-    const safeFps = clamp(Math.round(Number(maxFps) || 60), 10, 120);
-    const safeMaxSize = clamp(Math.round(Number(maxWidth) || 1080) & ~7, 360, 2400);
-    const safeBitRate = clamp(Math.round(Number(bitRate) || 4_000_000), 500_000, 20_000_000);
 
     await executeFile(adbBinary, ['-s', serial, 'forward', `tcp:${port}`, `localabstract:scrcpy_${scid}`], {
       encoding: 'utf8', windowsHide: true, timeout: 6_000, signal,
@@ -925,7 +948,7 @@ export function createScrcpyManager({
       `max_size=${safeMaxSize}`,
       `max_fps=${safeFps}`,
       `video_bit_rate=${safeBitRate}`,
-      'video_codec_options=i-frame-interval=1',
+      `video_codec_options=${codecOptions}`,
       'send_device_meta=true',
       'send_stream_meta=true',
       'send_frame_meta=true',
@@ -938,14 +961,23 @@ export function createScrcpyManager({
     let videoSocket = null;
     let controlSocket = null;
     let closed = false;
+    let handshakeDone = false;
+    let clientReadyFallbackTimer = null;
+    let procExitErr = null;
+    let onEarlyProcExit = null;
     const unsubs = [];
+
+    const attemptAbort = new AbortController();
+    const connectSignal = signal ? AbortSignal.any([signal, attemptAbort.signal]) : attemptAbort.signal;
 
     const streamRecord = { closed: false, control: null, close: null };
 
-    const cleanup = (reason) => {
+    const cleanup = (reason, { closeSession = true } = {}) => {
       if (closed) return;
       closed = true;
       streamRecord.closed = true;
+      clearTimeout(clientReadyFallbackTimer);
+      clientReadyFallbackTimer = null;
       const set = activeVideoStreams.get(serial);
       if (set) {
         set.delete(streamRecord);
@@ -961,7 +993,9 @@ export function createScrcpyManager({
       void executeFile(adbBinary, ['-s', serial, 'forward', '--remove', `tcp:${port}`], {
         encoding: 'utf8', windowsHide: true, timeout: 4_000,
       }).catch(() => {});
-      try { session?.close?.(reason); } catch {}
+      if (closeSession) {
+        try { session?.close?.(reason); } catch {}
+      }
     };
 
     function onAbort() {
@@ -970,17 +1004,35 @@ export function createScrcpyManager({
     signal?.addEventListener?.('abort', onAbort, { once: true });
     streamRecord.close = cleanup;
 
+    proc.once('exit', () => {
+      if (/Aborted|ClassNotFoundException|No such file/i.test(stderrTail)) {
+        pushedSerials.delete(`${adbBinary}:${serial}`);
+      }
+      if (!handshakeDone) {
+        procExitErr = new Error(`scrcpy-server exited (${stderrTail.trim() || 'unknown'})`);
+        if (!attemptAbort.signal.aborted) attemptAbort.abort(procExitErr);
+        onEarlyProcExit?.(procExitErr);
+      } else {
+        cleanup('scrcpy_exited');
+      }
+    });
+
     try {
-      const first = await connectFirstSocketWithDummyByte(createSocket, port, { timeoutMs: 4_000, signal });
+      const first = await connectFirstSocketWithDummyByte(createSocket, port, { timeoutMs: 4_000, signal: connectSignal });
       videoSocket = first.socket;
+      if (procExitErr) throw procExitErr;
       controlSocket = await connectSecondarySocket(createSocket, port, { timeoutMs: 2_000 });
+      if (procExitErr) throw procExitErr;
       controlSocket.on('data', () => {});
 
       const parser = new ScrcpyVideoStreamParser({ expectDummyByte: true });
       let seq = 0;
-      let handshakeDone = false;
+      let streamFlushed = false;
       let droppingUntilKeyframe = false;
-      const bufferedPreReturnFrames = [];
+      let lastKeyPacket = null;
+      let keyEpochDeltas = [];
+      let epochBroken = false;
+      let lastBackpressureResetAt = 0;
       let graceTimer = null;
 
       let resolveInitial;
@@ -1015,6 +1067,36 @@ export function createScrcpyManager({
       if (!activeVideoStreams.has(serial)) activeVideoStreams.set(serial, new Set());
       activeVideoStreams.get(serial).add(streamRecord);
 
+      const replayCurrentEpoch = () => {
+        if (closed) return;
+        streamFlushed = true;
+        droppingUntilKeyframe = false;
+        clearTimeout(clientReadyFallbackTimer);
+        clientReadyFallbackTimer = null;
+
+        if (!lastKeyPacket) {
+          control.resetVideo();
+          return;
+        }
+        const okKey = session.sendBinary(lastKeyPacket);
+        if (okKey === false) {
+          droppingUntilKeyframe = true;
+          return;
+        }
+        if (epochBroken) {
+          droppingUntilKeyframe = true;
+          control.resetVideo();
+          return;
+        }
+        for (const deltaPkt of keyEpochDeltas) {
+          const okDelta = session.sendBinary(deltaPkt);
+          if (okDelta === false) {
+            droppingUntilKeyframe = true;
+            return;
+          }
+        }
+      };
+
       const handleParsedEvents = (events) => {
         for (const ev of events) {
           if (ev.kind === 'error') {
@@ -1023,6 +1105,9 @@ export function createScrcpyManager({
             return;
           }
           if (ev.kind === 'session') {
+            lastKeyPacket = null;
+            keyEpochDeltas = [];
+            epochBroken = false;
             if (!handshakeDone && !graceTimer) {
               graceTimer = setTimeout(finishHandshake, 180);
               graceTimer.unref?.();
@@ -1036,14 +1121,19 @@ export function createScrcpyManager({
               }));
             }
           }
-          if (ev.kind === 'config' && handshakeDone) {
-            session.sendText?.(JSON.stringify({
-              type: 'meta',
-              width: parser.width,
-              height: parser.height,
-              codec: 'h264',
-              codecProfile: ev.codecProfile,
-            }));
+          if (ev.kind === 'config') {
+            lastKeyPacket = null;
+            keyEpochDeltas = [];
+            epochBroken = false;
+            if (handshakeDone) {
+              session.sendText?.(JSON.stringify({
+                type: 'meta',
+                width: parser.width,
+                height: parser.height,
+                codec: 'h264',
+                codecProfile: ev.codecProfile,
+              }));
+            }
           }
           if (ev.kind === 'frame') {
             const pkt = packVideoFrame({
@@ -1055,17 +1145,37 @@ export function createScrcpyManager({
               data: ev.data,
             });
 
+            if (ev.keyFrame) {
+              lastKeyPacket = pkt;
+              keyEpochDeltas = [];
+              epochBroken = false;
+            } else if (lastKeyPacket && !epochBroken) {
+              if (keyEpochDeltas.length < 60) {
+                keyEpochDeltas.push(pkt);
+              } else {
+                keyEpochDeltas = [];
+                epochBroken = true;
+              }
+            }
+
             if (!handshakeDone) {
-              bufferedPreReturnFrames.push(pkt);
               if (parser.width > 0 && parser.height > 0) {
                 finishHandshake();
               }
               continue;
             }
 
+            if (!streamFlushed) {
+              continue;
+            }
+
             if (droppingUntilKeyframe && !ev.keyFrame) {
               if ((session.bufferedAmount?.() ?? 0) === 0) {
-                control.resetVideo();
+                const now = Date.now();
+                if (now - lastBackpressureResetAt >= 350) {
+                  lastBackpressureResetAt = now;
+                  control.resetVideo();
+                }
               }
               continue;
             }
@@ -1096,15 +1206,14 @@ export function createScrcpyManager({
         else cleanup(err.message || 'video_socket_error');
       });
       controlSocket.once('error', () => {});
-      proc.once('exit', () => {
+      onEarlyProcExit = (err) => {
         clearTimeout(initTimer);
         clearTimeout(graceTimer);
-        if (/Aborted|ClassNotFoundException|No such file/i.test(stderrTail)) {
-          pushedSerials.delete(`${adbBinary}:${serial}`);
-        }
-        if (!handshakeDone) rejectInitial(new Error(`scrcpy-server exited (${stderrTail.trim() || 'unknown'})`));
-        else cleanup('scrcpy_exited');
-      });
+        rejectInitial(err);
+      };
+      if (procExitErr) {
+        onEarlyProcExit(procExitErr);
+      }
 
       if (first.initialChunk?.length) {
         handleParsedEvents(parser.push(first.initialChunk));
@@ -1129,6 +1238,9 @@ export function createScrcpyManager({
           try { msg = typeof text === 'string' ? JSON.parse(text) : text; } catch { return; }
           if (!msg || typeof msg !== 'object') return;
           switch (msg.type) {
+            case 'clientReady':
+              replayCurrentEpoch();
+              break;
             case 'button':
             case 'key':
               void control.pressButton(msg.button || msg.key);
@@ -1159,10 +1271,14 @@ export function createScrcpyManager({
         unsubs.push(session.onClose(() => cleanup('client_closed')));
       }
 
-      for (const pkt of bufferedPreReturnFrames.splice(0)) {
-        session.sendBinary(pkt);
-      }
       handshakeDone = true;
+      const fallbackDelay = Math.max(0, Number(clientReadyFallbackMs) || 0);
+      clientReadyFallbackTimer = setTimeout(() => {
+        if (!closed && !streamFlushed) {
+          replayCurrentEpoch();
+        }
+      }, fallbackDelay);
+      clientReadyFallbackTimer.unref?.();
 
       return {
         protocol: SCRCPY_STREAM_PROTOCOL,
@@ -1173,8 +1289,79 @@ export function createScrcpyManager({
         deviceName: parser.deviceName || undefined,
       };
     } catch (err) {
-      cleanup(err.message || 'handshake_failed');
+      cleanup(err.message || 'handshake_failed', { closeSession: closeSessionOnInitFailure });
       throw err;
+    }
+  }
+
+  async function openVideoStream(
+    {
+      adbBinary,
+      serial,
+      maxFps = 60,
+      maxWidth = 1080,
+      bitRate = 8_000_000,
+      fallbackSize,
+      clientReadyFallbackMs = 60,
+    },
+    session,
+    context = {},
+  ) {
+    if (!adbBinary) throw new Error('Android ADB is not configured. Run phone_prepare first.');
+    if (!serial) throw new Error('No Android serial specified for screen stream.');
+
+    const signal = context?.signal;
+    signal?.throwIfAborted?.();
+
+    const deviceJar = await ensureDeviceJar(adbBinary, serial, signal);
+    const safeFps = clamp(Math.round(Number(maxFps) || 60), 10, 120);
+    const safeMaxSize = clamp(Math.round(Number(maxWidth) || 1080) & ~7, 360, 2400);
+    const safeBitRate = clamp(Math.round(Number(bitRate) || 8_000_000), 500_000, 20_000_000);
+
+    try {
+      return await openVideoStreamAttempt(
+        {
+          deviceJar,
+          adbBinary,
+          serial,
+          safeFps,
+          safeMaxSize,
+          safeBitRate,
+          codecOptions: 'i-frame-interval=1,repeat-previous-frame-after=100000',
+          fallbackSize,
+          clientReadyFallbackMs,
+          closeSessionOnInitFailure: false,
+        },
+        session,
+        context,
+      );
+    } catch (firstErr) {
+      if (signal?.aborted) {
+        try { session?.close?.(firstErr.message || 'aborted'); } catch {}
+        throw firstErr;
+      }
+      const msg = String(firstErr?.message || '');
+      const shouldFallbackCodecOpts = /scrcpy-server exited|closed early|video stream disabled|codec|option/i.test(msg);
+      if (!shouldFallbackCodecOpts) {
+        try { session?.close?.(msg || 'handshake_failed'); } catch {}
+        throw firstErr;
+      }
+      return openVideoStreamAttempt(
+        {
+          deviceJar,
+          adbBinary,
+          serial,
+          safeFps,
+          safeMaxSize,
+          safeBitRate,
+          codecOptions: 'i-frame-interval=1',
+          fallbackSize,
+          clientReadyFallbackMs,
+          closeSessionOnInitFailure: true,
+        },
+        session,
+        context,
+      );
     }
   }
 

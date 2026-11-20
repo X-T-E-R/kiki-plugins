@@ -443,6 +443,7 @@ export function createPhonePreviewService({
     version = undefined,
     mobilecliEnriched = false,
     adbEnriched = false,
+    forceRefresh = false,
   }) {
     const prev = richDeviceCache.get(key);
     const next = prev ? { ...prev } : {
@@ -456,7 +457,14 @@ export function createPhonePreviewService({
       adbEnriched: false,
     };
     const trimmedName = typeof name === 'string' ? name.trim() : '';
-    if (trimmedName && (!next.name || nameRichness > next.nameRichness || nameRichness === NAME_RICHNESS.MOBILECLI)) {
+    if (
+      trimmedName && (
+        !next.name
+        || nameRichness > next.nameRichness
+        || (forceRefresh && nameRichness >= next.nameRichness)
+        || nameRichness === NAME_RICHNESS.MOBILECLI
+      )
+    ) {
       next.name = trimmedName;
       next.nameRichness = nameRichness;
     }
@@ -498,32 +506,38 @@ export function createPhonePreviewService({
     let flight = adbEnrichFlights.get(key);
     if (flight) return flight;
 
-    const boundedTimeout = Math.max(200, Math.min(timeoutMs, 1_000));
-    const runQuiet = (shellArgs) => executeFile(adbBinary, ['-s', serial, 'shell', ...shellArgs], {
-      encoding: 'utf8', env, windowsHide: true, timeout: boundedTimeout,
-    }).then((res) => String(res?.stdout ?? ''), () => '');
+    const boundedTimeout = Math.max(1, Math.min(Number(timeoutMs) || 1_000, 1_000));
+    const runQuiet = (shellArgs) => raceTimeout(
+      Promise.resolve().then(() => executeFile(adbBinary, ['-s', serial, 'shell', ...shellArgs], {
+        encoding: 'utf8', env, windowsHide: true, timeout: boundedTimeout,
+      })),
+      boundedTimeout,
+      'adb shell enrich timed out',
+    ).then((res) => String(res?.stdout ?? ''), () => '');
 
     flight = (async () => {
-      const [marketOut, wmOut] = await Promise.all([
+      const [marketOut, modelOut, wmOut] = await Promise.all([
         runQuiet(['getprop', 'ro.product.marketname']),
+        runQuiet(['getprop', 'ro.product.model']),
         runQuiet(['wm', 'size']),
       ]);
       const marketName = cleanAdbPropLine(marketOut);
-      let name = marketName;
-      let nameRichness = marketName && marketName !== serial
-        ? NAME_RICHNESS.ADB_MARKETNAME
-        : NAME_RICHNESS.SERIAL;
-      if (!name) {
-        const modelProp = cleanAdbPropLine(await runQuiet(['getprop', 'ro.product.model']));
-        if (modelProp) {
-          name = modelProp;
-          nameRichness = modelProp !== serial ? NAME_RICHNESS.ADB_PROP_MODEL : NAME_RICHNESS.SERIAL;
-        }
+      const modelProp = cleanAdbPropLine(modelOut);
+      let name = '';
+      let nameRichness = NAME_RICHNESS.SERIAL;
+      if (marketName) {
+        name = marketName;
+        nameRichness = marketName !== serial ? NAME_RICHNESS.ADB_MARKETNAME : NAME_RICHNESS.SERIAL;
+      } else if (modelProp) {
+        name = modelProp;
+        nameRichness = modelProp !== serial ? NAME_RICHNESS.ADB_PROP_MODEL : NAME_RICHNESS.SERIAL;
       }
+      const screenSize = parseWmSize(wmOut);
       return {
         name,
         nameRichness,
-        screenSize: parseWmSize(wmOut),
+        screenSize,
+        succeeded: Boolean(name || screenSize),
       };
     })().finally(() => {
       if (adbEnrichFlights.get(key) === flight) {
@@ -671,6 +685,7 @@ export function createPhonePreviewService({
             type: raw.type || null,
             version: norm.version,
             mobilecliEnriched: true,
+            forceRefresh: !fast,
           });
           const screenSize = resolveKnownScreenSize(key, norm.platform, explicitSize);
           const orientation = merged.orientation || (screenSize.width > screenSize.height ? 'landscape' : 'portrait');
@@ -690,16 +705,44 @@ export function createPhonePreviewService({
       }
 
       if (adbOutcome.ok) {
+        const presentRefreshRows = [];
         const missingRows = [];
         for (const row of adbOutcome.rows) {
           const key = `android:${row.serial}`;
           if (byKey.has(key)) {
             if (row.state === 'unauthorized' || row.state === 'offline') {
               byKey.get(key).state = row.state;
+            } else if (!fast && row.state === 'device' && adbBinary) {
+              presentRefreshRows.push({ row, key });
             }
           } else {
             missingRows.push({ row, key });
           }
+        }
+
+        if (presentRefreshRows.length > 0) {
+          await Promise.all(presentRefreshRows.map(async ({ row, key }) => {
+            const enriched = await enrichAndroidViaAdb(adbBinary, row.serial, env, adbTimeout);
+            if (!enriched?.succeeded) return;
+            const merged = rememberDeviceRichMeta(key, {
+              name: enriched.name || undefined,
+              nameRichness: enriched.name ? enriched.nameRichness : NAME_RICHNESS.SERIAL,
+              screenSize: enriched.screenSize,
+              adbEnriched: true,
+              forceRefresh: true,
+            });
+            const entry = byKey.get(key);
+            if (!entry) return;
+            if (merged.name) entry.name = merged.name;
+            if (enriched.screenSize) {
+              entry.screenSize = { width: enriched.screenSize.width, height: enriched.screenSize.height };
+              const meta = deviceMetaCache.get(key);
+              if (meta) {
+                meta.screenSize = { width: enriched.screenSize.width, height: enriched.screenSize.height };
+                meta.effectiveSize = computeEffectiveSize(meta.screenSize, meta.orientation);
+              }
+            }
+          }));
         }
 
         if (missingRows.length > 0) {
@@ -715,7 +758,10 @@ export function createPhonePreviewService({
             const prev = richDeviceCache.get(key);
 
             let enriched = null;
-            if (adbState === 'online' && adbBinary && !prev?.mobilecliEnriched && !prev?.adbEnriched) {
+            const shouldEnrichViaAdb = adbState === 'online'
+              && Boolean(adbBinary)
+              && (!fast || (!prev?.mobilecliEnriched && !prev?.adbEnriched));
+            if (shouldEnrichViaAdb) {
               enriched = await enrichAndroidViaAdb(adbBinary, row.serial, env, adbTimeout);
             }
 
@@ -725,7 +771,8 @@ export function createPhonePreviewService({
               screenSize: enriched?.screenSize || null,
               orientation: null,
               type: prev?.type ? null : adbType,
-              adbEnriched: Boolean(enriched),
+              adbEnriched: Boolean(enriched?.succeeded),
+              forceRefresh: !fast,
             });
             const screenSize = resolveKnownScreenSize(key, 'android', enriched?.screenSize || null);
             const orientation = merged.orientation || (screenSize.width > screenSize.height ? 'landscape' : 'portrait');
@@ -773,6 +820,31 @@ export function createPhonePreviewService({
               screenSize,
             });
           }
+        }
+      }
+
+      const canPruneAndroid = Boolean(adbBinary) ? adbOutcome.ok : mobilecliOutcome.ok;
+      const canPruneIosReal = mobilecliOutcome.ok;
+      const canPruneIosSim = mobilecliOutcome.ok || Boolean(simOutcome?.available);
+      for (const [key, cached] of richDeviceCache.entries()) {
+        if (byKey.has(key)) continue;
+        if (key.startsWith('android:') && canPruneAndroid) {
+          richDeviceCache.delete(key);
+          deviceMetaCache.delete(key);
+        } else if (key.startsWith('ios:')) {
+          const isSim = cached?.type === 'simulator';
+          if (isSim ? canPruneIosSim : canPruneIosReal) {
+            richDeviceCache.delete(key);
+            deviceMetaCache.delete(key);
+          }
+        }
+      }
+      for (const key of deviceMetaCache.keys()) {
+        if (byKey.has(key)) continue;
+        if (key.startsWith('android:') && canPruneAndroid) {
+          deviceMetaCache.delete(key);
+        } else if (key.startsWith('ios:') && canPruneIosReal) {
+          deviceMetaCache.delete(key);
         }
       }
 
@@ -1404,6 +1476,12 @@ export function createPhonePreviewService({
             meta.orientation = next;
             meta.effectiveSize = computeEffectiveSize(meta.screenSize, next);
             meta.updatedAt = 0;
+            rememberDeviceRichMeta(meta.key, {
+              orientation: next,
+              screenSize: meta.effectiveSize,
+            });
+            cachedProbe.at = 0;
+            cachedStateSnapshot.at = 0;
             return { ok: true, action, orientation: next };
           }
           case 'appearance': {
@@ -1480,8 +1558,9 @@ export function createPhonePreviewService({
         serial: target.id,
         maxFps: body.maxFps ?? 60,
         maxWidth: body.maxWidth ?? 1080,
-        bitRate: body.bitRate ?? 4_000_000,
+        bitRate: body.bitRate ?? 8_000_000,
         fallbackSize: meta.effectiveSize,
+        ...(body.clientReadyFallbackMs !== undefined ? { clientReadyFallbackMs: body.clientReadyFallbackMs } : {}),
       },
       session,
       context,

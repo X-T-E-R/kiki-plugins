@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
+import vm from 'node:vm';
 import { mkdir, mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -100,8 +101,8 @@ test('preview service supports Android + iOS discovery, frame streaming, normali
     async listDevices() {
       return [
         {
-          id: 'ca03b197',
-          name: 'Xiaomi 12S Ultra',
+          id: 'SYNTH-ANDROID-01',
+          name: 'Synth Android Phone',
           platform: 'android',
           type: 'real',
           state: 'online',
@@ -178,7 +179,7 @@ test('preview service supports Android + iOS discovery, frame streaming, normali
     assert.equal(state.groups.ios.length, 2);
     assert.deepEqual(state.selected, { id: '00008130-IOS', platform: 'ios' });
 
-    await preview.handlePanelRequest('action', { action: 'select', deviceId: 'ca03b197', platform: 'android' });
+    await preview.handlePanelRequest('action', { action: 'select', deviceId: 'SYNTH-ANDROID-01', platform: 'android' });
     const androidFrame = await preview.handlePanelRequest('frame', { format: 'jpeg', maxWidth: 540 });
     assert.equal(androidFrame.ok, true);
     assert.equal(androidFrame.platform, 'android');
@@ -208,7 +209,7 @@ test('preview service supports Android + iOS discovery, frame streaming, normali
     const slotHandlers = createPhoneSlotHandlers(preview);
     const e5 = await slotHandlers['E5:prompt-context']({});
     assert.equal(e5.sections.length, 1);
-    assert.match(e5.sections[0].content, /Xiaomi 12S Ultra/);
+    assert.match(e5.sections[0].content, /Synth Android Phone/);
     assert.match(e5.sections[0].content, /iPhone 16 Pro/);
 
     const described = await slotHandlers['E12:server-gui-slots']({ kind: 'describe' });
@@ -228,7 +229,7 @@ test('preview service supports Android + iOS discovery, frame streaming, normali
       subpath: 'preview/action',
       body: {
         action: 'scroll',
-        deviceId: 'ca03b197',
+        deviceId: 'SYNTH-ANDROID-01',
         platform: 'android',
         normX: 0.5,
         normY: 0.6,
@@ -294,7 +295,7 @@ test('captureFrame hot path caches metadata without per-frame dumpsys and never 
 
   class HotPathDriver {
     async listDevices() {
-      return [{ id: 'ca03b197', name: 'Xiaomi 12S Ultra', platform: 'android', type: 'real', state: 'online', screenSize: { width: 1080, height: 2400 } }];
+      return [{ id: 'SYNTH-ANDROID-01', name: 'Synth Android Phone', platform: 'android', type: 'real', state: 'online', screenSize: { width: 1080, height: 2400 } }];
     }
     async connect() {}
     async getScreenSize() { screenSizeCalls++; return { width: 1080, height: 2400 }; }
@@ -360,7 +361,7 @@ test('captureFrame hot path caches metadata without per-frame dumpsys and never 
     const payloads = [];
     for (let i = 0; i < 20; i++) {
       const f = await preview.captureFrame({
-        deviceId: 'ca03b197',
+        deviceId: 'SYNTH-ANDROID-01',
         platform: 'android',
         format: 'jpeg',
         quality: 72,
@@ -383,7 +384,7 @@ test('captureFrame hot path caches metadata without per-frame dumpsys and never 
     // Now simulate a 350ms slow screenshot in flight and verify touch never queues behind it
     slowCaptureMs = 350;
     const inflight = preview.captureFrame({
-      deviceId: 'ca03b197',
+      deviceId: 'SYNTH-ANDROID-01',
       platform: 'android',
       format: 'jpeg',
       settings: { adbPath: '/mock/adb' },
@@ -392,7 +393,7 @@ test('captureFrame hot path caches metadata without per-frame dumpsys and never 
 
     const tapStart = performance.now();
     const fastTap = await preview.performAction(
-      { action: 'tap', deviceId: 'ca03b197', platform: 'android', normX: 0.5, normY: 0.25 },
+      { action: 'tap', deviceId: 'SYNTH-ANDROID-01', platform: 'android', normX: 0.5, normY: 0.25 },
       { settings: { adbPath: '/mock/adb' } },
     );
     const tapMs = performance.now() - tapStart;
@@ -405,7 +406,7 @@ test('captureFrame hot path caches metadata without per-frame dumpsys and never 
     useScrcpyControl = false;
     const fbStart = performance.now();
     const fallbackTap = await preview.performAction(
-      { action: 'tap', deviceId: 'ca03b197', platform: 'android', normX: 0.25, normY: 0.5 },
+      { action: 'tap', deviceId: 'SYNTH-ANDROID-01', platform: 'android', normX: 0.25, normY: 0.5 },
       { settings: { adbPath: '/mock/adb' } },
     );
     const fbMs = performance.now() - fbStart;
@@ -454,8 +455,11 @@ test('openPanelStream negotiates scrcpy v4.0 H.264 stream, handles backpressure 
       super();
       this.role = role;
       this.destroyed = false;
+      this.noDelayEnabled = false;
     }
-    setNoDelay() {}
+    setNoDelay(flag) {
+      this.noDelayEnabled = Boolean(flag);
+    }
     write(buf) {
       if (this.role === 'control') controlWrites.push(Buffer.from(buf));
       return true;
@@ -520,7 +524,7 @@ test('openPanelStream negotiates scrcpy v4.0 H.264 stream, handles backpressure 
         videoSocket = new MockSocket('video');
         queueMicrotask(() => {
           const nameBuf = Buffer.alloc(64);
-          Buffer.from('Xiaomi 12S Ultra').copy(nameBuf);
+          Buffer.from('Synth Android Phone').copy(nameBuf);
           videoSocket.emit('data', Buffer.concat([
             Buffer.from([0x00]),
             nameBuf,
@@ -562,7 +566,7 @@ test('openPanelStream negotiates scrcpy v4.0 H.264 stream, handles backpressure 
       /Android/,
     );
     await assert.rejects(
-      () => preview.openPanelStream('audio', { deviceId: 'ca03b197', platform: 'android' }, { sendBinary: () => true }, {}),
+      () => preview.openPanelStream('audio', { deviceId: 'SYNTH-ANDROID-01', platform: 'android' }, { sendBinary: () => true }, {}),
       /Unsupported phone panel stream/,
     );
 
@@ -595,7 +599,7 @@ test('openPanelStream negotiates scrcpy v4.0 H.264 stream, handles backpressure 
 
     const hs = await preview.openPanelStream(
       'screen',
-      { deviceId: 'ca03b197', platform: 'android', maxFps: 60, maxWidth: 1080, bitRate: 4_000_000 },
+      { deviceId: 'SYNTH-ANDROID-01', platform: 'android', maxFps: 60, maxWidth: 1080, bitRate: 8_000_000 },
       session,
       { settings: { adbPath: '/mock/adb' }, signal: abortCtl.signal },
     );
@@ -605,6 +609,11 @@ test('openPanelStream negotiates scrcpy v4.0 H.264 stream, handles backpressure 
     assert.equal(hs.height, 1200);
     assert.equal(hs.codec, 'h264');
     assert.equal(hs.codecProfile, 'avc1.640020');
+    assert.equal(videoSocket.noDelayEnabled, true, 'video socket must disable TCP Nagle');
+    assert.equal(controlSocket.noDelayEnabled, true, 'control socket must disable TCP Nagle');
+    assert.equal(sentBinary.length, 0, 'initial keyframe must wait for clientReady instead of racing openPanelStream return');
+
+    onTextHandler(JSON.stringify({ type: 'clientReady' }));
     assert.equal(sentBinary.length, 1);
     assert.equal(sentBinary[0][0], FRAME_PACKET_MAGIC);
     assert.equal(sentBinary[0][1], 1);
@@ -987,7 +996,7 @@ test('cold ADB-only fast probes enrich marketname + wm size once per serial and 
 
     const e5Cold1 = await slots['E5:prompt-context']({}, { settings });
     const countAfterFirstProbe = shellInvocations.length;
-    assert.equal(countAfterFirstProbe, 5, 'Expected marketname+wm for serial 1 and marketname+model+wm for serial 2');
+    assert.equal(countAfterFirstProbe, 6, 'Expected single parallel batch (marketname+model+wm) once per online serial');
 
     // Cold fast probe 2 & 3: mobilecli still times out -> zero additional getprop/wm calls, byte-identical E5
     await preview.listState({ settings, fast: true });
@@ -1001,6 +1010,585 @@ test('cold ADB-only fast probes enrich marketname + wm size once per serial and 
     await preview.listState({ settings, fast: false });
     const e5AfterMobilecli = await slots['E5:prompt-context']({}, { settings });
     assert.equal(e5AfterMobilecli.sections[0].content, e5Cold1.sections[0].content);
+  } finally {
+    await preview.dispose();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('scrcpy-stream replays latest keyframe epoch on clientReady, falls back for legacy clients, and retries codec_options on encoder rejection', async () => {
+  const dataDir = await createRepoScratchDir('scrcpy-replay-');
+  const sps = Buffer.from([0x00, 0x00, 0x00, 0x01, 0x67, 0x64, 0x00, 0x20, 0xac, 0xb4, 0x0f, 0x81]);
+  const pps = Buffer.from([0x00, 0x00, 0x00, 0x01, 0x68, 0xee, 0x06, 0xf2]);
+  const spsPps = Buffer.concat([sps, pps]);
+
+  const makeSessionPacket = (width, height) => {
+    const b = Buffer.alloc(12);
+    b.writeUInt32BE(0x80000000, 0);
+    b.writeUInt32BE(width, 4);
+    b.writeUInt32BE(height, 8);
+    return b;
+  };
+  const makeFramePacket = ({ config = false, key = false, ptsUs = 0n, payload }) => {
+    const b = Buffer.alloc(12 + payload.length);
+    let flags = config ? (1n << 62n) : BigInt(ptsUs);
+    if (!config && key) flags |= (1n << 61n);
+    b.writeBigUInt64BE(flags, 0);
+    b.writeUInt32BE(payload.length, 8);
+    payload.copy(b, 12);
+    return b;
+  };
+
+  class MockSocket extends EventEmitter {
+    constructor(role) {
+      super();
+      this.role = role;
+      this.destroyed = false;
+      this.noDelay = false;
+      this.writes = [];
+    }
+    setNoDelay(flag) { this.noDelay = Boolean(flag); }
+    write(buf) { this.writes.push(Buffer.from(buf)); return true; }
+    destroy() { this.destroyed = true; this.emit('close'); }
+  }
+
+  const spawnArgsList = [];
+  let attempt = 0;
+  let videoSocket;
+  let controlSocket;
+  let attemptSocketSeq = 0;
+
+  const scrcpyManager = createScrcpyManager({
+    resolveDataDir: () => dataDir,
+    ensureServer: async () => ({ jarPath: '/mock/scrcpy-server-v4.0.jar', version: '4.0', source: 'cache' }),
+    allocatePort: async () => 29100 + attempt,
+    executeFile: async () => ({ stdout: '', stderr: '' }),
+    spawnProcess: (_file, argv) => {
+      attempt += 1;
+      attemptSocketSeq = 0;
+      spawnArgsList.push(argv);
+      const proc = new EventEmitter();
+      proc.stdout = new EventEmitter();
+      proc.stderr = new EventEmitter();
+      proc.kill = () => { proc.emit('exit', 0); };
+      if (attempt === 1) {
+        // Simulate an encoder rejecting repeat-previous-frame-after on attempt 1
+        queueMicrotask(() => {
+          proc.stderr.emit('data', Buffer.from('ERROR: IllegalArgumentException unsupported codec option\n'));
+          proc.emit('exit', 1);
+        });
+      }
+      return proc;
+    },
+    createSocket: () => {
+      attemptSocketSeq += 1;
+      if (attempt === 1) {
+        const failSock = new MockSocket('video');
+        queueMicrotask(() => failSock.emit('close'));
+        return failSock;
+      }
+      if (attemptSocketSeq === 1) {
+        videoSocket = new MockSocket('video');
+        queueMicrotask(() => {
+          const nameBuf = Buffer.alloc(64);
+          Buffer.from('Synth Stream Phone').copy(nameBuf);
+          videoSocket.emit('data', Buffer.concat([
+            Buffer.from([0x00]),
+            nameBuf,
+            Buffer.from('h264', 'ascii'),
+            makeSessionPacket(720, 1600),
+            makeFramePacket({ config: true, payload: spsPps }),
+            makeFramePacket({ key: true, ptsUs: 1000n, payload: Buffer.from([0x00, 0x00, 0x00, 0x01, 0x65, 0x11]) }),
+            makeFramePacket({ key: false, ptsUs: 17666n, payload: Buffer.from([0x00, 0x00, 0x00, 0x01, 0x41, 0x22]) }),
+            makeFramePacket({ key: false, ptsUs: 34333n, payload: Buffer.from([0x00, 0x00, 0x00, 0x01, 0x41, 0x33]) }),
+          ]));
+        });
+        return videoSocket;
+      }
+      controlSocket = new MockSocket('control');
+      queueMicrotask(() => controlSocket.emit('connect'));
+      return controlSocket;
+    },
+  });
+
+  try {
+    const sent = [];
+    let onTextHandler;
+    let closedBySession = false;
+    const abort1 = new AbortController();
+    const hs = await scrcpyManager.openVideoStream(
+      { adbBinary: '/mock/adb', serial: 'SYNTH-STREAM-01', clientReadyFallbackMs: 80 },
+      {
+        sendBinary: (pkt) => { sent.push(Buffer.from(pkt)); return true; },
+        sendText: () => true,
+        close: () => { closedBySession = true; },
+        onText: (fn) => { onTextHandler = fn; return () => {}; },
+        onBinary: () => () => {},
+        onClose: () => () => {},
+        bufferedAmount: () => 0,
+      },
+      { signal: abort1.signal },
+    );
+
+    assert.equal(closedBySession, false, 'Fallback retry must not prematurely close session');
+    assert.equal(spawnArgsList.length, 2, 'Expected automatic retry with i-frame-interval=1 after codec_options rejection');
+    assert.ok(spawnArgsList[0].includes('video_codec_options=i-frame-interval=1,repeat-previous-frame-after=100000'));
+    assert.ok(spawnArgsList[1].includes('video_codec_options=i-frame-interval=1'));
+    assert.equal(hs.width, 720);
+    assert.equal(hs.height, 1600);
+    assert.equal(videoSocket.noDelay, true);
+    assert.equal(controlSocket.noDelay, true);
+    assert.equal(sent.length, 0, 'Pre-ready frames stay buffered until clientReady');
+
+    // Sending clientReady replays keyframe + contiguous deltas in exact order
+    onTextHandler(JSON.stringify({ type: 'clientReady' }));
+    assert.equal(sent.length, 3);
+    assert.equal(sent[0][1], 1);
+    assert.equal(sent[1][1], 0);
+    assert.equal(sent[2][1], 0);
+    assert.equal(sent[0].readDoubleBE(8), 1000);
+    assert.equal(sent[1].readDoubleBE(8), 17666);
+    assert.equal(sent[2].readDoubleBE(8), 34333);
+
+    // Overflowing delta epoch (>60 deltas) then receiving a late clientReady sends keyframe + RESET_VIDEO
+    for (let i = 0; i < 62; i++) {
+      videoSocket.emit('data', makeFramePacket({ key: false, ptsUs: BigInt(50000 + i * 16666), payload: Buffer.from([0x00, 0x00, 0x00, 0x01, 0x41, i & 0xff]) }));
+    }
+    sent.length = 0;
+    controlSocket.writes.length = 0;
+    onTextHandler(JSON.stringify({ type: 'clientReady' }));
+    assert.equal(sent.length, 1, 'Broken delta epoch replays only lastKeyPacket and requests RESET_VIDEO');
+    assert.equal(sent[0][1], 1);
+    assert.ok(controlSocket.writes.some((w) => w.length === 1 && w[0] === CONTROL_MSG.RESET_VIDEO));
+    abort1.abort();
+
+    // Legacy client that never sends clientReady receives keyframe automatically via fallback timer
+    const legacySent = [];
+    const abort2 = new AbortController();
+    await scrcpyManager.openVideoStream(
+      { adbBinary: '/mock/adb', serial: 'SYNTH-STREAM-02', clientReadyFallbackMs: 25 },
+      {
+        sendBinary: (pkt) => { legacySent.push(Buffer.from(pkt)); return true; },
+        sendText: () => true,
+        close: () => {},
+        onText: () => () => {},
+        onBinary: () => () => {},
+        onClose: () => () => {},
+        bufferedAmount: () => 0,
+      },
+      { signal: abort2.signal },
+    );
+    assert.equal(legacySent.length, 0);
+    await new Promise((r) => setTimeout(r, 60));
+    assert.equal(legacySent.length, 3, 'Legacy client receives buffered epoch after fallback timer');
+    assert.equal(legacySent[0][1], 1);
+    abort2.abort();
+  } finally {
+    await scrcpyManager.dispose();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('panel.html streaming runtime attaches port before async configure, preserves FIFO delta chain during VideoDecoder.isConfigSupported, and coalesces VideoFrames via rAF', async () => {
+  const html = await readFile(new URL('../panel.html', import.meta.url), 'utf8');
+  const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
+  assert.ok(scriptMatch, 'Expected inline script block in panel.html');
+
+  const drawCalls = [];
+  const postedToServer = [];
+  const decodedChunks = [];
+  const rafQueue = [];
+  let rafSeq = 1;
+  let streamPortRef = null;
+  let decoderOutputCb = null;
+  let resolveConfigSupport = null;
+
+  const makeEl = (id) => ({
+    id,
+    hidden: false,
+    disabled: false,
+    value: '',
+    textContent: '',
+    width: 0,
+    height: 0,
+    style: {},
+    classList: { toggle() {}, add() {}, remove() {} },
+    setAttribute() {},
+    getAttribute() { return ''; },
+    addEventListener() {},
+    removeEventListener() {},
+    replaceChildren() {},
+    append() {},
+    appendChild() {},
+    focus() {},
+    setPointerCapture() {},
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 360, height: 800 }),
+    getContext: (_type, opts) => {
+      assert.equal(opts?.alpha, false);
+      assert.equal(opts?.desynchronized, true);
+      return {
+        drawImage(frame, _x, _y, w, h) {
+          drawCalls.push({ frameId: frame.frameId, w, h });
+        },
+      };
+    },
+  });
+
+  const elements = new Map();
+  const getEl = (id) => {
+    if (!elements.has(id)) elements.set(id, makeEl(id));
+    return elements.get(id);
+  };
+
+  class FakeEncodedVideoChunk {
+    constructor(init) {
+      this.type = init.type;
+      this.timestamp = init.timestamp;
+      this.data = new Uint8Array(init.data);
+    }
+  }
+
+  class FakeVideoDecoder {
+    constructor({ output, error }) {
+      this.state = 'unconfigured';
+      this.decodeQueueSize = 0;
+      this._output = output;
+      this._error = error;
+      decoderOutputCb = output;
+    }
+    static isConfigSupported() {
+      return new Promise((resolve) => {
+        resolveConfigSupport = () => resolve({ supported: true });
+      });
+    }
+    configure(cfg) {
+      this.config = cfg;
+      this.state = 'configured';
+    }
+    decode(chunk) {
+      decodedChunks.push({ type: chunk.type, timestamp: chunk.timestamp, byte0: chunk.data[chunk.data.length - 1] });
+    }
+    close() {
+      this.state = 'closed';
+    }
+  }
+
+  const fakeWindow = {
+    location: { search: '' },
+    navigator: { language: 'en-US' },
+    performance,
+    parent: null,
+    VideoDecoder: FakeVideoDecoder,
+    EncodedVideoChunk: FakeEncodedVideoChunk,
+    ResizeObserver: class { observe() {} },
+    addEventListener() {},
+    removeEventListener() {},
+    requestAnimationFrame(fn) {
+      const id = rafSeq++;
+      rafQueue.push({ id, fn });
+      return id;
+    },
+    cancelAnimationFrame(id) {
+      const idx = rafQueue.findIndex((item) => item.id === id);
+      if (idx !== -1) rafQueue.splice(idx, 1);
+    },
+    __kikiPhoneTestBridge(method, payload) {
+      if (method === 'plugin.call' && payload.action === 'state') {
+        return Promise.resolve({
+          ok: true,
+          selected: { id: 'SYNTH-VM-01', platform: 'android' },
+          devices: [{ id: 'SYNTH-VM-01', name: 'Synth VM Phone', platform: 'android', type: 'real', state: 'online', screenSize: { width: 1080, height: 2400 } }],
+          diagnostics: { android: { available: true }, ios: { simulatorsSupported: false } },
+        });
+      }
+      if (method === 'plugin.openStream') {
+        assert.equal(payload.args.bitRate, 8000000);
+        streamPortRef = {
+          started: false,
+          onmessage: null,
+          start() { this.started = true; },
+          postMessage(msg) { postedToServer.push(msg); },
+          close() {},
+        };
+        return Promise.resolve({
+          result: { protocol: 'h264-scrcpy-v1', width: 1080, height: 2400, codec: 'h264', codecProfile: 'avc1.640020' },
+          port: streamPortRef,
+        });
+      }
+      return Promise.resolve({ ok: true });
+    },
+  };
+  fakeWindow.parent = fakeWindow;
+
+  const sandbox = {
+    window: fakeWindow,
+    self: fakeWindow,
+    document: {
+      hidden: false,
+      documentElement: { setAttribute() {}, style: { setProperty() {} } },
+      activeElement: null,
+      getElementById: getEl,
+      querySelectorAll: () => [],
+      createElement: () => makeEl('dyn'),
+      addEventListener() {},
+    },
+    navigator: fakeWindow.navigator,
+    performance,
+    ResizeObserver: fakeWindow.ResizeObserver,
+    VideoDecoder: FakeVideoDecoder,
+    EncodedVideoChunk: FakeEncodedVideoChunk,
+    requestAnimationFrame: fakeWindow.requestAnimationFrame,
+    cancelAnimationFrame: fakeWindow.cancelAnimationFrame,
+    URLSearchParams,
+    setTimeout,
+    clearTimeout,
+    console,
+    ArrayBuffer,
+    Uint8Array,
+    DataView,
+    Blob,
+    atob,
+  };
+
+  // Boot the real panel.html script in an isolated VM context
+  vm.runInNewContext(scriptMatch[1], sandbox);
+  // Wait for boot timer (200ms) + async openPanelStream resolution
+  for (let i = 0; i < 40 && !streamPortRef; i++) {
+    await new Promise((r) => setTimeout(r, 15));
+  }
+  assert.ok(streamPortRef, 'Expected panel.html to open hardware stream');
+  assert.equal(streamPortRef.started, true, 'port.start() must be called immediately before decoder configure resolves');
+  assert.equal(typeof streamPortRef.onmessage, 'function', 'port.onmessage must be attached immediately');
+  assert.ok(
+    postedToServer.some((m) => typeof m === 'string' && JSON.parse(m).type === 'clientReady'),
+    'panel.html must send clientReady immediately before async isConfigSupported settles',
+  );
+
+  // Build synthetic H.264 packets with SPS (avc1.640020) and send keyframe + 3 deltas BEFORE isConfigSupported resolves
+  const makePktBuf = (isKey, ptsUs, tailByte) => {
+    const spsPrefix = isKey ? [0, 0, 0, 1, 0x67, 0x64, 0x00, 0x20, 0, 0, 0, 1, 0x65, tailByte] : [0, 0, 0, 1, 0x41, tailByte];
+    const ab = new ArrayBuffer(16 + spsPrefix.length);
+    const dv = new DataView(ab);
+    dv.setUint8(0, FRAME_PACKET_MAGIC);
+    dv.setUint8(1, isKey ? 1 : 0);
+    dv.setUint16(2, 1080, false);
+    dv.setUint16(4, 2400, false);
+    dv.setFloat64(8, ptsUs, false);
+    new Uint8Array(ab, 16).set(spsPrefix);
+    return ab;
+  };
+
+  streamPortRef.onmessage({ data: makePktBuf(true, 1000, 0xa0) });
+  streamPortRef.onmessage({ data: makePktBuf(false, 2000, 0xa1) });
+  streamPortRef.onmessage({ data: makePktBuf(false, 3000, 0xa2) });
+  streamPortRef.onmessage({ data: makePktBuf(false, 4000, 0xa3) });
+  assert.equal(decodedChunks.length, 0, 'Chunks wait cleanly while VideoDecoder is asynchronously configuring');
+
+  assert.equal(typeof resolveConfigSupport, 'function');
+  resolveConfigSupport();
+  await new Promise((r) => setTimeout(r, 20));
+
+  assert.deepEqual(decodedChunks, [
+    { type: 'key', timestamp: 1000, byte0: 0xa0 },
+    { type: 'delta', timestamp: 2000, byte0: 0xa1 },
+    { type: 'delta', timestamp: 3000, byte0: 0xa2 },
+    { type: 'delta', timestamp: 4000, byte0: 0xa3 },
+  ], 'All queued keyframe + P-frames must decode in exact FIFO order without dropping deltas');
+  assert.equal(
+    postedToServer.some((m) => typeof m === 'string' && JSON.parse(m).type === 'resetVideo'),
+    false,
+    'Zero spurious resetVideo requests during initial async configure',
+  );
+
+  // Verify zero-jank rAF coalescing: 3 decoded VideoFrames in one burst -> first 2 closed immediately, latest painted on rAF and closed
+  const closedFrames = [];
+  const makeVideoFrame = (frameId) => ({
+    frameId,
+    displayWidth: 1080,
+    displayHeight: 2400,
+    close() { closedFrames.push(frameId); },
+  });
+  decoderOutputCb(makeVideoFrame(1));
+  decoderOutputCb(makeVideoFrame(2));
+  decoderOutputCb(makeVideoFrame(3));
+  assert.deepEqual(closedFrames, [1, 2], 'Superseded unrendered VideoFrames must close immediately');
+  assert.equal(drawCalls.length, 0, 'Canvas draw waits for requestAnimationFrame');
+  assert.equal(rafQueue.length, 1, 'Only one rAF scheduled per burst');
+
+  rafQueue.shift().fn();
+  assert.deepEqual(drawCalls, [{ frameId: 3, w: 1080, h: 2400 }], 'rAF draws only latest decoded VideoFrame');
+  assert.deepEqual(closedFrames, [1, 2, 3], 'Drawn VideoFrame is closed immediately in finally');
+});
+
+test('P1-1: hung/failing adb shell enrichment stays within caller timeout budget and does not falsely latch adbEnriched', async () => {
+  const dataDir = await createRepoScratchDir('p1-1-adb-budget-');
+  let shellShouldHang = true;
+  let shellCalls = 0;
+
+  const preview = createPhonePreviewService({
+    dataDir,
+    hostPlatform: 'win32',
+    fastStateTtlMs: 0,
+    fastProbeTimeoutMs: 45,
+    loadDriverModule: async () => ({
+      MobilecliDriver: class AlwaysHungDriver {
+        async listDevices() {
+          await new Promise((r) => { const t = setTimeout(r, 500); t.unref?.(); });
+          return [];
+        }
+        async dispose() {}
+      },
+    }),
+    executeFile: async (file, argv) => {
+      assert.equal(file, '/mock/adb');
+      if (argv[0] === 'devices' && argv[1] === '-l') {
+        return {
+          stdout: 'List of devices attached\nSYNTH-BUDGET-01 device product:p1 model:TEST_BUDGET_01 device:d1\n',
+          stderr: '',
+        };
+      }
+      if (argv[0] === '-s' && argv[2] === 'shell') {
+        shellCalls += 1;
+        const cmd = argv.slice(3).join(' ');
+        if (shellShouldHang) {
+          await new Promise((r) => { const t = setTimeout(r, 500); t.unref?.(); });
+          return { stdout: '', stderr: '' };
+        }
+        if (cmd === 'getprop ro.product.marketname') return { stdout: 'Synth Recovered Ultra\n', stderr: '' };
+        if (cmd === 'getprop ro.product.model') return { stdout: 'TEST_BUDGET_01\n', stderr: '' };
+        if (cmd === 'wm size') return { stdout: 'Physical size: 1440x3200\n', stderr: '' };
+      }
+      throw new Error(`Unexpected adb command: ${argv.join(' ')}`);
+    },
+  });
+
+  try {
+    const settings = { adbPath: '/mock/adb' };
+
+    // Probe 1: mobilecli hangs (45ms) AND adb shell hangs (45ms single parallel window) -> total must stay well under 200ms
+    const t0 = performance.now();
+    const s1 = await preview.listState({ settings, fast: true });
+    const elapsedMs = performance.now() - t0;
+    assert.ok(elapsedMs < 200, `Expected single bounded 45ms enrich window after 45ms mobilecli timeout, took ${elapsedMs.toFixed(1)}ms`);
+    assert.equal(s1.devices[0].name, 'TEST BUDGET 01');
+    assert.deepEqual(s1.devices[0].screenSize, { width: 1080, height: 2400 });
+
+    // Probe 2: adb shell recovers -> since Probe 1 failed, adbEnriched was NOT latched, so Probe 2 enriches cleanly
+    shellShouldHang = false;
+    const callsBeforeRecovery = shellCalls;
+    const s2 = await preview.listState({ settings, fast: true });
+    assert.ok(shellCalls > callsBeforeRecovery, 'Failed enrichment must not falsely latch adbEnriched');
+    assert.equal(s2.devices[0].name, 'Synth Recovered Ultra');
+    assert.deepEqual(s2.devices[0].screenSize, { width: 1440, height: 3200 });
+
+    // Probe 3: now adbEnriched IS latched -> zero extra adb shell calls on repeated fast probes
+    const callsAfterRecovery = shellCalls;
+    const s3 = await preview.listState({ settings, fast: true });
+    assert.equal(shellCalls, callsAfterRecovery, 'Successful enrichment must cache per serial across fast probes');
+    assert.equal(s3.devices[0].name, 'Synth Recovered Ultra');
+    assert.deepEqual(s3.devices[0].screenSize, { width: 1440, height: 3200 });
+  } finally {
+    await preview.dispose();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('P1-2: authoritative unplug prunes richDeviceCache, fast:false refreshes wm size, and rotate syncs cached orientation', async () => {
+  const dataDir = await createRepoScratchDir('p1-2-prune-refresh-');
+  let mobilecliShouldHang = false;
+  let mobilecliName = 'Synth Initial Phone';
+  let mobilecliSize = { width: 1440, height: 3200 };
+  let adbConnected = true;
+  let marketName = 'Synth Initial Phone';
+  let wmSizeOut = 'Physical size: 1440x3200\n';
+
+  const preview = createPhonePreviewService({
+    dataDir,
+    hostPlatform: 'win32',
+    fastStateTtlMs: 0,
+    fastProbeTimeoutMs: 50,
+    loadDriverModule: async () => ({
+      MobilecliDriver: class LifecycleDriver {
+        async listDevices() {
+          if (mobilecliShouldHang) {
+            await new Promise((r) => { const t = setTimeout(r, 400); t.unref?.(); });
+            return [];
+          }
+          if (!adbConnected) return [];
+          return [{
+            id: 'SYNTH-LIFE-01',
+            name: mobilecliName,
+            platform: 'android',
+            type: 'real',
+            state: 'online',
+            screenSize: { ...mobilecliSize },
+          }];
+        }
+        async connect() {}
+        async getScreenSize() { return { width: 1080, height: 2340 }; }
+        async getOrientation() { return 'portrait'; }
+        async setOrientation() {}
+        async disconnect() {}
+        async dispose() {}
+      },
+    }),
+    executeFile: async (file, argv) => {
+      assert.equal(file, '/mock/adb');
+      if (argv[0] === 'devices' && argv[1] === '-l') {
+        const rows = adbConnected ? 'SYNTH-LIFE-01 device product:p1 model:TEST_LIFE_01 device:d1\n' : '';
+        return { stdout: `List of devices attached\n${rows}`, stderr: '' };
+      }
+      if (argv[0] === '-s' && argv[2] === 'shell') {
+        const cmd = argv.slice(3).join(' ');
+        if (cmd === 'getprop ro.product.marketname') return { stdout: `${marketName}\n`, stderr: '' };
+        if (cmd === 'getprop ro.product.model') return { stdout: 'TEST_LIFE_01\n', stderr: '' };
+        if (cmd === 'wm size') return { stdout: wmSizeOut, stderr: '' };
+      }
+      throw new Error(`Unexpected adb command: ${argv.join(' ')}`);
+    },
+  });
+
+  try {
+    const settings = { adbPath: '/mock/adb' };
+
+    // 1. Connected phone enriched via mobilecli
+    const s1 = await preview.listState({ settings, fast: true });
+    assert.equal(s1.devices[0].name, 'Synth Initial Phone');
+    assert.deepEqual(s1.devices[0].screenSize, { width: 1440, height: 3200 });
+
+    // 2. Physical unplug while mobilecli times out -> authoritative adbOutcome.ok prunes richDeviceCache
+    mobilecliShouldHang = true;
+    adbConnected = false;
+    const sUnplugged = await preview.listState({ settings, fast: true });
+    assert.equal(sUnplugged.devices.length, 0);
+
+    // 3. Reconnect with different identity/size while mobilecli still times out -> starts fresh without stale cache
+    adbConnected = true;
+    marketName = 'Synth Replugged Phone';
+    wmSizeOut = 'Physical size: 1080x2400\n';
+    const sReplugged = await preview.listState({ settings, fast: true });
+    assert.equal(sReplugged.devices[0].name, 'Synth Replugged Phone');
+    assert.deepEqual(sReplugged.devices[0].screenSize, { width: 1080, height: 2400 });
+
+    // 4. Full refresh (fast:false) updates changed wm size even when mobilecli reports stale size
+    mobilecliShouldHang = false;
+    mobilecliName = 'Synth Replugged Phone';
+    mobilecliSize = { width: 1080, height: 2400 };
+    wmSizeOut = 'Physical size: 1440x3200\nOverride size: 1080x2340\n';
+    const sRefreshed = await preview.listState({ settings, fast: false });
+    assert.deepEqual(sRefreshed.devices[0].screenSize, { width: 1080, height: 2340 });
+
+    // 5. performAction({ action: 'rotate' }) immediately syncs rotated orientation + effectiveSize into subsequent listState
+    mobilecliShouldHang = true;
+    const rot = await preview.performAction(
+      { action: 'rotate', deviceId: 'SYNTH-LIFE-01', platform: 'android', orientation: 'landscape' },
+      { settings },
+    );
+    assert.equal(rot.ok, true);
+    assert.equal(rot.orientation, 'landscape');
+    const sRotated = await preview.listState({ settings, fast: true });
+    assert.equal(sRotated.devices[0].orientation, 'landscape');
+    assert.deepEqual(sRotated.devices[0].screenSize, { width: 2340, height: 1080 });
   } finally {
     await preview.dispose();
     await rm(dataDir, { recursive: true, force: true });
