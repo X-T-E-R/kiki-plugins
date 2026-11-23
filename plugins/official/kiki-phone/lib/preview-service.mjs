@@ -17,7 +17,8 @@ const defaultExecFile = execAdb;
 const SESSION_IDLE_MS = 60_000;
 const DEFAULT_METADATA_TTL_MS = 4_500;
 const DEFAULT_FAST_STATE_TTL_MS = 15_000;
-const DEFAULT_FAST_PROBE_TIMEOUT_MS = 1_500;
+const DEFAULT_FAST_PROBE_TIMEOUT_MS = 4_000;
+const DEFAULT_TRANSIENT_DISAPPEAR_DEBOUNCE_MS = 5_000;
 const PEEK_WAIT_BUDGET_MS = 450;
 
 const NAME_RICHNESS = {
@@ -277,12 +278,14 @@ export function createPhonePreviewService({
   metadataTtlMs = DEFAULT_METADATA_TTL_MS,
   fastStateTtlMs = DEFAULT_FAST_STATE_TTL_MS,
   fastProbeTimeoutMs = DEFAULT_FAST_PROBE_TIMEOUT_MS,
+  disappearDebounceMs = DEFAULT_TRANSIENT_DISAPPEAR_DEBOUNCE_MS,
 } = {}) {
   const resolveDataDir = () => customDataDir || phoneDataDir();
   const captureSessions = new Map();
   const actionSessions = new Map();
   const deviceMetaCache = new Map();
   const richDeviceCache = new Map();
+  const transientMissingSince = new Map();
   const adbEnrichFlights = new Map();
   const inflightCaptures = new Map();
   let selectedMemoryCache = null;
@@ -430,9 +433,24 @@ export function createPhonePreviewService({
   const acquireCaptureSession = (opts) => acquireLaneSession(captureSessions, { ...opts, warmScrcpy: true });
   const acquireActionSession = (opts) => acquireLaneSession(actionSessions, { ...opts, warmScrcpy: false });
 
-  let cachedProbe = { key: '', at: 0, allDevices: null, diagnostics: null };
-  let cachedStateSnapshot = { key: '', at: 0, value: null };
+  const cachedProbes = new Map();
+  const cachedStateSnapshots = new Map();
+  const publishedProbeSeq = new Map();
+  let probeSequence = 0;
   const stateRefreshFlights = new Map();
+
+  function invalidateProbeCaches(includeSnapshots = false) {
+    for (const entry of cachedProbes.values()) {
+      entry.at = 0;
+      entry.revalidateAt = 0;
+    }
+    if (includeSnapshots) {
+      for (const entry of cachedStateSnapshots.values()) {
+        entry.at = 0;
+        entry.revalidateAt = 0;
+      }
+    }
+  }
 
   function rememberDeviceRichMeta(key, {
     name,
@@ -552,6 +570,7 @@ export function createPhonePreviewService({
   function emptyStateSnapshot() {
     return {
       ok: true,
+      authoritative: false,
       selected: undefined,
       devices: [],
       groups: { android: [], ios: [] },
@@ -596,16 +615,25 @@ export function createPhonePreviewService({
     }
   }
 
-  async function listState({ settings = {}, fast = false } = {}) {
+  async function listState({ settings = {}, fast = false, background = false } = {}) {
     const dataDir = resolveDataDir();
     const cacheKey = String(settings?.adbPath ?? '');
     let allDevices;
     let diagnostics;
 
-    if (fast && cachedProbe.allDevices && cachedProbe.key === cacheKey && Date.now() - cachedProbe.at < fastStateTtlMs) {
-      allDevices = cachedProbe.allDevices;
-      diagnostics = cachedProbe.diagnostics;
+    const existingProbe = cachedProbes.get(cacheKey);
+    const nowStart = Date.now();
+    let probeSeq = 0;
+    let retainedByDebounce = false;
+    let debounceDeadline = Number.POSITIVE_INFINITY;
+    let authoritative = true;
+
+    if (fast && !background && existingProbe?.allDevices && !existingProbe.retainedByDebounce && nowStart < existingProbe.revalidateAt) {
+      allDevices = existingProbe.allDevices;
+      diagnostics = existingProbe.diagnostics;
+      authoritative = existingProbe.authoritative !== false;
     } else {
+      probeSeq = ++probeSequence;
       const hasRuntime = loadDriverModule ? true : await runtimeInstalled(dataDir);
       const adbBinary = settings?.adbPath || await findAdb({ dataDir }).catch(() => undefined);
       const env = upstreamEnvironment(adbBinary, process.env, dataDir);
@@ -826,35 +854,99 @@ export function createPhonePreviewService({
       const canPruneAndroid = Boolean(adbBinary) ? adbOutcome.ok : mobilecliOutcome.ok;
       const canPruneIosReal = mobilecliOutcome.ok;
       const canPruneIosSim = mobilecliOutcome.ok || Boolean(simOutcome?.available);
-      for (const [key, cached] of richDeviceCache.entries()) {
-        if (byKey.has(key)) continue;
-        if (key.startsWith('android:') && canPruneAndroid) {
-          richDeviceCache.delete(key);
-          deviceMetaCache.delete(key);
-        } else if (key.startsWith('ios:')) {
-          const isSim = cached?.type === 'simulator';
-          if (isSim ? canPruneIosSim : canPruneIosReal) {
+      authoritative = canPruneAndroid || canPruneIosReal || canPruneIosSim;
+      const latestPublishedSeq = publishedProbeSeq.get(cacheKey) ?? 0;
+      const isSuperseded = probeSeq < latestPublishedSeq;
+      const probeNow = Date.now();
+      const latestProbeEntry = cachedProbes.get(cacheKey);
+      if (isSuperseded && latestProbeEntry?.allDevices) {
+        allDevices = latestProbeEntry.allDevices;
+        diagnostics = latestProbeEntry.diagnostics;
+        authoritative = latestProbeEntry.authoritative !== false;
+      } else {
+        for (const [key, dev] of byKey.entries()) {
+          if (dev.state === 'online') transientMissingSince.delete(key);
+        }
+        const prevDevices = Array.isArray(latestProbeEntry?.allDevices) ? latestProbeEntry.allDevices : [];
+        for (const prevDev of prevDevices) {
+          const key = `${prevDev.platform}:${prevDev.id}`;
+          const currentDev = byKey.get(key);
+          if (!currentDev) {
+            const platformAuthoritative = prevDev.platform === 'android'
+              ? canPruneAndroid
+              : (prevDev.type === 'simulator' ? canPruneIosSim : canPruneIosReal);
+            if (!platformAuthoritative) {
+              byKey.set(key, prevDev);
+              continue;
+            }
+            if (background && prevDev.state === 'online' && disappearDebounceMs > 0) {
+              const firstMissed = transientMissingSince.get(key) ?? probeNow;
+              transientMissingSince.set(key, firstMissed);
+              if (probeNow - firstMissed < disappearDebounceMs) {
+                byKey.set(key, prevDev);
+                retainedByDebounce = true;
+                debounceDeadline = Math.min(debounceDeadline, firstMissed + disappearDebounceMs);
+                continue;
+              }
+            }
+            transientMissingSince.delete(key);
+          } else if (prevDev.state === 'online' && currentDev.state !== 'online') {
+            if (background && disappearDebounceMs > 0) {
+              const firstMissed = transientMissingSince.get(key) ?? probeNow;
+              transientMissingSince.set(key, firstMissed);
+              if (probeNow - firstMissed < disappearDebounceMs) {
+                byKey.set(key, prevDev);
+                retainedByDebounce = true;
+                debounceDeadline = Math.min(debounceDeadline, firstMissed + disappearDebounceMs);
+                continue;
+              }
+            }
+            transientMissingSince.delete(key);
+          }
+        }
+        for (const [key, cached] of richDeviceCache.entries()) {
+          if (byKey.has(key)) continue;
+          if (key.startsWith('android:') && canPruneAndroid) {
             richDeviceCache.delete(key);
+            deviceMetaCache.delete(key);
+          } else if (key.startsWith('ios:')) {
+            const isSim = cached?.type === 'simulator';
+            if (isSim ? canPruneIosSim : canPruneIosReal) {
+              richDeviceCache.delete(key);
+              deviceMetaCache.delete(key);
+            }
+          }
+        }
+        for (const key of deviceMetaCache.keys()) {
+          if (byKey.has(key)) continue;
+          if (key.startsWith('android:') && canPruneAndroid) {
+            deviceMetaCache.delete(key);
+          } else if (key.startsWith('ios:') && canPruneIosReal) {
             deviceMetaCache.delete(key);
           }
         }
-      }
-      for (const key of deviceMetaCache.keys()) {
-        if (byKey.has(key)) continue;
-        if (key.startsWith('android:') && canPruneAndroid) {
-          deviceMetaCache.delete(key);
-        } else if (key.startsWith('ios:') && canPruneIosReal) {
-          deviceMetaCache.delete(key);
-        }
-      }
 
-      allDevices = sortDevices([...byKey.values()]);
-      for (const dev of allDevices) {
-        if (dev.state === 'online') {
-          ensureMetaEntry(dev.platform, dev.id, dev.screenSize, dev.orientation);
+        allDevices = sortDevices([...byKey.values()]);
+        for (const dev of allDevices) {
+          if (dev.state === 'online') {
+            ensureMetaEntry(dev.platform, dev.id, dev.screenSize, dev.orientation);
+          }
         }
+        const commitNow = Date.now();
+        const revalidateAt = retainedByDebounce
+          ? Math.min(commitNow + fastStateTtlMs, debounceDeadline)
+          : commitNow + fastStateTtlMs;
+        publishedProbeSeq.set(cacheKey, probeSeq);
+        cachedProbes.set(cacheKey, {
+          key: cacheKey,
+          at: commitNow,
+          revalidateAt,
+          retainedByDebounce,
+          authoritative,
+          allDevices,
+          diagnostics,
+        });
       }
-      cachedProbe = { key: cacheKey, at: Date.now(), allDevices, diagnostics };
     }
 
     const saved = await readSelectedDevice(dataDir);
@@ -869,6 +961,7 @@ export function createPhonePreviewService({
 
     const snapshot = {
       ok: true,
+      authoritative,
       selected,
       devices: allDevices,
       groups: {
@@ -877,7 +970,21 @@ export function createPhonePreviewService({
       },
       diagnostics,
     };
-    cachedStateSnapshot = { key: cacheKey, at: Date.now(), value: snapshot };
+    const snapNow = Date.now();
+    const latestSeqAfter = publishedProbeSeq.get(cacheKey) ?? 0;
+    if (probeSeq === 0 || probeSeq >= latestSeqAfter) {
+      const probeEntry = cachedProbes.get(cacheKey);
+      const revalidateAt = retainedByDebounce
+        ? Math.min(snapNow + fastStateTtlMs, debounceDeadline)
+        : (probeEntry?.revalidateAt ?? snapNow + fastStateTtlMs);
+      cachedStateSnapshots.set(cacheKey, {
+        key: cacheKey,
+        at: snapNow,
+        revalidateAt,
+        retainedByDebounce,
+        value: snapshot,
+      });
+    }
     return snapshot;
   }
 
@@ -885,7 +992,7 @@ export function createPhonePreviewService({
     const cacheKey = String(settings?.adbPath ?? '');
     let flight = stateRefreshFlights.get(cacheKey);
     if (!flight) {
-      flight = listState({ settings, fast: true }).finally(() => {
+      flight = listState({ settings, fast: true, background: true }).finally(() => {
         if (stateRefreshFlights.get(cacheKey) === flight) {
           stateRefreshFlights.delete(cacheKey);
         }
@@ -898,19 +1005,22 @@ export function createPhonePreviewService({
 
   async function peekState({ settings = {}, maxAgeMs = fastStateTtlMs, waitBudgetMs = PEEK_WAIT_BUDGET_MS } = {}) {
     const cacheKey = String(settings?.adbPath ?? '');
-    const hasCached = cachedStateSnapshot.value !== null && cachedStateSnapshot.key === cacheKey;
-    if (hasCached && Date.now() - cachedStateSnapshot.at < maxAgeMs) {
-      return cachedStateSnapshot.value;
+    const cached = cachedStateSnapshots.get(cacheKey);
+    const hasCached = cached !== undefined && cached.value !== null;
+    const now = Date.now();
+    if (hasCached && now - cached.at < maxAgeMs && now < cached.revalidateAt) {
+      return cached.value;
     }
     const flight = triggerBackgroundStateRefresh(settings);
     if (hasCached || waitBudgetMs <= 0) {
-      return hasCached ? cachedStateSnapshot.value : emptyStateSnapshot();
+      return hasCached ? cached.value : emptyStateSnapshot();
     }
     try {
       return await raceTimeout(flight, waitBudgetMs, 'phone peek budget elapsed');
     } catch {
-      return cachedStateSnapshot.key === cacheKey && cachedStateSnapshot.value !== null
-        ? cachedStateSnapshot.value
+      const latest = cachedStateSnapshots.get(cacheKey);
+      return latest?.value !== null && latest?.value !== undefined
+        ? latest.value
         : emptyStateSnapshot();
     }
   }
@@ -1226,7 +1336,7 @@ export function createPhonePreviewService({
         const { stdout, stderr } = await executeFile(adbBinary, argv, {
           encoding: 'utf8', windowsHide: true, timeout: 20_000,
         });
-        cachedProbe.at = 0;
+        invalidateProbeCaches();
         return { ok: true, stdout: stdout.trim(), stderr: stderr.trim() };
       } catch (error) {
         return { ok: false, error: error.stderr?.trim() || error.message || String(error) };
@@ -1248,7 +1358,7 @@ export function createPhonePreviewService({
             env: upstreamEnvironment(settings?.adbPath || await findAdb({ dataDir }), process.env, dataDir),
           });
         }
-        cachedProbe.at = 0;
+        invalidateProbeCaches();
         await writeSelectedDevice(dataDir, { id, platform });
         return { ok: true, selected: { id, platform } };
       } catch (error) {
@@ -1480,8 +1590,7 @@ export function createPhonePreviewService({
               orientation: next,
               screenSize: meta.effectiveSize,
             });
-            cachedProbe.at = 0;
-            cachedStateSnapshot.at = 0;
+            invalidateProbeCaches(true);
             return { ok: true, action, orientation: next };
           }
           case 'appearance': {

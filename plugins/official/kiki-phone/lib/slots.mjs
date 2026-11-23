@@ -113,13 +113,19 @@ export const PHONE_HTTP_ROUTES = [
 ];
 
 export function createPhoneSlotHandlers(previewService, { pluginId = KIKI_PHONE_PLUGIN_ID } = {}) {
+  const lastPromptByKey = new Map();
   return {
     async 'E5:prompt-context'(payload = {}, context = {}) {
+      const settings = context.settings ?? payload?.settings ?? {};
+      const cacheKey = String(settings?.adbPath ?? '');
       try {
-        const settings = context.settings ?? payload?.settings ?? {};
         const state = typeof previewService.peekState === 'function'
           ? await previewService.peekState({ settings, maxAgeMs: 15_000 })
           : await previewService.listState({ settings, fast: true });
+        if (state?.authoritative === false) {
+          const prev = lastPromptByKey.get(cacheKey);
+          return prev ? prev.result : { sections: [] };
+        }
         const rankType = (t) => (t === 'real' ? 0 : 1);
         const online = (Array.isArray(state?.devices) ? state.devices : [])
           .filter((d) => d && d.state === 'online')
@@ -129,7 +135,11 @@ export function createPhoneSlotHandlers(previewService, { pluginId = KIKI_PHONE_
             || String(a.platform || '').localeCompare(String(b.platform || ''))
             || String(a.id || '').localeCompare(String(b.id || '')),
           );
-        if (online.length === 0) return { sections: [] };
+        if (online.length === 0) {
+          const empty = { sections: [] };
+          lastPromptByKey.set(cacheKey, { content: '', result: empty });
+          return empty;
+        }
         const summary = online
           .map((d) => {
             const width = d.screenSize?.width ?? (d.platform === 'ios' ? 1179 : 1080);
@@ -139,17 +149,23 @@ export function createPhoneSlotHandlers(previewService, { pluginId = KIKI_PHONE_
             return `${d.name} (${d.platform}, id=${d.id}, ${width}x${height}${isSelected ? ', selected' : ''})`;
           })
           .join('; ');
-        return {
+        const content = `Online devices (${online.length}): ${summary}. Users can also view and control the live screen in the Phone Preview workspace tab.`;
+        const prev = lastPromptByKey.get(cacheKey);
+        if (prev && prev.content === content) return prev.result;
+        const result = {
           sections: [
             {
               id: 'connected-phones',
               title: 'Connected phones',
-              content: `Online devices (${online.length}): ${summary}. Users can also view and control the live screen in the Phone Preview workspace tab.`,
+              content,
             },
           ],
         };
+        lastPromptByKey.set(cacheKey, { content, result });
+        return result;
       } catch {
-        return { sections: [] };
+        const prev = lastPromptByKey.get(cacheKey);
+        return prev ? prev.result : { sections: [] };
       }
     },
 

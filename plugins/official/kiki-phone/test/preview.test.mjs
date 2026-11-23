@@ -1826,3 +1826,78 @@ test('P1-4: out-of-order VideoDecoder.isConfigSupported resolution never overwri
   await new Promise((r) => setTimeout(r, 15));
   assert.deepEqual(configuredCalls, ['avc1.640020'], 'Stopped generation must never configure decoder after pagehide');
 });
+
+test('retains online devices on dual probe timeout and debounces transient background ADB blips before clearing E5:prompt-context', async () => {
+  const dataDir = await createRepoScratchDir('phone-flap-debounce-');
+  let adbMode = 'online';
+  const preview = createPhonePreviewService({
+    dataDir,
+    hostPlatform: 'win32',
+    fastStateTtlMs: 0,
+    fastProbeTimeoutMs: 40,
+    disappearDebounceMs: 120,
+    loadDriverModule: async () => ({
+      MobilecliDriver: class {
+        async listDevices() {
+          if (adbMode === 'timeout') {
+            await new Promise((r) => setTimeout(r, 250));
+          }
+          if (adbMode === 'online') {
+            return [{ id: 'SER-DEBOUNCE-1', name: 'Debounce Phone', platform: 'android', type: 'real', state: 'online', screenSize: { width: 1080, height: 2400 } }];
+          }
+          return [];
+        }
+        async dispose() {}
+      },
+    }),
+    executeFile: async (_bin, args) => {
+      const joined = args.join(' ');
+      if (joined.includes('devices -l')) {
+        if (adbMode === 'timeout') throw new Error('adb timed out');
+        if (adbMode === 'online') {
+          return { stdout: 'List of devices attached\nSER-DEBOUNCE-1 device model:Debounce_Phone transport_id:1\n' };
+        }
+        return { stdout: 'List of devices attached\n' };
+      }
+      throw new Error(`Unexpected adb command: ${joined}`);
+    },
+  });
+  const slots = createPhoneSlotHandlers(preview);
+  const settings = { adbPath: '/mock/adb' };
+
+  try {
+    const initial = await preview.listState({ settings, fast: true });
+    assert.equal(initial.devices.length, 1);
+    const baseline = await slots['E5:prompt-context']({}, { settings });
+    assert.equal(baseline.sections.length, 1);
+    assert.match(baseline.sections[0].content, /Debounce Phone/);
+
+    adbMode = 'timeout';
+    const afterTimeout = await preview.listState({ settings, fast: true });
+    assert.equal(afterTimeout.devices.length, 1, 'Dual probe timeout must retain previous online device');
+    const e5AfterTimeout = await slots['E5:prompt-context']({}, { settings });
+    assert.equal(e5AfterTimeout.sections[0].content, baseline.sections[0].content);
+
+    adbMode = 'empty';
+    await preview.listState({ settings, fast: true, background: true });
+    const e5DuringDebounce = await slots['E5:prompt-context']({}, { settings });
+    assert.equal(e5DuringDebounce.sections.length, 1, 'Transient background disappearance within debounce window must retain online device');
+
+    // Explicit foreground fast read must bypass debounced background retention and see unplug immediately
+    const foregroundUnplug = await preview.listState({ settings, fast: true });
+    assert.equal(foregroundUnplug.devices.length, 0, 'Explicit foreground read must reflect unplug without background debounce');
+
+    // Restore online then verify sustained background disappearance clears past debounce window
+    adbMode = 'online';
+    await preview.listState({ settings, fast: true });
+    adbMode = 'empty';
+    await preview.listState({ settings, fast: true, background: true });
+    await new Promise((r) => setTimeout(r, 140));
+    await preview.listState({ settings, fast: true, background: true });
+    const e5AfterDebounce = await slots['E5:prompt-context']({}, { settings });
+    assert.deepEqual(e5AfterDebounce, { sections: [] }, 'Sustained disappearance past debounce window must clear online device');
+  } finally {
+    await preview.dispose();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
