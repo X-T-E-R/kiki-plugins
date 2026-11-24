@@ -1,7 +1,7 @@
 {
   "name": "kiki-office",
-  "version": "0.1.3",
-  "description": "Create, inspect, edit and preview Word, Excel and PowerPoint files locally with pinned OfficeCLI.",
+  "version": "0.2.0",
+  "description": "Create, inspect, edit, validate and preview Word, Excel and PowerPoint files locally with pinned OfficeCLI.",
   "license": "MIT",
   "icon": "./icon.svg",
   "skills": "./skills/",
@@ -28,7 +28,7 @@
           "kind": "executable",
           "required": true,
           "executionHost": "plugin-runtime",
-          "version": "1.0.152",
+          "version": "1.0.163",
           "setting": "officecliPath",
           "capabilityImpact": [
             "office-tools"
@@ -120,7 +120,7 @@
       {
         "schemaVersion": 1,
         "name": "office_query",
-        "description": "Find nodes matching an OfficeCLI selector and return bounded structured JSON. Use to identify stable element paths before editing.",
+        "description": "Find nodes matching an OfficeCLI selector. Returns bounded JSON by default, or compact one-line listings when compact=true (with optional fields for docx/pptx).",
         "parameters": {
           "type": "object",
           "properties": {
@@ -129,6 +129,15 @@
               "description": "Workspace-relative path or explicitly approved absolute path (.docx/.xlsx/.pptx)."
             },
             "selector": {
+              "type": "string"
+            },
+            "find": {
+              "type": "string"
+            },
+            "compact": {
+              "type": "boolean"
+            },
+            "fields": {
               "type": "string"
             }
           },
@@ -153,7 +162,7 @@
       {
         "schemaVersion": 1,
         "name": "office_set",
-        "description": "Modify properties or replace matched text at a semantic path. Use on an existing document; specify props or find and replace. No match may be a no-op.",
+        "description": "Modify properties or replace matched text at a semantic path. Use on an existing document; specify props (flat map or [\"key=value\"] list) or find and replace.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -165,16 +174,28 @@
               "type": "string"
             },
             "props": {
-              "type": "object",
-              "minProperties": 1,
-              "maxProperties": 32,
-              "additionalProperties": {
-                "type": [
-                  "string",
-                  "number",
-                  "boolean"
-                ]
-              }
+              "anyOf": [
+                {
+                  "type": "object",
+                  "minProperties": 1,
+                  "maxProperties": 64,
+                  "additionalProperties": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ]
+                  }
+                },
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 64,
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
             },
             "find": {
               "type": "string"
@@ -204,7 +225,7 @@
       {
         "schemaVersion": 1,
         "name": "office_add",
-        "description": "Add an element under a parent semantic path in an existing document. Supply a type and optional properties; use office_get to discover valid paths.",
+        "description": "Add or clone an element under a parent semantic path in an existing document. Supply type or internal DOM from path, optional before/after/index placement, and props.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -218,23 +239,47 @@
             "type": {
               "type": "string"
             },
+            "from": {
+              "type": "string"
+            },
+            "before": {
+              "type": "string"
+            },
+            "after": {
+              "type": "string"
+            },
+            "index": {
+              "type": "integer",
+              "minimum": 0
+            },
             "props": {
-              "type": "object",
-              "minProperties": 1,
-              "maxProperties": 32,
-              "additionalProperties": {
-                "type": [
-                  "string",
-                  "number",
-                  "boolean"
-                ]
-              }
+              "anyOf": [
+                {
+                  "type": "object",
+                  "minProperties": 1,
+                  "maxProperties": 64,
+                  "additionalProperties": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ]
+                  }
+                },
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 64,
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
             }
           },
           "required": [
             "file",
-            "parent",
-            "type"
+            "parent"
           ],
           "additionalProperties": false
         },
@@ -286,7 +331,7 @@
       {
         "schemaVersion": 1,
         "name": "office_view",
-        "description": "Get a bounded plain-text, annotated, outline, stats or issues overview. Defaults to text; large sheets are capped at 200 rows/200 cells with explicit truncation.",
+        "description": "Get a bounded text, annotated, outline, stats or issues overview. Supports range, cols (xlsx), issueType filter and structured JSON output up to 500 rows/2000 cells.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -307,6 +352,9 @@
             "range": {
               "type": "string"
             },
+            "cols": {
+              "type": "string"
+            },
             "start": {
               "type": "integer",
               "minimum": 1
@@ -318,12 +366,18 @@
             "maxSheetRows": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200
+              "maximum": 500
             },
             "maxCells": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200
+              "maximum": 2000
+            },
+            "issueType": {
+              "type": "string"
+            },
+            "json": {
+              "type": "boolean"
             }
           },
           "required": [
@@ -346,7 +400,7 @@
       {
         "schemaVersion": 1,
         "name": "office_batch",
-        "description": "Apply 1–32 add, set or remove operations atomically to an existing document. Any failed item rolls back the batch; inspect element paths first.",
+        "description": "Apply 1–128 add, set, remove, move, swap, get, query or validate commands atomically to an existing document. Any failed item rolls back the batch.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -357,10 +411,280 @@
             "commands": {
               "type": "array",
               "minItems": 1,
-              "maxItems": 32,
+              "maxItems": 128,
               "items": {
-                "type": "object",
-                "additionalProperties": true
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "command": {
+                        "type": "string",
+                        "enum": [
+                          "add"
+                        ]
+                      },
+                      "parent": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string"
+                      },
+                      "from": {
+                        "type": "string"
+                      },
+                      "before": {
+                        "type": "string"
+                      },
+                      "after": {
+                        "type": "string"
+                      },
+                      "index": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "props": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "minProperties": 1,
+                            "maxProperties": 64,
+                            "additionalProperties": {
+                              "type": [
+                                "string",
+                                "number",
+                                "boolean"
+                              ]
+                            }
+                          },
+                          {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 64,
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "command",
+                      "parent"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "command": {
+                        "type": "string",
+                        "enum": [
+                          "set"
+                        ]
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "props": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "minProperties": 1,
+                            "maxProperties": 64,
+                            "additionalProperties": {
+                              "type": [
+                                "string",
+                                "number",
+                                "boolean"
+                              ]
+                            }
+                          },
+                          {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 64,
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      },
+                      "find": {
+                        "type": "string"
+                      },
+                      "replace": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "command",
+                      "path"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "command": {
+                        "type": "string",
+                        "enum": [
+                          "remove"
+                        ]
+                      },
+                      "path": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "command",
+                      "path"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "command": {
+                        "type": "string",
+                        "enum": [
+                          "move"
+                        ]
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "to": {
+                        "type": "string"
+                      },
+                      "before": {
+                        "type": "string"
+                      },
+                      "after": {
+                        "type": "string"
+                      },
+                      "index": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "props": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "minProperties": 1,
+                            "maxProperties": 64,
+                            "additionalProperties": {
+                              "type": [
+                                "string",
+                                "number",
+                                "boolean"
+                              ]
+                            }
+                          },
+                          {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 64,
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "command",
+                      "path"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "command": {
+                        "type": "string",
+                        "enum": [
+                          "swap"
+                        ]
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "path2": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "command",
+                      "path",
+                      "path2"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "command": {
+                        "type": "string",
+                        "enum": [
+                          "get"
+                        ]
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "depth": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 3
+                      }
+                    },
+                    "required": [
+                      "command",
+                      "path"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "command": {
+                        "type": "string",
+                        "enum": [
+                          "query"
+                        ]
+                      },
+                      "selector": {
+                        "type": "string"
+                      },
+                      "compact": {
+                        "type": "boolean"
+                      },
+                      "fields": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "command",
+                      "selector"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "command": {
+                        "type": "string",
+                        "enum": [
+                          "validate"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "command"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
               }
             }
           },
@@ -385,7 +709,7 @@
       {
         "schemaVersion": 1,
         "name": "office_preview",
-        "description": "Render one page of an Office document as PNG for visual inspection when image input is supported; otherwise return a text outline. A separate HTML renderer is available for a future sandbox panel.",
+        "description": "Render a single page or a 1–12 page thumbnail contact sheet (--grid) via sandboxed HTML rendering as PNG when image input is supported; otherwise return an outline.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -397,8 +721,23 @@
               "type": "integer",
               "minimum": 1
             },
+            "pages": {
+              "type": "string",
+              "description": "Contiguous range \"1-12\" (.docx/.pptx) or comma list \"1,3,5\" (.docx only); max 12 pages."
+            },
+            "grid": {
+              "type": "string",
+              "description": "Contact-sheet columns for .docx/.pptx: \"auto\" or \"1\"-\"6\". Defaults to \"auto\" when pages selects multiple pages."
+            },
             "range": {
-              "type": "string"
+              "type": "string",
+              "description": "Excel cell range (\"Sheet1!A1:H20\") or PPTX/DOCX element path (\"/slide[2]/table[1]\") crop."
+            },
+            "render": {
+              "type": "string",
+              "enum": [
+                "html"
+              ]
             }
           },
           "required": [
@@ -411,6 +750,141 @@
             "kind": "file",
             "operation": "read",
             "path": "$.file"
+          },
+          {
+            "kind": "all"
+          }
+        ],
+        "disclosure": "deferred"
+      },
+      {
+        "schemaVersion": 1,
+        "name": "office_validate",
+        "description": "Validate an existing .docx, .xlsx or .pptx against the OpenXML schema and return bounded structured findings, including invalid-document errors.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "Workspace-relative path or explicitly approved absolute path (.docx/.xlsx/.pptx)."
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "accesses": [
+          {
+            "kind": "file",
+            "operation": "read",
+            "path": "$.file"
+          },
+          {
+            "kind": "all"
+          }
+        ],
+        "disclosure": "deferred"
+      },
+      {
+        "schemaVersion": 1,
+        "name": "office_help",
+        "description": "Query pinned OfficeCLI schema reference for docx, xlsx or pptx elements and property names without opening a document file.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "format": {
+              "type": "string",
+              "enum": [
+                "docx",
+                "xlsx",
+                "pptx"
+              ]
+            },
+            "verb": {
+              "type": "string",
+              "enum": [
+                "add",
+                "set",
+                "get",
+                "query",
+                "remove"
+              ]
+            },
+            "element": {
+              "type": "string",
+              "description": "Optional element token (e.g. paragraph, table-cell, equation, chart, chart-series, slide, shape)."
+            }
+          },
+          "required": [
+            "format"
+          ],
+          "additionalProperties": false
+        },
+        "accesses": [
+          {
+            "kind": "all"
+          }
+        ],
+        "disclosure": "deferred"
+      },
+      {
+        "schemaVersion": 1,
+        "name": "office_import",
+        "description": "Import an existing local .csv or .tsv data file into a sheet of an existing .xlsx workbook without modifying the source file.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "Target existing .xlsx workbook path (workspace-relative or approved absolute)."
+            },
+            "sheet": {
+              "type": "string",
+              "description": "Target sheet DOM path (e.g. \"/Sheet1\" or \"/Raw_Data\")."
+            },
+            "source": {
+              "type": "string",
+              "description": "Source existing .csv or .tsv file path (workspace-relative or approved absolute)."
+            },
+            "header": {
+              "type": "boolean",
+              "description": "Treat first row as header (adds AutoFilter and freeze pane)."
+            },
+            "startCell": {
+              "type": "string",
+              "description": "Top-left target cell (default \"A1\")."
+            },
+            "delimiter": {
+              "type": "string",
+              "description": "Optional single-character delimiter override (e.g. \";\", \"|\", \"\\t\")."
+            },
+            "decimal": {
+              "type": "string",
+              "enum": [
+                ".",
+                ","
+              ],
+              "description": "Decimal mark used in the source file."
+            }
+          },
+          "required": [
+            "file",
+            "sheet",
+            "source"
+          ],
+          "additionalProperties": false
+        },
+        "accesses": [
+          {
+            "kind": "file",
+            "operation": "readwrite",
+            "path": "$.file"
+          },
+          {
+            "kind": "file",
+            "operation": "read",
+            "path": "$.source"
           },
           {
             "kind": "all"

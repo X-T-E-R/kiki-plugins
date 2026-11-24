@@ -8,16 +8,23 @@ import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 import { OfficeError } from './paths.mjs';
 
-export const OFFICECLI_VERSION = '1.0.152';
-export const CHECKSUMS_SHA256 = '7b9125b7ce0cca5c08202692d17145de94ed689df84017217530a87447d9f271';
+export const OFFICECLI_VERSION = '1.0.163';
+export const CHECKSUMS_SHA256 = '6c3fa68aba6f0fccfee8cc0be1053040132f2b45b3d107e17b7d9761fa6d50f5';
 const RELEASE = `https://github.com/iOfficeAI/OfficeCLI/releases/download/v${OFFICECLI_VERSION}`;
-const ASSETS = { 'win32-x64': 'officecli-win-x64.exe', 'darwin-arm64': 'officecli-mac-arm64', 'linux-x64': 'officecli-linux-x64' };
+const ASSETS = {
+  'win32-x64': 'officecli-win-x64.exe',
+  'win32-arm64': 'officecli-win-arm64.exe',
+  'darwin-arm64': 'officecli-mac-arm64',
+  'darwin-x64': 'officecli-mac-x64',
+  'linux-x64': 'officecli-linux-x64',
+  'linux-arm64': 'officecli-linux-arm64',
+};
 const MAX_BINARY_BYTES = 80 * 1024 * 1024;
 const ENV = { OFFICECLI_SKIP_UPDATE: '1', OFFICECLI_NO_AUTO_RESIDENT: '1', OFFICECLI_RESIDENT_FLUSH: 'each' };
 
 export function platformAsset(platform = process.platform, arch = process.arch) {
   const asset = ASSETS[`${platform}-${arch}`];
-  if (!asset) throw new OfficeError('PLATFORM_UNSUPPORTED', `No pinned OfficeCLI binary for ${platform}-${arch}.`, 'Use Windows x64, macOS arm64, or Linux x64.');
+  if (!asset) throw new OfficeError('PLATFORM_UNSUPPORTED', `No pinned OfficeCLI binary for ${platform}-${arch}.`, 'Use Windows x64/arm64, macOS arm64/x64, or Linux x64/arm64.');
   return asset;
 }
 

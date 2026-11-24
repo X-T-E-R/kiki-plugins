@@ -59,8 +59,8 @@
       "id": "kiki-office",
       "tier": "official",
       "displayName": "Kiki Office Suite",
-      "version": "0.1.3",
-      "description": "Create and edit local Word, Excel and PowerPoint files.",
+      "version": "0.2.0",
+      "description": "Create, inspect, edit, validate and preview local Word, Excel and PowerPoint files.",
       "keywords": [
         "office",
         "docx",
