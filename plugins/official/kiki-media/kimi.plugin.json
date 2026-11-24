@@ -1,12 +1,12 @@
 {
   "name": "kiki-media",
-  "version": "0.2.6",
-  "description": "Generate images, videos and speech with built-in services and your own scripts in one media plugin.",
+  "version": "0.2.7",
+  "description": "Generate images, videos, speech and 3D models with built-in services and your own scripts in one media plugin.",
   "license": "MIT AND Apache-2.0",
   "skills": "./skills/",
   "interface": {
     "displayName": "Media",
-    "shortDescription": "Image, video and speech generation"
+    "shortDescription": "Image, video, speech and 3D generation"
   },
   "x-kiki": {
     "engines": {
@@ -28,7 +28,7 @@
       {
         "schemaVersion": 1,
         "name": "generate",
-        "description": "Generate an image/edit, video, or speech file through one installed provider. Return original file_id artifacts, or a background Task that notifies on completion. Reuse request_id for the same request; unknown submission must not be automatically resubmitted. Discover models/voices with media rather than guessing. Resume only polls/downloads, never buys a new generation.",
+        "description": "Generate an image/edit, video, speech, or 3D model file through one installed provider. Return original file_id artifacts, or a background Task that notifies on completion. Reuse request_id for the same request; unknown submission must not be automatically resubmitted. Discover models/voices with media rather than guessing. Resume only polls/downloads, never buys a new generation.",
         "parameters": {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
           "type": "object",
@@ -324,6 +324,93 @@
                     "voice"
                   ],
                   "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "3d"
+                    },
+                    "prompt": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "images": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "path": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "required": [
+                              "path"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "file_id": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "required": [
+                              "file_id"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "url": {
+                                "type": "string",
+                                "format": "uri"
+                              }
+                            },
+                            "required": [
+                              "url"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "minItems": 1
+                    },
+                    "format": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "options": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "anyOf": [
+                    {
+                      "required": [
+                        "prompt"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "images"
+                      ]
+                    }
+                  ],
+                  "additionalProperties": false
                 }
               ]
             }
@@ -363,7 +450,8 @@
                   "enum": [
                     "image",
                     "video",
-                    "tts"
+                    "tts",
+                    "3d"
                   ]
                 },
                 "model": {
@@ -532,6 +620,18 @@
             "localizations": {
               "zh": {
                 "title": "默认语音来源"
+              }
+            }
+          },
+          "default3dProvider": {
+            "type": "string",
+            "title": "Default 3D provider",
+            "enum": [
+              "custom-script"
+            ],
+            "localizations": {
+              "zh": {
+                "title": "默认 3D 来源"
               }
             }
           },
@@ -1873,7 +1973,8 @@
         "kinds": [
           "image",
           "video",
-          "tts"
+          "tts",
+          "3d"
         ],
         "resumeVersion": 1
       }

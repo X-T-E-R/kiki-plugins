@@ -61,13 +61,15 @@ test('requires readHistory only when the IM adapter advertises history support',
 
 test('checks tools and media providers field-for-field and requires their declared registrations', async () => {
   const tool = { schemaVersion: 1, name: 'example', description: 'Example', parameters: { type: 'object', additionalProperties: false } };
-  const media = { schemaVersion: 1, id: 'example-media', label: 'Example Media', kinds: ['tts'], resumeVersion: 1 };
+  const media = { schemaVersion: 1, id: 'example-media', label: 'Example Media', kinds: ['tts', '3d'], resumeVersion: 1 };
   const m = { name: 'example', 'x-kiki': { entry: './entry.mjs', tools: [tool], mediaProviders: [media] } };
   const provider = { async describe() {}, async submit() {} };
   await validateRegistration(m, api => { api.registerTool(tool, async () => {}); api.registerMediaProvider(media, provider); });
   await assert.rejects(validateRegistration(m, api => api.registerTool({ ...tool, description: 'Changed' }, async () => {})), /Registered tools changed/);
   await assert.rejects(validateRegistration(m, api => { api.registerTool(tool, async () => {}); api.registerMediaProvider({ ...media, kinds: ['image'] }, provider); }), /Registered mediaProviders changed/);
   await assert.rejects(validateRegistration(m, api => api.registerTool(tool, async () => {})), /Missing registered mediaProviders/);
+  await assert.rejects(validateRegistration({ ...m, 'x-kiki': { ...m['x-kiki'], mediaProviders: [{ ...media, kinds: ['audio'] }] } }, () => {}));
+  await assert.rejects(validateRegistration({ ...m, 'x-kiki': { ...m['x-kiki'], mediaProviders: [{ ...media, extra: true }] } }, () => {}));
 });
 
 test('requires entry for executable contributions and validates the dependency map contract', async () => {

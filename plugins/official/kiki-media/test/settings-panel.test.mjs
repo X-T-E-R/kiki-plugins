@@ -7,7 +7,7 @@ import { handlePanelRequest } from '../dist/index.mjs';
 
 test('ships a settings panel and a catalog of real provider ids', async () => {
   const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.version, '0.2.6');
+  assert.equal(manifest.version, '0.2.7');
   assert.equal(manifest['x-kiki'].engines.kiki, '>=0.4.3');
   assert.equal(manifest['x-kiki'].permissions.uiPanel, true);
   const panel = manifest['x-kiki'].panels.find((item) => item.id === 'settings');
@@ -59,6 +59,26 @@ test('ships a settings panel and a catalog of real provider ids', async () => {
   assert.equal(properties.openai__enabled.title, 'Enabled');
   assert.equal(properties.openai__enabled.group, 'openai');
   assert.ok(properties.defaultImageProvider.enum.includes('openai-image'));
+  assert.equal(properties.default3dProvider.type, 'string');
+  assert.equal(properties.default3dProvider.title, 'Default 3D provider');
+  assert.deepEqual(properties.default3dProvider.enum, ['custom-script']);
+  assert.equal(properties.default3dProvider.localizations.zh.title, '默认 3D 来源');
+  const generateTool = manifest['x-kiki'].tools.find((tool) => tool.name === 'generate');
+  assert.match(generateTool.description, /3D model/i);
+  const variant3d = generateTool.parameters.properties.request.oneOf.find((item) => item.properties?.kind?.const === '3d');
+  assert.ok(variant3d, 'generate tool must expose kind: "3d" request variant');
+  assert.deepEqual(variant3d.required, ['kind']);
+  assert.deepEqual(variant3d.anyOf, [{ required: ['prompt'] }, { required: ['images'] }]);
+  assert.equal(variant3d.additionalProperties, false);
+  assert.equal(variant3d.properties.prompt.minLength, 1);
+  assert.equal(variant3d.properties.images.minItems, 1);
+  assert.equal(variant3d.properties.format.minLength, 1);
+  assert.equal(variant3d.properties.options.type, 'object');
+  const mediaTool = manifest['x-kiki'].tools.find((tool) => tool.name === 'media');
+  const capabilitiesVariant = mediaTool.parameters.oneOf.find((item) => item.properties?.action?.const === 'capabilities');
+  assert.deepEqual(capabilitiesVariant.properties.kind.enum, ['image', 'video', 'tts', '3d']);
+  const customScript = manifest['x-kiki'].mediaProviders.find((item) => item.id === 'custom-script');
+  assert.deepEqual(customScript.kinds, ['image', 'video', 'tts', '3d']);
   const catalog = await handlePanelRequest('catalog');
   const source = catalog.sources.find((item) => item.id === 'openai');
   assert.deepEqual(source.providerIds, manifest['x-kiki'].mediaSources.find((item) => item.id === 'openai').providerIds);
@@ -119,8 +139,10 @@ test('carries Chinese text for every field, and the panel reads it per locale', 
   assert.equal(properties.openai__baseUrl.localizations.zh.description, undefined);
   assert.equal(properties.openai__baseUrl.description, undefined);
   assert.equal(properties.defaultImageProvider.localizations.zh.title, '默认图像来源');
+  assert.equal(properties.default3dProvider.localizations.zh.title, '默认 3D 来源');
   assert.equal(properties.openai__enabled.localizations.zh.title, '启用');
   assert.equal(properties.defaultVideoProvider.enum.length, manifest['x-kiki'].mediaProviders.filter((provider) => provider.kinds.includes('video')).length);
+  assert.equal(properties.default3dProvider.enum.length, manifest['x-kiki'].mediaProviders.filter((provider) => provider.kinds.includes('3d')).length);
   const html = await readFile(new URL('../settings.html', import.meta.url), 'utf8');
   assert.match(html, /function localizedText\(property, field\)/);
   assert.match(html, /let text = localizations\[locale\]/);
@@ -737,4 +759,39 @@ test('supports sandbox safeStorage, secret eye reveal toggle, Ctrl+S shortcut, a
   await new Promise((r) => setTimeout(r, 0));
   assert.ok(h.elements.get('probe-box'));
   assert.ok(h.elements.get('probe-box').querySelectorAll('button').some((b) => b.dataset.voiceId === 'alloy'));
+});
+
+test('renders and patches default3dProvider alongside image, video, and speech defaults in settings.html', async () => {
+  const html = await readFile(new URL('../settings.html', import.meta.url), 'utf8');
+  const manifest = JSON.parse(await readFile(new URL('../kimi.plugin.json', import.meta.url), 'utf8'));
+  const catalog = await handlePanelRequest('catalog');
+  const view = {
+    schema: manifest['x-kiki'].settings,
+    values: {
+      defaultImageProvider: 'openai-image',
+      default3dProvider: 'kiki-media/script-tripo',
+      openai__enabled: true,
+    },
+    secretsConfigured: [],
+  };
+  const h = await bootWithConnections(html, catalog, view, []);
+  const select3d = h.elements.get('default3dProvider');
+  assert.ok(select3d, 'default3dProvider select must be rendered');
+  assert.equal(select3d.value, 'kiki-media/script-tripo');
+  assert.ok(select3d.children.some((option) => option.value === 'custom-script'));
+
+  select3d.value = 'custom-script';
+  select3d.onchange();
+  const savePromise = h.elements.get('save').onclick();
+  const patchReq = h.postedMessages.filter((message) => message.method === 'plugin.settings.patch').at(-1);
+  assert.deepEqual({ ...patchReq.values }, { default3dProvider: 'custom-script' });
+  h.dispatchMessage({
+    channel: 'kiki.panel.v1',
+    kind: 'response',
+    id: patchReq.id,
+    ok: true,
+    result: { ...view, values: { ...view.values, default3dProvider: 'custom-script' } },
+  });
+  await savePromise;
+  assert.equal(h.elements.get('default3dProvider').value, 'custom-script');
 });

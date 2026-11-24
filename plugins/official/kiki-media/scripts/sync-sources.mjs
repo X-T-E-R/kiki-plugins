@@ -4,6 +4,9 @@ const target = new URL('../', import.meta.url);
 const vendors = ['openai', 'google', 'ark', 'xai', 'minimax', 'stepfun', 'novita', 'agnes', 'newapi', 'comfyui'];
 const manifest = JSON.parse(await readFile(new URL('kimi.plugin.json', target), 'utf8'));
 const properties = Object.fromEntries(Object.entries(manifest['x-kiki'].settings.schema.properties).filter(([key]) => key.startsWith('default')));
+if (!properties.default3dProvider) {
+  properties.default3dProvider = { type: 'string', title: 'Default 3D provider' };
+}
 const coreRequired = (manifest['x-kiki'].settings.schema.required ?? []).filter((key) => !vendors.some((vendor) => key.startsWith(`${vendor}__`)));
 const providers = [];
 const sources = [];
@@ -24,6 +27,7 @@ const ZH_TEXT = {
   'Default image provider': '默认图像来源',
   'Default video provider': '默认视频来源',
   'Default speech provider': '默认语音来源',
+  'Default 3D provider': '默认 3D 来源',
   'Custom media scripts': '自定义媒体脚本',
   'Maximum concurrent provider requests': '提供方并发请求上限',
   'Concurrent submit or poll requests per provider; use a positive integer.': '每个提供方同时执行的提交或轮询请求数，请填写正整数。',
@@ -123,13 +127,13 @@ for (const vendor of vendors) {
   sources.push({ id: vendor, label: original.interface.displayName, providerIds: original['x-kiki'].mediaProviders.map((definition) => `${vendor}-${definition.id}`), settingsPrefix: prefix, legacyPluginId: original.name, required: original['x-kiki'].settings.schema.required ?? [] });
   for (const definition of original['x-kiki'].mediaProviders) providers.push({ ...definition, id: `${vendor}-${definition.id}`, connectionSetting: prefix + definition.connectionSetting });
 }
-providers.push({ schemaVersion: 1, id: 'custom-script', label: 'Custom script', kinds: ['image', 'video', 'tts'], resumeVersion: 1 });
+providers.push({ schemaVersion: 1, id: 'custom-script', label: 'Custom script', kinds: ['image', 'video', 'tts', '3d'], resumeVersion: 1 });
 const idsFor = (kind) => providers.filter((item) => item.kinds?.includes(kind)).map((item) => item.id);
-for (const [key, kind] of [['defaultImageProvider', 'image'], ['defaultVideoProvider', 'video'], ['defaultTtsProvider', 'tts']]) {
+for (const [key, kind] of [['defaultImageProvider', 'image'], ['defaultVideoProvider', 'video'], ['defaultTtsProvider', 'tts'], ['default3dProvider', '3d']]) {
   if (properties[key]) properties[key] = localized({ ...properties[key], enum: idsFor(kind) });
 }
 properties.scriptSources = localized({ type: 'string', default: '[]', title: 'Custom media scripts', multiline: true, advanced: true });
-manifest.version = '0.2.6';
+manifest.version = '0.2.7';
 manifest['x-kiki'].engines.kiki = '>=0.4.3';
 manifest['x-kiki'].entry = './dist/index.mjs';
 manifest['x-kiki'].mediaProviders = providers;

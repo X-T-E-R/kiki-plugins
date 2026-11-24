@@ -1,11 +1,17 @@
 import assert from 'node:assert/strict';
 import { validRange } from 'semver';
+import { z } from 'zod';
 import { sessionSourceDefinitionSchema } from '@kiki/plugin-sdk/session-import';
-import { mediaProviderDefinitionSchema } from '@kiki/plugin-sdk/media';
+import { mediaKindSchema, mediaProviderDefinitionSchema as sdkMediaProviderDefinitionSchema } from '@kiki/plugin-sdk/media';
 import { pluginImAdapterDefinitionSchema } from '@kiki/plugin-sdk/im';
 import { harnessAccountSourceDefinitionSchema } from '@kiki/plugin-sdk/harness-account';
 
 const sdkHarnessQuota = await import('@kiki/plugin-sdk/harness-quota').catch(() => undefined);
+const mediaProviderDefinitionSchema = mediaKindSchema.safeParse('3d').success
+  ? sdkMediaProviderDefinitionSchema
+  : sdkMediaProviderDefinitionSchema.extend({
+    kinds: z.array(z.union([mediaKindSchema, z.literal('3d')])).min(1),
+  });
 
 const contributions = [
   { field: 'tools', method: 'registerTool', key: 'name' },

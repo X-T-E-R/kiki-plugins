@@ -266,7 +266,7 @@ export async function register(api) {
   for (const definition of manifest['x-kiki'].tools) {
     api.registerTool(definition, async (input, context) => {
       if (definition.name === 'generate') {
-        const key = { image: 'defaultImageProvider', video: 'defaultVideoProvider', tts: 'defaultTtsProvider' }[input.request?.kind];
+        const key = { image: 'defaultImageProvider', video: 'defaultVideoProvider', tts: 'defaultTtsProvider', '3d': 'default3dProvider' }[input.request?.kind];
         const provider = input.provider ?? (context.settings[key] || undefined);
         const job = await context.media.generate({ ...input, provider });
         return { output: JSON.stringify({ type: 'media_generation', job }), isError: ['failed', 'unknown'].includes(job.state) };

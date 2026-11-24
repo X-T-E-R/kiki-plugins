@@ -3,6 +3,13 @@ import { writeFile, readFile, stat } from 'node:fs/promises';
 import path, { join } from 'node:path';
 
 const DEFAULT_SCRIPT_TIMEOUT_MS = 300_000;
+const MIME_BY_3D_EXT = {
+  glb: 'model/gltf-binary',
+  gltf: 'model/gltf+json',
+  usdz: 'model/vnd.usdz+zip',
+  obj: 'model/obj',
+  stl: 'model/stl',
+};
 
 function terminateProcessTree(child) {
   if (!child) return;
@@ -40,7 +47,10 @@ async function execute(action, input, context) {
   if (!source) throw new Error('Custom script source is missing');
   context.signal?.throwIfAborted();
   const kind = input.request?.kind ?? source.kinds[0];
-  const extension = source.format ?? { image: 'png', video: 'mp4', tts: 'mp3' }[kind];
+  const requestFormat = kind === '3d' && typeof input.request?.format === 'string' && /^[a-z0-9]+$/i.test(input.request.format)
+    ? input.request.format.toLowerCase()
+    : undefined;
+  const extension = source.format ?? requestFormat ?? { image: 'png', video: 'mp4', tts: 'mp3', '3d': 'glb' }[kind];
   const output = join(context.stagingDir, `output.${extension}`);
   const inputFile = join(context.stagingDir, `${action}-input.json`);
   const resultFile = join(context.stagingDir, `${action}-result.json`);
@@ -94,7 +104,11 @@ async function execute(action, input, context) {
   if (action !== 'submit') throw new Error('File-output scripts do not implement this action');
   const size = (await stat(output)).size;
   if (!size) throw new Error('Media script produced an empty output');
-  return { state: 'complete', artifacts: [{ path: output, name: `output.${extension}`, mime: source.mime ?? { image: 'image/png', video: 'video/mp4', tts: 'audio/mpeg' }[kind], kind: kind === 'tts' ? 'audio' : kind, role: 'original', complete: true }] };
+  const defaultMime = kind === '3d'
+    ? (MIME_BY_3D_EXT[extension] ?? 'application/octet-stream')
+    : { image: 'image/png', video: 'video/mp4', tts: 'audio/mpeg' }[kind];
+  const artifactKind = kind === 'tts' ? 'audio' : kind === '3d' ? 'file' : kind;
+  return { state: 'complete', artifacts: [{ path: output, name: `output.${extension}`, mime: source.mime ?? defaultMime, kind: artifactKind, role: 'original', complete: true }] };
 }
 export const scriptAdapter = {
   describe: async (_query, context) => ({ models: context.settings.scriptSource.kinds.map((kind) => ({ id: context.settings.scriptSource.id, kind })), constraints: ['Trusted local command; configure its own dependencies, credentials and file-output or JSON bridge.'] }),

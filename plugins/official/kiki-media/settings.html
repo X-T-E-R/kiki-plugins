@@ -1014,7 +1014,7 @@ let savedTimer = 0;
 
 const STRINGS = {
   en: {
-    title: 'Media settings', defaults: 'Default routing', image: 'Image', video: 'Video', speech: 'Speech',
+    title: 'Media settings', defaults: 'Default routing', image: 'Image', video: 'Video', speech: 'Speech', model3d: '3D',
     sources: 'Media sources', enabled: 'Enabled', restore: 'Restore', loading: 'Loading…', retry: 'Retry',
     save: 'Save', saving: 'Saving…', discard: 'Discard changes', unsaved: 'Unsaved changes', saved: 'Saved',
     groupCore: 'Core connection', groupModels: 'Default models', groupAdvanced: 'Advanced parameters',
@@ -1036,7 +1036,7 @@ const STRINGS = {
     connectionActive: 'The selected Kiki connection supplies the endpoint and credentials. Saved local values are kept but not used.',
   },
   zh: {
-    title: '媒体设置', defaults: '默认路由策略', image: '图像', video: '视频', speech: '语音',
+    title: '媒体设置', defaults: '默认路由策略', image: '图像', video: '视频', speech: '语音', model3d: '3D',
     sources: '媒体来源', enabled: '启用', restore: '恢复', loading: '加载中…', retry: '重试',
     save: '保存', saving: '正在保存…', discard: '放弃更改', unsaved: '有未保存的更改', saved: '已保存',
     groupCore: '核心连接', groupModels: '默认模型策略', groupAdvanced: '高级参数',
@@ -1292,7 +1292,7 @@ async function runInspect(source) {
 }
 
 function modelDatalist(source, key) {
-  const kind = key.endsWith('imageModel') ? 'image' : key.endsWith('videoModel') ? 'video' : key.endsWith('speechModel') ? 'tts' : '';
+  const kind = key.endsWith('imageModel') ? 'image' : key.endsWith('videoModel') ? 'video' : key.endsWith('speechModel') ? 'tts' : key.endsWith('3dModel') ? '3d' : '';
   if (!kind) return undefined;
   const ids = new Set();
   for (const provider of catalog.providers) {
@@ -1490,7 +1490,7 @@ function buildField(key, property, source) {
 function renderDefaults() {
   const root = document.getElementById('defaults');
   root.replaceChildren();
-  for (const [key, labelKey, kind] of [['defaultImageProvider', 'image', 'image'], ['defaultVideoProvider', 'video', 'video'], ['defaultTtsProvider', 'speech', 'tts']]) {
+  for (const [key, labelKey, kind] of [['defaultImageProvider', 'image', 'image'], ['defaultVideoProvider', 'video', 'video'], ['defaultTtsProvider', 'speech', 'tts'], ['default3dProvider', 'model3d', '3d']]) {
     const wrap = document.createElement('div');
     wrap.className = 'field';
     const name = document.createElement('label');
