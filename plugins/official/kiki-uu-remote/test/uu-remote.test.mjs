@@ -26,6 +26,18 @@ import {
 } from '../lib/frame-math.mjs';
 import { assertSafeRemoteKeyChord } from '../lib/key-map.mjs';
 import { decodePng, encodePng } from '../lib/png-codec.mjs';
+import {
+  asciiCharToQmpKeys,
+  buildPveTargetId,
+  buildQmpStepsForAction,
+  buildSshBridgeArgs,
+  createPveQmpDriver,
+  mapPointToQmpAbs,
+  normalizeQmpKeyChord,
+  parsePpmP6,
+  parsePveTargetId,
+  ppmToPngBuffer,
+} from '../lib/pve-qmp-driver.mjs';
 import { createUuPreviewService } from '../lib/preview-service.mjs';
 import { createUuSlotHandlers } from '../lib/slots.mjs';
 import { createUuRemoteService } from '../lib/uu-service.mjs';
@@ -248,7 +260,7 @@ test('manifest, sync-manifest --check, validateRegistration, packageFiles, and r
 
   const manifest = JSON.parse(await readFile(path.join(PLUGIN_ROOT, 'kimi.plugin.json'), 'utf8'));
   assert.equal(manifest.name, 'kiki-uu-remote');
-  assert.equal(manifest.version, '0.1.2');
+  assert.equal(manifest.version, '0.2.0');
   assert.equal(manifest.license, 'MIT');
   assert.equal(manifest['x-kiki'].activation, 'app');
   assert.deepEqual(manifest['x-kiki'].tools, definitions);
@@ -264,6 +276,7 @@ test('manifest, sync-manifest --check, validateRegistration, packageFiles, and r
   assert.ok(files.includes('README.md'));
   assert.ok(files.includes('skills/uu-remote/SKILL.md'));
   assert.ok(files.includes('lib/win32-worker.ps1'));
+  assert.ok(files.includes('lib/pve-qmp-driver.mjs'));
   assert.ok(!files.some((f) => f.startsWith('test/') || f.startsWith('scripts/')));
 
   const deprecatedHost = ['web', 'uuremote', 'com'].join('.');
@@ -1374,4 +1387,460 @@ test('P1-2: openPanelStream skips per-frame inspectTopology until 3s or capture 
   assert.match(panelHtml, /visibilitychange/);
   assert.match(panelHtml, /pagehide/);
   assert.match(panelHtml, /POLL_BACKOFF_MS\s*=\s*\[220,\s*500,\s*1000,\s*3000\]/);
+});
+
+function buildSyntheticPpmP6({ width, height, comment = null, quadrants = true }) {
+  const header = comment
+    ? `P6\n# ${comment}\n${width} ${height}\n255\n`
+    : `P6\n${width} ${height}\n255\n`;
+  const headerBuf = Buffer.from(header, 'ascii');
+  const rgb = Buffer.allocUnsafe(width * height * 3);
+  const midX = Math.floor(width / 2);
+  const midY = Math.floor(height / 2);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const idx = (y * width + x) * 3;
+      if (quadrants) {
+        if (x < midX && y < midY) {
+          rgb[idx] = 220; rgb[idx + 1] = 40; rgb[idx + 2] = 50; // TL red
+        } else if (x >= midX && y < midY) {
+          rgb[idx] = 32; rgb[idx + 1] = 185; rgb[idx + 2] = 75; // TR green (starts with 0x20 space!)
+        } else if (x < midX && y >= midY) {
+          rgb[idx] = 45; rgb[idx + 1] = 95; rgb[idx + 2] = 230; // BL blue
+        } else {
+          rgb[idx] = 245; rgb[idx + 1] = 195; rgb[idx + 2] = 35; // BR amber
+        }
+      } else {
+        rgb[idx] = 10; rgb[idx + 1] = 32; rgb[idx + 2] = 128; // Leading 0x0a/0x20 bytes test delimiter
+      }
+    }
+  }
+  return Buffer.concat([headerBuf, rgb]);
+}
+
+test('PVE QMP: target validation rejects command injection and parses valid pve:<host>:<vmid>', () => {
+  const parsed = parsePveTargetId('PVE:assistant-pve-campus:103', { strict: true });
+  assert.deepEqual(parsed, {
+    id: 'pve:assistant-pve-campus:103',
+    sshHost: 'assistant-pve-campus',
+    vmid: 103,
+  });
+  assert.equal(buildPveTargetId('Node_01.lan', 42), 'pve:Node_01.lan:42');
+
+  const sshArgs = buildSshBridgeArgs('assistant-pve-campus');
+  const sepIdx = sshArgs.indexOf('--');
+  assert.ok(sepIdx > 0);
+  assert.equal(sshArgs[sepIdx + 1], 'assistant-pve-campus');
+  assert.ok(sshArgs.includes('BatchMode=yes'));
+
+  const maliciousInputs = [
+    'pve:-oProxyCommand=calc:103',
+    'pve:host;rm -rf /:103',
+    'pve:host$(whoami):103',
+    'pve:host`id`:103',
+    'pve:host name:103',
+    'pve:host/path:103',
+    'pve:host:0',
+    'pve:host:-1',
+    'pve:host:103;id',
+    'pve:host:abc',
+    'pve:host:103:extra',
+    'pve::103',
+  ];
+  for (const bad of maliciousInputs) {
+    assert.equal(parsePveTargetId(bad, { strict: false }), null, `Expected null for ${bad}`);
+    assert.throws(() => parsePveTargetId(bad, { strict: true }), /Invalid PVE/i, `Expected throw for ${bad}`);
+  }
+  assert.throws(() => buildSshBridgeArgs('-oProxyCommand=evil'), /Invalid PVE SSH host/i);
+});
+
+test('PVE QMP: pure-JS P6 PPM parser handles comments, leading whitespace pixel bytes, and PNG round-trip', () => {
+  // Test leading pixel byte = 0x0a (LF) & 0x20 (space) so parser only eats 1 delimiter byte after maxval
+  const trickyPpm = buildSyntheticPpmP6({ width: 4, height: 2, comment: 'QEMU screendump test', quadrants: false });
+  const parsed = parsePpmP6(trickyPpm);
+  assert.equal(parsed.width, 4);
+  assert.equal(parsed.height, 2);
+  assert.equal(parsed.data.length, 4 * 2 * 4);
+  assert.deepEqual([...parsed.data.subarray(0, 4)], [10, 32, 128, 255]);
+
+  const quadPpm = buildSyntheticPpmP6({ width: 320, height: 240, quadrants: true });
+  const { width, height, pngBuffer } = ppmToPngBuffer(quadPpm);
+  assert.equal(width, 320);
+  assert.equal(height, 240);
+  const decoded = decodePng(pngBuffer);
+  assert.equal(decoded.width, 320);
+  assert.equal(decoded.height, 240);
+  // Top-left pixel is red (220, 40, 50)
+  assert.deepEqual([...decoded.data.subarray(0, 4)], [220, 40, 50, 255]);
+  // Bottom-right pixel is amber (245, 195, 35)
+  const brIdx = ((239 * 320) + 319) * 4;
+  assert.deepEqual([...decoded.data.subarray(brIdx, brIdx + 4)], [245, 195, 35, 255]);
+
+  // Truncated and non-P6 buffers fail loudly
+  assert.throws(() => parsePpmP6(Buffer.from('P3\n2 2\n255\n0 0 0\n')), /expected P6/i);
+  assert.throws(() => parsePpmP6(Buffer.from('P6\n10 10\n255\n123')), /Truncated PPM/i);
+});
+
+test('PVE QMP: coordinate scaling (0..32767) and mouse/keyboard QMP command compilation', () => {
+  const origin = mapPointToQmpAbs({ x: 0, y: 0, coordinateMode: 'normalized_1000', screenSize: { width: 1024, height: 768 } });
+  assert.equal(origin.absX, 0);
+  assert.equal(origin.absY, 0);
+
+  const mid = mapPointToQmpAbs({ x: 500, y: 500, coordinateMode: 'normalized_1000', screenSize: { width: 1024, height: 768 } });
+  assert.equal(mid.absX, 16384);
+  assert.equal(mid.absY, 16384);
+
+  const corner = mapPointToQmpAbs({ x: 1000, y: 1000, coordinateMode: 'normalized_1000', screenSize: { width: 1024, height: 768 } });
+  assert.equal(corner.absX, 32767);
+  assert.equal(corner.absY, 32767);
+
+  const pix = mapPointToQmpAbs({ x: 511.5, y: 383.5, coordinateMode: 'target_pixels', screenSize: { width: 1024, height: 768 } });
+  assert.equal(pix.absX, 16384);
+  assert.equal(pix.absY, 16384);
+
+  // Double-click and right-click
+  const dbl = buildQmpStepsForAction({ kind: 'double_click', x: 500, y: 500 }, { coordinateMode: 'normalized_1000' });
+  const btnEvents = dbl.steps.filter((s) => s.op === 'qmp' && s.arguments?.events?.[0]?.type === 'btn');
+  assert.equal(btnEvents.length, 4);
+  assert.equal(btnEvents[0].arguments.events[0].data.button, 'left');
+  assert.equal(btnEvents[0].arguments.events[0].data.down, true);
+  assert.equal(btnEvents[1].arguments.events[0].data.down, false);
+
+  const rclick = buildQmpStepsForAction({ kind: 'right_click', x: 250, y: 750, modifiers: ['Ctrl'] });
+  const keyEvents = rclick.steps.filter((s) => s.op === 'qmp' && s.arguments?.events?.[0]?.type === 'key');
+  assert.equal(keyEvents.length, 2);
+  assert.equal(keyEvents[0].arguments.events[0].data.key.data, 'ctrl');
+  assert.equal(keyEvents[0].arguments.events[0].data.down, true);
+  assert.equal(keyEvents[1].arguments.events[0].data.down, false);
+  const rBtn = rclick.steps.filter((s) => s.op === 'qmp' && s.arguments?.events?.[0]?.type === 'btn');
+  assert.equal(rBtn[0].arguments.events[0].data.button, 'right');
+
+  // Scroll down (deltaY > 0 -> wheel-down) and scroll up (deltaY < 0 -> wheel-up)
+  const scrollDown = buildQmpStepsForAction({ kind: 'scroll', x: 500, y: 500, deltaY: 3 });
+  const wheelDownBtns = scrollDown.steps.filter((s) => s.op === 'qmp' && s.arguments?.events?.[0]?.data?.button === 'wheel-down');
+  assert.equal(wheelDownBtns.length, 6); // 3 ticks * (down + up)
+  const scrollUp = buildQmpStepsForAction({ kind: 'scroll', deltaY: -240 });
+  const wheelUpBtns = scrollUp.steps.filter((s) => s.op === 'qmp' && s.arguments?.events?.[0]?.data?.button === 'wheel-up');
+  assert.equal(wheelUpBtns.length, 4); // 2 ticks * (down + up)
+
+  // Drag generates abs move -> btn down -> interpolated abs moves -> btn up
+  const drag = buildQmpStepsForAction({ kind: 'drag', startX: 100, startY: 200, endX: 800, endY: 600, durationMs: 200 });
+  const dragAbs = drag.steps.filter((s) => s.op === 'qmp' && s.arguments?.events?.[0]?.type === 'abs');
+  assert.ok(dragAbs.length >= 6);
+  assert.equal(dragAbs[0].arguments.events[0].data.value, Math.round(0.1 * 32767));
+  assert.equal(dragAbs[dragAbs.length - 1].arguments.events[0].data.value, Math.round(0.8 * 32767));
+
+  // Keyboard chords including Ctrl+Alt+Delete and function keys
+  assert.deepEqual(normalizeQmpKeyChord('Ctrl+Alt+Delete'), ['ctrl', 'alt', 'delete']);
+  assert.deepEqual(normalizeQmpKeyChord(['Win', 'R']), ['meta_l', 'r']);
+  assert.deepEqual(normalizeQmpKeyChord('F12'), ['f12']);
+  assert.deepEqual(asciiCharToQmpKeys(':'), ['shift', 'semicolon']);
+  assert.deepEqual(asciiCharToQmpKeys('@'), ['shift', '2']);
+  assert.deepEqual(asciiCharToQmpKeys('_'), ['shift', 'minus']);
+  assert.deepEqual(asciiCharToQmpKeys('/'), ['slash']);
+  assert.deepEqual(asciiCharToQmpKeys('A'), ['shift', 'a']);
+
+  const typed = buildQmpStepsForAction({ kind: 'type', text: 'Ab:/_.-=@', submit: true });
+  const sendKeys = typed.steps.filter((s) => s.op === 'qmp' && s.execute === 'send-key');
+  assert.equal(sendKeys.length, 10); // 9 chars + trailing ret
+  assert.deepEqual(sendKeys[0].arguments.keys.map((k) => k.data), ['shift', 'a']);
+  assert.deepEqual(sendKeys[2].arguments.keys.map((k) => k.data), ['shift', 'semicolon']);
+  assert.deepEqual(sendKeys[8].arguments.keys.map((k) => k.data), ['shift', '2']);
+  assert.deepEqual(sendKeys[9].arguments.keys.map((k) => k.data), ['ret']);
+  assert.throws(() => buildQmpStepsForAction({ kind: 'type', text: '中文' }), /ASCII/i);
+});
+
+test('PVE QMP: persistent SSH worker reuses process, decodes gzipped PPM, and kills wedged workers on timeout', async () => {
+  const { EventEmitter } = await import('node:events');
+  const { PassThrough } = await import('node:stream');
+  const { gzipSync } = await import('node:zlib');
+  const quadPpm = buildSyntheticPpmP6({ width: 160, height: 120, quadrants: true });
+  const quadGzB64 = gzipSync(quadPpm).toString('base64');
+
+  const spawned = [];
+  let wedgeNext = false;
+
+  const pveDriver = createPveQmpDriver({
+    hostPlatform: 'linux',
+    workerIdleMs: 0,
+    spawnProcess: (file, args) => {
+      const stdout = new PassThrough();
+      const stderr = new PassThrough();
+      const stdin = new PassThrough();
+      const proc = new EventEmitter();
+      proc.pid = 70_000 + spawned.length + 1;
+      proc.stdout = stdout;
+      proc.stderr = stderr;
+      proc.stdin = stdin;
+      proc.killed = false;
+      proc.exitCode = null;
+      proc.unref = () => {};
+      proc.kill = () => {
+        proc.killed = true;
+        proc.exitCode = 1;
+        proc.emit('exit', 1, 'SIGKILL');
+      };
+      spawned.push({ file, args, proc });
+
+      let buf = '';
+      let sawBootstrap = false;
+      stdin.on('data', (chunk) => {
+        buf += chunk.toString('utf8');
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          if (!sawBootstrap && !line.trim().startsWith('{')) {
+            sawBootstrap = true;
+            continue;
+          }
+          if (wedgeNext) continue;
+          const req = JSON.parse(line);
+          if (req.op === 'status') {
+            stdout.write(JSON.stringify({
+              id: req.id,
+              ok: true,
+              result: { vmid: req.vmid, vmStatus: 'running', running: true, vmName: 'kaimu-pdm-xp', width: 160, height: 120 },
+            }) + '\n');
+          } else if (req.op === 'screendump') {
+            stdout.write(JSON.stringify({
+              id: req.id,
+              ok: true,
+              result: { encoding: 'ppm-gzip-base64', data: quadGzB64, rawBytes: quadPpm.length },
+            }) + '\n');
+          } else if (req.op === 'qmp_batch') {
+            stdout.write(JSON.stringify({ id: req.id, ok: true, result: { executed: req.steps.length } }) + '\n');
+          }
+        }
+      });
+      return proc;
+    },
+  });
+
+  const st = await pveDriver.probeStatus('pve:assistant-pve-campus:103', { probeResolution: true });
+  assert.equal(st.running, true);
+  assert.equal(st.vmName, 'kaimu-pdm-xp');
+  assert.equal(spawned.length, 1);
+
+  // Second call reuses the same SSH child process
+  const cap = await pveDriver.captureScreen('pve:assistant-pve-campus:103');
+  assert.equal(spawned.length, 1);
+  assert.equal(cap.width, 160);
+  assert.equal(cap.height, 120);
+  assert.deepEqual([...cap.image.data.subarray(0, 4)], [220, 40, 50, 255]);
+
+  // Simulate wedged SSH worker -> timeout tears it down and next RPC spawns a clean worker
+  wedgeNext = true;
+  await assert.rejects(
+    pveDriver.probeStatus('pve:assistant-pve-campus:103', { timeoutMs: 500 }),
+    /timed out/i,
+  );
+  assert.equal(spawned[0].proc.killed, true);
+
+  wedgeNext = false;
+  const recovered = await pveDriver.probeStatus('pve:assistant-pve-campus:103');
+  assert.equal(spawned.length, 2);
+  assert.equal(recovered.running, true);
+  await pveDriver.dispose();
+});
+
+test('PVE QMP: end-to-end uu_launch, uu_sessions, uu_control, Human Takeover, Live Panel stream, and CUA Provider Bus', async (t) => {
+  const dir = await makeTempDir(t, 'pve-e2e-');
+  const stateDir = path.join(dir, 'state');
+  const busDir = path.join(dir, 'bus');
+  const { driver: winDriver, state: winState } = createMockDriverFixture();
+
+  const quadPpm = buildSyntheticPpmP6({ width: 800, height: 600, quadrants: true });
+  const quadImg = parsePpmP6(quadPpm);
+  const sentQmpBatches = [];
+  const disconnectedHosts = [];
+
+  const mockPveDriver = {
+    async probeStatus(target) {
+      return {
+        vmid: target.vmid,
+        vmStatus: 'running',
+        running: true,
+        vmName: 'kaimu-pdm-xp',
+        width: 800,
+        height: 600,
+      };
+    },
+    async captureScreen() {
+      return {
+        width: quadImg.width,
+        height: quadImg.height,
+        image: quadImg,
+        stageBounds: { x: 0, y: 0, width: quadImg.width, height: quadImg.height },
+      };
+    },
+    async sendQmpSteps(target, steps) {
+      sentQmpBatches.push({ target: target.id || `pve:${target.sshHost}:${target.vmid}`, steps });
+      return { executed: steps.length };
+    },
+    async disconnectHost(host) {
+      disconnectedHosts.push(host);
+    },
+    async dispose() {},
+  };
+
+  const service = createUuRemoteService({
+    systemDriver: winDriver,
+    pveDriver: mockPveDriver,
+    stateDir,
+  });
+
+  // 1. Register & connect PVE target via uu_launch(action="connect")
+  const connected = await service.launchAction({
+    action: 'connect',
+    deviceId: 'pve:assistant-pve-campus:103',
+  });
+  assert.equal(connected.ok, true);
+  assert.equal(connected.provider, 'pve-qmp');
+  assert.equal(connected.sessionId, 'pve:assistant-pve-campus:103');
+  assert.equal(connected.selectedSessionId, 'pve:assistant-pve-campus:103');
+  assert.equal(connected.session.vmStatus, 'running');
+  assert.equal(connected.session.label, 'kaimu-pdm-xp');
+
+  // Verify persistence in pve-targets.json across fresh service instance
+  const persisted = JSON.parse(await readFile(path.join(stateDir, 'pve-targets.json'), 'utf8'));
+  assert.equal(persisted.targets.length, 1);
+  assert.equal(persisted.targets[0].id, 'pve:assistant-pve-campus:103');
+
+  const restartedService = createUuRemoteService({
+    systemDriver: winDriver,
+    pveDriver: mockPveDriver,
+    stateDir,
+  });
+
+  // 2. uu_sessions(action="list") merges Win32 + PVE targets seamlessly
+  const listed = await restartedService.manageSessions({ action: 'list', includeDevices: false });
+  assert.equal(listed.selectedSessionId, 'pve:assistant-pve-campus:103');
+  const pveSess = listed.sessions.find((s) => s.id === 'pve:assistant-pve-campus:103');
+  assert.ok(pveSess);
+  assert.equal(pveSess.provider, 'pve-qmp');
+  assert.equal(pveSess.state, 'active');
+  assert.deepEqual(pveSess.canvasBounds, { x: 0, y: 0, width: 800, height: 600 });
+  assert.ok(listed.sessions.some((s) => s.id === 'uu:24780134'));
+
+  // 3. uu_control screenshot + zoom crop routes to PVE QMP without touching Win32
+  const zoomShot = await restartedService.controlSession({
+    action: 'screenshot',
+    coordinateMode: 'normalized_1000',
+    zoom: { x: 500, y: 500, width: 500, height: 500 },
+  });
+  assert.equal(zoomShot.ok, true);
+  assert.equal(zoomShot.provider, 'pve-qmp');
+  assert.equal(zoomShot.sessionId, 'pve:assistant-pve-campus:103');
+  assert.deepEqual(zoomShot.logicalSize, { width: 800, height: 600 });
+  assert.deepEqual(zoomShot.cropBounds, { x: 400, y: 300, width: 400, height: 300 });
+  const decodedZoom = decodePng(Buffer.from(zoomShot.imageBase64, 'base64'));
+  assert.deepEqual([...decodedZoom.data.subarray(0, 4)], [245, 195, 35, 255]); // BR amber
+
+  // 4. uu_control mouse/keyboard actions route to QMP and ignore local Windows cursor movement
+  winState.cursor = { x: 9999, y: 9999 };
+  const actRes = await restartedService.controlSession({
+    actions: [
+      { kind: 'move', x: 500, y: 500 },
+      { kind: 'double_click', x: 250, y: 250 },
+      { kind: 'key', key: 'Ctrl+Alt+Delete' },
+      { kind: 'type', text: 'pdm:103', submit: true },
+    ],
+    observeAfter: false,
+  });
+  assert.equal(actRes.ok, true);
+  assert.equal(actRes.provider, 'pve-qmp');
+  assert.equal(actRes.executed, 4);
+  assert.equal(sentQmpBatches.length, 4);
+  assert.equal(winState.sentBatches.length, 0, 'Win32 SendInput must not be called for PVE targets');
+
+  // 5. Explicit Human Takeover lock blocks agent control on PVE target with 409
+  await restartedService.manageSessions({
+    action: 'takeover',
+    sessionId: 'pve:assistant-pve-campus:103',
+    active: true,
+    reason: 'User operating KaMu PDM',
+  });
+  const blocked = await restartedService.controlSession({
+    sessionId: 'pve:assistant-pve-campus:103',
+    action: 'click',
+    x: 500,
+    y: 500,
+    observeAfter: false,
+  });
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.code, 'human_takeover_active');
+  assert.equal(sentQmpBatches.length, 4);
+  await restartedService.manageSessions({
+    action: 'takeover',
+    sessionId: 'pve:assistant-pve-campus:103',
+    active: false,
+  });
+
+  // 6. Preview Panel binary stream works natively on PVE session
+  const previewService = createUuPreviewService({ uuService: restartedService });
+  t.after(() => previewService.dispose());
+  const packets = [];
+  let closeStream = null;
+  const hs = await previewService.openPanelStream(
+    'screen',
+    { sessionId: 'pve:assistant-pve-campus:103', fps: 15, maxWidth: 640 },
+    {
+      bufferedAmount: () => 0,
+      sendBinary(buf) { packets.push(buf); return true; },
+      sendText() {},
+      onClose(fn) { closeStream = fn; },
+      onText() {},
+    },
+    {},
+  );
+  assert.equal(hs.sessionId, 'pve:assistant-pve-campus:103');
+  const dl = Date.now() + 1500;
+  while (packets.length === 0 && Date.now() < dl) {
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  closeStream?.();
+  assert.ok(packets.length >= 1);
+  assert.equal(packets[0][0], 0x55);
+  assert.equal(packets[0][1], 0x52);
+
+  // 7. CUA Provider Bus advertises & controls PVE target
+  const bridge = createCuaProviderBridge({
+    uuService: restartedService,
+    heartbeatMs: 5000,
+    ttlMs: 35000,
+    env: { KIKI_CUA_BUS_DIR: busDir },
+  });
+  t.after(() => bridge.stop());
+  await bridge.start({});
+  const lease = JSON.parse(await readFile(path.join(busDir, 'kiki-uu-remote.json'), 'utf8'));
+  const headers = { Authorization: `Bearer ${lease.authToken}`, 'Content-Type': 'application/json' };
+  const targetsRes = await (await fetch(`${lease.endpoint}/v1/targets`, { headers })).json();
+  const cuaPve = targetsRes.targets.find((item) => item.id === 'pve:assistant-pve-campus:103');
+  assert.ok(cuaPve);
+  assert.equal(cuaPve.online, true);
+  assert.equal(cuaPve.provider, 'pve-qmp');
+
+  const cuaObs = await (
+    await fetch(`${lease.endpoint}/v1/observe`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ targetId: 'pve:assistant-pve-campus:103' }),
+    })
+  ).json();
+  assert.equal(cuaObs.ok, true);
+  assert.equal(cuaObs.targetId, 'pve:assistant-pve-campus:103');
+
+  // 8. Disconnect via pveHost + vmid removes target from pve-targets.json and closes host worker
+  const disc = await restartedService.launchAction({
+    action: 'disconnect',
+    pveHost: 'assistant-pve-campus',
+    vmid: 103,
+  });
+  assert.equal(disc.ok, true);
+  assert.equal(disc.removed, true);
+  assert.ok(disconnectedHosts.includes('assistant-pve-campus'));
+  const afterDisc = JSON.parse(await readFile(path.join(stateDir, 'pve-targets.json'), 'utf8'));
+  assert.equal(afterDisc.targets.length, 0);
 });

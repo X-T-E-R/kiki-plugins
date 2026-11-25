@@ -565,8 +565,8 @@
       "id": "kiki-uu-remote",
       "tier": "official",
       "displayName": "UU Remote",
-      "version": "0.1.2",
-      "description": "Connect, preview and operate NetEase UU Remote desktop sessions via official uuyc-cli and background swapchain capture, and bridge active sessions into Kiki Computer Use.",
+      "version": "0.2.0",
+      "description": "Connect, preview and operate NetEase UU Remote desktop sessions (uuyc-cli + background swapchain capture) and Proxmox VE QEMU VMs (SSH + QMP), and bridge active sessions into Kiki Computer Use.",
       "keywords": [
         "uu-remote",
         "uuremote",

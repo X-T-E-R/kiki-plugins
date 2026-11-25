@@ -1,7 +1,7 @@
 {
   "name": "kiki-uu-remote",
-  "version": "0.1.2",
-  "description": "Discover, preview, and operate NetEase UU Remote (GameViewer) desktop sessions with zero-focus background capture, symmetric black-bar trimming, uuyc-cli device management, Human Takeover lock, and kiki.cua.provider.v1 integration.",
+  "version": "0.2.0",
+  "description": "Discover, preview, and operate NetEase UU Remote (GameViewer) desktop sessions and Proxmox VE QEMU VM desktops (via SSH + QMP) with zero-focus capture, symmetric black-bar trimming, uuyc-cli device management, Human Takeover lock, and kiki.cua.provider.v1 integration.",
   "license": "MIT",
   "icon": "./icon.svg",
   "author": "Kiki",
@@ -20,7 +20,7 @@
   "skills": [
     "./skills"
   ],
-  "systemPrompt": "Use the uu-remote skill for NetEase UU Remote (GameViewer) remote desktop tasks. Inspect sessions and paired devices with uu_sessions or uu_status first; use uu_launch to open the client, connect/disconnect a specific deviceId via official uuyc-cli (never omit deviceId on disconnect), or rescue off-screen windows. Observe and control uu:<hwnd> streaming windows via uu_control with normalized_1000 [0..1000] coordinates (black bars are trimmed automatically) or through kiki-cua over the kiki.cua.provider.v1 bus. Stop immediately and yield to the user when Human Takeover (human_takeover_active) is engaged, and avoid Ctrl+Alt+* shortcuts reserved by the local UU Remote overlay.",
+  "systemPrompt": "Use the uu-remote skill for NetEase UU Remote (GameViewer) and Proxmox VE QEMU VM (SSH + QMP) remote desktop tasks. Inspect sessions and paired devices with uu_sessions or uu_status first; use uu_launch to open the client, connect/disconnect a specific deviceId via uuyc-cli or register/remove a Proxmox VE target (pve:<ssh_host>:<vmid>, or pveHost+vmid; never omit deviceId on disconnect), or rescue off-screen windows. Observe and control uu:<hwnd> and pve:<ssh_host>:<vmid> sessions via uu_control with normalized_1000 [0..1000] coordinates or through kiki-cua over the kiki.cua.provider.v1 bus. Stop immediately and yield to the user when Human Takeover (human_takeover_active) is engaged, and avoid Ctrl+Alt+* shortcuts on UU Remote windows.",
   "x-kiki": {
     "engines": {
       "kiki": "^0.4.0"
@@ -35,7 +35,8 @@
     "permissions": {
       "fs": "outside",
       "exec": [
-        "uuyc-cli"
+        "uuyc-cli",
+        "ssh"
       ],
       "uiPanel": true
     },
@@ -93,7 +94,7 @@
       {
         "schemaVersion": 1,
         "name": "uu_status",
-        "description": "Detect local NetEase UU Remote (GameViewer & uuyc-cli) installation, running client/service processes, uuremote:// URI registration, official uuyc-cli diagnostics, CUA Provider Bus lease status, and active remote desktop session summary.",
+        "description": "Detect local NetEase UU Remote (GameViewer & uuyc-cli) installation, running client/service processes, uuremote:// URI registration, official uuyc-cli diagnostics, registered Proxmox VE QMP VM targets, CUA Provider Bus lease status, and active remote desktop session summary.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -117,7 +118,7 @@
       {
         "schemaVersion": 1,
         "name": "uu_sessions",
-        "description": "List open UU Remote streaming windows (uu:<hwnd> with active/minimized/offscreen state, inner stage bounds, contentRect, DPI, takeover status) alongside paired uuyc-cli devices and remote terminal sessions; select default session; or toggle Human Takeover.",
+        "description": "List open UU Remote streaming windows (uu:<hwnd>) and registered Proxmox VE QMP VMs (pve:<ssh_host>:<vmid>) with live status, resolution, contentRect, and takeover state alongside paired uuyc-cli devices; select default session; or toggle Human Takeover.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -129,11 +130,11 @@
                 "takeover"
               ],
               "default": "list",
-              "description": "List sessions and paired devices, select default uu:<hwnd> session, or toggle Human Takeover lock."
+              "description": "List sessions and paired devices, select default uu:<hwnd> or pve:<ssh_host>:<vmid> session, or toggle Human Takeover lock."
             },
             "sessionId": {
               "type": "string",
-              "description": "Target streaming session ID (uu:<hwnd>) for select or takeover."
+              "description": "Target session ID (uu:<hwnd> or pve:<ssh_host>:<vmid>) for select or takeover."
             },
             "active": {
               "type": "boolean",
@@ -178,19 +179,21 @@
       {
         "schemaVersion": 1,
         "name": "uu_control",
-        "description": "Observe a zero-focus background screenshot (with symmetric black-bar trim and optional zoom crop) or inject mouse, keyboard, clipboard, focus, or restore actions into an active UU Remote session (uu:<hwnd>). Honors Human Takeover.",
+        "description": "Observe a zero-focus screenshot (with symmetric black-bar trim and optional zoom crop) or inject mouse, keyboard, clipboard, focus, or restore actions into an active UU Remote (uu:<hwnd>) or Proxmox VE QMP (pve:<ssh_host>:<vmid>) session. Honors Human Takeover.",
         "parameters": {
           "type": "object",
           "properties": {
             "sessionId": {
               "type": "string",
-              "description": "Target streaming session ID (uu:<hwnd>). Defaults to the selected or sole active session."
+              "description": "Target session ID (uu:<hwnd> or pve:<ssh_host>:<vmid>). Defaults to the selected or sole active session."
             },
             "action": {
               "type": "string",
               "enum": [
                 "screenshot",
                 "click",
+                "double_click",
+                "right_click",
                 "move",
                 "mouse_down",
                 "mouse_up",
@@ -219,6 +222,8 @@
                     "type": "string",
                     "enum": [
                       "click",
+                      "double_click",
+                      "right_click",
                       "move",
                       "mouse_down",
                       "mouse_up",
@@ -480,7 +485,7 @@
       {
         "schemaVersion": 1,
         "name": "uu_launch",
-        "description": "Open the NetEase UU Remote desktop client, connect or disconnect a specific paired device via official uuyc-cli, launch an explicit uuremote:// URI, or rescue off-screen GameViewer windows back onto the primary monitor.",
+        "description": "Open the NetEase UU Remote desktop client, connect or disconnect a paired uuyc-cli device or Proxmox VE QMP VM target (pve:<ssh_host>:<vmid>), launch an explicit uuremote:// URI, or rescue off-screen GameViewer windows.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -488,6 +493,8 @@
               "type": "string",
               "enum": [
                 "open_client",
+                "connect",
+                "disconnect",
                 "connect_device",
                 "disconnect_device",
                 "open_uri",
@@ -497,7 +504,22 @@
             },
             "deviceId": {
               "type": "string",
-              "description": "Required target device ID for connect_device and disconnect_device (never omitted on disconnect_device)."
+              "description": "Target device ID (uuyc-cli paired device ID or pve:<ssh_host>:<vmid>) for connect/disconnect (never omitted on disconnect)."
+            },
+            "pveHost": {
+              "type": "string",
+              "description": "Optional SSH host alias for a Proxmox VE node (paired with vmid for connect/disconnect)."
+            },
+            "vmid": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 999999999,
+              "description": "Optional Proxmox VE QEMU VM ID (paired with pveHost for connect/disconnect)."
+            },
+            "label": {
+              "type": "string",
+              "maxLength": 120,
+              "description": "Optional custom display label when registering a Proxmox VE VM target."
             },
             "uri": {
               "type": "string",
@@ -505,7 +527,7 @@
             },
             "sessionId": {
               "type": "string",
-              "description": "Optional uu:<hwnd> filter for recover_offscreen; omit to rescue all off-screen GameViewer windows."
+              "description": "Optional uu:<hwnd> filter for recover_offscreen, or pve:<ssh_host>:<vmid> target."
             },
             "waitForWindowMs": {
               "type": "integer",

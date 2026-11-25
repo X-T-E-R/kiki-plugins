@@ -2,7 +2,7 @@ export const uuStatusTool = {
   schemaVersion: 1,
   name: 'uu_status',
   description:
-    'Detect local NetEase UU Remote (GameViewer & uuyc-cli) installation, running client/service processes, uuremote:// URI registration, official uuyc-cli diagnostics, CUA Provider Bus lease status, and active remote desktop session summary.',
+    'Detect local NetEase UU Remote (GameViewer & uuyc-cli) installation, running client/service processes, uuremote:// URI registration, official uuyc-cli diagnostics, registered Proxmox VE QMP VM targets, CUA Provider Bus lease status, and active remote desktop session summary.',
   parameters: {
     type: 'object',
     properties: {
@@ -24,7 +24,7 @@ export const uuSessionsTool = {
   schemaVersion: 1,
   name: 'uu_sessions',
   description:
-    'List open UU Remote streaming windows (uu:<hwnd> with active/minimized/offscreen state, inner stage bounds, contentRect, DPI, takeover status) alongside paired uuyc-cli devices and remote terminal sessions; select default session; or toggle Human Takeover.',
+    'List open UU Remote streaming windows (uu:<hwnd>) and registered Proxmox VE QMP VMs (pve:<ssh_host>:<vmid>) with live status, resolution, contentRect, and takeover state alongside paired uuyc-cli devices; select default session; or toggle Human Takeover.',
   parameters: {
     type: 'object',
     properties: {
@@ -32,11 +32,11 @@ export const uuSessionsTool = {
         type: 'string',
         enum: ['list', 'select', 'takeover'],
         default: 'list',
-        description: 'List sessions and paired devices, select default uu:<hwnd> session, or toggle Human Takeover lock.',
+        description: 'List sessions and paired devices, select default uu:<hwnd> or pve:<ssh_host>:<vmid> session, or toggle Human Takeover lock.',
       },
       sessionId: {
         type: 'string',
-        description: 'Target streaming session ID (uu:<hwnd>) for select or takeover.',
+        description: 'Target session ID (uu:<hwnd> or pve:<ssh_host>:<vmid>) for select or takeover.',
       },
       active: {
         type: 'boolean',
@@ -94,6 +94,8 @@ const batchActionItemSchema = {
       type: 'string',
       enum: [
         'click',
+        'double_click',
+        'right_click',
         'move',
         'mouse_down',
         'mouse_up',
@@ -135,19 +137,21 @@ export const uuControlTool = {
   schemaVersion: 1,
   name: 'uu_control',
   description:
-    'Observe a zero-focus background screenshot (with symmetric black-bar trim and optional zoom crop) or inject mouse, keyboard, clipboard, focus, or restore actions into an active UU Remote session (uu:<hwnd>). Honors Human Takeover.',
+    'Observe a zero-focus screenshot (with symmetric black-bar trim and optional zoom crop) or inject mouse, keyboard, clipboard, focus, or restore actions into an active UU Remote (uu:<hwnd>) or Proxmox VE QMP (pve:<ssh_host>:<vmid>) session. Honors Human Takeover.',
   parameters: {
     type: 'object',
     properties: {
       sessionId: {
         type: 'string',
-        description: 'Target streaming session ID (uu:<hwnd>). Defaults to the selected or sole active session.',
+        description: 'Target session ID (uu:<hwnd> or pve:<ssh_host>:<vmid>). Defaults to the selected or sole active session.',
       },
       action: {
         type: 'string',
         enum: [
           'screenshot',
           'click',
+          'double_click',
+          'right_click',
           'move',
           'mouse_down',
           'mouse_up',
@@ -280,18 +284,41 @@ export const uuLaunchTool = {
   schemaVersion: 1,
   name: 'uu_launch',
   description:
-    'Open the NetEase UU Remote desktop client, connect or disconnect a specific paired device via official uuyc-cli, launch an explicit uuremote:// URI, or rescue off-screen GameViewer windows back onto the primary monitor.',
+    'Open the NetEase UU Remote desktop client, connect or disconnect a paired uuyc-cli device or Proxmox VE QMP VM target (pve:<ssh_host>:<vmid>), launch an explicit uuremote:// URI, or rescue off-screen GameViewer windows.',
   parameters: {
     type: 'object',
     properties: {
       action: {
         type: 'string',
-        enum: ['open_client', 'connect_device', 'disconnect_device', 'open_uri', 'recover_offscreen'],
+        enum: [
+          'open_client',
+          'connect',
+          'disconnect',
+          'connect_device',
+          'disconnect_device',
+          'open_uri',
+          'recover_offscreen',
+        ],
         description: 'Lifecycle or window-recovery operation to execute.',
       },
       deviceId: {
         type: 'string',
-        description: 'Required target device ID for connect_device and disconnect_device (never omitted on disconnect_device).',
+        description: 'Target device ID (uuyc-cli paired device ID or pve:<ssh_host>:<vmid>) for connect/disconnect (never omitted on disconnect).',
+      },
+      pveHost: {
+        type: 'string',
+        description: 'Optional SSH host alias for a Proxmox VE node (paired with vmid for connect/disconnect).',
+      },
+      vmid: {
+        type: 'integer',
+        minimum: 1,
+        maximum: 999999999,
+        description: 'Optional Proxmox VE QEMU VM ID (paired with pveHost for connect/disconnect).',
+      },
+      label: {
+        type: 'string',
+        maxLength: 120,
+        description: 'Optional custom display label when registering a Proxmox VE VM target.',
       },
       uri: {
         type: 'string',
@@ -299,7 +326,7 @@ export const uuLaunchTool = {
       },
       sessionId: {
         type: 'string',
-        description: 'Optional uu:<hwnd> filter for recover_offscreen; omit to rescue all off-screen GameViewer windows.',
+        description: 'Optional uu:<hwnd> filter for recover_offscreen, or pve:<ssh_host>:<vmid> target.',
       },
       waitForWindowMs: {
         type: 'integer',

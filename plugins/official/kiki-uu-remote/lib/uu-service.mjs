@@ -3,6 +3,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { mapPointToTarget, processCapturedStagePng } from './frame-math.mjs';
 import { assertSafeRemoteKeyChord } from './key-map.mjs';
+import {
+  buildPveTargetId,
+  buildQmpStepsForAction,
+  createPveQmpDriver,
+  isPveTargetId,
+  parsePveTargetId,
+} from './pve-qmp-driver.mjs';
 import { createUuycCliClient } from './uuyc-cli.mjs';
 import { UU_PORTAL_URL, createWin32SystemDriver } from './win32-driver.mjs';
 import { computeRescueBounds, normalizeSessionId } from './window-topology.mjs';
@@ -39,6 +46,7 @@ function defaultStateDir({ dataDir, kikiHome, env = process.env } = {}) {
 
 export function createUuRemoteService({
   systemDriver = createWin32SystemDriver(),
+  pveDriver = createPveQmpDriver(),
   cliClient = createUuycCliClient(),
   stateDir: initialStateDir = null,
   busInspector = null,
@@ -50,15 +58,70 @@ export function createUuRemoteService({
   const lastObservationBySession = new Map();
   const lastContentRectBySession = new Map();
   const lastCursorGuardBySession = new Map();
+  const pveTargetsById = new Map();
   let stateLoadedFromDir = null;
 
   function setStateDir(dir) {
     if (dir) configuredStateDir = path.resolve(dir);
   }
 
+  function resolveStateDir(context = {}) {
+    return configuredStateDir || defaultStateDir({ dataDir: context?.dataDir, kikiHome: context?.kikiHome });
+  }
+
   function resolveStateFile(context = {}) {
-    const dir = configuredStateDir || defaultStateDir({ dataDir: context?.dataDir, kikiHome: context?.kikiHome });
-    return path.join(dir, 'runtime-state.json');
+    return path.join(resolveStateDir(context), 'runtime-state.json');
+  }
+
+  function resolvePveTargetsFile(context = {}) {
+    return path.join(resolveStateDir(context), 'pve-targets.json');
+  }
+
+  async function syncPveTargets(context = {}) {
+    const file = resolvePveTargetsFile(context);
+    try {
+      const raw = JSON.parse(await readFile(file, 'utf8'));
+      const list = Array.isArray(raw?.targets) ? raw.targets : Array.isArray(raw) ? raw : [];
+      pveTargetsById.clear();
+      for (const item of list) {
+        if (!item || typeof item !== 'object') continue;
+        const parsed = item.id
+          ? parsePveTargetId(item.id, { strict: false })
+          : (item.sshHost && item.vmid ? parsePveTargetId(`pve:${item.sshHost}:${item.vmid}`, { strict: false }) : null);
+        if (!parsed) continue;
+        pveTargetsById.set(parsed.id, {
+          id: parsed.id,
+          sshHost: parsed.sshHost,
+          vmid: parsed.vmid,
+          label: typeof item.label === 'string' && item.label.trim() ? item.label.trim() : null,
+          vmName: typeof item.vmName === 'string' && item.vmName.trim() ? item.vmName.trim() : null,
+          width: Number.isFinite(item.width) && item.width > 0 ? Math.round(item.width) : null,
+          height: Number.isFinite(item.height) && item.height > 0 ? Math.round(item.height) : null,
+          addedAtMs: Number(item.addedAtMs) || nowFn(),
+          updatedAtMs: Number(item.updatedAtMs) || nowFn(),
+        });
+      }
+    } catch {
+      // File may not exist yet; keep current map.
+    }
+  }
+
+  async function persistPveTargets(context = {}) {
+    const file = resolvePveTargetsFile(context);
+    const dir = path.dirname(file);
+    try {
+      await mkdir(dir, { recursive: true });
+      const payload = {
+        version: 1,
+        targets: [...pveTargetsById.values()],
+        updatedAtMs: nowFn(),
+      };
+      const tmp = `${file}.${process.pid}.tmp`;
+      await writeFile(tmp, JSON.stringify(payload, null, 2) + '\n', { mode: 0o600 });
+      await rename(tmp, file);
+    } catch {
+      // Non-fatal if running in read-only sandbox.
+    }
   }
 
   async function syncPersistedState(context = {}) {
@@ -85,6 +148,7 @@ export function createUuRemoteService({
     } catch {
       stateLoadedFromDir = file;
     }
+    await syncPveTargets(context);
   }
 
   async function persistState(context = {}) {
@@ -123,15 +187,107 @@ export function createUuRemoteService({
     };
   }
 
+  function buildPveSessionObject(target, liveStatus = null, probeError = null) {
+    const vmStatus = liveStatus?.vmStatus || (probeError ? 'unreachable' : 'stopped');
+    const running = Boolean(liveStatus?.running) || vmStatus === 'running';
+    const vmName = liveStatus?.vmName || target.vmName || null;
+    const width = (Number.isFinite(liveStatus?.width) && liveStatus.width > 0 ? Math.round(liveStatus.width) : null)
+      || target.width
+      || 1024;
+    const height = (Number.isFinite(liveStatus?.height) && liveStatus.height > 0 ? Math.round(liveStatus.height) : null)
+      || target.height
+      || 768;
+    const label = target.label || vmName || `PVE ${target.sshHost} VM ${target.vmid}`;
+    const state = running ? 'active' : probeError ? 'disconnected' : 'stopped';
+    return {
+      id: target.id,
+      provider: 'pve-qmp',
+      sshHost: target.sshHost,
+      vmid: target.vmid,
+      vmName,
+      vmStatus,
+      label,
+      state,
+      dpi: 96,
+      scaleFactor: 1,
+      outerBounds: { x: 0, y: 0, width, height },
+      canvasBounds: { x: 0, y: 0, width, height },
+      ...(probeError ? { error: probeError } : {}),
+    };
+  }
+
+  async function probeRegisteredPveSessions(context = {}, { probeResolution = false } = {}) {
+    if (pveTargetsById.size === 0) return [];
+    let dirty = false;
+    const entries = [...pveTargetsById.values()];
+    const results = await Promise.all(
+      entries.map(async (target) => {
+        try {
+          const needRes = probeResolution || !target.width || !target.height;
+          const live = await pveDriver.probeStatus(target, {
+            probeResolution: needRes,
+            signal: context?.signal,
+          });
+          if (live?.vmName && live.vmName !== target.vmName) {
+            target.vmName = live.vmName;
+            dirty = true;
+          }
+          if (Number.isFinite(live?.width) && live.width > 0 && Number.isFinite(live?.height) && live.height > 0) {
+            if (target.width !== Math.round(live.width) || target.height !== Math.round(live.height)) {
+              target.width = Math.round(live.width);
+              target.height = Math.round(live.height);
+              dirty = true;
+            }
+          }
+          if (dirty) target.updatedAtMs = nowFn();
+          return buildPveSessionObject(target, live, null);
+        } catch (err) {
+          return buildPveSessionObject(target, null, err?.message || String(err));
+        }
+      }),
+    );
+    if (dirty) {
+      await persistPveTargets(context);
+    }
+    return results;
+  }
+
+  async function inspectCombinedTopology(settings = {}, context = {}, { probePveResolution = false } = {}) {
+    await syncPersistedState(context);
+    const [winTopo, pveSessions] = await Promise.all([
+      systemDriver.inspectTopology(settings).catch((error) => ({
+        supported: systemDriver.hostPlatform === 'win32',
+        hostPlatform: systemDriver.hostPlatform,
+        monitors: [],
+        processes: [],
+        sessions: [],
+        launchers: [],
+        ignored: [],
+        error: error?.message || String(error),
+      })),
+      probeRegisteredPveSessions(context, { probeResolution: probePveResolution }),
+    ]);
+
+    const winSessions = Array.isArray(winTopo.sessions)
+      ? winTopo.sessions.map((s) => ({ provider: 'uu-remote', ...s }))
+      : [];
+
+    return {
+      ...winTopo,
+      sessions: [...winSessions, ...pveSessions],
+      pveSessions,
+    };
+  }
+
   async function setTakeover({ targetId, sessionId, active, holder, reason } = {}, context = {}) {
     await syncPersistedState(context);
     const rawId = targetId || sessionId || selectedSessionId;
     if (!rawId) {
-      const topo = await systemDriver.inspectTopology(context?.settings ?? {});
+      const topo = await inspectCombinedTopology(context?.settings ?? {}, context);
       if (topo.sessions.length === 1) {
         return setTakeover({ sessionId: topo.sessions[0].id, active, holder, reason }, context);
       }
-      throw new Error('Takeover requires a target sessionId (uu:<hwnd>).');
+      throw new Error('Takeover requires a target sessionId (uu:<hwnd> or pve:<ssh_host>:<vmid>).');
     }
     const sid = normalizeSessionId(rawId);
     const nextActive = Boolean(active);
@@ -169,6 +325,7 @@ export function createUuRemoteService({
       axis: 'none',
     };
     return {
+      provider: session.provider || 'uu-remote',
       ...session,
       contentRect: {
         x: cachedContentRect.x,
@@ -205,17 +362,25 @@ export function createUuRemoteService({
     if (requestedId) {
       const norm = normalizeSessionId(requestedId);
       const found = sessions.find((s) => s.id === norm);
-      if (!found) {
-        throw new Error(
-          `UU Remote session "${norm}" is not open. Call uu_sessions(action="list") to inspect open windows or uu_launch(action="connect_device", deviceId="<id>") to reconnect.`,
-        );
+      if (found) return found;
+
+      if (isPveTargetId(norm)) {
+        const parsed = parsePveTargetId(norm, { strict: true });
+        const live = await pveDriver.probeStatus(parsed, {
+          probeResolution: true,
+          signal: context?.signal,
+        });
+        return buildPveSessionObject(parsed, live, null);
       }
-      return found;
+
+      throw new Error(
+        `Remote session "${norm}" is not open. Call uu_sessions(action="list") to inspect active windows/VMs or uu_launch(action="connect", deviceId="<id>") to connect.`,
+      );
     }
     const chosenId = pickSelectedSession(sessions);
     if (!chosenId) {
       throw new Error(
-        'No active UU Remote streaming window is open. Call uu_sessions(action="list") to find paired devices, then uu_launch(action="connect_device", deviceId="<id>") or uu_launch(action="open_client").',
+        'No active remote desktop session is open. Call uu_sessions(action="list") to find paired devices, or uu_launch(action="connect", deviceId="pve:<ssh_host>:<vmid>") / uu_launch(action="connect_device", deviceId="<id>").',
       );
     }
     return sessions.find((s) => s.id === chosenId);
@@ -223,6 +388,78 @@ export function createUuRemoteService({
 
   async function observeSession(session, options = {}, context = {}) {
     const settings = context?.settings ?? {};
+    const isPve = session.provider === 'pve-qmp' || isPveTargetId(session.id);
+
+    if (isPve) {
+      if (session.state !== 'active') {
+        throw new Error(
+          `PVE VM session ${session.id} ("${session.label}") is ${session.vmStatus || session.state} and cannot capture screendump frames.`,
+        );
+      }
+      const rawCapture = await pveDriver.captureScreen(session, { signal: context?.signal });
+      const registered = pveTargetsById.get(session.id);
+      if (registered && (registered.width !== rawCapture.width || registered.height !== rawCapture.height)) {
+        registered.width = rawCapture.width;
+        registered.height = rawCapture.height;
+        registered.updatedAtMs = nowFn();
+        await persistPveTargets(context);
+      }
+
+      const autoTrim = options.autoTrimBlackBars !== undefined ? Boolean(options.autoTrimBlackBars) : false;
+      const remoteAspect = options.remoteAspect ?? settings?.remoteAspect;
+      const prevObs = lastObservationBySession.get(session.id) || null;
+
+      const processed = processCapturedStagePng(rawCapture.image, {
+        autoTrimBlackBars: autoTrim,
+        remoteAspect,
+        zoom: options.zoom || null,
+        coordinateMode: options.coordinateMode || 'normalized_1000',
+        maxWidth: options.maxWidth ?? 1440,
+        maxHeight: options.maxHeight ?? 1080,
+        lastObservation: prevObs,
+        pngCompressionLevel: options.pngCompressionLevel ?? 3,
+      });
+
+      const stageBounds = rawCapture.stageBounds;
+      lastContentRectBySession.set(session.id, {
+        ...processed.contentRect,
+        trimmed: processed.contentTrimmed,
+        axis: processed.contentAxis,
+      });
+      lastObservationBySession.set(session.id, {
+        imageSize: processed.imageSize,
+        logicalSize: processed.logicalSize,
+        cropBounds: processed.cropBounds,
+        contentRect: processed.contentRect,
+        stageBounds,
+        capturedAtMs: nowFn(),
+      });
+
+      const tk = getTakeoverEntry(session.id);
+      return {
+        ok: true,
+        provider: 'pve-qmp',
+        targetId: session.id,
+        sessionId: session.id,
+        label: session.label,
+        capturedAtMs: nowFn(),
+        mimeType: processed.mimeType,
+        pngBuffer: processed.pngBuffer,
+        imageBase64: processed.imageBase64,
+        imageSize: processed.imageSize,
+        logicalSize: processed.logicalSize,
+        cropBounds: processed.cropBounds,
+        contentRect: processed.contentRect,
+        contentTrimmed: processed.contentTrimmed,
+        contentAxis: processed.contentAxis,
+        stageBounds,
+        cursor: { x: 0, y: 0 },
+        takeoverActive: tk.active,
+        controlledBy: tk.controlledBy,
+        accessibility: [],
+      };
+    }
+
     if (session.state === 'minimized') {
       throw new Error(
         `Session ${session.id} ("${session.label}") is minimized and cannot render PrintWindow frames. Call uu_control(sessionId="${session.id}", action="restore") first.`,
@@ -278,6 +515,7 @@ export function createUuRemoteService({
     const tk = getTakeoverEntry(session.id);
     return {
       ok: true,
+      provider: 'uu-remote',
       targetId: session.id,
       sessionId: session.id,
       label: session.label,
@@ -310,6 +548,11 @@ export function createUuRemoteService({
         takeoverActive: true,
         controlledBy: existing.controlledBy || 'human',
       };
+    }
+
+    // PVE QMP sessions run over SSH/QMP and do not share the local desktop cursor.
+    if (session.provider === 'pve-qmp' || isPveTargetId(session.id)) {
+      return { blocked: false };
     }
 
     const thresholdPx = Math.max(
@@ -362,12 +605,151 @@ export function createUuRemoteService({
     }
   }
 
+  async function executeActionsOnPveSession(session, {
+    actions,
+    coordinateMode = 'normalized_1000',
+    overrideHumanTakeover = false,
+  }, context = {}) {
+    const settings = context?.settings ?? {};
+    const signal = context?.signal;
+
+    if (!overrideHumanTakeover) {
+      const guard = await checkPhysicalTakeoverGuard(session, settings, context);
+      if (guard.blocked) {
+        return {
+          ok: false,
+          status: 409,
+          code: 'human_takeover_active',
+          message: guard.message,
+          targetId: session.id,
+          sessionId: session.id,
+          takeoverActive: true,
+          controlledBy: 'human',
+        };
+      }
+    }
+
+    if (session.state !== 'active') {
+      throw new Error(
+        `PVE VM session ${session.id} ("${session.label}") is ${session.vmStatus || session.state} and cannot receive QMP input.`,
+      );
+    }
+
+    const screenSize = {
+      width: Math.max(1, session.canvasBounds?.width || 1024),
+      height: Math.max(1, session.canvasBounds?.height || 768),
+    };
+    const results = [];
+    let lastPoint = null;
+
+    for (let idx = 0; idx < actions.length; idx += 1) {
+      signal?.throwIfAborted?.();
+      if (idx > 0 && !overrideHumanTakeover) {
+        const midGuard = await checkPhysicalTakeoverGuard(session, settings, context);
+        if (midGuard.blocked) {
+          return {
+            ok: false,
+            status: 409,
+            code: 'human_takeover_active',
+            message: midGuard.message,
+            targetId: session.id,
+            sessionId: session.id,
+            executed: results.length,
+            results,
+            lastPoint,
+            takeoverActive: true,
+            controlledBy: 'human',
+          };
+        }
+      }
+
+      const item = actions[idx];
+      const kind = item.kind;
+      const lastObs = lastObservationBySession.get(session.id) || null;
+
+      if (kind === 'wait') {
+        const durationMs = Math.max(0, Math.min(30_000, Number(item.durationMs) || 250));
+        await sleep(durationMs, signal);
+        results.push({ kind: 'wait', durationMs });
+        continue;
+      }
+
+      if (kind === 'focus' || kind === 'restore') {
+        results.push({ kind, focused: true, note: 'PVE QMP session does not require local window focus.' });
+        continue;
+      }
+
+      if (kind === 'clipboard_get' || kind === 'clipboard_set') {
+        throw new Error(
+          `Action "${kind}" is not supported on PVE QMP session ${session.id}; use action="type" for ASCII text input.`,
+        );
+      }
+
+      const compiled = buildQmpStepsForAction(item, {
+        coordinateMode,
+        screenSize: lastObs?.logicalSize || screenSize,
+        lastObservation: lastObs,
+      });
+      await pveDriver.sendQmpSteps(session, compiled.steps, { signal });
+
+      if (compiled.point) {
+        lastPoint = {
+          x: compiled.point.x,
+          y: compiled.point.y,
+          normX: compiled.point.normX,
+          normY: compiled.point.normY,
+          qmpAbs: { x: compiled.point.absX, y: compiled.point.absY },
+        };
+      }
+
+      if (kind === 'drag') {
+        results.push({
+          kind: 'drag',
+          button: compiled.meta.button,
+          start: {
+            x: compiled.startPoint.x,
+            y: compiled.startPoint.y,
+            normX: compiled.startPoint.normX,
+            normY: compiled.startPoint.normY,
+          },
+          end: lastPoint,
+          durationMs: compiled.meta.durationMs,
+        });
+      } else {
+        results.push({
+          ...compiled.meta,
+          ...(compiled.point ? { point: lastPoint } : {}),
+        });
+      }
+    }
+
+    const tk = getTakeoverEntry(session.id);
+    return {
+      ok: true,
+      provider: 'pve-qmp',
+      targetId: session.id,
+      sessionId: session.id,
+      executed: results.length,
+      results,
+      lastPoint,
+      takeoverActive: tk.active,
+    };
+  }
+
   async function executeActionsOnSession(session, {
     actions,
     coordinateMode = 'normalized_1000',
     overrideHumanTakeover = false,
     allowClientHotkey = false,
   }, context = {}) {
+    if (session.provider === 'pve-qmp' || isPveTargetId(session.id)) {
+      return executeActionsOnPveSession(
+        session,
+        { actions, coordinateMode, overrideHumanTakeover },
+        context,
+      );
+    }
+
     const settings = context?.settings ?? {};
     const signal = context?.signal;
 
@@ -485,8 +867,14 @@ export function createUuRemoteService({
         continue;
       }
 
-      if (kind === 'click' || kind === 'mouse_down' || kind === 'mouse_up') {
-        const button = item.button || 'left';
+      if (
+        kind === 'click' ||
+        kind === 'double_click' ||
+        kind === 'right_click' ||
+        kind === 'mouse_down' ||
+        kind === 'mouse_up'
+      ) {
+        const button = kind === 'right_click' ? 'right' : (item.button || 'left');
         let pt = null;
         if (item.x !== undefined && item.y !== undefined) {
           const geo = await ensureGeo();
@@ -509,13 +897,17 @@ export function createUuRemoteService({
           steps.push({ op: 'vk_down', vk: mod.vk });
         }
 
-        if (kind === 'click') {
-          const count = Math.max(1, Math.min(3, Math.round(Number(item.count) || 1)));
-          for (let c = 0; c < count; c += 1) {
+        const clickCount = kind === 'double_click'
+          ? 2
+          : kind === 'right_click'
+            ? 1
+            : Math.max(1, Math.min(3, Math.round(Number(item.count) || 1)));
+        if (kind === 'click' || kind === 'double_click' || kind === 'right_click') {
+          for (let c = 0; c < clickCount; c += 1) {
             steps.push({ op: 'mouse_down', button });
             steps.push({ op: 'sleep', ms: 24 });
             steps.push({ op: 'mouse_up', button });
-            if (c + 1 < count) steps.push({ op: 'sleep', ms: 48 });
+            if (c + 1 < clickCount) steps.push({ op: 'sleep', ms: 48 });
           }
         } else if (kind === 'mouse_down') {
           steps.push({ op: 'mouse_down', button });
@@ -539,7 +931,7 @@ export function createUuRemoteService({
         results.push({
           kind,
           button,
-          count: kind === 'click' ? (item.count || 1) : undefined,
+          count: (kind === 'click' || kind === 'double_click' || kind === 'right_click') ? clickCount : undefined,
           point: lastPoint,
           screenPoint: pt ? { x: pt.screenX, y: pt.screenY } : undefined,
         });
@@ -704,6 +1096,47 @@ export function createUuRemoteService({
     };
   }
 
+  async function resolveExplicitPveTarget(requestedId, context = {}) {
+    const parsed = parsePveTargetId(requestedId, { strict: true });
+    const registered = pveTargetsById.get(parsed.id);
+    const live = await pveDriver.probeStatus(parsed, {
+      probeResolution: !registered?.width || !registered?.height,
+      signal: context?.signal,
+    });
+    if (registered) {
+      let dirty = false;
+      if (live?.vmName && live.vmName !== registered.vmName) {
+        registered.vmName = live.vmName;
+        dirty = true;
+      }
+      if (Number.isFinite(live?.width) && live.width > 0 && Number.isFinite(live?.height) && live.height > 0) {
+        if (registered.width !== Math.round(live.width) || registered.height !== Math.round(live.height)) {
+          registered.width = Math.round(live.width);
+          registered.height = Math.round(live.height);
+          dirty = true;
+        }
+      }
+      if (dirty) {
+        registered.updatedAtMs = nowFn();
+        await persistPveTargets(context);
+      }
+      return buildPveSessionObject(registered, live, null);
+    }
+    return buildPveSessionObject(parsed, live, null);
+  }
+
+  function extractPveTargetInput(args = {}) {
+    if (args.pveHost !== undefined || args.vmid !== undefined) {
+      const id = buildPveTargetId(args.pveHost, args.vmid);
+      return parsePveTargetId(id, { strict: true });
+    }
+    const candidate = args.deviceId ?? args.sessionId;
+    if (isPveTargetId(candidate)) {
+      return parsePveTargetId(candidate, { strict: true });
+    }
+    return null;
+  }
+
   async function getStatus(args = {}, context = {}) {
     await syncPersistedState(context);
     const settings = context?.settings ?? {};
@@ -712,18 +1145,11 @@ export function createUuRemoteService({
     const [install, cliVersion, topo] = await Promise.all([
       systemDriver.discoverInstallation(settings),
       cliClient.getVersion(settings, { signal: context?.signal }),
-      systemDriver.inspectTopology(settings).catch((error) => ({
-        supported: systemDriver.hostPlatform === 'win32',
-        hostPlatform: systemDriver.hostPlatform,
-        monitors: [],
-        processes: [],
-        sessions: [],
-        launchers: [],
-        error: error.message || String(error),
-      })),
+      inspectCombinedTopology(settings, context),
     ]);
 
-    const mainClientRunning = topo.launchers.length > 0 || topo.sessions.length > 0 || topo.processes.some(
+    const uuSessions = topo.sessions.filter((s) => s.provider !== 'pve-qmp');
+    const mainClientRunning = topo.launchers.length > 0 || uuSessions.length > 0 || topo.processes.some(
       (p) => !/server|service/i.test(String(p.name || '')),
     );
 
@@ -756,13 +1182,16 @@ export function createUuRemoteService({
         minimizedSessions: sessions.filter((s) => s.state === 'minimized').length,
         offscreenSessions: sessions.filter((s) => s.state === 'offscreen').length,
         offscreenLaunchers: topo.launchers.filter((l) => l.offscreen).length,
+        pveTargets: pveTargetsById.size,
       },
       providerBus: busStatus,
       selectedSessionId: selected,
       sessions: sessions.map((s) => ({
         id: s.id,
+        provider: s.provider,
         label: s.label,
         state: s.state,
+        ...(s.vmStatus ? { vmStatus: s.vmStatus } : {}),
         canvasBounds: s.canvasBounds,
         dpi: s.dpi,
         takeoverActive: s.takeoverActive,
@@ -791,16 +1220,18 @@ export function createUuRemoteService({
       );
     }
 
-    const topo = await systemDriver.inspectTopology(settings);
+    const topo = await inspectCombinedTopology(settings, context, {
+      probePveResolution: Boolean(args.probeContentRect),
+    });
 
     if (action === 'select') {
       const targetId = normalizeSessionId(args.sessionId);
       if (!targetId) {
-        throw new Error('uu_sessions action="select" requires sessionId (uu:<hwnd>).');
+        throw new Error('uu_sessions action="select" requires sessionId (uu:<hwnd> or pve:<ssh_host>:<vmid>).');
       }
       const match = topo.sessions.find((s) => s.id === targetId);
       if (!match) {
-        throw new Error(`Session "${targetId}" was not found among open UU Remote windows.`);
+        throw new Error(`Session "${targetId}" was not found among open UU Remote windows or registered PVE VMs.`);
       }
       selectedSessionId = match.id;
       await persistState(context);
@@ -813,7 +1244,7 @@ export function createUuRemoteService({
 
     if (args.probeContentRect) {
       for (const session of topo.sessions) {
-        if (session.state === 'active') {
+        if (session.state === 'active' && session.provider !== 'pve-qmp') {
           await observeSession(session, { maxWidth: 640, maxHeight: 480 }, context).catch(() => {});
         }
       }
@@ -858,8 +1289,13 @@ export function createUuRemoteService({
   async function controlSession(args = {}, context = {}) {
     await syncPersistedState(context);
     const settings = context?.settings ?? {};
-    const topo = await systemDriver.inspectTopology(settings);
-    const session = await resolveTargetSession(args.sessionId, topo, context);
+    let session;
+    if (args.sessionId && isPveTargetId(args.sessionId)) {
+      session = await resolveExplicitPveTarget(args.sessionId, context);
+    } else {
+      const topo = await inspectCombinedTopology(settings, context);
+      session = await resolveTargetSession(args.sessionId, topo, context);
+    }
     const coordinateMode = args.coordinateMode || 'normalized_1000';
 
     const isExplicitScreenshot = !Array.isArray(args.actions) && (!args.action || args.action === 'screenshot');
@@ -878,6 +1314,7 @@ export function createUuRemoteService({
       );
       return {
         ok: true,
+        provider: obs.provider,
         action: 'screenshot',
         sessionId: obs.sessionId,
         label: obs.label,
@@ -939,9 +1376,12 @@ export function createUuRemoteService({
     let observation = null;
     if (shouldObserve && context?.imageIn !== false) {
       await sleep(110, context?.signal);
-      const freshTopo = await systemDriver.inspectTopology(settings);
-      const refreshed = freshTopo.sessions.find((s) => s.id === session.id) || session;
-      if (refreshed.state !== 'minimized') {
+      let refreshed = session;
+      if (session.provider !== 'pve-qmp') {
+        const freshTopo = await systemDriver.inspectTopology(settings);
+        refreshed = freshTopo.sessions.find((s) => s.id === session.id) || session;
+      }
+      if (refreshed.state === 'active') {
         observation = await observeSession(
           refreshed,
           {
@@ -1054,7 +1494,44 @@ export function createUuRemoteService({
       };
     }
 
-    if (action === 'connect_device') {
+    if (action === 'connect' || action === 'connect_device') {
+      const pveTarget = extractPveTargetInput(args);
+      if (pveTarget) {
+        const live = await pveDriver.probeStatus(pveTarget, {
+          probeResolution: true,
+          signal: context?.signal,
+        });
+        const existing = pveTargetsById.get(pveTarget.id);
+        const now = nowFn();
+        const customLabel = typeof args.label === 'string' && args.label.trim() ? args.label.trim() : null;
+        const record = {
+          id: pveTarget.id,
+          sshHost: pveTarget.sshHost,
+          vmid: pveTarget.vmid,
+          label: customLabel || existing?.label || null,
+          vmName: live?.vmName || existing?.vmName || null,
+          width: (Number.isFinite(live?.width) && live.width > 0 ? Math.round(live.width) : null) || existing?.width || null,
+          height: (Number.isFinite(live?.height) && live.height > 0 ? Math.round(live.height) : null) || existing?.height || null,
+          addedAtMs: existing?.addedAtMs || now,
+          updatedAtMs: now,
+        };
+        pveTargetsById.set(record.id, record);
+        selectedSessionId = record.id;
+        await Promise.all([persistPveTargets(context), persistState(context)]);
+
+        const decorated = decorateSession(buildPveSessionObject(record, live, null));
+        return {
+          ok: true,
+          action,
+          provider: 'pve-qmp',
+          deviceId: record.id,
+          sessionId: record.id,
+          selectedSessionId: record.id,
+          session: decorated,
+          sessions: [decorated],
+        };
+      }
+
       const cliRes = await cliClient.connectDevice(args.deviceId, settings, { signal: context?.signal });
       const topo = waitMs > 0
         ? await waitForSessionWindow(waitMs, settings, context?.signal).catch(() => null)
@@ -1072,7 +1549,32 @@ export function createUuRemoteService({
       };
     }
 
-    if (action === 'disconnect_device') {
+    if (action === 'disconnect' || action === 'disconnect_device') {
+      const pveTarget = extractPveTargetInput(args);
+      if (pveTarget) {
+        const removed = pveTargetsById.delete(pveTarget.id);
+        takeoverBySession.delete(pveTarget.id);
+        lastObservationBySession.delete(pveTarget.id);
+        lastContentRectBySession.delete(pveTarget.id);
+        if (selectedSessionId === pveTarget.id) {
+          selectedSessionId = null;
+        }
+        await Promise.all([persistPveTargets(context), persistState(context)]);
+
+        const hostStillUsed = [...pveTargetsById.values()].some((t) => t.sshHost === pveTarget.sshHost);
+        if (!hostStillUsed) {
+          await pveDriver.disconnectHost(pveTarget.sshHost).catch(() => {});
+        }
+        return {
+          ok: true,
+          action,
+          provider: 'pve-qmp',
+          deviceId: pveTarget.id,
+          sessionId: pveTarget.id,
+          removed,
+        };
+      }
+
       const cliRes = await cliClient.disconnectDevice(args.deviceId, settings, { signal: context?.signal });
       return {
         ok: true,
@@ -1088,12 +1590,14 @@ export function createUuRemoteService({
   // --- CUA Provider Bus v1 Adapter Methods ---
   async function listCuaTargets(context = {}) {
     await syncPersistedState(context);
-    const topo = await systemDriver.inspectTopology(context?.settings ?? {});
+    const topo = await inspectCombinedTopology(context?.settings ?? {}, context);
     return topo.sessions.map((raw) => {
       const s = decorateSession(raw);
+      const isPve = s.provider === 'pve-qmp';
       return {
         id: s.id,
         providerId: 'kiki-uu-remote',
+        provider: s.provider,
         kind: 'remote-desktop',
         label: s.label,
         platform: 'desktop',
@@ -1106,26 +1610,33 @@ export function createUuRemoteService({
           height: Math.max(1, s.contentRect.height || s.canvasBounds.height),
           scaleFactor: 1,
         },
-        capabilities: [
-          'screenshot',
-          'zoom',
-          'click',
-          'move',
-          'drag',
-          'scroll',
-          'type',
-          'key',
-          'clipboard',
-          'takeover',
-        ],
+        capabilities: isPve
+          ? ['screenshot', 'zoom', 'click', 'move', 'drag', 'scroll', 'type', 'key', 'takeover']
+          : [
+              'screenshot',
+              'zoom',
+              'click',
+              'move',
+              'drag',
+              'scroll',
+              'type',
+              'key',
+              'clipboard',
+              'takeover',
+            ],
       };
     });
   }
 
   async function observeCuaTarget(body = {}, context = {}) {
     await syncPersistedState(context);
-    const topo = await systemDriver.inspectTopology(context?.settings ?? {});
-    const session = await resolveTargetSession(body.targetId, topo, context);
+    let session;
+    if (body.targetId && isPveTargetId(body.targetId)) {
+      session = await resolveExplicitPveTarget(body.targetId, context);
+    } else {
+      const topo = await inspectCombinedTopology(context?.settings ?? {}, context);
+      session = await resolveTargetSession(body.targetId, topo, context);
+    }
     const obs = await observeSession(
       session,
       {
@@ -1155,8 +1666,13 @@ export function createUuRemoteService({
 
   async function actOnCuaTarget(body = {}, context = {}) {
     await syncPersistedState(context);
-    const topo = await systemDriver.inspectTopology(context?.settings ?? {});
-    const session = await resolveTargetSession(body.targetId, topo, context);
+    let session;
+    if (body.targetId && isPveTargetId(body.targetId)) {
+      session = await resolveExplicitPveTarget(body.targetId, context);
+    } else {
+      const topo = await inspectCombinedTopology(context?.settings ?? {}, context);
+      session = await resolveTargetSession(body.targetId, topo, context);
+    }
     const actions = Array.isArray(body.actions) ? body.actions : [];
     if (actions.length === 0) {
       throw new Error('POST /v1/act requires a non-empty actions array.');
@@ -1174,7 +1690,7 @@ export function createUuRemoteService({
   }
 
   async function dispose() {
-    await systemDriver.dispose();
+    await Promise.allSettled([systemDriver.dispose(), pveDriver.dispose()]);
   }
 
   return {
@@ -1185,7 +1701,7 @@ export function createUuRemoteService({
     launchAction,
     observeSession,
     resolveTargetSession,
-    inspectTopology: (settings = {}) => systemDriver.inspectTopology(settings),
+    inspectTopology: (settings = {}, context = {}) => inspectCombinedTopology(settings, context),
     setTakeover,
     listCuaTargets,
     observeCuaTarget,

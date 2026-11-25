@@ -133,6 +133,7 @@ export function createUuSlotHandlers(previewService, { pluginId = KIKI_UU_REMOTE
             const w = s.contentRect?.width || s.canvasBounds.width;
             const h = s.contentRect?.height || s.canvasBounds.height;
             const flags = [
+              s.provider === 'pve-qmp' ? 'pve-qmp' : null,
               s.state,
               `${w}x${h}`,
               s.takeoverActive ? 'takeover=human' : null,
@@ -148,7 +149,7 @@ export function createUuSlotHandlers(previewService, { pluginId = KIKI_UU_REMOTE
             {
               id: 'uu-remote-sessions',
               title: 'UU Remote sessions',
-              content: `Open UU Remote windows (${state.sessions.length}): ${summary}. Registered on kiki.cua.provider.v1 bus and controllable via uu_control or the UU Remote workspace tab.`,
+              content: `Remote desktop sessions (${state.sessions.length}): ${summary}. Registered on kiki.cua.provider.v1 bus and controllable via uu_control or the UU Remote workspace tab.`,
             },
           ],
         };

@@ -317,7 +317,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
     let timer = null;
     let inFlight = false;
 
-    const topo = await uuService.inspectTopology(context?.settings ?? {});
+    const topo = await uuService.inspectTopology(context?.settings ?? {}, context);
     const initialSession = await uuService.resolveTargetSession(targetSessionId, topo, context);
     targetSessionId = initialSession.id;
     let cachedSession = initialSession;
@@ -420,7 +420,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
           || session.state !== 'active'
           || started - lastTopoAt >= STREAM_TOPO_REFRESH_MS;
         if (needTopoRefresh) {
-          const curTopo = await uuService.inspectTopology(context?.settings ?? {});
+          const curTopo = await uuService.inspectTopology(context?.settings ?? {}, context);
           session = await uuService.resolveTargetSession(targetSessionId, curTopo, context);
           cachedSession = session;
           lastTopoAt = nowFn();

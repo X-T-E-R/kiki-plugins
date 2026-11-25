@@ -363,7 +363,7 @@ export function resolveZoomCropBounds(zoom, coordinateMode = 'normalized_1000', 
   return { x: clampedX, y: clampedY, width: clampedW, height: clampedH };
 }
 
-export function processCapturedStagePng(pngBytes, {
+export function processCapturedStagePng(pngBytesOrImage, {
   autoTrimBlackBars = true,
   remoteAspect,
   zoom = null,
@@ -373,7 +373,9 @@ export function processCapturedStagePng(pngBytes, {
   lastObservation = null,
   pngCompressionLevel = 3,
 } = {}) {
-  const stageImage = decodePng(pngBytes);
+  const stageImage = Buffer.isBuffer(pngBytesOrImage) || (pngBytesOrImage instanceof Uint8Array && !pngBytesOrImage.width)
+    ? decodePng(pngBytesOrImage)
+    : pngBytesOrImage;
   const stageSize = { width: stageImage.width, height: stageImage.height };
 
   const contentRect = computeStreamContentRect(stageImage, {

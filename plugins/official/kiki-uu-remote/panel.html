@@ -1593,7 +1593,7 @@
     el.emptyRescueBtn.hidden = Boolean(sel) || !hasOffscreen || !el.rescueBtn.hidden;
     el.takeoverBtn.disabled = !sel;
     el.liveBtn.disabled = !sel || sel.state !== 'active';
-    el.focusWindowBtn.disabled = !sel;
+    el.focusWindowBtn.disabled = !sel || sel.provider === 'pve-qmp';
     el.downloadShotBtn.disabled = !sel || sel.state !== 'active';
 
     renderPairedDevices(el.drawerDevices, state.pairedDevices);
@@ -1617,7 +1617,7 @@
     el.emptyCard.hidden = true;
     applyTakeoverUi(sel.takeoverActive);
 
-    if (sel.state === 'minimized' || sel.state === 'offscreen') {
+    if (sel.state === 'minimized' || sel.state === 'offscreen' || sel.state === 'stopped' || sel.state === 'disconnected') {
       stopLiveTransport();
       el.statusDot.className = 'status-dot warn';
       el.monitorFrame.hidden = true;
@@ -1628,11 +1628,16 @@
         el.recoveryMeta.textContent = 'Restore the session window to resume background capture.';
         el.recoveryActionBtn.textContent = 'Restore Window';
         el.recoveryActionBtn.dataset.mode = 'restore';
-      } else {
+      } else if (sel.state === 'offscreen') {
         el.recoveryTitle.textContent = `${sel.label} is off-screen`;
         el.recoveryMeta.textContent = 'Move the stranded window back onto the primary display.';
         el.recoveryActionBtn.textContent = 'Rescue Off-screen';
         el.recoveryActionBtn.dataset.mode = 'rescue';
+      } else {
+        el.recoveryTitle.textContent = `${sel.label} is ${sel.vmStatus || sel.state}`;
+        el.recoveryMeta.textContent = sel.error || 'Start the Proxmox VE VM or check SSH connectivity, then refresh.';
+        el.recoveryActionBtn.textContent = 'Refresh';
+        el.recoveryActionBtn.dataset.mode = 'refresh';
       }
       return;
     }
@@ -1937,7 +1942,7 @@
       return;
     }
 
-    if (ev.ctrlKey && ev.altKey) {
+    if (ev.ctrlKey && ev.altKey && currentSession()?.provider !== 'pve-qmp') {
       ev.preventDefault();
       setStatus(
         isZh ? '已拦截 Ctrl+Alt 组合键（避免触发本地 UU 客户端快捷键）' : 'Blocked Ctrl+Alt chord (reserved by local UU Remote overlay)',
@@ -2019,6 +2024,10 @@
   el.recoveryActionBtn.addEventListener('click', async () => {
     const sel = currentSession();
     if (!sel) return;
+    if (el.recoveryActionBtn.dataset.mode === 'refresh') {
+      await refreshState();
+      return;
+    }
     if (el.recoveryActionBtn.dataset.mode === 'rescue') {
       await runRescueOffscreen();
       return;
