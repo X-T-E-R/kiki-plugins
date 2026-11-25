@@ -25,8 +25,15 @@ import {
   processCapturedStagePng,
 } from '../lib/frame-math.mjs';
 import { assertSafeRemoteKeyChord } from '../lib/key-map.mjs';
-import { decodePng, encodePng } from '../lib/png-codec.mjs';
 import {
+  applyGridOverlay,
+  computeSampledFrameDiff,
+  decodePng,
+  encodePng,
+  hashPngOrSample,
+} from '../lib/png-codec.mjs';
+import {
+  REMOTE_PYTHON_BRIDGE,
   asciiCharToQmpKeys,
   buildPveTargetId,
   buildQmpStepsForAction,
@@ -39,11 +46,32 @@ import {
   ppmToPngBuffer,
 } from '../lib/pve-qmp-driver.mjs';
 import { createUuPreviewService } from '../lib/preview-service.mjs';
+import {
+  LOSSLESS_RFB_ENCODINGS,
+  MAX_RFB_CLIPBOARD_BYTES,
+  buildPveVncProxyArgs,
+  buildVncSshTunnelArgs,
+  buildVncTargetId,
+  createRfbDriver,
+  parseVncTargetId,
+} from '../lib/rfb-driver.mjs';
 import { createUuSlotHandlers } from '../lib/slots.mjs';
-import { createUuRemoteService } from '../lib/uu-service.mjs';
+import { compileWin32StepsForAction, createUuRemoteService } from '../lib/uu-service.mjs';
 import { createUuycCliClient, discoverUuycCli, parseCliJsonOutput } from '../lib/uuyc-cli.mjs';
 import { createWin32SystemDriver } from '../lib/win32-driver.mjs';
-import { classifyUuWindows, computeRescueBounds } from '../lib/window-topology.mjs';
+import { classifyUuWindows, computeRescueBounds, normalizeSessionId } from '../lib/window-topology.mjs';
+import {
+  ALL_MODIFIER_RFB_KEYS,
+  asciiCharToRfbKey,
+  normalizeRfbKeyChord,
+  resolveRfbKeyToken,
+} from '../lib/xt-scancode-map.mjs';
+import {
+  createServer as createRfbServer,
+  encodings as RFB_ENCODINGS,
+  keysyms as RFB_KEYSYMS,
+  pixelFormats as RFB_PIXEL_FORMATS,
+} from '../vendor/rfb2/dist/index.js';
 
 const PLUGIN_ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TMP_BASE = process.env.KIKI_UU_TEST_TMP
@@ -260,7 +288,7 @@ test('manifest, sync-manifest --check, validateRegistration, packageFiles, and r
 
   const manifest = JSON.parse(await readFile(path.join(PLUGIN_ROOT, 'kimi.plugin.json'), 'utf8'));
   assert.equal(manifest.name, 'kiki-uu-remote');
-  assert.equal(manifest.version, '0.2.0');
+  assert.equal(manifest.version, '0.3.0');
   assert.equal(manifest.license, 'MIT');
   assert.equal(manifest['x-kiki'].activation, 'app');
   assert.deepEqual(manifest['x-kiki'].tools, definitions);
@@ -270,6 +298,7 @@ test('manifest, sync-manifest --check, validateRegistration, packageFiles, and r
   const files = await packageFiles(PLUGIN_ROOT);
   assert.ok(files.includes('kimi.plugin.json'));
   assert.ok(files.includes('LICENSE'));
+  assert.ok(files.includes('THIRD_PARTY_NOTICES.md'));
   assert.ok(files.includes('entry.mjs'));
   assert.ok(files.includes('panel.html'));
   assert.ok(files.includes('icon.svg'));
@@ -277,6 +306,10 @@ test('manifest, sync-manifest --check, validateRegistration, packageFiles, and r
   assert.ok(files.includes('skills/uu-remote/SKILL.md'));
   assert.ok(files.includes('lib/win32-worker.ps1'));
   assert.ok(files.includes('lib/pve-qmp-driver.mjs'));
+  assert.ok(files.includes('lib/rfb-driver.mjs'));
+  assert.ok(files.includes('lib/xt-scancode-map.mjs'));
+  assert.ok(files.includes('vendor/rfb2/LICENSE'));
+  assert.ok(files.includes('vendor/rfb2/dist/index.js'));
   assert.ok(!files.some((f) => f.startsWith('test/') || f.startsWith('scripts/')));
 
   const deprecatedHost = ['web', 'uuremote', 'com'].join('.');
@@ -1335,7 +1368,16 @@ test('P1-2: openPanelStream skips per-frame inspectTopology until 3s or capture 
       failNextCapture = false;
       throw new Error('simulated PrintWindow failure');
     }
-    return origCapture(...args);
+    const base = await origCapture(...args);
+    // Vary fill color per frame so live changing frames pass SHA-256 unchanged-frame dedup
+    const varyingPng = buildSyntheticStagePng({
+      width: 640,
+      height: 400,
+      topBar: 20,
+      bottomBar: 20,
+      fill: [40 + (captureCalls * 17) % 180, 90, 148],
+    });
+    return { ...base, pngBuffer: varyingPng };
   };
 
   const uuService = createUuRemoteService({ systemDriver: driver, stateDir: dir, nowFn: () => fakeNow });
@@ -1632,7 +1674,7 @@ test('PVE QMP: persistent SSH worker reuses process, decodes gzipped PPM, and ki
   // Simulate wedged SSH worker -> timeout tears it down and next RPC spawns a clean worker
   wedgeNext = true;
   await assert.rejects(
-    pveDriver.probeStatus('pve:assistant-pve-campus:103', { timeoutMs: 500 }),
+    pveDriver.probeStatus('pve:assistant-pve-campus:103', { timeoutMs: 500, forceRefresh: true }),
     /timed out/i,
   );
   assert.equal(spawned[0].proc.killed, true);
@@ -1750,8 +1792,9 @@ test('PVE QMP: end-to-end uu_launch, uu_sessions, uu_control, Human Takeover, Li
   });
   assert.equal(actRes.ok, true);
   assert.equal(actRes.provider, 'pve-qmp');
+  assert.equal(actRes.transport, 'pve-qmp');
   assert.equal(actRes.executed, 4);
-  assert.equal(sentQmpBatches.length, 4);
+  assert.equal(sentQmpBatches.length, 1, 'Consecutive PVE QMP actions must coalesce into a single RPC batch');
   assert.equal(winState.sentBatches.length, 0, 'Win32 SendInput must not be called for PVE targets');
 
   // 5. Explicit Human Takeover lock blocks agent control on PVE target with 409
@@ -1771,7 +1814,8 @@ test('PVE QMP: end-to-end uu_launch, uu_sessions, uu_control, Human Takeover, Li
   assert.equal(blocked.ok, false);
   assert.equal(blocked.status, 409);
   assert.equal(blocked.code, 'human_takeover_active');
-  assert.equal(sentQmpBatches.length, 4);
+  assert.equal(blocked.effect, 'refused');
+  assert.equal(sentQmpBatches.length, 1);
   await restartedService.manageSessions({
     action: 'takeover',
     sessionId: 'pve:assistant-pve-campus:103',
@@ -1843,4 +1887,1538 @@ test('PVE QMP: end-to-end uu_launch, uu_sessions, uu_control, Human Takeover, Li
   assert.ok(disconnectedHosts.includes('assistant-pve-campus'));
   const afterDisc = JSON.parse(await readFile(path.join(stateDir, 'pve-targets.json'), 'utf8'));
   assert.equal(afterDisc.targets.length, 0);
+});
+
+// ============================================================================
+// v0.3.0 Comprehensive Test Suite (RFB, XT Scancodes, ExtendedClipboard,
+// Frame Math B2, Takeover Abort B4, QMP Dedupe/Fallback, Coalescing, Preview)
+// ============================================================================
+
+test('v0.3.0 XT scancode map: standard + extended 0xe0->0x80|xx keys, Shift symbols, and unicode_input_unsupported', () => {
+  // Extended keys (QEMU keycodemapdb AT Set-1 -> 0x80 | xx)
+  const expectedExtended = [
+    ['Up', 0xc8, RFB_KEYSYMS.Up],
+    ['Down', 0xd0, RFB_KEYSYMS.Down],
+    ['Left', 0xcb, RFB_KEYSYMS.Left],
+    ['Right', 0xcd, RFB_KEYSYMS.Right],
+    ['Home', 0xc7, RFB_KEYSYMS.Home],
+    ['End', 0xcf, RFB_KEYSYMS.End],
+    ['PageUp', 0xc9, RFB_KEYSYMS.PageUp],
+    ['PageDown', 0xd1, RFB_KEYSYMS.PageDown],
+    ['Insert', 0xd2, RFB_KEYSYMS.Insert],
+    ['Delete', 0xd3, RFB_KEYSYMS.Delete],
+    ['RightCtrl', null, null], // check rctrl alias below
+    ['rctrl', 0x9d, RFB_KEYSYMS.ControlRight],
+    ['ralt', 0xb8, RFB_KEYSYMS.AltRight],
+    ['Win', 0xdb, RFB_KEYSYMS.SuperLeft],
+    ['rwin', 0xdc, RFB_KEYSYMS.SuperRight],
+    ['Menu', 0xdd, RFB_KEYSYMS.Menu],
+    ['Compose', 0xdd, RFB_KEYSYMS.Menu],
+  ];
+  for (const [name, code, sym] of expectedExtended) {
+    if (code === null) continue;
+    const [entry] = resolveRfbKeyToken(name);
+    assert.equal(entry.xtScancode, code, `Expected ${name} xtScancode=0x${code.toString(16)}`);
+    assert.equal(entry.keysym, sym, `Expected ${name} keysym=0x${sym.toString(16)}`);
+  }
+
+  // Standard F1-F12 & chord normalization
+  assert.equal(resolveRfbKeyToken('F1')[0].xtScancode, 0x3b);
+  assert.equal(resolveRfbKeyToken('F10')[0].xtScancode, 0x44);
+  assert.equal(resolveRfbKeyToken('F11')[0].xtScancode, 0x57);
+  assert.equal(resolveRfbKeyToken('F12')[0].xtScancode, 0x58);
+  const cad = normalizeRfbKeyChord('Ctrl+Alt+Delete');
+  assert.deepEqual(cad.map((k) => k.xtScancode), [0x1d, 0x38, 0xd3]);
+  assert.ok(ALL_MODIFIER_RFB_KEYS.length >= 8);
+
+  // All US Shift symbols must map to exact base physical AT Set-1 scancodes with shift=true
+  const shiftSymbols = [
+    ['!', 0x02], ['@', 0x03], ['#', 0x04], ['$', 0x05], ['%', 0x06],
+    ['^', 0x07], ['&', 0x08], ['*', 0x09], ['(', 0x0a], [')', 0x0b],
+    ['_', 0x0c], ['+', 0x0d], ['{', 0x1a], ['}', 0x1b], ['|', 0x2b],
+    [':', 0x27], ['"', 0x28], ['<', 0x33], ['>', 0x34], ['?', 0x35], ['~', 0x29],
+  ];
+  for (const [ch, scancode] of shiftSymbols) {
+    const k = asciiCharToRfbKey(ch);
+    assert.equal(k.shift, true, `Expected shift=true for "${ch}"`);
+    assert.equal(k.xtScancode, scancode, `Expected base scancode 0x${scancode.toString(16)} for "${ch}"`);
+    assert.equal(k.keysym, ch.charCodeAt(0));
+  }
+
+  assert.equal(asciiCharToRfbKey('a').shift, false);
+  assert.equal(asciiCharToRfbKey('A').shift, true);
+  assert.equal(asciiCharToRfbKey('A').xtScancode, 0x1e);
+  assert.equal(asciiCharToRfbKey('\n').xtScancode, 0x1c);
+  assert.equal(asciiCharToRfbKey('\t').xtScancode, 0x0f);
+  assert.equal(asciiCharToRfbKey(' ').xtScancode, 0x39);
+
+  // Non-ASCII throws structured unicode_input_unsupported (never silent drop or '?')
+  assert.throws(
+    () => asciiCharToRfbKey('中'),
+    (err) => err && err.code === 'unicode_input_unsupported',
+  );
+});
+
+test('v0.3.0 Frame Audit B2: unified image_pixels /(w-1) precision, zoomRelative, grid overlay, and sampled diff', () => {
+  // 1. image_pixels with cropBounds present -> exact 4-corner hit
+  const obsWithCrop = {
+    imageSize: { width: 201, height: 101 },
+    cropBounds: { x: 100, y: 200, width: 401, height: 201 },
+  };
+  const screen = { width: 1024, height: 768 };
+  const stageBounds = { x: 0, y: 0, width: 1024, height: 768 };
+  for (const [ix, iy, ex, ey] of [
+    [0, 0, 100, 200],
+    [200, 0, 500, 200],
+    [0, 100, 100, 400],
+    [200, 100, 500, 400],
+  ]) {
+    const pt = mapPointToTarget({
+      x: ix,
+      y: iy,
+      coordinateMode: 'image_pixels',
+      stageBounds,
+      contentRect: stageBounds,
+      lastObservation: obsWithCrop,
+    });
+    const qmpPt = mapPointToQmpAbs({
+      x: ix,
+      y: iy,
+      coordinateMode: 'image_pixels',
+      screenSize: screen,
+      lastObservation: obsWithCrop,
+    });
+    assert.equal(pt.x, ex);
+    assert.equal(pt.y, ey);
+    assert.equal(qmpPt.x, ex);
+    assert.equal(qmpPt.y, ey);
+    assert.equal(qmpPt.absX, Math.round((ex / 1023) * 32767));
+    assert.equal(qmpPt.absY, Math.round((ey / 767) * 32767));
+  }
+
+  // 2. image_pixels without cropBounds -> exact 4-corner hit on full target
+  const obsNoCrop = { imageSize: { width: 512, height: 384 }, cropBounds: null };
+  const brTarget = mapPointToTarget({
+    x: 511,
+    y: 383,
+    coordinateMode: 'image_pixels',
+    stageBounds,
+    contentRect: stageBounds,
+    lastObservation: obsNoCrop,
+  });
+  const brQmp = mapPointToQmpAbs({
+    x: 511,
+    y: 383,
+    coordinateMode: 'image_pixels',
+    screenSize: screen,
+    lastObservation: obsNoCrop,
+  });
+  assert.deepEqual([brTarget.x, brTarget.y], [1023, 767]);
+  assert.deepEqual([brQmp.x, brQmp.y, brQmp.absX, brQmp.absY], [1023, 767, 32767, 32767]);
+
+  // 3. width=1, height=1 degenerate guard (no NaN, no division by zero)
+  const degen = mapPointToTarget({
+    x: 500,
+    y: 500,
+    coordinateMode: 'image_pixels',
+    stageBounds: { x: 0, y: 0, width: 1, height: 1 },
+    contentRect: { x: 0, y: 0, width: 1, height: 1 },
+    lastObservation: { imageSize: { width: 1, height: 1 }, cropBounds: null },
+  });
+  assert.deepEqual([degen.x, degen.y, degen.normX, degen.normY], [0, 0, 0, 0]);
+
+  // 4. zoomRelative=true maps normalized_1000 inside cropBounds and throws when no zoom exists
+  const zrCenter = mapPointToTarget({
+    x: 500,
+    y: 500,
+    coordinateMode: 'normalized_1000',
+    zoomRelative: true,
+    stageBounds,
+    contentRect: stageBounds,
+    lastObservation: obsWithCrop,
+  });
+  assert.equal(zrCenter.x, 300);
+  assert.equal(zrCenter.y, 300);
+  assert.throws(
+    () => mapPointToTarget({
+      x: 500,
+      y: 500,
+      coordinateMode: 'normalized_1000',
+      zoomRelative: true,
+      stageBounds,
+      contentRect: stageBounds,
+      lastObservation: obsNoCrop,
+    }),
+    /zoomRelative=true requires a prior zoomed/i,
+  );
+
+  // 5. applyGridOverlay is strictly opt-in and non-mutating
+  const plainPng = buildSyntheticStagePng({ width: 200, height: 120, fill: [240, 240, 240] });
+  const plainRgba = decodePng(plainPng);
+  const snapshotBefore = Buffer.from(plainRgba.data);
+  const gridded = applyGridOverlay(plainRgba);
+  assert.deepEqual(Buffer.from(plainRgba.data), snapshotBefore, 'applyGridOverlay must not mutate source RGBA');
+  const diffGrid = computeSampledFrameDiff(plainRgba, gridded);
+  assert.equal(diffGrid.changed, true);
+  assert.ok(diffGrid.changeRatio > 0 && diffGrid.changeRatio < 0.5);
+
+  // Identical diff returns changed=false; dimension mismatch returns changeRatio=1
+  const sameDiff = computeSampledFrameDiff(plainRgba, plainRgba);
+  assert.equal(sameDiff.changed, false);
+  assert.equal(sameDiff.changeRatio, 0);
+  const resizedRgba = { width: 100, height: 60, data: new Uint8Array(100 * 60 * 4) };
+  const dimDiff = computeSampledFrameDiff(plainRgba, resizedRgba);
+  assert.equal(dimDiff.changed, true);
+  assert.equal(dimDiff.changeRatio, 1);
+
+  assert.equal(hashPngOrSample(plainPng).length, 64);
+  assert.equal(hashPngOrSample(plainRgba).length, 64);
+});
+
+test('v0.3.0 Real RFB 3.8 full-chain protocol test with vendored rfb2.createServer: auth, capture, input, settle, resize invalidation, ExtendedClipboard 2 MiB, and unicode_input_unsupported', async (t) => {
+  const { deflateSync } = await import('node:zlib');
+  const dir = await makeTempDir(t, 'rfb-real-');
+  const stateDir = path.join(dir, 'state');
+
+  const serverEvents = {
+    pointers: [],
+    keys: [],
+    encodings: [],
+    rawMessages: [],
+    connections: 0,
+  };
+  let activeConn = null;
+  let advertiseExtendedClipboard = false;
+  let serverWidth = 160;
+  let serverHeight = 120;
+  let frameColor = [30, 120, 210]; // RGB
+
+  const makeSolidBgrx = (w, h, [r, g, b]) => {
+    const buf = Buffer.alloc(w * h * 4);
+    for (let i = 0; i < w * h; i += 1) {
+      buf[i * 4] = b;
+      buf[i * 4 + 1] = g;
+      buf[i * 4 + 2] = r;
+      buf[i * 4 + 3] = 0;
+    }
+    return buf;
+  };
+
+  const openSockets = new Set();
+  const rfbServer = createRfbServer(
+    {
+      width: serverWidth,
+      height: serverHeight,
+      name: 'Kiki Test RFB Desktop',
+      password: 'Pass1234',
+      pixelFormat: RFB_PIXEL_FORMATS.bgrx,
+    },
+    (conn) => {
+      serverEvents.connections += 1;
+      activeConn = conn;
+      conn.on('setEncodings', (encs) => {
+        serverEvents.encodings = encs;
+      });
+      conn.on('updateRequest', (req) => {
+        if (!req.incremental) {
+          conn.sendUpdate([
+            {
+              type: 'pixels',
+              x: 0,
+              y: 0,
+              width: serverWidth,
+              height: serverHeight,
+              data: makeSolidBgrx(serverWidth, serverHeight, frameColor),
+            },
+          ]);
+        }
+      });
+      conn.on('pointer', (p) => {
+        serverEvents.pointers.push(p);
+        // Simulate UI repaint on button up
+        if (p.buttons === 0 && serverEvents.pointers.length > 1) {
+          frameColor = [220, 80, 40];
+          setTimeout(() => {
+            conn.sendUpdate([
+              {
+                type: 'pixels',
+                x: 10,
+                y: 10,
+                width: 20,
+                height: 20,
+                data: makeSolidBgrx(20, 20, frameColor),
+              },
+            ]);
+          }, 25);
+        }
+      });
+      conn.on('key', (k) => {
+        serverEvents.keys.push(k);
+      });
+      conn.on('error', () => {});
+    },
+  );
+  rfbServer.on('connection', (sock) => {
+    openSockets.add(sock);
+    sock.once('close', () => openSockets.delete(sock));
+  });
+
+  await new Promise((resolve) => rfbServer.listen(0, '127.0.0.1', resolve));
+  const port = rfbServer.address().port;
+  t.after(() => new Promise((resolve) => {
+    for (const s of openSockets) s.destroy();
+    rfbServer.close(() => resolve());
+  }));
+
+  // Verify LOSSLESS_RFB_ENCODINGS never offers jpegQuality pseudo-encoding and maxClipboardBytes is 2 MiB
+  assert.equal(MAX_RFB_CLIPBOARD_BYTES, 2 * 1024 * 1024);
+  assert.ok(!LOSSLESS_RFB_ENCODINGS.some((e) => e >= -32 && e <= -23), 'Lossless encodings must NOT include jpegQuality');
+
+  const { driver: winDriver } = createMockDriverFixture();
+  const rfbDriver = createRfbDriver({ heartbeatIntervalMs: 0 });
+  const service = createUuRemoteService({
+    systemDriver: winDriver,
+    rfbDriver,
+    stateDir,
+  });
+  t.after(() => service.dispose());
+
+  // 1. Connect via uu_launch with in-memory vncPassword
+  const connRes = await service.launchAction({
+    action: 'connect',
+    vncHost: '127.0.0.1',
+    vncPort: port,
+    vncPassword: 'Pass1234',
+    label: 'Lab VNC Box',
+  });
+  assert.equal(connRes.ok, true);
+  assert.equal(connRes.provider, 'rfb');
+  assert.equal(connRes.transport, 'rfb');
+  assert.equal(connRes.sessionId, `vnc:127.0.0.1:${port}`);
+
+  // Verify password is NEVER persisted to disk or present in outputs
+  const vncFileRaw = await readFile(path.join(stateDir, 'vnc-targets.json'), 'utf8');
+  const runtimeFileRaw = await readFile(path.join(stateDir, 'runtime-state.json'), 'utf8');
+  assert.equal(vncFileRaw.includes('Pass1234'), false, 'vnc-targets.json must NEVER contain password');
+  assert.equal(runtimeFileRaw.includes('Pass1234'), false, 'runtime-state.json must NEVER contain password');
+  const statusOut = JSON.stringify(await service.getStatus({ includeCliStatus: false }));
+  const sessOut = JSON.stringify(await service.manageSessions({ action: 'list', includeDevices: false }));
+  assert.equal(statusOut.includes('Pass1234'), false);
+  assert.equal(sessOut.includes('Pass1234'), false);
+
+  // 2. Capture screenshot over RFB & verify exact pixel color + screenshotId + opt-in grid overlay
+  const shot1 = await service.controlSession({
+    sessionId: connRes.sessionId,
+    action: 'screenshot',
+  });
+  assert.equal(shot1.ok, true);
+  assert.equal(shot1.transport, 'rfb');
+  assert.ok(shot1.screenshotId);
+  assert.ok(shot1.frameHash);
+  assert.equal(shot1.overlay, 'none');
+  const decoded1 = decodePng(Buffer.from(shot1.imageBase64, 'base64'));
+  assert.equal(decoded1.width, 160);
+  assert.equal(decoded1.height, 120);
+  assert.deepEqual([...decoded1.data.subarray(0, 4)], [30, 120, 210, 255]);
+
+  // dedupeUnchanged=true suppresses identical frames (relative to shot1) up to maxStreak=2, then forces fresh image on 3rd
+  const d1 = await service.controlSession({ sessionId: connRes.sessionId, action: 'screenshot', dedupeUnchanged: true });
+  assert.equal(d1.deduped, true);
+  assert.equal(d1.unchangedStreak, 1);
+  assert.equal(d1.imageBase64, undefined);
+  const d2 = await service.controlSession({ sessionId: connRes.sessionId, action: 'screenshot', dedupeUnchanged: true });
+  assert.equal(d2.deduped, true);
+  assert.equal(d2.unchangedStreak, 2);
+  assert.equal(d2.imageBase64, undefined);
+  const d3 = await service.controlSession({ sessionId: connRes.sessionId, action: 'screenshot', dedupeUnchanged: true });
+  assert.equal(d3.deduped, undefined, '3rd consecutive unchanged must force fresh image');
+  assert.ok(d3.imageBase64);
+
+  // 3. Click + dirty-rect settle wait + honest ActionResult
+  const clickRes = await service.controlSession({
+    sessionId: connRes.sessionId,
+    action: 'click',
+    x: 500,
+    y: 500,
+    screenshotId: shot1.screenshotId,
+    settleMs: 500,
+  });
+  assert.equal(clickRes.ok, true);
+  assert.equal(clickRes.transport, 'rfb');
+  assert.equal(clickRes.settleMode, 'rfb_dirty_rect');
+  assert.equal(clickRes.effect, 'unverifiable');
+  assert.equal(clickRes.diff.changed, true);
+  assert.ok(serverEvents.pointers.length >= 2);
+
+  // 4. Without ExtendedClipboard, Chinese text returns structured unicode_input_unsupported (never '?' or silent drop)
+  const cnFail = await service.controlSession({
+    sessionId: connRes.sessionId,
+    action: 'type',
+    text: '你好世界',
+    observeAfter: false,
+  });
+  assert.equal(cnFail.ok, false);
+  assert.equal(cnFail.code, 'unicode_input_unsupported');
+  assert.deepEqual(cnFail.capabilities, { unicodeClipboard: false, guestAgent: false, clipboard: false });
+
+  // 5. Desktop resize invalidates prior screenshotId -> fail-closed capture_geometry_mismatch
+  const preResizeShot = await service.controlSession({
+    sessionId: connRes.sessionId,
+    action: 'screenshot',
+  });
+  serverWidth = 200;
+  serverHeight = 150;
+  activeConn.sendUpdate([{ type: 'desktopSize', width: 200, height: 150 }]);
+  await new Promise((r) => setTimeout(r, 40));
+
+  const staleAttempt = await service.controlSession({
+    sessionId: connRes.sessionId,
+    action: 'click',
+    x: 500,
+    y: 500,
+    screenshotId: preResizeShot.screenshotId,
+    observeAfter: false,
+  });
+  assert.equal(staleAttempt.ok, false);
+  assert.equal(staleAttempt.status, 409);
+  assert.equal(staleAttempt.code, 'capture_geometry_mismatch');
+  assert.equal(staleAttempt.effect, 'refused');
+
+  // 6. Simulate 15-min idle disconnect -> transparent reconnect on next captureRgba
+  const beforeConns = serverEvents.connections;
+  activeConn.destroy();
+  await new Promise((r) => setTimeout(r, 40));
+  const afterReconnectShot = await service.controlSession({
+    sessionId: connRes.sessionId,
+    action: 'screenshot',
+  });
+  assert.equal(afterReconnectShot.ok, true);
+  assert.equal(serverEvents.connections, beforeConns + 1, 'Idle disconnect must transparently reconnect');
+
+  // 7. Dedicated RFB 3.8 ExtendedClipboard wire test: verifies 2 MiB maxClipboardBytes CAPS,
+  //    server->client UTF-8 Chinese PROVIDE, and client->server UTF-8 Chinese PROVIDE
+  const netMod = await import('node:net');
+  const { inflateSync } = await import('node:zlib');
+  let clientAdvertisedMaxClip = null;
+  let clientProvidedUtf8 = null;
+  const extSockets = new Set();
+  const extServer = netMod.createServer((sock) => {
+    extSockets.add(sock);
+    sock.once('close', () => extSockets.delete(sock));
+    sock.setNoDelay(true);
+    let rx = Buffer.alloc(0);
+    let stage = 'version';
+
+    sock.write(Buffer.from('RFB 003.008\n', 'latin1'));
+    sock.on('data', (chunk) => {
+      rx = Buffer.concat([rx, chunk]);
+      while (rx.length > 0) {
+        if (stage === 'version') {
+          if (rx.length < 12) return;
+          rx = rx.subarray(12);
+          sock.write(Buffer.from([1, 1])); // 1 security type: None (1)
+          stage = 'sec';
+        } else if (stage === 'sec') {
+          if (rx.length < 1) return;
+          rx = rx.subarray(1);
+          sock.write(Buffer.alloc(4)); // SecurityResult OK
+          stage = 'init';
+        } else if (stage === 'init') {
+          if (rx.length < 1) return;
+          rx = rx.subarray(1);
+          // ServerInit (width=32, height=24, bgrx, name="ExtClip")
+          const init = Buffer.alloc(24 + 7);
+          init.writeUInt16BE(32, 0);
+          init.writeUInt16BE(24, 2);
+          init[4] = 32; init[5] = 24; init[6] = 0; init[7] = 1;
+          init.writeUInt16BE(255, 8); init.writeUInt16BE(255, 10); init.writeUInt16BE(255, 12);
+          init[14] = 16; init[15] = 8; init[16] = 0;
+          init.writeUInt32BE(7, 20);
+          init.write('ExtClip', 24, 'utf8');
+          sock.write(init);
+          // Send ServerCutText ExtendedClipboard CAPS (2 MiB limit)
+          const capsBody = Buffer.alloc(8);
+          capsBody.writeUInt32BE(((1 << 24) | (1 << 25) | (1 << 27) | (1 << 28) | 1) >>> 0, 0);
+          capsBody.writeUInt32BE(2 * 1024 * 1024, 4);
+          const capsMsg = Buffer.alloc(8 + capsBody.length);
+          capsMsg[0] = 3;
+          capsMsg.writeInt32BE(-capsBody.length, 4);
+          capsBody.copy(capsMsg, 8);
+          sock.write(capsMsg);
+          // Send initial pixel rect (32x24)
+          const fbHdr = Buffer.alloc(4 + 12);
+          fbHdr[0] = 0;
+          fbHdr.writeUInt16BE(1, 2);
+          fbHdr.writeUInt16BE(32, 8);
+          fbHdr.writeUInt16BE(24, 10);
+          sock.write(Buffer.concat([fbHdr, Buffer.alloc(32 * 24 * 4)]));
+          // Send server->client UTF-8 Chinese clipboard PROVIDE
+          const utf8Clip = Buffer.from('测试中文剪贴板\0', 'utf8');
+          const sizeHdr = Buffer.alloc(4);
+          sizeHdr.writeUInt32BE(utf8Clip.length, 0);
+          const comp = deflateSync(Buffer.concat([sizeHdr, utf8Clip]));
+          const pFlags = Buffer.alloc(4);
+          pFlags.writeUInt32BE(((1 << 28) | 1) >>> 0, 0);
+          const extBody = Buffer.concat([pFlags, comp]);
+          const cutPkt = Buffer.alloc(8 + extBody.length);
+          cutPkt[0] = 3;
+          cutPkt.writeInt32BE(-extBody.length, 4);
+          extBody.copy(cutPkt, 8);
+          sock.write(cutPkt);
+          stage = 'loop';
+        } else {
+          const msgType = rx[0];
+          if (msgType === 0) {
+            if (rx.length < 20) return;
+            rx = rx.subarray(20);
+          } else if (msgType === 2) {
+            if (rx.length < 4) return;
+            const n = rx.readUInt16BE(2);
+            if (rx.length < 4 + n * 4) return;
+            rx = rx.subarray(4 + n * 4);
+          } else if (msgType === 3) {
+            if (rx.length < 10) return;
+            rx = rx.subarray(10);
+          } else if (msgType === 6) {
+            if (rx.length < 8) return;
+            const len = rx.readInt32BE(4);
+            const size = len < 0 ? -len : len;
+            if (rx.length < 8 + size) return;
+            const body = rx.subarray(8, 8 + size);
+            rx = rx.subarray(8 + size);
+            if (len < 0 && body.length >= 4) {
+              const fl = body.readUInt32BE(0);
+              if (fl & (1 << 24) && body.length >= 8) {
+                clientAdvertisedMaxClip = body.readUInt32BE(4);
+              } else if (fl & (1 << 28)) {
+                const inf = inflateSync(body.subarray(4));
+                const sz = inf.readUInt32BE(0);
+                const val = inf.subarray(4, 4 + sz);
+                const nul = val.indexOf(0);
+                clientProvidedUtf8 = val.toString('utf8', 0, nul < 0 ? val.length : nul);
+              }
+            }
+          } else {
+            return;
+          }
+        }
+      }
+    });
+  });
+  await new Promise((resolve) => extServer.listen(0, '127.0.0.1', resolve));
+  const extPort = extServer.address().port;
+  t.after(() => new Promise((resolve) => {
+    for (const s of extSockets) s.destroy();
+    extServer.close(() => resolve());
+  }));
+
+  const extId = `vnc:127.0.0.1:${extPort}`;
+  await rfbDriver.ensureConnected(extId);
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(clientAdvertisedMaxClip, 2 * 1024 * 1024, 'B5: client must advertise 2 MiB maxClipboardBytes');
+
+  const clipRead = await service.controlSession({
+    sessionId: extId,
+    action: 'clipboard_get',
+    observeAfter: false,
+  });
+  assert.equal(clipRead.ok, true);
+  assert.equal(clipRead.effect, 'confirmed');
+  assert.equal(clipRead.results[0].text, '测试中文剪贴板');
+
+  const clipWrite = await service.controlSession({
+    sessionId: extId,
+    action: 'clipboard_set',
+    text: '写入UTF-8剪贴板',
+    observeAfter: false,
+  });
+  assert.equal(clipWrite.ok, true);
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(clientProvidedUtf8, '写入UTF-8剪贴板');
+
+  // Oversized > 2 MiB clipboard rejected cleanly
+  await assert.rejects(
+    rfbDriver.clipboardSet(extId, 'A'.repeat(2 * 1024 * 1024 + 10)),
+    /2 MiB/i,
+  );
+
+  // 8. Restart without in-memory password gives actionable reconnect error (OQ2)
+  const restartedRfb = createRfbDriver({ heartbeatIntervalMs: 0 });
+  const restartedSvc = createUuRemoteService({
+    systemDriver: winDriver,
+    rfbDriver: restartedRfb,
+    stateDir,
+  });
+  t.after(() => restartedSvc.dispose());
+  await assert.rejects(
+    restartedSvc.controlSession({ sessionId: connRes.sessionId, action: 'screenshot' }),
+    (err) => err.code === 'vnc_auth_required' && /uu_launch.*vncPassword/i.test(err.message) && !err.message.includes('Pass1234'),
+  );
+});
+
+test('v0.3.0 Frame Audit A3 & OSWorld non-idempotent guard: PVE SSH launcher, RFB magic gate, and zero mid-flight replay', async () => {
+  const { EventEmitter } = await import('node:events');
+  const { PassThrough } = await import('node:stream');
+
+  // 1. Verify A3 launcher command: zero double quotes, uses secrets.token_hex(4) + stderr KIKI_PVE_TICKET + execvp qm vncproxy (zero stdin read)
+  const pveArgs = buildPveVncProxyArgs('assistant-pve-campus', 103);
+  assert.ok(pveArgs.includes('-T') && pveArgs.includes('none') && pveArgs.includes('BatchMode=yes'));
+  const remoteCmd = pveArgs[pveArgs.length - 1];
+  assert.equal(remoteCmd.includes('"'), false, 'Remote SSH cmd must contain zero double quotes for Windows OpenSSH parity');
+  const b64Part = remoteCmd.trim().split(/\s+/).pop();
+  const decodedPy = Buffer.from(b64Part, 'base64').toString('utf8');
+  assert.match(decodedPy, /secrets\.token_hex\(4\)/);
+  assert.match(decodedPy, /KIKI_PVE_TICKET:/);
+  assert.match(decodedPy, /os\.environ\["LC_PVE_TICKET"\]=t/);
+  assert.match(decodedPy, /os\.execvp\("qm",\["qm","vncproxy","103"\]\)/);
+  assert.equal(decodedPy.includes('stdin'), false, 'A3: launcher must NEVER read stdin');
+
+  // 2. First-12-bytes RFB magic gate fails fast on garbage stdout and redacts ticket from stderr
+  const badDriver = createRfbDriver({
+    hostPlatform: 'linux',
+    connectTimeoutMs: 1500,
+    spawnProcess: () => {
+      const proc = new EventEmitter();
+      proc.pid = 81001;
+      proc.stdout = new PassThrough();
+      proc.stderr = new PassThrough();
+      proc.stdin = new PassThrough();
+      proc.killed = false;
+      proc.unref = () => {};
+      proc.kill = () => { proc.killed = true; };
+      setTimeout(() => {
+        proc.stderr.write('KIKI_PVE_TICKET:deadbeef\nPerl warning: polluted\n');
+        proc.stdout.write('NOT_RFB_GARBAGE_BYTES');
+      }, 10);
+      return proc;
+    },
+  });
+  await assert.rejects(
+    badDriver.ensureConnected('pve:assistant-pve-campus:103'),
+    (err) => /RFB handshake gate failed/i.test(err.message) && !err.message.includes('deadbeef'),
+  );
+  await badDriver.dispose();
+
+  // 3. Non-idempotent guard: mid-flight disconnect AFTER sending first pointer event NEVER reconnects or replays!
+  let connectCount = 0;
+  let pointerSentCount = 0;
+  const fakeRfbDriver = createRfbDriver({
+    heartbeatIntervalMs: 0,
+    initialFrameTimeoutMs: 50,
+    connectFn: async () => {
+      connectCount += 1;
+      const client = new EventEmitter();
+      client.width = 640;
+      client.height = 480;
+      client.connected = true;
+      client.pixelFormat = RFB_PIXEL_FORMATS.bgrx;
+      client.colorMap = [];
+      client.supports = { qemuExtendedKeyEvent: true, unicodeClipboard: false, continuousUpdates: false };
+      client.requestUpdate = () => {};
+      client.destroy = () => { client.connected = false; };
+      client.pointerEvent = () => {
+        pointerSentCount += 1;
+        // Drop connection right after first pointer write
+        client.connected = false;
+        client.emit('close', true);
+      };
+      client.keyEvent = () => {};
+      client.qemuKeyEvent = () => {};
+      setTimeout(() => client.emit('update', { rects: [] }), 5);
+      return client;
+    },
+  });
+
+  await assert.rejects(
+    fakeRfbDriver.executeActions('vnc:10.0.0.2:5900', [
+      { kind: 'click', x: 500, y: 500 },
+      { kind: 'click', x: 200, y: 200 },
+    ]),
+    (err) => err.code === 'non_idempotent_transport_failure' && err.replaySuppressed === true,
+  );
+  assert.equal(connectCount, 1, 'Must NOT reconnect after mid-flight non-idempotent failure');
+  assert.equal(pointerSentCount, 1, 'Must NOT replay pointer input');
+  await fakeRfbDriver.dispose();
+});
+
+test('v0.3.0 Frame Audit B4: Human Takeover AbortController aborts in-flight batch + calls releaseAllInputs + aggregates lastHumanSummary', async (t) => {
+  const dir = await makeTempDir(t, 'takeover-abort-');
+  const { driver: winDriver, state: winState } = createMockDriverFixture();
+  let releaseAllCalled = 0;
+  winDriver.releaseAllInputs = async () => {
+    releaseAllCalled += 1;
+    return { ok: true, released: true };
+  };
+
+  const service = createUuRemoteService({ systemDriver: winDriver, stateDir: dir });
+  t.after(() => service.dispose());
+
+  // Launch an in-flight batch with a 2000ms wait followed by a click
+  const batchPromise = service.controlSession({
+    sessionId: 'uu:24780134',
+    actions: [
+      { kind: 'wait', durationMs: 2000 },
+      { kind: 'click', x: 500, y: 500 },
+    ],
+    observeAfter: false,
+  });
+
+  await new Promise((r) => setTimeout(r, 30));
+  const t0 = Date.now();
+  await service.setTakeover({ sessionId: 'uu:24780134', active: true, reason: 'Human grabbed panel' });
+  const batchResult = await batchPromise;
+  const elapsed = Date.now() - t0;
+
+  assert.equal(batchResult.ok, false);
+  assert.equal(batchResult.status, 409);
+  assert.equal(batchResult.code, 'human_takeover_active');
+  assert.equal(batchResult.effect, 'refused');
+  assert.ok(elapsed < 500, `Expected immediate abort (<500ms), took ${elapsed}ms`);
+  assert.equal(winState.sentBatches.length, 0, 'Click after wait must never execute once takeover aborts batch');
+  assert.equal(releaseAllCalled, 1, 'releaseAllInputs must be invoked on takeover');
+
+  // Record human panel interactions and verify debounced aggregation on uu_sessions + takeover release
+  const previewService = createUuPreviewService({ uuService: service });
+  t.after(() => previewService.dispose());
+  await previewService.performAction({ action: 'input', sessionId: 'uu:24780134', subAction: 'click', x: 100, y: 100, fromHumanPanel: true });
+  await previewService.performAction({ action: 'input', sessionId: 'uu:24780134', subAction: 'click', x: 104, y: 102, fromHumanPanel: true });
+  await previewService.performAction({ action: 'input', sessionId: 'uu:24780134', subAction: 'type', text: 'abc', fromHumanPanel: true });
+  await previewService.performAction({ action: 'input', sessionId: 'uu:24780134', subAction: 'type', text: 'def', submit: true, fromHumanPanel: true });
+  await previewService.performAction({ action: 'input', sessionId: 'uu:24780134', subAction: 'scroll', deltaY: 120, fromHumanPanel: true });
+  await previewService.performAction({ action: 'input', sessionId: 'uu:24780134', subAction: 'scroll', deltaY: 120, fromHumanPanel: true });
+
+  const listed = await service.manageSessions({ action: 'list', includeDevices: false });
+  const sess = listed.sessions.find((s) => s.id === 'uu:24780134');
+  assert.equal(sess.lastHumanSummary.length, 3, 'Clicks, typing, and scrolls should debounce into 3 summary entries');
+  assert.match(sess.lastHumanSummary[0].summary, /x2/);
+  assert.match(sess.lastHumanSummary[1].summary, /6 chars \+ Enter/);
+  assert.match(sess.lastHumanSummary[2].summary, /240/);
+
+  const released = await service.setTakeover({ sessionId: 'uu:24780134', active: false });
+  assert.equal(released.takeoverActive, false);
+  assert.equal(released.lastHumanSummary.length, 3);
+});
+
+test('v0.3.0 Win32 & PVE QMP coalescing fixed-literal golden equivalence + smart auto type mode + F4 Ctrl++', async (t) => {
+  // F4 regression: QMP chord parser must match RFB parser on trailing '++'
+  assert.deepEqual(normalizeQmpKeyChord('Ctrl++'), ['ctrl', 'shift', 'equal']);
+  assert.deepEqual(normalizeRfbKeyChord('Ctrl++').map((k) => k.name), ['ctrl', 'shift', 'plus']);
+
+  const dir = await makeTempDir(t, 'coalesce-golden-');
+  const { driver: winDriver, state: winState } = createMockDriverFixture();
+  const service = createUuRemoteService({ systemDriver: winDriver, stateDir: dir });
+  t.after(() => service.dispose());
+
+  // Establish contentRect geometry first: stageBounds={x:3826,y:-633,w:640,h:400}, contentRect={x:0,y:20,w:640,h:360}
+  await service.controlSession({ sessionId: 'uu:24780134', action: 'screenshot' });
+
+  const actions = [
+    { kind: 'move', x: 200, y: 200 },
+    { kind: 'click', x: 300, y: 400, button: 'left', count: 1, modifiers: ['Shift'] },
+    { kind: 'key', keys: ['Ctrl', 'a'] },
+    { kind: 'type', text: 'short', mode: 'auto' },
+    { kind: 'type', text: '这是一段超过八个字符的中文自动剪贴板文本', mode: 'auto', submit: true },
+    { kind: 'wait', durationMs: 10 },
+    { kind: 'focus' },
+    { kind: 'type', text: 'line1\nline2', mode: 'auto' },
+  ];
+
+  // Fixed pre-v0.3.0 literal golden step sequence (non-circular per Frame Audit D2.4)
+  const expectedBatch0Steps = [
+    // move(200, 200): target=(128, 72) -> screen=(3826+128, -633+20+72) = (3954, -541)
+    { op: 'mouse_move', x: 3954, y: -541 },
+    // click(300, 400, Shift): target=(192, 144) -> screen=(3826+192, -633+20+144) = (4018, -469)
+    { op: 'mouse_move', x: 4018, y: -469 },
+    { op: 'sleep', ms: 12 },
+    { op: 'vk_down', vk: 0x10 },
+    { op: 'mouse_down', button: 'left' },
+    { op: 'sleep', ms: 24 },
+    { op: 'mouse_up', button: 'left' },
+    { op: 'vk_up', vk: 0x10 },
+    // key(Ctrl+a)
+    { op: 'vk_down', vk: 0x11 },
+    { op: 'sleep', ms: 14 },
+    { op: 'vk_down', vk: 0x41 },
+    { op: 'sleep', ms: 14 },
+    { op: 'vk_up', vk: 0x41 },
+    { op: 'sleep', ms: 10 },
+    { op: 'vk_up', vk: 0x11 },
+    // type('short', auto) -> unicode_text
+    { op: 'unicode_text', text: 'short' },
+    // type(long non-ASCII, auto, submit=true) -> clipboard_paste + Enter
+    { op: 'clipboard_paste', text: '这是一段超过八个字符的中文自动剪贴板文本' },
+    { op: 'sleep', ms: 20 },
+    { op: 'vk_down', vk: 0x0d },
+    { op: 'sleep', ms: 20 },
+    { op: 'vk_up', vk: 0x0d },
+  ];
+  const expectedBatch1Steps = [
+    // type('line1\nline2', auto) -> clipboard_paste
+    { op: 'clipboard_paste', text: 'line1\nline2' },
+  ];
+
+  const res = await service.controlSession({
+    sessionId: 'uu:24780134',
+    actions,
+    observeAfter: false,
+  });
+  assert.equal(res.ok, true);
+  assert.equal(res.executed, 8);
+  assert.equal(winState.sentBatches.length, 2, '5 pre-wait actions coalesce to 1 RPC, post-focus to 1 RPC');
+  assert.equal(winState.windowActions.length, 1, 'focus action must flush boundary and invoke performWindowAction');
+  assert.deepEqual(winState.sentBatches[0].steps, expectedBatch0Steps, 'Coalesced Win32 steps must match fixed literal pre-v0.3.0 golden steps');
+  assert.deepEqual(winState.sentBatches[1].steps, expectedBatch1Steps);
+
+  // Also verify single-action execution produces the exact same literal steps for click+modifier
+  const singleSteps = compileWin32StepsForAction(actions[1], {
+    coordinateMode: 'normalized_1000',
+    stageBounds: winState.sessions[0].canvasBounds,
+    contentRect: { x: 0, y: 20, width: 640, height: 360 },
+  }).steps;
+  assert.deepEqual(singleSteps, expectedBatch0Steps.slice(1, 8));
+});
+
+test('v0.3.0 F1 regression: fresh RFB connect waits past pseudo-rect-only and split tiled updates (never returns black first frame) and requestFresh awaits update', async (t) => {
+  const openSockets = new Set();
+  const makeSolidBgrx = (w, h, [r, g, b]) => {
+    const buf = Buffer.alloc(w * h * 4);
+    for (let i = 0; i < w * h; i += 1) {
+      buf[i * 4] = b;
+      buf[i * 4 + 1] = g;
+      buf[i * 4 + 2] = r;
+      buf[i * 4 + 3] = 0;
+    }
+    return buf;
+  };
+
+  let reqCount = 0;
+  let freshPhase = false;
+  const rfbServer = createRfbServer(
+    { width: 80, height: 60, name: 'Split-Frame QEMU Sim', pixelFormat: RFB_PIXEL_FORMATS.bgrx },
+    (conn) => {
+      conn.on('updateRequest', () => {
+        reqCount += 1;
+        if (freshPhase) {
+          // Answer requestFresh with green pixels after 25ms
+          setTimeout(() => {
+            conn.sendUpdate([
+              { type: 'pixels', x: 0, y: 0, width: 80, height: 60, data: makeSolidBgrx(80, 60, [40, 210, 70]) },
+            ]);
+          }, 25);
+          return;
+        }
+        if (reqCount === 1) {
+          // Simulate QEMU sending ONLY a capability pseudo-rect on update #1 (0 pixels!)
+          conn.sendUpdate([
+            { type: 'encoded', x: 0, y: 0, width: 0, height: 0, encoding: RFB_ENCODINGS.pseudoQemuExtendedKeyEvent, body: Buffer.alloc(0) },
+          ]);
+        } else if (reqCount === 2) {
+          // Top half tile (80x30) in red
+          conn.sendUpdate([
+            { type: 'pixels', x: 0, y: 0, width: 80, height: 30, data: makeSolidBgrx(80, 30, [220, 50, 40]) },
+          ]);
+        } else if (reqCount === 3) {
+          // Bottom half tile (80x30) in blue
+          conn.sendUpdate([
+            { type: 'pixels', x: 0, y: 30, width: 80, height: 30, data: makeSolidBgrx(80, 30, [40, 90, 230]) },
+          ]);
+        }
+      });
+      conn.on('error', () => {});
+    },
+  );
+  rfbServer.on('connection', (s) => {
+    openSockets.add(s);
+    s.once('close', () => openSockets.delete(s));
+  });
+  await new Promise((resolve) => rfbServer.listen(0, '127.0.0.1', resolve));
+  const port = rfbServer.address().port;
+  t.after(() => new Promise((resolve) => {
+    for (const s of openSockets) s.destroy();
+    rfbServer.close(() => resolve());
+  }));
+
+  const rfbDriver = createRfbDriver({ heartbeatIntervalMs: 0 });
+  t.after(() => rfbDriver.dispose());
+
+  // First capture on fresh connection MUST contain BOTH top red tile and bottom blue tile (zero black!)
+  const first = await rfbDriver.captureRgba(`vnc:127.0.0.1:${port}`);
+  assert.equal(first.width, 80);
+  assert.equal(first.height, 60);
+  assert.deepEqual([...first.data.subarray(0, 4)], [220, 50, 40, 255], 'Top tile must be populated on first capture');
+  const bottomIdx = (45 * 80 + 10) * 4;
+  assert.deepEqual([...first.data.subarray(bottomIdx, bottomIdx + 4)], [40, 90, 230, 255], 'Bottom tile must be populated on first capture');
+  assert.equal(first.supports.qemuExtendedKeyEvent, true);
+
+  // requestFresh: true must await the server's green update instead of reading stale pixels synchronously
+  freshPhase = true;
+  const fresh = await rfbDriver.captureRgba(`vnc:127.0.0.1:${port}`, { requestFresh: true });
+  assert.deepEqual([...fresh.data.subarray(0, 4)], [40, 210, 70, 255], 'requestFresh must await updated server pixels');
+});
+
+test('v0.3.0 PVE RFB->QMP one-time fallback, /dev/shm + lastHash dedup, 5s status cache, and QGA clipboard sidechannel', async (t) => {
+  const { EventEmitter } = await import('node:events');
+  const { PassThrough } = await import('node:stream');
+  const { gzipSync } = await import('node:zlib');
+  const { createHash } = await import('node:crypto');
+
+  // Verify REMOTE_PYTHON_BRIDGE prefers /dev/shm and checks lastHash
+  assert.match(REMOTE_PYTHON_BRIDGE, /\/dev\/shm/);
+  assert.match(REMOTE_PYTHON_BRIDGE, /lastHash/);
+  assert.match(REMOTE_PYTHON_BRIDGE, /handle_qga_clipboard_set/);
+
+  const quadPpm = buildSyntheticPpmP6({ width: 160, height: 120, quadrants: true });
+  const ppmHash = createHash('sha256').update(quadPpm).digest('hex');
+  const quadGzB64 = gzipSync(quadPpm).toString('base64');
+
+  let fakeNow = 100_000;
+  let statusRpcCount = 0;
+  let screendumpRpcCount = 0;
+  let qgaSetPayload = null;
+
+  const qmpDriver = createPveQmpDriver({
+    hostPlatform: 'linux',
+    workerIdleMs: 0,
+    statusCacheTtlMs: 5_000,
+    nowFn: () => fakeNow,
+    spawnProcess: () => {
+      const proc = new EventEmitter();
+      proc.pid = 72001;
+      proc.stdout = new PassThrough();
+      proc.stderr = new PassThrough();
+      proc.stdin = new PassThrough();
+      proc.killed = false;
+      proc.exitCode = null;
+      proc.unref = () => {};
+      proc.kill = () => { proc.killed = true; };
+
+      let buf = '';
+      let sawBoot = false;
+      proc.stdin.on('data', (chunk) => {
+        buf += chunk.toString('utf8');
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          if (!sawBoot && !line.trim().startsWith('{')) { sawBoot = true; continue; }
+          const req = JSON.parse(line);
+          if (req.op === 'status') {
+            statusRpcCount += 1;
+            proc.stdout.write(JSON.stringify({
+              id: req.id,
+              ok: true,
+              result: { vmid: req.vmid, vmStatus: 'running', running: true, vmName: 'kaimu-pdm-xp', width: 160, height: 120 },
+            }) + '\n');
+          } else if (req.op === 'screendump') {
+            screendumpRpcCount += 1;
+            if (req.lastHash && req.lastHash === ppmHash) {
+              proc.stdout.write(JSON.stringify({
+                id: req.id,
+                ok: true,
+                result: { unchanged: true, hash: ppmHash, rawBytes: quadPpm.length, compressedBytes: 0 },
+              }) + '\n');
+            } else {
+              proc.stdout.write(JSON.stringify({
+                id: req.id,
+                ok: true,
+                result: { unchanged: false, hash: ppmHash, encoding: 'ppm-gzip-base64', data: quadGzB64, rawBytes: quadPpm.length, compressedBytes: 123 },
+              }) + '\n');
+            }
+          } else if (req.op === 'qga_probe') {
+            proc.stdout.write(JSON.stringify({
+              id: req.id,
+              ok: true,
+              result: { available: true, socketExists: true, osType: 'windows' },
+            }) + '\n');
+          } else if (req.op === 'qga_clipboard_set') {
+            qgaSetPayload = Buffer.from(req.textB64, 'base64').toString('utf8');
+            proc.stdout.write(JSON.stringify({ id: req.id, ok: true, result: { ok: true } }) + '\n');
+          } else if (req.op === 'qga_clipboard_get') {
+            proc.stdout.write(JSON.stringify({
+              id: req.id,
+              ok: true,
+              result: { textB64: Buffer.from(qgaSetPayload || '', 'utf8').toString('base64') },
+            }) + '\n');
+          } else if (req.op === 'qmp_batch') {
+            proc.stdout.write(JSON.stringify({ id: req.id, ok: true, result: { executed: req.steps.length } }) + '\n');
+          }
+        }
+      });
+      return proc;
+    },
+  });
+  t.after(() => qmpDriver.dispose());
+
+  // 5s probeStatus TTL cache
+  await qmpDriver.probeStatus('pve:assistant-pve-campus:103');
+  await qmpDriver.probeStatus('pve:assistant-pve-campus:103');
+  assert.equal(statusRpcCount, 1, 'Second probeStatus within 5s must hit cache');
+  await qmpDriver.probeStatus('pve:assistant-pve-campus:103', { forceRefresh: true });
+  assert.equal(statusRpcCount, 2, 'forceRefresh=true must bypass 5s cache');
+
+  // lastHash unchanged frame skip reuses cached RGBA with compressedBytes=0
+  const f1 = await qmpDriver.captureScreen('pve:assistant-pve-campus:103');
+  assert.equal(f1.unchanged, false);
+  const f2 = await qmpDriver.captureScreen('pve:assistant-pve-campus:103');
+  assert.equal(f2.unchanged, true);
+  assert.equal(f2.compressedBytes, 0);
+  assert.equal(f2.width, 160);
+  assert.equal(screendumpRpcCount, 2);
+
+  // One-time RFB -> QMP fallback preserves provider='pve-qmp', switches transport to 'pve-qmp', doesn't retry RFB until explicit connect
+  const dir = await makeTempDir(t, 'pve-fallback-');
+  const { driver: winDriver } = createMockDriverFixture();
+  let rfbAttempts = 0;
+  const failingRfb = {
+    onResize() {},
+    async ensureConnected() {
+      rfbAttempts += 1;
+      throw Object.assign(new Error('qm vncproxy unavailable'), { failedBeforeSending: true });
+    },
+    async captureRgba() {
+      rfbAttempts += 1;
+      throw Object.assign(new Error('qm vncproxy unavailable'), { failedBeforeSending: true });
+    },
+    async executeActions() {
+      rfbAttempts += 1;
+      throw Object.assign(new Error('qm vncproxy unavailable'), { failedBeforeSending: true });
+    },
+    async getSessionCapabilities() { return { connected: false, unicodeClipboard: false }; },
+    subscribeUpdates() { return () => {}; },
+    async disconnectTarget() {},
+    async dispose() {},
+  };
+
+  const svc = createUuRemoteService({
+    systemDriver: winDriver,
+    pveDriver: qmpDriver,
+    rfbDriver: failingRfb,
+    stateDir: dir,
+    nowFn: () => fakeNow,
+  });
+  t.after(() => svc.dispose());
+
+  const conn = await svc.launchAction({ action: 'connect', pveHost: 'assistant-pve-campus', vmid: 103 });
+  assert.equal(conn.provider, 'pve-qmp', 'OQ5: provider field must stay pve-qmp');
+  assert.equal(conn.transport, 'pve-qmp');
+  assert.equal(rfbAttempts, 1);
+
+  // Subsequent screenshot & QGA Chinese type do NOT retry failed RFB
+  const shot = await svc.controlSession({ sessionId: 'pve:assistant-pve-campus:103', action: 'screenshot' });
+  assert.equal(shot.ok, true);
+  assert.equal(shot.provider, 'pve-qmp');
+  assert.equal(shot.transport, 'pve-qmp');
+  assert.equal(rfbAttempts, 1, 'OQ5: must NOT retry RFB on every call after one-time fallback');
+
+  const qgaType = await svc.controlSession({
+    sessionId: 'pve:assistant-pve-campus:103',
+    action: 'type',
+    text: '中文QGA通道',
+    observeAfter: false,
+  });
+  assert.equal(qgaType.ok, true);
+  assert.equal(qgaSetPayload, '中文QGA通道');
+  assert.equal(qgaType.results[0].mode, 'qga_clipboard_paste');
+
+  // Explicit connect resets fallback and attempts RFB again
+  await svc.launchAction({ action: 'connect', pveHost: 'assistant-pve-campus', vmid: 103 });
+  assert.equal(rfbAttempts, 2, 'Explicit uu_launch(connect) resets fallback to retry RFB');
+});
+
+test('v0.3.0 VNC host whitelist (B1), normalizeSessionId, and preview-service static-frame skip + telemetry + new panel RPCs', async (t) => {
+  // B1 VNC host validation
+  assert.equal(buildVncTargetId('192.168.1.50', 5901), 'vnc:192.168.1.50:5901');
+  assert.equal(buildVncTargetId('::1', 5900), 'vnc:[::1]:5900');
+  assert.deepEqual(parseVncTargetId('VNC:[::1]:5902', { strict: true }), {
+    id: 'vnc:[::1]:5902',
+    host: '::1',
+    port: 5902,
+  });
+  assert.equal(normalizeSessionId('VNC:lab.lan:5900'), 'vnc:lab.lan:5900');
+  assert.ok(buildVncSshTunnelArgs('bastion.lan', '::1', 5900).includes('[::1]:5900'));
+
+  for (const bad of [
+    'vnc:-oProxyCommand=calc:5900',
+    'vnc:host;id:5900',
+    'vnc:user@host:5900',
+    'vnc:host name:5900',
+    'vnc:host:0',
+    'vnc:host:70000',
+    'vnc:host/path:5900',
+  ]) {
+    assert.equal(parseVncTargetId(bad, { strict: false }), null, `Expected null for ${bad}`);
+    assert.throws(() => parseVncTargetId(bad, { strict: true }), /Invalid VNC/i, `Expected throw for ${bad}`);
+  }
+
+  // preview-service static-frame suppression + telemetry + new panel RPCs
+  const dir = await makeTempDir(t, 'preview-v03-');
+  const { driver: winDriver } = createMockDriverFixture();
+  let fakeNow = 200_000;
+  let dirtyListener = null;
+  let rfbColor = [50, 140, 200];
+  let rfbConnected = false;
+
+  const mockRfb = {
+    onResize() {},
+    setVncPassword() {},
+    clearVncPassword() {},
+    subscribeUpdates(id, fn) {
+      dirtyListener = fn;
+      return () => { dirtyListener = null; };
+    },
+    async ensureConnected() {
+      rfbConnected = true;
+      return { client: { name: 'Studio VNC', width: 160, height: 120 }, framebuffer: { width: 160, height: 120 } };
+    },
+    async getSessionCapabilities() {
+      return { connected: rfbConnected, unicodeClipboard: true, extendedClipboard: true, qemuExtendedKeyEvent: true, width: 160, height: 120, name: 'Studio VNC' };
+    },
+    async captureRgba() {
+      const data = new Uint8Array(160 * 120 * 4);
+      for (let i = 0; i < 160 * 120; i += 1) {
+        data[i * 4] = rfbColor[0];
+        data[i * 4 + 1] = rfbColor[1];
+        data[i * 4 + 2] = rfbColor[2];
+        data[i * 4 + 3] = 255;
+      }
+      return { width: 160, height: 120, data, image: { width: 160, height: 120, data }, frameSeq: 1, stageBounds: { x: 0, y: 0, width: 160, height: 120 } };
+    },
+    async executeActions(_target, actions) {
+      const results = actions.map((a) => {
+        if (a.kind === 'clipboard_get') return { kind: 'clipboard_get', text: 'remote-clip' };
+        if (a.kind === 'clipboard_set') return { kind: 'clipboard_set', length: String(a.text ?? '').length };
+        return { kind: a.kind };
+      });
+      return { ok: true, executed: results.length, results };
+    },
+    async disconnectTarget() { rfbConnected = false; },
+    async dispose() {},
+  };
+
+  const mockPve = {
+    async probeStatus(target) {
+      return { vmid: target.vmid, vmStatus: 'running', running: true, vmName: 'vm-103', width: 160, height: 120 };
+    },
+    async disconnectHost() {},
+    async dispose() {},
+  };
+
+  const uuService = createUuRemoteService({
+    systemDriver: winDriver,
+    pveDriver: mockPve,
+    rfbDriver: mockRfb,
+    stateDir: dir,
+    nowFn: () => fakeNow,
+  });
+  const previewService = createUuPreviewService({ uuService, nowFn: () => fakeNow });
+  t.after(async () => {
+    await previewService.dispose();
+    await uuService.dispose();
+  });
+
+  // New panel RPCs: connectVnc, clipboardSet, clipboardGet, connectPve, disconnectTarget
+  const vncConn = await previewService.performAction({
+    action: 'connectVnc',
+    vncHost: '127.0.0.1',
+    vncPort: 5905,
+    vncPassword: 'secret',
+    label: 'Studio VNC',
+  });
+  assert.equal(vncConn.ok, true);
+  assert.equal(vncConn.sessionId, 'vnc:127.0.0.1:5905');
+
+  const clipSet = await previewService.performAction({ action: 'clipboardSet', sessionId: vncConn.sessionId, text: 'hello' });
+  assert.equal(clipSet.ok, true);
+  const clipGet = await previewService.performAction({ action: 'clipboardGet', sessionId: vncConn.sessionId });
+  assert.equal(clipGet.ok, true);
+  assert.equal(clipGet.results[0].text, 'remote-clip');
+
+  const pveConn = await previewService.performAction({ action: 'connectPve', pveHost: 'assistant-pve-campus', vmid: 103 });
+  assert.equal(pveConn.ok, true);
+  assert.equal(pveConn.sessionId, 'pve:assistant-pve-campus:103');
+
+  // Stream static-frame skip + RFB event-driven dirty push + telemetry text messages
+  const binaryPackets = [];
+  const textMsgs = [];
+  let closeStream = null;
+  let topoCountBefore = 0;
+  const origTopo = uuService.inspectTopology;
+  uuService.inspectTopology = async (...args) => {
+    topoCountBefore += 1;
+    return origTopo(...args);
+  };
+
+  await previewService.openPanelStream(
+    'screen',
+    { sessionId: vncConn.sessionId, fps: 15 },
+    {
+      bufferedAmount: () => 0,
+      sendBinary(buf) { binaryPackets.push(buf); return true; },
+      sendText(txt) { textMsgs.push(JSON.parse(txt)); },
+      onClose(fn) { closeStream = fn; },
+      onText() {},
+    },
+    {},
+  );
+
+  // Wait for initial frame + telemetry
+  const dl1 = Date.now() + 1000;
+  while (binaryPackets.length < 1 && Date.now() < dl1) {
+    await new Promise((r) => setTimeout(r, 15));
+  }
+  assert.equal(binaryPackets.length, 1);
+  assert.ok(textMsgs.some((m) => m.type === 'telemetry' && m.unchanged === false && m.transport === 'rfb'));
+
+  // Advance clock by 5s with NO dirty rect -> zero extra binary frames, zero extra inspectTopology!
+  fakeNow += 5_000;
+  await new Promise((r) => setTimeout(r, 80));
+  assert.equal(binaryPackets.length, 1, 'Static RFB screen must skip resending identical binary PNGs');
+  assert.equal(topoCountBefore, 1, 'Remote VNC/PVE stream must NOT re-run inspectTopology every 3s');
+
+  // Trigger RFB dirty rect with new pixel color -> pushes 2nd binary frame immediately!
+  rfbColor = [230, 60, 40];
+  dirtyListener?.({ targetId: vncConn.sessionId, frameSeq: 2 });
+  const dl2 = Date.now() + 1000;
+  while (binaryPackets.length < 2 && Date.now() < dl2) {
+    await new Promise((r) => setTimeout(r, 15));
+  }
+  assert.equal(binaryPackets.length, 2, 'Dirty rect must trigger immediate binary frame push');
+
+  // Trigger RFB dirty rect with SAME pixel color -> hash dedup skips binary, emits unchanged telemetry!
+  fakeNow += 2_500;
+  dirtyListener?.({ targetId: vncConn.sessionId, frameSeq: 3 });
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(binaryPackets.length, 2, 'Identical PNG hash must skip sendBinary');
+  assert.ok(textMsgs.some((m) => m.type === 'telemetry' && m.unchanged === true));
+
+  closeStream?.();
+
+  const discPve = await previewService.performAction({ action: 'disconnectTarget', sessionId: 'pve:assistant-pve-campus:103' });
+  assert.equal(discPve.ok, true);
+  assert.equal(discPve.removed, true);
+  const discVnc = await previewService.performAction({ action: 'disconnectTarget', sessionId: vncConn.sessionId });
+  assert.equal(discVnc.ok, true);
+  assert.equal(discVnc.removed, true);
+});
+
+test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and exposes gated capabilities', async (t) => {
+  // Verify REMOTE_PYTHON_BRIDGE queries QMP chardevs in handle_status without adding extra round-trips
+  assert.match(REMOTE_PYTHON_BRIDGE, /query-chardev/);
+  assert.match(REMOTE_PYTHON_BRIDGE, /vdagentConfigured/);
+  assert.match(REMOTE_PYTHON_BRIDGE, /vdagentConnected/);
+  assert.match(REMOTE_PYTHON_BRIDGE, /frontend-open/);
+  assert.match(REMOTE_PYTHON_BRIDGE, /spicevmc/);
+
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'kiki-uu-vdagent-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+
+  const { driver: winDriver } = createMockDriverFixture();
+  let fakeNow = 1_760_000_000_000;
+
+  let pveStatusPayload = {
+    vmid: 103,
+    vmStatus: 'running',
+    running: true,
+    vmName: 'kaimu-pdm-xp',
+    width: 160,
+    height: 120,
+    vdagentConfigured: false,
+    vdagentConnected: false,
+  };
+  let qgaAvailable = false;
+  let qgaProbeCalls = 0;
+  const qgaSetCalls = [];
+  const rfbExecuteCalls = [];
+
+  const mockRfb = {
+    onResize() {},
+    setVncPassword() {},
+    clearVncPassword() {},
+    subscribeUpdates() { return () => {}; },
+    async waitForSettle() { return { settled: true, waitedMs: 0 }; },
+    async ensureConnected(target) {
+      return { targetId: target.id, framebuffer: { width: 160, height: 120 }, client: { connected: true } };
+    },
+    async getSessionCapabilities() {
+      // Simulate QEMU VNC negotiating pseudoExtendedClipboard even when VM has no vdagent chardev
+      return {
+        connected: true,
+        unicodeClipboard: true,
+        extendedClipboard: true,
+        qemuExtendedKeyEvent: true,
+        continuousUpdates: true,
+        width: 160,
+        height: 120,
+      };
+    },
+    async captureRgba() {
+      const data = Buffer.alloc(160 * 120 * 4, 0x88);
+      for (let i = 3; i < data.length; i += 4) data[i] = 255;
+      return { width: 160, height: 120, data, image: { width: 160, height: 120, data }, frameSeq: 1, stageBounds: { x: 0, y: 0, width: 160, height: 120 } };
+    },
+    async executeActions(target, actions) {
+      for (const a of actions) {
+        rfbExecuteCalls.push({ targetId: target.id, kind: a.kind, text: a.text, keys: a.keys });
+      }
+      const results = actions.map((a) => {
+        if (a.kind === 'clipboard_set') return { kind: 'clipboard_set', length: String(a.text ?? '').length, mode: 'extended_clipboard_utf8' };
+        if (a.kind === 'clipboard_get') return { kind: 'clipboard_get', text: 'guest-utf8-你好', mode: 'extended_clipboard_utf8' };
+        if (a.kind === 'type') return { kind: 'type', length: String(a.text ?? '').length, mode: /[^\x20-\x7e\r\n\t]/.test(String(a.text ?? '')) ? 'extended_clipboard_paste' : 'keysym_ascii' };
+        return { kind: a.kind };
+      });
+      return { ok: true, executed: results.length, results };
+    },
+    async disconnectTarget() {},
+    async dispose() {},
+  };
+
+  const mockPve = {
+    async probeStatus(target) {
+      return { ...pveStatusPayload, vmid: target.vmid };
+    },
+    async probeQga() {
+      qgaProbeCalls += 1;
+      return qgaAvailable ? { available: true, osType: 'windows' } : { available: false };
+    },
+    async qgaClipboardSet(_target, text) {
+      qgaSetCalls.push(text);
+      return { ok: true, length: text.length };
+    },
+    async qgaClipboardGet() {
+      return { ok: true, text: 'from-qga-中文' };
+    },
+    async disconnectHost() {},
+    async dispose() {},
+  };
+
+  const uuService = createUuRemoteService({
+    systemDriver: winDriver,
+    pveDriver: mockPve,
+    rfbDriver: mockRfb,
+    stateDir: dir,
+    nowFn: () => fakeNow,
+  });
+  const previewService = createUuPreviewService({ uuService, nowFn: () => fakeNow });
+  t.after(async () => {
+    await previewService.dispose();
+    await uuService.dispose();
+  });
+
+  // Register PVE VM 103
+  const conn = await uuService.launchAction({ action: 'connect', pveHost: 'assistant-pve-campus', vmid: 103 });
+  assert.equal(conn.ok, true);
+  assert.equal(conn.provider, 'pve-qmp');
+  assert.equal(conn.session.vdagentConfigured, false);
+  assert.equal(conn.session.vdagentConnected, false);
+
+  // Scenario (a): RFB negotiated extendedClipboard=true, vdagentConfigured=false, no QGA
+  const setA = await uuService.controlSession({
+    sessionId: 'pve:assistant-pve-campus:103',
+    action: 'clipboard_set',
+    text: '你好测试',
+  });
+  assert.equal(setA.ok, false);
+  assert.equal(setA.code, 'unicode_input_unsupported');
+  assert.equal(setA.capabilities.rfbExtendedClipboardNegotiated, true);
+  assert.equal(setA.capabilities.vdagentConfigured, false);
+  assert.equal(setA.capabilities.vdagentConnected, false);
+  assert.equal(setA.capabilities.unicodeClipboard, false);
+  assert.equal(setA.capabilities.guestAgent, false);
+  assert.equal(setA.capabilities.clipboard, false);
+  assert.equal(rfbExecuteCalls.length, 0, 'Must NEVER send clipboard_set into QEMU RFB black hole when vdagent is absent');
+
+  const typeA = await uuService.controlSession({
+    sessionId: 'pve:assistant-pve-campus:103',
+    action: 'type',
+    text: '中文输入测试',
+  });
+  assert.equal(typeA.ok, false);
+  assert.equal(typeA.code, 'unicode_input_unsupported');
+  assert.equal(typeA.capabilities.rfbExtendedClipboardNegotiated, true);
+  assert.equal(typeA.capabilities.vdagentConfigured, false);
+  assert.equal(typeA.capabilities.vdagentConnected, false);
+  assert.equal(typeA.capabilities.unicodeClipboard, false);
+  assert.equal(typeA.capabilities.clipboard, false);
+  assert.equal(rfbExecuteCalls.length, 0, 'Must NEVER send non-ASCII type via RFB clipboard when vdagent is absent');
+
+  // ASCII-only type still works over RFB keyboard without touching clipboard
+  const asciiType = await uuService.controlSession({
+    sessionId: 'pve:assistant-pve-campus:103',
+    action: 'type',
+    text: 'echo ok',
+  });
+  assert.equal(asciiType.ok, true);
+  assert.equal(rfbExecuteCalls.length, 1);
+  assert.equal(rfbExecuteCalls[0].kind, 'type');
+
+  // Screenshot and preview telemetry both expose gated capabilities (clipboard=false, unicodeClipboard=false)
+  const shotA = await uuService.controlSession({ sessionId: 'pve:assistant-pve-campus:103', action: 'screenshot' });
+  assert.equal(shotA.ok, true);
+  assert.equal(shotA.capabilities.rfbExtendedClipboardNegotiated, true);
+  assert.equal(shotA.capabilities.vdagentConfigured, false);
+  assert.equal(shotA.capabilities.vdagentConnected, false);
+  assert.equal(shotA.capabilities.unicodeClipboard, false);
+  assert.equal(shotA.capabilities.clipboard, false);
+
+  const telemetryA = [];
+  let closeStreamA = null;
+  await previewService.openPanelStream(
+    'screen',
+    { sessionId: 'pve:assistant-pve-campus:103', fps: 10 },
+    {
+      bufferedAmount: () => 0,
+      sendBinary() { return true; },
+      sendText(txt) { telemetryA.push(JSON.parse(txt)); },
+      onClose(fn) { closeStreamA = fn; },
+      onText() {},
+    },
+    {},
+  );
+  const dlA = Date.now() + 1000;
+  while (!telemetryA.some((m) => m.type === 'telemetry') && Date.now() < dlA) {
+    await new Promise((r) => setTimeout(r, 15));
+  }
+  closeStreamA?.();
+  const telMsgA = telemetryA.find((m) => m.type === 'telemetry');
+  assert.ok(telMsgA, 'Preview stream must emit telemetry');
+  assert.equal(telMsgA.capabilities.rfbExtendedClipboardNegotiated, true);
+  assert.equal(telMsgA.capabilities.vdagentConfigured, false);
+  assert.equal(telMsgA.capabilities.vdagentConnected, false);
+  assert.equal(telMsgA.capabilities.unicodeClipboard, false);
+  assert.equal(telMsgA.capabilities.clipboard, false);
+
+  // Fail-closed check: if liveStatus omits vdagent fields entirely, default to false
+  pveStatusPayload = { vmid: 103, vmStatus: 'running', running: true, vmName: 'legacy-qemu', width: 160, height: 120 };
+  rfbExecuteCalls.length = 0;
+  const setOmitted = await uuService.controlSession({
+    sessionId: 'pve:assistant-pve-campus:103',
+    action: 'clipboard_set',
+    text: 'fail-closed',
+  });
+  assert.equal(setOmitted.ok, false);
+  assert.equal(setOmitted.code, 'unicode_input_unsupported');
+  assert.equal(setOmitted.capabilities.vdagentConfigured, false);
+  assert.equal(setOmitted.capabilities.vdagentConnected, false);
+  assert.equal(rfbExecuteCalls.length, 0);
+
+  // Scenario (b): vdagentConfigured=true, vdagentConnected=false (guest spice-vdagent not running)
+  pveStatusPayload = {
+    vmid: 103,
+    vmStatus: 'running',
+    running: true,
+    vmName: 'kaimu-pdm-xp',
+    width: 160,
+    height: 120,
+    vdagentConfigured: true,
+    vdagentConnected: false,
+  };
+  qgaAvailable = false;
+  rfbExecuteCalls.length = 0;
+
+  const setBNoQga = await uuService.controlSession({
+    sessionId: 'pve:assistant-pve-campus:103',
+    action: 'clipboard_set',
+    text: '未连vdagent',
+  });
+  assert.equal(setBNoQga.ok, false);
+  assert.equal(setBNoQga.code, 'unicode_input_unsupported');
+  assert.equal(setBNoQga.capabilities.rfbExtendedClipboardNegotiated, true);
+  assert.equal(setBNoQga.capabilities.vdagentConfigured, true);
+  assert.equal(setBNoQga.capabilities.vdagentConnected, false);
+  assert.equal(setBNoQga.capabilities.unicodeClipboard, false);
+  assert.equal(setBNoQga.capabilities.clipboard, false);
+  assert.equal(rfbExecuteCalls.length, 0, 'Must NOT call RFB clipboard_set when vdagent frontend-open is false');
+
+  // Scenario (b2): vdagentConfigured=true, vdagentConnected=false, WITH QGA available -> falls back to QGA cleanly
+  qgaAvailable = true;
+  qgaSetCalls.length = 0;
+  rfbExecuteCalls.length = 0;
+  const setBQga = await uuService.controlSession({
+    sessionId: 'pve:assistant-pve-campus:103',
+    action: 'clipboard_set',
+    text: '走QGA兜底',
+  });
+  assert.equal(setBQga.ok, true);
+  assert.equal(setBQga.results[0].mode, 'qga_guest_exec');
+  assert.deepEqual(qgaSetCalls, ['走QGA兜底']);
+  assert.equal(rfbExecuteCalls.length, 0, 'QGA clipboard_set must not invoke RFB');
+
+  const typeBQga = await uuService.controlSession({
+    sessionId: 'pve:assistant-pve-campus:103',
+    action: 'type',
+    text: '粘贴中文',
+    submit: true,
+  });
+  assert.equal(typeBQga.ok, true);
+  assert.equal(typeBQga.results[0].mode, 'qga_clipboard_paste');
+  assert.deepEqual(qgaSetCalls, ['走QGA兜底', '粘贴中文']);
+  // Only Ctrl+v + Enter keys were sent over RFB, never clipboard_set
+  assert.ok(rfbExecuteCalls.every((c) => c.kind === 'key'));
+
+  // Cached QGA availability is now surfaced on screenshot capabilities (guestAgent=true, clipboard=true, unicodeClipboard=false)
+  const shotBQga = await uuService.controlSession({ sessionId: 'pve:assistant-pve-campus:103', action: 'screenshot' });
+  assert.equal(shotBQga.capabilities.unicodeClipboard, false);
+  assert.equal(shotBQga.capabilities.guestAgent, true);
+  assert.equal(shotBQga.capabilities.clipboard, true);
+
+  // Scenario (c): vdagentConfigured=true, vdagentConnected=true -> normal RFB extended_clipboard_utf8
+  pveStatusPayload = {
+    vmid: 103,
+    vmStatus: 'running',
+    running: true,
+    vmName: 'kaimu-pdm-xp',
+    width: 160,
+    height: 120,
+    vdagentConfigured: true,
+    vdagentConnected: true,
+  };
+  qgaAvailable = false;
+  qgaProbeCalls = 0;
+  rfbExecuteCalls.length = 0;
+
+  // Reconnect clears stale QGA cache
+  await uuService.launchAction({ action: 'connect', pveHost: 'assistant-pve-campus', vmid: 103 });
+  const setC = await uuService.controlSession({
+    sessionId: 'pve:assistant-pve-campus:103',
+    action: 'clipboard_set',
+    text: '正常走RFB剪贴板',
+  });
+  assert.equal(setC.ok, true);
+  assert.equal(setC.results[0].mode, 'extended_clipboard_utf8');
+  assert.equal(qgaProbeCalls, 0, 'Connected vdagent must not fall back to QGA');
+  assert.equal(rfbExecuteCalls.length, 1);
+  assert.equal(rfbExecuteCalls[0].kind, 'clipboard_set');
+
+  const typeC = await uuService.controlSession({
+    sessionId: 'pve:assistant-pve-campus:103',
+    action: 'type',
+    text: '你好世界',
+  });
+  assert.equal(typeC.ok, true);
+  assert.equal(typeC.results[0].mode, 'extended_clipboard_paste');
+  assert.equal(qgaProbeCalls, 0);
+
+  const shotC = await uuService.controlSession({ sessionId: 'pve:assistant-pve-campus:103', action: 'screenshot' });
+  assert.equal(shotC.capabilities.rfbExtendedClipboardNegotiated, true);
+  assert.equal(shotC.capabilities.vdagentConfigured, true);
+  assert.equal(shotC.capabilities.vdagentConnected, true);
+  assert.equal(shotC.capabilities.unicodeClipboard, true);
+  assert.equal(shotC.capabilities.clipboard, true);
+
+  // Direct VNC target (runs inside Guest OS) is NOT gated by vdagentConnected
+  const vncConn = await uuService.launchAction({ action: 'connect', vncHost: '127.0.0.1', vncPort: 5909 });
+  assert.equal(vncConn.ok, true);
+  rfbExecuteCalls.length = 0;
+  const vncSet = await uuService.controlSession({
+    sessionId: 'vnc:127.0.0.1:5909',
+    action: 'clipboard_set',
+    text: '直连VNC剪贴板',
+  });
+  assert.equal(vncSet.ok, true);
+  assert.equal(vncSet.results[0].mode, 'extended_clipboard_utf8');
+  assert.equal(rfbExecuteCalls.length, 1);
+  const vncShot = await uuService.controlSession({ sessionId: 'vnc:127.0.0.1:5909', action: 'screenshot' });
+  assert.equal(vncShot.capabilities.unicodeClipboard, true);
+  assert.equal(vncShot.capabilities.clipboard, true);
+  assert.equal(vncShot.capabilities.vdagentConnected, undefined);
 });

@@ -874,6 +874,15 @@ function Invoke-BridgeCommand($cmd) {
         foregroundHwnd = [UuWin32Bridge]::GetForegroundHwndValue()
       }
     }
+    'release_all' {
+      foreach ($vk in @(0x10, 0xA0, 0xA1, 0x11, 0xA2, 0xA3, 0x12, 0xA4, 0xA5, 0x5B, 0x5C)) {
+        [UuWin32Bridge]::SendVirtualKey([int]$vk, $true)
+      }
+      foreach ($btn in @('left', 'right', 'middle')) {
+        [UuWin32Bridge]::SendMouseButton($btn, $true)
+      }
+      return @{ ok = $true; released = $true }
+    }
     default {
       throw ("Unsupported bridge op: " + $op)
     }

@@ -1,9 +1,14 @@
+import { hashPngOrSample } from './png-codec.mjs';
+import { isPveTargetId } from './pve-qmp-driver.mjs';
+import { isVncTargetId } from './rfb-driver.mjs';
+
 const STREAM_MAGIC_0 = 0x55; // 'U'
 const STREAM_MAGIC_1 = 0x52; // 'R'
 const MAX_BUFFERED_BYTES = 1_500_000;
 const PEEK_DEFAULT_MAX_AGE_MS = 15_000;
 const PEEK_DEFAULT_WAIT_BUDGET_MS = 200;
 const STREAM_TOPO_REFRESH_MS = 3_000;
+const TELEMETRY_HEARTBEAT_MS = 2_000;
 
 export function packStreamPngFrame({
   pngBuffer,
@@ -25,6 +30,10 @@ export function packStreamPngFrame({
   header.writeUInt16BE(Math.min(65535, Math.max(0, contentRect?.x || 0)), 12);
   header.writeUInt16BE(Math.min(65535, Math.max(0, contentRect?.y || 0)), 14);
   return Buffer.concat([header, pngBuffer]);
+}
+
+function isRemoteSessionId(sessionId) {
+  return isPveTargetId(sessionId) || isVncTargetId(sessionId);
 }
 
 export function createUuPreviewService({ uuService, ensureProviderBus = async () => null, nowFn = Date.now } = {}) {
@@ -157,6 +166,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
 
   async function captureFrame(args = {}, context = {}) {
     await ensureProviderBus(context);
+    const started = nowFn();
     try {
       const shot = await uuService.controlSession(
         {
@@ -166,13 +176,22 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
           maxHeight: args.maxHeight ?? 800,
           autoTrimBlackBars: args.autoTrimBlackBars,
           remoteAspect: args.remoteAspect,
+          overlay: args.overlay,
         },
         context,
       );
+      const capInfo = typeof uuService.getSessionTransportAndCapabilities === 'function'
+        ? await uuService.getSessionTransportAndCapabilities(shot.sessionId).catch(() => null)
+        : null;
       return {
         ok: true,
         sessionId: shot.sessionId,
         label: shot.label,
+        transport: shot.transport || capInfo?.transport || 'uu-win32',
+        capabilities: capInfo?.capabilities || undefined,
+        captureMs: Math.max(0, Math.round(nowFn() - started)),
+        screenshotId: shot.screenshotId,
+        frameHash: shot.frameHash,
         mimeType: shot.mimeType,
         dataUrl: `data:${shot.mimeType};base64,${shot.imageBase64}`,
         imageSize: shot.imageSize,
@@ -234,6 +253,65 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
           context,
         );
       }
+      if (kind === 'connectPve') {
+        const res = await uuService.launchAction(
+          {
+            action: 'connect',
+            pveHost: input.pveHost,
+            vmid: input.vmid,
+            label: input.label,
+          },
+          context,
+        );
+        nudgeStreams(res.sessionId || null, 25);
+        return res;
+      }
+      if (kind === 'connectVnc') {
+        const res = await uuService.launchAction(
+          {
+            action: 'connect',
+            vncHost: input.vncHost,
+            vncPort: input.vncPort,
+            vncPassword: input.vncPassword,
+            sshHost: input.sshHost,
+            label: input.label,
+          },
+          context,
+        );
+        nudgeStreams(res.sessionId || null, 25);
+        return res;
+      }
+      if (kind === 'disconnectTarget') {
+        const targetId = input.sessionId || input.deviceId;
+        const res = await uuService.launchAction(
+          { action: 'disconnect', deviceId: targetId },
+          context,
+        );
+        return res;
+      }
+      if (kind === 'clipboardGet') {
+        return await uuService.controlSession(
+          {
+            sessionId: input.sessionId,
+            action: 'clipboard_get',
+            observeAfter: false,
+            overrideHumanTakeover: true,
+          },
+          context,
+        );
+      }
+      if (kind === 'clipboardSet') {
+        return await uuService.controlSession(
+          {
+            sessionId: input.sessionId,
+            action: 'clipboard_set',
+            text: input.text,
+            observeAfter: false,
+            overrideHumanTakeover: true,
+          },
+          context,
+        );
+      }
       if (kind === 'restore' || kind === 'focus') {
         const res = await uuService.controlSession(
           {
@@ -292,6 +370,25 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
           },
           context,
         );
+        if (fromHumanPanel && typeof uuService.recordHumanPanelAction === 'function') {
+          uuService.recordHumanPanelAction(res.sessionId || input.sessionId, {
+            kind: input.subAction === 'paste' ? 'paste' : normalizedSubAction,
+            x: input.x,
+            y: input.y,
+            startX: input.startX,
+            startY: input.startY,
+            endX: input.endX,
+            endY: input.endY,
+            button: input.button,
+            count: input.count,
+            deltaX: input.deltaX,
+            deltaY: input.deltaY,
+            text: input.text,
+            submit: input.submit,
+            key: input.key,
+            keys: input.keys,
+          });
+        }
         nudgeStreams(res.sessionId || input.sessionId, 35);
         return res;
       }
@@ -310,18 +407,31 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
     let targetSessionId = args?.sessionId || null;
     let maxWidth = Math.max(320, Math.min(2560, Number(args?.maxWidth) || 1280));
     let maxHeight = Math.max(240, Math.min(1600, Number(args?.maxHeight) || 900));
-    let fps = Math.max(1, Math.min(20, Number(args?.fps) || 10));
+    let fps = Math.max(1, Math.min(20, Number(args?.fps) || 12));
     let paused = false;
     let forceSingleFrame = false;
+    let dirtySinceLastFrame = true;
     let closed = false;
     let timer = null;
     let inFlight = false;
+
+    let lastSentFrameHash = null;
+    let lastFrameSentAtMs = 0;
+    let lastTelemetryAtMs = 0;
+    let lastMeta = {
+      transport: 'uu-win32',
+      width: 0,
+      height: 0,
+      takeoverActive: false,
+      capabilities: null,
+    };
 
     const topo = await uuService.inspectTopology(context?.settings ?? {}, context);
     const initialSession = await uuService.resolveTargetSession(targetSessionId, topo, context);
     targetSessionId = initialSession.id;
     let cachedSession = initialSession;
     let lastTopoAt = nowFn();
+    let unsubscribeRfb = null;
 
     const scheduleNext = (delayMs) => {
       if (closed) return;
@@ -329,8 +439,31 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
         clearTimeout(timer);
         timer = null;
       }
-      timer = setTimeout(pumpFrame, delayMs);
+      timer = setTimeout(pumpFrame, Math.max(5, Math.round(delayMs)));
       timer.unref?.();
+    };
+
+    const emitTelemetry = (payload) => {
+      if (closed) return;
+      lastTelemetryAtMs = nowFn();
+      streamSession.sendText?.(JSON.stringify({ type: 'telemetry', ...payload }));
+    };
+
+    const bindRfbSubscription = (sid) => {
+      if (unsubscribeRfb) {
+        try { unsubscribeRfb(); } catch {}
+        unsubscribeRfb = null;
+      }
+      if (!sid || typeof uuService.subscribeSessionUpdates !== 'function') return;
+      unsubscribeRfb = uuService.subscribeSessionUpdates(sid, () => {
+        if (closed) return;
+        dirtySinceLastFrame = true;
+        if (!paused && !inFlight) {
+          const intervalMs = Math.round(1000 / Math.max(1, fps));
+          const elapsed = nowFn() - lastFrameSentAtMs;
+          scheduleNext(Math.max(5, intervalMs - elapsed));
+        }
+      });
     };
 
     const subscriber = {
@@ -338,6 +471,10 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
         if (closed) return;
         closed = true;
         activeStreams.delete(subscriber);
+        if (unsubscribeRfb) {
+          try { unsubscribeRfb(); } catch {}
+          unsubscribeRfb = null;
+        }
         if (timer) {
           clearTimeout(timer);
           timer = null;
@@ -347,12 +484,14 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
         if (closed) return;
         if (sessionId && targetSessionId && sessionId !== targetSessionId) return;
         forceSingleFrame = true;
+        dirtySinceLastFrame = true;
         if (!inFlight) {
           scheduleNext(Math.max(10, delayMs));
         }
       },
     };
     activeStreams.add(subscriber);
+    bindRfbSubscription(targetSessionId);
 
     streamSession.onClose?.(subscriber.stop);
     streamSession.signal?.addEventListener?.('abort', subscriber.stop, { once: true });
@@ -370,6 +509,10 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
           targetSessionId = String(msg.sessionId);
           cachedSession = null;
           lastTopoAt = 0;
+          lastSentFrameHash = null;
+          dirtySinceLastFrame = true;
+          bindRfbSubscription(targetSessionId);
+          if (!paused && !inFlight) scheduleNext(15);
         }
         if (Number.isFinite(msg.maxWidth)) maxWidth = Math.max(320, Math.min(2560, msg.maxWidth));
         if (Number.isFinite(msg.maxHeight)) maxHeight = Math.max(240, Math.min(1600, msg.maxHeight));
@@ -413,32 +556,115 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
 
       inFlight = true;
       const started = nowFn();
+      const isRemote = isRemoteSessionId(targetSessionId);
+      const usingRfbPush = Boolean(
+        cachedSession &&
+        (cachedSession.transport === 'pve-rfb' || cachedSession.transport === 'rfb') &&
+        lastSentFrameHash !== null,
+      );
+
+      // Event-driven RFB idle path: skip PNG encoding completely when no dirty rect arrived;
+      // emit a lightweight telemetry heartbeat every 2s instead.
+      if (usingRfbPush && !dirtySinceLastFrame && !runForced) {
+        inFlight = false;
+        if (nowFn() - lastTelemetryAtMs >= TELEMETRY_HEARTBEAT_MS) {
+          const capInfo = typeof uuService.getSessionTransportAndCapabilities === 'function'
+            ? await uuService.getSessionTransportAndCapabilities(targetSessionId).catch(() => null)
+            : null;
+          emitTelemetry({
+            unchanged: true,
+            sessionId: targetSessionId,
+            transport: capInfo?.transport || lastMeta.transport,
+            captureMs: 0,
+            width: lastMeta.width,
+            height: lastMeta.height,
+            capabilities: capInfo?.capabilities || lastMeta.capabilities,
+            takeoverActive: lastMeta.takeoverActive,
+          });
+        }
+        scheduleNext(Math.min(TELEMETRY_HEARTBEAT_MS, Math.max(250, TELEMETRY_HEARTBEAT_MS - (nowFn() - lastTelemetryAtMs))));
+        return;
+      }
+
+      dirtySinceLastFrame = false;
+
       try {
         let session = cachedSession;
         const needTopoRefresh = !session
           || session.id !== targetSessionId
           || session.state !== 'active'
-          || started - lastTopoAt >= STREAM_TOPO_REFRESH_MS;
+          || (!isRemote && started - lastTopoAt >= STREAM_TOPO_REFRESH_MS);
         if (needTopoRefresh) {
           const curTopo = await uuService.inspectTopology(context?.settings ?? {}, context);
           session = await uuService.resolveTargetSession(targetSessionId, curTopo, context);
           cachedSession = session;
           lastTopoAt = nowFn();
+          bindRfbSubscription(session.id);
         }
+
         if (session.state === 'active') {
           const obs = await uuService.observeSession(
             session,
             { maxWidth, maxHeight, pngCompressionLevel: 1 },
             context,
           );
+          const captureMs = Math.max(0, Math.round(nowFn() - started));
+          const frameHash = obs.frameHash || hashPngOrSample(obs.pngBuffer);
+          const transport = obs.transport || session.transport || 'uu-win32';
+          if (cachedSession && cachedSession.transport !== transport) {
+            cachedSession = { ...cachedSession, transport };
+            bindRfbSubscription(session.id);
+          }
+
+          const capInfo = typeof uuService.getSessionTransportAndCapabilities === 'function'
+            ? await uuService.getSessionTransportAndCapabilities(session.id).catch(() => null)
+            : null;
+          const capabilities = capInfo?.capabilities || null;
+
+          lastMeta = {
+            transport,
+            width: obs.logicalSize.width,
+            height: obs.logicalSize.height,
+            takeoverActive: Boolean(obs.takeoverActive),
+            capabilities,
+          };
+
           if (!closed) {
-            const packet = packStreamPngFrame(obs);
-            const sent = streamSession.sendBinary(packet);
-            if (sent === false) {
-              // Backpressure signaled by host; yield an extra frame interval.
-              inFlight = false;
-              scheduleNext(intervalMs * 2);
-              return;
+            if (lastSentFrameHash && frameHash === lastSentFrameHash) {
+              // Unchanged frame: skip binary PNG; send lightweight telemetry every 2s.
+              if (nowFn() - lastTelemetryAtMs >= TELEMETRY_HEARTBEAT_MS) {
+                emitTelemetry({
+                  unchanged: true,
+                  sessionId: session.id,
+                  transport,
+                  captureMs,
+                  width: obs.logicalSize.width,
+                  height: obs.logicalSize.height,
+                  capabilities,
+                  takeoverActive: Boolean(obs.takeoverActive),
+                });
+              }
+            } else {
+              const packet = packStreamPngFrame(obs);
+              const sent = streamSession.sendBinary(packet);
+              if (sent === false) {
+                inFlight = false;
+                dirtySinceLastFrame = true;
+                scheduleNext(intervalMs * 2);
+                return;
+              }
+              lastSentFrameHash = frameHash;
+              lastFrameSentAtMs = nowFn();
+              emitTelemetry({
+                unchanged: false,
+                sessionId: session.id,
+                transport,
+                captureMs,
+                width: obs.logicalSize.width,
+                height: obs.logicalSize.height,
+                capabilities,
+                takeoverActive: Boolean(obs.takeoverActive),
+              });
             }
           }
         } else if (!closed) {
@@ -453,6 +679,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
       } catch (error) {
         cachedSession = null;
         lastTopoAt = 0;
+        dirtySinceLastFrame = true;
         if (!closed) {
           streamSession.sendText?.(
             JSON.stringify({
@@ -466,7 +693,12 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
       }
 
       const elapsed = nowFn() - started;
-      scheduleNext(Math.max(25, intervalMs - elapsed));
+      const isActiveRfbPush = cachedSession && (cachedSession.transport === 'pve-rfb' || cachedSession.transport === 'rfb');
+      if (isActiveRfbPush && !dirtySinceLastFrame) {
+        scheduleNext(TELEMETRY_HEARTBEAT_MS);
+      } else {
+        scheduleNext(Math.max(25, intervalMs - elapsed));
+      }
     };
 
     scheduleNext(10);
@@ -475,6 +707,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
       protocol: 'uu-png-stream-v1',
       sessionId: initialSession.id,
       label: initialSession.label,
+      transport: initialSession.transport || 'uu-win32',
       width: initialSession.canvasBounds.width,
       height: initialSession.canvasBounds.height,
     };

@@ -15,6 +15,7 @@ export function normalizeSessionId(value) {
   if (!text) return '';
   if (/^uu:\d+$/i.test(text)) return `uu:${text.slice(3)}`;
   if (/^pve:/i.test(text)) return `pve:${text.slice(4)}`;
+  if (/^vnc:/i.test(text)) return `vnc:${text.slice(4)}`;
   if (/^\d+$/.test(text)) return `uu:${text}`;
   return text;
 }

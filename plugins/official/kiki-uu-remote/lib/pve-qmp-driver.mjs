@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { gunzipSync } from 'node:zlib';
+import { mapPointToTarget } from './frame-math.mjs';
 import { encodePng } from './png-codec.mjs';
 
 const PVE_HOST_RE = /^[A-Za-z0-9._-]+$/;
@@ -8,12 +9,21 @@ const PVE_VMID_RE = /^[1-9]\d{0,8}$/;
 const PVE_PREFIX_RE = /^pve:/i;
 const WORKER_IDLE_TTL_MS = 60_000;
 const DEFAULT_RPC_TIMEOUT_MS = 15_000;
+const DEFAULT_STATUS_CACHE_TTL_MS = 5_000;
 const QMP_ABS_MAX = 32767;
+const MAX_QGA_CLIPBOARD_BYTES = 2 * 1024 * 1024;
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export const REMOTE_PYTHON_BRIDGE = `
-import base64, gzip, json, os, socket, subprocess, sys, time
+import base64, gzip, hashlib, json, os, re, socket, subprocess, sys, time
+
+B64_RE = re.compile(r"^[A-Za-z0-9+/=]*$")
+
+def choose_tmp_dir():
+    if os.path.isdir("/dev/shm") and os.access("/dev/shm", os.W_OK):
+        return "/dev/shm"
+    return "/tmp"
 
 def parse_ppm_dims(head):
     tokens = []
@@ -91,6 +101,8 @@ def handle_status(req):
     running = vm_status == "running"
     width = None
     height = None
+    vdagent_configured = False
+    vdagent_connected = False
 
     if running or os.path.exists(f"/var/run/qemu-server/{vmid}.qmp"):
         s = None
@@ -106,8 +118,22 @@ def handle_status(req):
             nm = qmp_exec(f, "query-name") or {}
             if isinstance(nm, dict) and nm.get("name"):
                 vm_name = str(nm["name"])
+            try:
+                chardevs = qmp_exec(f, "query-chardev") or []
+                if isinstance(chardevs, list):
+                    for dev in chardevs:
+                        if not isinstance(dev, dict):
+                            continue
+                        fname = str(dev.get("filename") or "").lower()
+                        lbl = str(dev.get("label") or "").lower()
+                        if "vdagent" in fname or "vdagent" in lbl or "spicevmc" in fname or "spicevmc" in lbl:
+                            vdagent_configured = True
+                            if bool(dev.get("frontend-open")):
+                                vdagent_connected = True
+            except Exception:
+                pass
             if running and req.get("probeResolution"):
-                tmp_path = f"/tmp/kiki_pve_{vmid}_{os.getpid()}_dim.ppm"
+                tmp_path = f"{choose_tmp_dir()}/kiki_pve_{vmid}_{os.getpid()}_dim.ppm"
                 qmp_exec(f, "screendump", {"filename": tmp_path})
                 with open(tmp_path, "rb") as pf:
                     dims = parse_ppm_dims(pf.read(160))
@@ -137,11 +163,14 @@ def handle_status(req):
         "vmName": vm_name,
         "width": width,
         "height": height,
+        "vdagentConfigured": vdagent_configured,
+        "vdagentConnected": vdagent_connected,
     }
 
 def handle_screendump(req):
     vmid = int(req["vmid"])
-    tmp_path = f"/tmp/kiki_pve_{vmid}_{os.getpid()}.ppm"
+    last_hash = req.get("lastHash")
+    tmp_path = f"{choose_tmp_dir()}/kiki_pve_{vmid}_{os.getpid()}.ppm"
     s = None
     try:
         s, f = qmp_open(vmid, timeout=6.0)
@@ -150,8 +179,18 @@ def handle_screendump(req):
         s = None
         with open(tmp_path, "rb") as pf:
             raw = pf.read()
+        ppm_hash = hashlib.sha256(raw).hexdigest()
+        if isinstance(last_hash, str) and last_hash and last_hash == ppm_hash:
+            return {
+                "unchanged": True,
+                "hash": ppm_hash,
+                "rawBytes": len(raw),
+                "compressedBytes": 0,
+            }
         gz = gzip.compress(raw, compresslevel=1)
         return {
+            "unchanged": False,
+            "hash": ppm_hash,
             "encoding": "ppm-gzip-base64",
             "data": base64.b64encode(gz).decode("ascii"),
             "rawBytes": len(raw),
@@ -192,6 +231,87 @@ def handle_qmp_batch(req):
             except OSError:
                 pass
 
+def handle_qga_probe(req):
+    vmid = int(req["vmid"])
+    sock_exists = os.path.exists(f"/var/run/qemu-server/{vmid}.qga")
+    available = False
+    os_type = "unknown"
+    try:
+        proc = subprocess.run(["qm", "agent", str(vmid), "ping"], capture_output=True, text=True, timeout=3)
+        available = proc.returncode == 0
+    except Exception:
+        available = False
+    if available:
+        try:
+            info = subprocess.run(["qm", "agent", str(vmid), "get-osinfo"], capture_output=True, text=True, timeout=3)
+            if info.returncode == 0 and info.stdout:
+                low = info.stdout.lower()
+                if "windows" in low or "mswindows" in low:
+                    os_type = "windows"
+                elif "linux" in low or "ubuntu" in low or "debian" in low or "fedora" in low or "arch" in low:
+                    os_type = "linux"
+        except Exception:
+            pass
+    return {"available": available, "socketExists": sock_exists, "osType": os_type}
+
+def parse_guest_exec_output(proc):
+    if proc.returncode != 0:
+        raise RuntimeError((proc.stderr or proc.stdout or f"qm guest exec exited {proc.returncode}").strip())
+    raw = (proc.stdout or "").strip()
+    if not raw:
+        return {"exitcode": 0, "out-data": ""}
+    data = json.loads(raw)
+    if int(data.get("exitcode", 0)) != 0:
+        err_msg = data.get("err-data") or f"guest exec exitcode={data.get('exitcode')}"
+        raise RuntimeError(str(err_msg).strip())
+    return data
+
+def handle_qga_clipboard_set(req):
+    vmid = int(req["vmid"])
+    text_b64 = str(req.get("textB64") or "")
+    if not B64_RE.match(text_b64):
+        raise RuntimeError("Invalid base64 clipboard payload")
+    os_type = str(req.get("osType") or "linux").lower()
+    if os_type == "windows":
+        ps = (
+            "Add-Type -AssemblyName System.Windows.Forms;"
+            f"$t=[System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{text_b64}'));"
+            "if([string]::IsNullOrEmpty($t)){[System.Windows.Forms.Clipboard]::Clear()}"
+            "else{[System.Windows.Forms.Clipboard]::SetText($t)}"
+        )
+        ps_b64 = base64.b64encode(ps.encode("utf-16le")).decode("ascii")
+        cmd = ["qm", "guest", "exec", str(vmid), "--", "powershell.exe", "-NoProfile", "-NonInteractive", "-STA", "-EncodedCommand", ps_b64]
+    else:
+        cmd = [
+            "qm", "guest", "exec", str(vmid), "--", "sh", "-c",
+            'printf %s "$1" | base64 -d | (wl-copy 2>/dev/null || xclip -selection clipboard 2>/dev/null || xsel --clipboard --input)',
+            "--", text_b64,
+        ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+    parse_guest_exec_output(proc)
+    return {"ok": True}
+
+def handle_qga_clipboard_get(req):
+    vmid = int(req["vmid"])
+    os_type = str(req.get("osType") or "linux").lower()
+    if os_type == "windows":
+        ps = (
+            "Add-Type -AssemblyName System.Windows.Forms;"
+            "$t='';if([System.Windows.Forms.Clipboard]::ContainsText()){$t=[System.Windows.Forms.Clipboard]::GetText()};"
+            "[Console]::Out.Write([Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($t)))"
+        )
+        ps_b64 = base64.b64encode(ps.encode("utf-16le")).decode("ascii")
+        cmd = ["qm", "guest", "exec", str(vmid), "--", "powershell.exe", "-NoProfile", "-NonInteractive", "-STA", "-EncodedCommand", ps_b64]
+    else:
+        cmd = [
+            "qm", "guest", "exec", str(vmid), "--", "sh", "-c",
+            '(wl-paste -n 2>/dev/null || xclip -o -selection clipboard 2>/dev/null || xsel --clipboard --output) | base64 -w0',
+        ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+    data = parse_guest_exec_output(proc)
+    out_b64 = str(data.get("out-data") or "").strip().replace("\\n", "").replace("\\r", "")
+    return {"textB64": out_b64}
+
 for raw_line in sys.stdin:
     line = raw_line.strip()
     if not line:
@@ -207,6 +327,12 @@ for raw_line in sys.stdin:
             res = handle_screendump(req)
         elif op == "qmp_batch":
             res = handle_qmp_batch(req)
+        elif op == "qga_probe":
+            res = handle_qga_probe(req)
+        elif op == "qga_clipboard_set":
+            res = handle_qga_clipboard_set(req)
+        elif op == "qga_clipboard_get":
+            res = handle_qga_clipboard_get(req)
         elif op == "ping":
             res = {"pong": True}
         else:
@@ -393,71 +519,39 @@ export function ppmToPngBuffer(ppmBytes, { level = 3 } = {}) {
 
 /**
  * Convert coordinate in coordinateMode space into QEMU USB Tablet absolute coordinates [0..32767]
- * plus logical pixel/normalized_1000 readouts.
+ * plus logical pixel/normalized_1000 readouts. Delegates to frame-math.mjs mapPointToTarget (Frame Audit B2).
  */
 export function mapPointToQmpAbs({
   x,
   y,
   coordinateMode = 'normalized_1000',
+  zoomRelative = false,
   screenSize = { width: 1024, height: 768 },
   lastObservation = null,
 }) {
   const width = Math.max(1, Math.round(Number(screenSize?.width) || 1024));
   const height = Math.max(1, Math.round(Number(screenSize?.height) || 768));
-  const numX = Number(x);
-  const numY = Number(y);
-  if (!Number.isFinite(numX) || !Number.isFinite(numY)) {
-    throw new Error(`Invalid coordinates: x=${String(x)}, y=${String(y)}`);
-  }
+  const bounds = { x: 0, y: 0, width, height };
+  const mapped = mapPointToTarget({
+    x,
+    y,
+    coordinateMode,
+    zoomRelative,
+    stageBounds: bounds,
+    contentRect: bounds,
+    lastObservation,
+  });
 
-  let norm01X;
-  let norm01Y;
-
-  switch (coordinateMode) {
-    case 'normalized_1000':
-      norm01X = clamp(numX, 0, 1000) / 1000;
-      norm01Y = clamp(numY, 0, 1000) / 1000;
-      break;
-    case 'normalized_01':
-      norm01X = clamp(numX, 0, 1);
-      norm01Y = clamp(numY, 0, 1);
-      break;
-    case 'image_pixels': {
-      if (lastObservation?.imageSize?.width > 0 && lastObservation?.imageSize?.height > 0) {
-        const base = lastObservation.cropBounds || { x: 0, y: 0, width, height };
-        const rx = clamp(numX / lastObservation.imageSize.width, 0, 1);
-        const ry = clamp(numY / lastObservation.imageSize.height, 0, 1);
-        const px = clamp(base.x + rx * base.width, 0, Math.max(0, width - 1));
-        const py = clamp(base.y + ry * base.height, 0, Math.max(0, height - 1));
-        norm01X = width > 1 ? px / (width - 1) : 0;
-        norm01Y = height > 1 ? py / (height - 1) : 0;
-      } else {
-        norm01X = width > 1 ? clamp(numX, 0, width - 1) / (width - 1) : 0;
-        norm01Y = height > 1 ? clamp(numY, 0, height - 1) / (height - 1) : 0;
-      }
-      break;
-    }
-    case 'target_pixels':
-    default:
-      norm01X = width > 1 ? clamp(numX, 0, width - 1) / (width - 1) : 0;
-      norm01Y = height > 1 ? clamp(numY, 0, height - 1) / (height - 1) : 0;
-      break;
-  }
-
-  const absX = clamp(Math.round(norm01X * QMP_ABS_MAX), 0, QMP_ABS_MAX);
-  const absY = clamp(Math.round(norm01Y * QMP_ABS_MAX), 0, QMP_ABS_MAX);
-  const targetX = width <= 1 ? 0 : clamp(Math.round(norm01X * (width - 1)), 0, width - 1);
-  const targetY = height <= 1 ? 0 : clamp(Math.round(norm01Y * (height - 1)), 0, height - 1);
-  const normX = clamp(Math.round(norm01X * 1000), 0, 1000);
-  const normY = clamp(Math.round(norm01Y * 1000), 0, 1000);
+  const absX = clamp(Math.round(mapped.norm01X * QMP_ABS_MAX), 0, QMP_ABS_MAX);
+  const absY = clamp(Math.round(mapped.norm01Y * QMP_ABS_MAX), 0, QMP_ABS_MAX);
 
   return {
-    x: targetX,
-    y: targetY,
-    normX,
-    normY,
-    norm01X,
-    norm01Y,
+    x: mapped.x,
+    y: mapped.y,
+    normX: mapped.normX,
+    normY: mapped.normY,
+    norm01X: mapped.norm01X,
+    norm01Y: mapped.norm01Y,
     absX,
     absY,
   };
@@ -639,6 +733,9 @@ export function normalizeQmpKeyChord(keysOrKey) {
     if (!str) throw new Error('QMP key chord string cannot be empty.');
     if (str === '+') {
       rawTokens = ['+'];
+    } else if (str.endsWith('++')) {
+      const prefix = str.slice(0, -2).split('+').map((p) => p.trim()).filter(Boolean);
+      rawTokens = [...prefix, '+'];
     } else {
       rawTokens = str
         .split('+')
@@ -724,6 +821,7 @@ export function buildQmpSendKeyStep(qcodes, holdTimeMs = 40) {
  */
 export function buildQmpStepsForAction(item, {
   coordinateMode = 'normalized_1000',
+  zoomRelative = false,
   screenSize = { width: 1024, height: 768 },
   lastObservation = null,
 } = {}) {
@@ -731,7 +829,7 @@ export function buildQmpStepsForAction(item, {
   const steps = [];
 
   if (kind === 'move') {
-    const pt = mapPointToQmpAbs({ x: item.x, y: item.y, coordinateMode, screenSize, lastObservation });
+    const pt = mapPointToQmpAbs({ x: item.x, y: item.y, coordinateMode, zoomRelative, screenSize, lastObservation });
     steps.push(buildQmpMoveStep(pt.absX, pt.absY));
     return { steps, point: pt, meta: { kind: 'move' } };
   }
@@ -752,7 +850,7 @@ export function buildQmpStepsForAction(item, {
 
     let pt = null;
     if (item.x !== undefined && item.y !== undefined) {
-      pt = mapPointToQmpAbs({ x: item.x, y: item.y, coordinateMode, screenSize, lastObservation });
+      pt = mapPointToQmpAbs({ x: item.x, y: item.y, coordinateMode, zoomRelative, screenSize, lastObservation });
       steps.push(buildQmpMoveStep(pt.absX, pt.absY));
       steps.push({ op: 'sleep', ms: 16 });
     }
@@ -795,6 +893,7 @@ export function buildQmpStepsForAction(item, {
       x: item.startX,
       y: item.startY,
       coordinateMode,
+      zoomRelative,
       screenSize,
       lastObservation,
     });
@@ -802,6 +901,7 @@ export function buildQmpStepsForAction(item, {
       x: item.endX,
       y: item.endY,
       coordinateMode,
+      zoomRelative,
       screenSize,
       lastObservation,
     });
@@ -834,7 +934,7 @@ export function buildQmpStepsForAction(item, {
   if (kind === 'scroll') {
     let pt = null;
     if (item.x !== undefined && item.y !== undefined) {
-      pt = mapPointToQmpAbs({ x: item.x, y: item.y, coordinateMode, screenSize, lastObservation });
+      pt = mapPointToQmpAbs({ x: item.x, y: item.y, coordinateMode, zoomRelative, screenSize, lastObservation });
       steps.push(buildQmpMoveStep(pt.absX, pt.absY));
       steps.push({ op: 'sleep', ms: 16 });
     }
@@ -934,9 +1034,27 @@ export function createPveQmpDriver({
   hostPlatform = process.platform,
   workerIdleMs = WORKER_IDLE_TTL_MS,
   rpcTimeoutMs = DEFAULT_RPC_TIMEOUT_MS,
+  statusCacheTtlMs = DEFAULT_STATUS_CACHE_TTL_MS,
+  nowFn = Date.now,
 } = {}) {
   const workersByHost = new Map();
+  const statusCacheByKey = new Map();
+  const lastFrameByKey = new Map();
+  const qgaCacheByKey = new Map();
   let reqSeq = 0;
+
+  function clearHostCaches(sshHost) {
+    const prefix = `${sshHost}:`;
+    for (const key of [...statusCacheByKey.keys()]) {
+      if (key.startsWith(prefix)) statusCacheByKey.delete(key);
+    }
+    for (const key of [...lastFrameByKey.keys()]) {
+      if (key.startsWith(prefix)) lastFrameByKey.delete(key);
+    }
+    for (const key of [...qgaCacheByKey.keys()]) {
+      if (key.startsWith(prefix)) qgaCacheByKey.delete(key);
+    }
+  }
 
   function killProcessTree(proc) {
     if (!proc) return;
@@ -957,6 +1075,9 @@ export function createPveQmpDriver({
     const entry = workersByHost.get(sshHost);
     if (!entry) return;
     workersByHost.delete(sshHost);
+    if (reasonError) {
+      clearHostCaches(sshHost);
+    }
     if (entry.idleTimer) {
       clearTimeout(entry.idleTimer);
       entry.idleTimer = null;
@@ -1113,46 +1234,85 @@ export function createPveQmpDriver({
     });
   }
 
-  async function probeStatus(targetOrId, { probeResolution = false, timeoutMs = 10_000, signal } = {}) {
+  function resolveTargetKey(targetOrId) {
     const target = typeof targetOrId === 'string'
       ? parsePveTargetId(targetOrId, { strict: true })
       : { sshHost: assertValidPveHost(targetOrId.sshHost), vmid: assertValidPveVmid(targetOrId.vmid) };
-    return callHost(
-      target.sshHost,
-      { op: 'status', vmid: target.vmid, probeResolution: Boolean(probeResolution) },
-      { timeoutMs, signal },
-    );
+    return { target, key: `${target.sshHost}:${target.vmid}` };
   }
 
-  async function captureScreen(targetOrId, { timeoutMs = 12_000, signal } = {}) {
-    const target = typeof targetOrId === 'string'
-      ? parsePveTargetId(targetOrId, { strict: true })
-      : { sshHost: assertValidPveHost(targetOrId.sshHost), vmid: assertValidPveVmid(targetOrId.vmid) };
+  async function probeStatus(targetOrId, {
+    probeResolution = false,
+    forceRefresh = false,
+    timeoutMs = 10_000,
+    signal,
+  } = {}) {
+    const { target, key } = resolveTargetKey(targetOrId);
+    const cached = statusCacheByKey.get(key);
+    if (
+      !forceRefresh &&
+      statusCacheTtlMs > 0 &&
+      cached &&
+      nowFn() - cached.atMs < statusCacheTtlMs &&
+      (!probeResolution || (cached.value?.width > 0 && cached.value?.height > 0))
+    ) {
+      return cached.value;
+    }
+    try {
+      const value = await callHost(
+        target.sshHost,
+        { op: 'status', vmid: target.vmid, probeResolution: Boolean(probeResolution) },
+        { timeoutMs, signal },
+      );
+      if (statusCacheTtlMs > 0) {
+        statusCacheByKey.set(key, { atMs: nowFn(), value });
+      }
+      return value;
+    } catch (err) {
+      statusCacheByKey.delete(key);
+      throw err;
+    }
+  }
+
+  async function captureScreen(targetOrId, { timeoutMs = 12_000, forceFull = false, signal } = {}) {
+    const { target, key } = resolveTargetKey(targetOrId);
+    const cached = !forceFull ? lastFrameByKey.get(key) : null;
     const res = await callHost(
       target.sshHost,
-      { op: 'screendump', vmid: target.vmid },
+      { op: 'screendump', vmid: target.vmid, ...(cached?.hash ? { lastHash: cached.hash } : {}) },
       { timeoutMs, signal },
     );
+    if (res?.unchanged === true && cached && (!res.hash || res.hash === cached.hash)) {
+      return {
+        ...cached,
+        unchanged: true,
+        compressedBytes: 0,
+      };
+    }
     if (!res || typeof res.data !== 'string') {
       throw new Error(`Empty screendump response from ${target.sshHost}:${target.vmid}`);
     }
     const compressed = Buffer.from(res.data, 'base64');
     const ppmBuffer = res.encoding === 'ppm-gzip-base64' ? gunzipSync(compressed) : compressed;
     const image = parsePpmP6(ppmBuffer);
-    return {
+    const frame = {
       width: image.width,
       height: image.height,
       image,
       stageBounds: { x: 0, y: 0, width: image.width, height: image.height },
+      hash: res.hash || null,
+      unchanged: false,
       rawBytes: res.rawBytes ?? ppmBuffer.length,
       compressedBytes: res.compressedBytes ?? compressed.length,
     };
+    if (frame.hash) {
+      lastFrameByKey.set(key, frame);
+    }
+    return frame;
   }
 
   async function sendQmpSteps(targetOrId, steps, { timeoutMs = 15_000, signal } = {}) {
-    const target = typeof targetOrId === 'string'
-      ? parsePveTargetId(targetOrId, { strict: true })
-      : { sshHost: assertValidPveHost(targetOrId.sshHost), vmid: assertValidPveVmid(targetOrId.vmid) };
+    const { target } = resolveTargetKey(targetOrId);
     if (!Array.isArray(steps) || steps.length === 0) {
       return { executed: 0 };
     }
@@ -1163,11 +1323,89 @@ export function createPveQmpDriver({
     );
   }
 
+  async function releaseAllInputs(targetOrId, { timeoutMs = 6_000, signal } = {}) {
+    const steps = [
+      ...['shift', 'shift_r', 'ctrl', 'ctrl_r', 'alt', 'alt_r', 'meta_l', 'meta_r'].map((q) => buildQmpKeyEventStep(q, false)),
+      ...['left', 'right', 'middle'].map((b) => buildQmpButtonStep(b, false)),
+    ];
+    await sendQmpSteps(targetOrId, steps, { timeoutMs, signal });
+    return { ok: true, released: true };
+  }
+
+  async function probeQga(targetOrId, { forceRefresh = false, timeoutMs = 6_000, signal } = {}) {
+    const { target, key } = resolveTargetKey(targetOrId);
+    if (!forceRefresh && qgaCacheByKey.has(key)) {
+      return qgaCacheByKey.get(key);
+    }
+    try {
+      const res = await callHost(
+        target.sshHost,
+        { op: 'qga_probe', vmid: target.vmid },
+        { timeoutMs, signal },
+      );
+      const normalized = {
+        available: Boolean(res?.available),
+        socketExists: Boolean(res?.socketExists),
+        osType: String(res?.osType || 'unknown'),
+      };
+      qgaCacheByKey.set(key, normalized);
+      return normalized;
+    } catch {
+      const fallback = { available: false, socketExists: false, osType: 'unknown' };
+      qgaCacheByKey.set(key, fallback);
+      return fallback;
+    }
+  }
+
+  async function qgaClipboardSet(targetOrId, text, { osType, timeoutMs = 10_000, signal } = {}) {
+    const { target, key } = resolveTargetKey(targetOrId);
+    const str = String(text ?? '');
+    const byteLen = Buffer.byteLength(str, 'utf8');
+    if (byteLen > MAX_QGA_CLIPBOARD_BYTES) {
+      throw new Error(`Clipboard payload (${byteLen} bytes) exceeds 2 MiB limit.`);
+    }
+    const cachedQga = qgaCacheByKey.get(key) || await probeQga(target, { signal });
+    if (!cachedQga.available) {
+      throw Object.assign(new Error(`QEMU Guest Agent is unavailable on ${target.sshHost}:${target.vmid}.`), {
+        code: 'unicode_input_unsupported',
+      });
+    }
+    const textB64 = Buffer.from(str, 'utf8').toString('base64');
+    await callHost(
+      target.sshHost,
+      { op: 'qga_clipboard_set', vmid: target.vmid, textB64, osType: osType || cachedQga.osType || 'linux' },
+      { timeoutMs, signal },
+    );
+    return { ok: true, length: str.length, mode: 'qga_guest_exec' };
+  }
+
+  async function qgaClipboardGet(targetOrId, { osType, timeoutMs = 10_000, signal } = {}) {
+    const { target, key } = resolveTargetKey(targetOrId);
+    const cachedQga = qgaCacheByKey.get(key) || await probeQga(target, { signal });
+    if (!cachedQga.available) {
+      throw Object.assign(new Error(`QEMU Guest Agent is unavailable on ${target.sshHost}:${target.vmid}.`), {
+        code: 'unicode_input_unsupported',
+      });
+    }
+    const res = await callHost(
+      target.sshHost,
+      { op: 'qga_clipboard_get', vmid: target.vmid, osType: osType || cachedQga.osType || 'linux' },
+      { timeoutMs, signal },
+    );
+    const text = res?.textB64 ? Buffer.from(String(res.textB64), 'base64').toString('utf8') : '';
+    return { ok: true, text };
+  }
+
   async function disconnectHost(sshHost) {
-    teardownHostWorker(assertValidPveHost(sshHost));
+    const host = assertValidPveHost(sshHost);
+    clearHostCaches(host);
+    teardownHostWorker(host);
   }
 
   async function dispose() {
+    statusCacheByKey.clear();
+    lastFrameByKey.clear();
+    qgaCacheByKey.clear();
     for (const host of [...workersByHost.keys()]) {
       teardownHostWorker(host);
     }
@@ -1177,6 +1415,10 @@ export function createPveQmpDriver({
     probeStatus,
     captureScreen,
     sendQmpSteps,
+    releaseAllInputs,
+    probeQga,
+    qgaClipboardSet,
+    qgaClipboardGet,
     disconnectHost,
     dispose,
   };

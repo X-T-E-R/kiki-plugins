@@ -2,7 +2,7 @@ export const uuStatusTool = {
   schemaVersion: 1,
   name: 'uu_status',
   description:
-    'Detect local NetEase UU Remote (GameViewer & uuyc-cli) installation, running client/service processes, uuremote:// URI registration, official uuyc-cli diagnostics, registered Proxmox VE QMP VM targets, CUA Provider Bus lease status, and active remote desktop session summary.',
+    'Detect local NetEase UU Remote (GameViewer & uuyc-cli) installation, running client/service processes, uuremote:// URI registration, official uuyc-cli diagnostics, registered Proxmox VE VM (RFB/QMP) and direct VNC targets, CUA Provider Bus lease status, and active remote desktop session summary.',
   parameters: {
     type: 'object',
     properties: {
@@ -24,7 +24,7 @@ export const uuSessionsTool = {
   schemaVersion: 1,
   name: 'uu_sessions',
   description:
-    'List open UU Remote streaming windows (uu:<hwnd>) and registered Proxmox VE QMP VMs (pve:<ssh_host>:<vmid>) with live status, resolution, contentRect, and takeover state alongside paired uuyc-cli devices; select default session; or toggle Human Takeover.',
+    'List open UU Remote windows (uu:<hwnd>), registered Proxmox VE VMs (pve:<ssh_host>:<vmid>), and direct/tunneled VNC sessions (vnc:<host>:<port>) with transport, live status, resolution, contentRect, takeover state, and lastHumanSummary alongside paired uuyc-cli devices; select default session; or toggle Human Takeover.',
   parameters: {
     type: 'object',
     properties: {
@@ -32,11 +32,11 @@ export const uuSessionsTool = {
         type: 'string',
         enum: ['list', 'select', 'takeover'],
         default: 'list',
-        description: 'List sessions and paired devices, select default uu:<hwnd> or pve:<ssh_host>:<vmid> session, or toggle Human Takeover lock.',
+        description: 'List sessions and paired devices, select default uu:<hwnd>, pve:<ssh_host>:<vmid>, or vnc:<host>:<port> session, or toggle Human Takeover lock.',
       },
       sessionId: {
         type: 'string',
-        description: 'Target session ID (uu:<hwnd> or pve:<ssh_host>:<vmid>) for select or takeover.',
+        description: 'Target session ID (uu:<hwnd>, pve:<ssh_host>:<vmid>, or vnc:<host>:<port>) for select or takeover.',
       },
       active: {
         type: 'boolean',
@@ -137,13 +137,13 @@ export const uuControlTool = {
   schemaVersion: 1,
   name: 'uu_control',
   description:
-    'Observe a zero-focus screenshot (with symmetric black-bar trim and optional zoom crop) or inject mouse, keyboard, clipboard, focus, or restore actions into an active UU Remote (uu:<hwnd>) or Proxmox VE QMP (pve:<ssh_host>:<vmid>) session. Honors Human Takeover.',
+    'Observe a screenshot (with symmetric black-bar trim, optional zoom crop, and opt-in grid overlay) or inject coalesced mouse, keyboard, clipboard, focus, or restore actions into an active UU Remote (uu:<hwnd>), Proxmox VE VM (pve:<ssh_host>:<vmid>), or VNC (vnc:<host>:<port>) session. Honors Human Takeover.',
   parameters: {
     type: 'object',
     properties: {
       sessionId: {
         type: 'string',
-        description: 'Target session ID (uu:<hwnd> or pve:<ssh_host>:<vmid>). Defaults to the selected or sole active session.',
+        description: 'Target session ID (uu:<hwnd>, pve:<ssh_host>:<vmid>, or vnc:<host>:<port>). Defaults to the selected or sole active session.',
       },
       action: {
         type: 'string',
@@ -237,6 +237,37 @@ export const uuControlTool = {
         ...zoomRectSchema,
         description: 'Optional crop region in coordinateMode units extracted at native stream resolution before scaling.',
       },
+      zoomRelative: {
+        type: 'boolean',
+        default: false,
+        description: 'Interpret action coordinates relative to the last zoomed cropBounds (matching kiki-cua semantics).',
+      },
+      overlay: {
+        type: 'string',
+        enum: ['none', 'grid'],
+        default: 'none',
+        description: 'Opt-in visual overlay drawn on returned screenshots ("grid" draws 0..1000 coordinate ticks).',
+      },
+      settleMs: {
+        type: 'integer',
+        minimum: 0,
+        maximum: 10000,
+        description: 'Maximum milliseconds to wait for post-action screen settle before capturing observeAfter.',
+      },
+      waitForSettle: {
+        type: 'boolean',
+        default: true,
+        description: 'Wait for screen updates to settle before capturing the post-action screenshot.',
+      },
+      screenshotId: {
+        type: 'string',
+        description: 'Optional screenshotId from a prior observation; fails closed with capture_geometry_mismatch if target geometry changed.',
+      },
+      dedupeUnchanged: {
+        type: 'boolean',
+        default: false,
+        description: 'Opt-in unchanged-frame suppression (omits identical PNG bytes up to 2 consecutive times before forcing a fresh image).',
+      },
       maxWidth: {
         type: 'integer',
         minimum: 64,
@@ -284,7 +315,7 @@ export const uuLaunchTool = {
   schemaVersion: 1,
   name: 'uu_launch',
   description:
-    'Open the NetEase UU Remote desktop client, connect or disconnect a paired uuyc-cli device or Proxmox VE QMP VM target (pve:<ssh_host>:<vmid>), launch an explicit uuremote:// URI, or rescue off-screen GameViewer windows.',
+    'Open the NetEase UU Remote desktop client, connect or disconnect a paired uuyc-cli device, Proxmox VE VM (pve:<ssh_host>:<vmid>), or direct/SSH-tunneled VNC target (vnc:<host>:<port>), launch an explicit uuremote:// URI, or rescue off-screen GameViewer windows.',
   parameters: {
     type: 'object',
     properties: {
@@ -303,7 +334,7 @@ export const uuLaunchTool = {
       },
       deviceId: {
         type: 'string',
-        description: 'Target device ID (uuyc-cli paired device ID or pve:<ssh_host>:<vmid>) for connect/disconnect (never omitted on disconnect).',
+        description: 'Target device ID (uuyc-cli paired device ID, pve:<ssh_host>:<vmid>, or vnc:<host>:<port>) for connect/disconnect (never omitted on disconnect).',
       },
       pveHost: {
         type: 'string',
@@ -315,10 +346,29 @@ export const uuLaunchTool = {
         maximum: 999999999,
         description: 'Optional Proxmox VE QEMU VM ID (paired with pveHost for connect/disconnect).',
       },
+      vncHost: {
+        type: 'string',
+        description: 'Optional VNC server hostname or IP for direct or SSH-tunneled RFB connect/disconnect.',
+      },
+      vncPort: {
+        type: 'integer',
+        minimum: 1,
+        maximum: 65535,
+        default: 5900,
+        description: 'Optional VNC TCP port (default 5900).',
+      },
+      vncPassword: {
+        type: 'string',
+        description: 'Optional VNC password kept in memory only (never persisted to disk or echoed in logs/outputs).',
+      },
+      sshHost: {
+        type: 'string',
+        description: 'Optional SSH jump host for tunneling a VNC target over ssh -W.',
+      },
       label: {
         type: 'string',
         maxLength: 120,
-        description: 'Optional custom display label when registering a Proxmox VE VM target.',
+        description: 'Optional custom display label when registering a Proxmox VE VM or VNC target.',
       },
       uri: {
         type: 'string',
@@ -326,7 +376,7 @@ export const uuLaunchTool = {
       },
       sessionId: {
         type: 'string',
-        description: 'Optional uu:<hwnd> filter for recover_offscreen, or pve:<ssh_host>:<vmid> target.',
+        description: 'Optional uu:<hwnd> filter for recover_offscreen, or pve:<ssh_host>:<vmid> / vnc:<host>:<port> target.',
       },
       waitForWindowMs: {
         type: 'integer',

@@ -386,7 +386,7 @@ export function createWin32SystemDriver({
     return { ok: true };
   }
 
-  async function sendInputBatch({ hwnd, restorePreviousFocus = false, steps }) {
+  async function sendInputBatch({ hwnd, restorePreviousFocus = false, steps, signal }) {
     return callWorker(
       {
         op: 'send_batch',
@@ -395,7 +395,13 @@ export function createWin32SystemDriver({
         steps,
       },
       25_000,
+      { signal },
     );
+  }
+
+  async function releaseAllInputs({ signal } = {}) {
+    if (hostPlatform !== 'win32') return { ok: true, released: false };
+    return callWorker({ op: 'release_all' }, 5_000, { signal });
   }
 
   async function openClientExecutable(executablePath) {
@@ -456,6 +462,7 @@ export function createWin32SystemDriver({
     getClipboardText,
     setClipboardText,
     sendInputBatch,
+    releaseAllInputs,
     openClientExecutable,
     openProtocolUri,
     callWorker,

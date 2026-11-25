@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { deflateSync, inflateSync } from 'node:zlib';
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -309,4 +310,193 @@ export function resizeRgbaToFit(image, { maxWidth, maxHeight } = {}) {
   }
 
   return { width: dstW, height: dstH, data: out };
+}
+
+const DIGIT_BITMAPS = {
+  '0': [0b111, 0b101, 0b101, 0b101, 0b111],
+  '1': [0b010, 0b110, 0b010, 0b010, 0b111],
+  '2': [0b111, 0b001, 0b111, 0b100, 0b111],
+  '3': [0b111, 0b001, 0b111, 0b001, 0b111],
+  '4': [0b101, 0b101, 0b111, 0b001, 0b001],
+  '5': [0b111, 0b100, 0b111, 0b001, 0b111],
+  '6': [0b111, 0b100, 0b111, 0b101, 0b111],
+  '7': [0b111, 0b001, 0b010, 0b010, 0b010],
+  '8': [0b111, 0b101, 0b111, 0b101, 0b111],
+  '9': [0b111, 0b101, 0b111, 0b001, 0b111],
+};
+
+function blendPixel(rgba, width, height, x, y, r, g, b, alpha) {
+  if (x < 0 || y < 0 || x >= width || y >= height) return;
+  const off = (y * width + x) * 4;
+  const inv = 1 - alpha;
+  rgba[off] = Math.round(r * alpha + rgba[off] * inv);
+  rgba[off + 1] = Math.round(g * alpha + rgba[off + 1] * inv);
+  rgba[off + 2] = Math.round(b * alpha + rgba[off + 2] * inv);
+  rgba[off + 3] = 255;
+}
+
+function drawTinyLabel(rgba, width, height, x, y, label) {
+  const padX = 3;
+  const padY = 2;
+  const boxW = label.length * 4 - 1 + padX * 2;
+  const boxH = 5 + padY * 2;
+  for (let by = 0; by < boxH; by += 1) {
+    for (let bx = 0; bx < boxW; bx += 1) {
+      blendPixel(rgba, width, height, x + bx, y + by, 24, 24, 22, 0.78);
+    }
+  }
+  for (let ci = 0; ci < label.length; ci += 1) {
+    const rows = DIGIT_BITMAPS[label[ci]];
+    if (!rows) continue;
+    for (let ry = 0; ry < 5; ry += 1) {
+      for (let rx = 0; rx < 3; rx += 1) {
+        if ((rows[ry] >> (2 - rx)) & 1) {
+          blendPixel(rgba, width, height, x + padX + ci * 4 + rx, y + padY + ry, 246, 244, 239, 1);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Draw an opt-in 0..1000 coordinate grid (ticks every 100 units + 3x5 digit labels)
+ * onto a copy of an RGBA image without mutating the source buffer.
+ */
+export function applyGridOverlay(rgbaImage) {
+  const width = Math.max(1, Math.floor(Number(rgbaImage?.width) || 0));
+  const height = Math.max(1, Math.floor(Number(rgbaImage?.height) || 0));
+  const src = rgbaImage?.data;
+  if (!(src instanceof Uint8Array) || src.length < width * height * 4) {
+    throw new Error(`applyGridOverlay expected RGBA buffer of length ${width * height * 4}.`);
+  }
+  const rgba = new Uint8Array(src.subarray(0, width * height * 4));
+  for (let step = 100; step <= 900; step += 100) {
+    const gx = Math.round((step / 1000) * Math.max(0, width - 1));
+    const gy = Math.round((step / 1000) * Math.max(0, height - 1));
+    const alpha = step === 500 ? 0.55 : 0.34;
+    for (let y = 0; y < height; y += 1) {
+      blendPixel(rgba, width, height, gx, y, 44, 94, 79, alpha);
+    }
+    for (let x = 0; x < width; x += 1) {
+      blendPixel(rgba, width, height, x, gy, 44, 94, 79, alpha);
+    }
+    drawTinyLabel(rgba, width, height, Math.max(0, Math.min(width - 20, gx + 2)), 3, String(step));
+    drawTinyLabel(rgba, width, height, 3, Math.max(0, Math.min(height - 12, gy + 2)), String(step));
+  }
+  return { width, height, data: rgba };
+}
+
+/**
+ * Stride-sampled RGB frame diff (< 2ms on 1080p) returning whether the screen changed,
+ * the changed sample ratio [0..1], and the bounding box of changed pixels.
+ */
+export function computeSampledFrameDiff(prevRgba, nextRgba, {
+  threshold = 6,
+  maxSamplesX = 160,
+  maxSamplesY = 120,
+} = {}) {
+  if (!nextRgba || !(nextRgba.data instanceof Uint8Array) || nextRgba.width <= 0 || nextRgba.height <= 0) {
+    return { changed: false, changeRatio: 0, changedBounds: null };
+  }
+  const width = nextRgba.width;
+  const height = nextRgba.height;
+  if (
+    !prevRgba ||
+    !(prevRgba.data instanceof Uint8Array) ||
+    prevRgba.width !== width ||
+    prevRgba.height !== height
+  ) {
+    return {
+      changed: true,
+      changeRatio: 1,
+      changedBounds: { x: 0, y: 0, width, height },
+    };
+  }
+
+  const prev = prevRgba.data;
+  const next = nextRgba.data;
+  const stepX = Math.max(1, Math.floor(width / maxSamplesX));
+  const stepY = Math.max(1, Math.floor(height / maxSamplesY));
+
+  let total = 0;
+  let diffCount = 0;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < height; y += stepY) {
+    const rowBase = y * width * 4;
+    for (let x = 0; x < width; x += stepX) {
+      const i = rowBase + x * 4;
+      total += 1;
+      if (
+        Math.abs(prev[i] - next[i]) > threshold ||
+        Math.abs(prev[i + 1] - next[i + 1]) > threshold ||
+        Math.abs(prev[i + 2] - next[i + 2]) > threshold
+      ) {
+        diffCount += 1;
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  if (diffCount === 0) {
+    return { changed: false, changeRatio: 0, changedBounds: null };
+  }
+
+  const bx = Math.max(0, minX - stepX);
+  const by = Math.max(0, minY - stepY);
+  const bx2 = Math.min(width - 1, maxX + stepX);
+  const by2 = Math.min(height - 1, maxY + stepY);
+
+  return {
+    changed: true,
+    changeRatio: Number((diffCount / Math.max(1, total)).toFixed(4)),
+    changedBounds: {
+      x: bx,
+      y: by,
+      width: Math.max(1, bx2 - bx + 1),
+      height: Math.max(1, by2 - by + 1),
+    },
+  };
+}
+
+/**
+ * Fast SHA-256 hash over an encoded PNG buffer, or over a stride-sampled subset of an RGBA image
+ * (avoids hashing 3+ MiB raw RGBA buffers per frame).
+ */
+export function hashPngOrSample(pngBufferOrRgba) {
+  const hash = createHash('sha256');
+  if (Buffer.isBuffer(pngBufferOrRgba) || pngBufferOrRgba instanceof Uint8Array) {
+    hash.update(pngBufferOrRgba);
+    return hash.digest('hex');
+  }
+  if (pngBufferOrRgba && pngBufferOrRgba.data instanceof Uint8Array) {
+    const { width, height, data } = pngBufferOrRgba;
+    const head = Buffer.allocUnsafe(8);
+    head.writeUInt32BE(width >>> 0, 0);
+    head.writeUInt32BE(height >>> 0, 4);
+    hash.update(head);
+    const stepX = Math.max(1, Math.floor(width / 64));
+    const stepY = Math.max(1, Math.floor(height / 48));
+    const sampleBuf = Buffer.allocUnsafe(Math.ceil(width / stepX) * Math.ceil(height / stepY) * 3);
+    let offset = 0;
+    for (let y = 0; y < height; y += stepY) {
+      const rowBase = y * width * 4;
+      for (let x = 0; x < width; x += stepX) {
+        const i = rowBase + x * 4;
+        sampleBuf[offset] = data[i];
+        sampleBuf[offset + 1] = data[i + 1];
+        sampleBuf[offset + 2] = data[i + 2];
+        offset += 3;
+      }
+    }
+    hash.update(sampleBuf.subarray(0, offset));
+    return hash.digest('hex');
+  }
+  throw new Error('hashPngOrSample expects a PNG Buffer/Uint8Array or an RGBA image object.');
 }

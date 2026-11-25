@@ -319,6 +319,13 @@
     0% { transform: scale(0.35); opacity: 1; }
     100% { transform: scale(1.55); opacity: 0; }
   }
+  .overlay-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
   .drag-overlay {
     position: absolute;
     inset: 0;
@@ -359,8 +366,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    padding: 7px 9px;
+    gap: 6px;
+    padding: 6px 8px;
     border-radius: 7px;
     background: var(--bg);
     border: 1px solid var(--line);
@@ -421,8 +428,8 @@
     top: 0;
     right: 0;
     bottom: 0;
-    width: 276px;
-    max-width: calc(100% - 52px);
+    width: 318px;
+    max-width: calc(100% - 12px);
     border-left: 1px solid var(--line);
     background: var(--paper);
     box-shadow: -12px 0 28px -12px rgba(0, 0, 0, 0.22);
@@ -430,8 +437,23 @@
     flex-direction: column;
     overflow-y: auto;
     padding: 14px 58px 14px 14px;
-    gap: 16px;
+    gap: 14px;
     z-index: 8;
+  }
+  .drawer-section {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .drawer-section + .drawer-section {
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
   }
   .section-label {
     font-size: 10.5px;
@@ -439,12 +461,112 @@
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--ink-faint);
-    margin: 0 0 6px 0;
+    margin: 0;
   }
   .field-row {
     display: flex;
+    align-items: center;
     gap: 6px;
     flex-wrap: wrap;
+  }
+  .field-row.nowrap {
+    flex-wrap: nowrap;
+  }
+  .clip-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .clip-label {
+    font-size: 11.5px;
+    color: var(--ink-soft);
+  }
+  .clip-actions {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .inline-note {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--warn);
+  }
+  .inline-note.err {
+    color: var(--danger);
+  }
+  .key-btn {
+    height: 26px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+  .seg-tabs {
+    display: inline-flex;
+    padding: 2px;
+    border-radius: 6px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    gap: 2px;
+  }
+  .seg-tab {
+    height: 20px;
+    padding: 0 8px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--ink-soft);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    transition: background 110ms ease, color 110ms ease;
+  }
+  .seg-tab:hover { color: var(--ink); }
+  .seg-tab.active {
+    background: var(--paper);
+    color: var(--ink);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  }
+  .target-form {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .input-narrow {
+    flex: 0 0 68px;
+    width: 68px;
+  }
+  .device-row-main {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+    background: transparent;
+    border: none;
+    padding: 0;
+    text-align: left;
+    cursor: pointer;
+  }
+  .device-row-main:hover .device-name {
+    color: var(--accent);
+  }
+  .transport-tag {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: var(--panel);
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+  .pill-btn.compact {
+    height: 24px;
+    padding: 0 7px;
+    font-size: 11px;
   }
   .input {
     flex: 1;
@@ -503,9 +625,12 @@
     background: var(--panel);
     color: var(--ink);
   }
-  @media (max-width: 580px) {
+  @media (max-width: 620px) {
     .topbar { gap: 5px; padding: 0 8px; }
     .aspect-pill { display: none; }
+    .pill-btn { padding: 0 7px; font-size: 11px; }
+    .grid-label { display: none; }
+    #gridBtn { width: 28px; padding: 0; justify-content: center; }
     .session-select { flex: 1 1 0; min-width: 0; width: 100%; max-width: 100%; padding: 4px 22px 4px 7px; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -540,7 +665,15 @@
       <span id="takeoverLabel">Takeover Control</span>
     </button>
 
-    <button id="liveBtn" type="button" class="pill-btn active" title="Toggle live stream">Live</button>
+    <button id="gridBtn" type="button" class="pill-btn" aria-pressed="false" title="Toggle 0..1000 coordinate grid" aria-label="Toggle 0..1000 coordinate grid">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M6 2v12M10 2v12M2 6h12M2 10h12"/></svg>
+      <span class="grid-label">Grid</span>
+    </button>
+
+    <button id="liveBtn" type="button" class="pill-btn active" title="Toggle live stream">
+      <svg width="11" height="11" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3.2" fill="currentColor"/></svg>
+      <span>Live</span>
+    </button>
 
     <button id="refreshBtn" type="button" class="pill-btn icon-btn" title="Refresh sessions" aria-label="Refresh sessions">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
@@ -551,10 +684,11 @@
     <main id="stage" class="stage">
       <section id="emptyCard" class="center-card" hidden>
         <p id="emptyTitle" class="card-title">No active session</p>
-        <p id="emptyMeta" class="card-meta">Connect a paired workstation or launch UU Remote.</p>
+        <p id="emptyMeta" class="card-meta">Connect a remote target or launch UU Remote.</p>
         <div id="pairedList" class="device-list" hidden></div>
         <div class="field-row">
           <button id="openClientBtn" type="button" class="pill-btn">Open UU Remote</button>
+          <button id="openTargetsBtn" type="button" class="pill-btn active">Add PVE / VNC</button>
           <button id="emptyRescueBtn" type="button" class="pill-btn rescue" hidden>Rescue Off-screen</button>
           <button id="rescanBtn" type="button" class="pill-btn">Scan</button>
         </div>
@@ -571,6 +705,7 @@
       <div id="monitorFrame" class="monitor-frame" style="width:640px;height:400px" hidden>
         <div id="screenSurface" class="screen-surface" tabindex="0" role="application" aria-label="UU Remote interactive desktop canvas">
           <canvas id="screenCanvas" width="1280" height="800"></canvas>
+          <svg id="gridSvg" class="overlay-svg" viewBox="0 0 1000 1000" preserveAspectRatio="none" hidden></svg>
           <svg id="dragSvg" class="drag-overlay" viewBox="0 0 1000 1000" preserveAspectRatio="none" hidden>
             <defs>
               <marker id="dragArrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
@@ -586,7 +721,7 @@
         <button id="focusWindowBtn" type="button" class="rail-btn" title="Bring UU Remote window to front" aria-label="Bring UU Remote window to front">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg>
         </button>
-        <button id="drawerToggleBtn" type="button" class="rail-btn" title="Keyboard input and paired workstations" aria-label="Keyboard input and paired workstations">
+        <button id="drawerToggleBtn" type="button" class="rail-btn" title="Input, clipboard and remote targets" aria-label="Input, clipboard and remote targets">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>
         </button>
         <div class="rail-sep"></div>
@@ -597,27 +732,70 @@
     </main>
 
     <aside id="drawer" class="drawer" hidden>
-      <div>
-        <p class="section-label">Text Input</p>
-        <form id="textForm" class="field-row">
-          <input id="textInput" class="input" type="text" placeholder="Type or paste onto remote focus..." />
+      <div class="drawer-section">
+        <p class="section-label">Text &amp; Clipboard</p>
+        <form id="textForm" class="field-row nowrap">
+          <input id="textInput" class="input" type="text" placeholder="Type or paste to remote..." />
           <button type="submit" class="pill-btn">Send</button>
         </form>
+        <div class="clip-row">
+          <span class="clip-label">Clipboard</span>
+          <div class="clip-actions">
+            <button id="clipPullBtn" type="button" class="pill-btn compact" title="Read remote clipboard">Pull</button>
+            <button id="clipPushBtn" type="button" class="pill-btn compact" title="Send text or local clipboard to remote">Push</button>
+          </div>
+        </div>
+        <p id="clipNotice" class="inline-note" hidden></p>
       </div>
 
-      <div>
+      <div class="drawer-section">
         <p class="section-label">Remote Keys</p>
         <div class="field-row">
-          <button type="button" class="pill-btn" data-key="Escape">Esc</button>
-          <button type="button" class="pill-btn" data-key="Tab">Tab</button>
-          <button type="button" class="pill-btn" data-key="Enter">Enter</button>
-          <button type="button" class="pill-btn" data-key="Win+D">Win+D</button>
-          <button type="button" class="pill-btn" data-key="Ctrl+C">Ctrl+C</button>
-          <button type="button" class="pill-btn" data-key="Ctrl+V">Ctrl+V</button>
+          <button type="button" class="pill-btn key-btn" data-key="Escape">Esc</button>
+          <button type="button" class="pill-btn key-btn" data-key="Tab">Tab</button>
+          <button type="button" class="pill-btn key-btn" data-key="Enter">Enter</button>
+          <button type="button" class="pill-btn key-btn" data-key="Win+D">Win+D</button>
+          <button type="button" class="pill-btn key-btn" data-key="Alt+Tab">Alt+Tab</button>
+          <button type="button" class="pill-btn key-btn" data-key="Ctrl+A">Ctrl+A</button>
+          <button type="button" class="pill-btn key-btn" data-key="Ctrl+C">Ctrl+C</button>
+          <button type="button" class="pill-btn key-btn" data-key="Ctrl+V">Ctrl+V</button>
+          <button type="button" class="pill-btn key-btn" data-key="Ctrl+Z">Ctrl+Z</button>
+          <button id="cadKeyBtn" type="button" class="pill-btn key-btn" data-key="Ctrl+Alt+Delete" hidden>Ctrl+Alt+Del</button>
         </div>
       </div>
 
-      <div>
+      <div class="drawer-section">
+        <div class="section-head">
+          <p class="section-label">Remote Targets</p>
+          <div class="seg-tabs" role="tablist" aria-label="Target protocol">
+            <button id="tabPveBtn" type="button" class="seg-tab active" role="tab" aria-selected="true" data-target-tab="pve">PVE</button>
+            <button id="tabVncBtn" type="button" class="seg-tab" role="tab" aria-selected="false" data-target-tab="vnc">VNC</button>
+          </div>
+        </div>
+
+        <form id="pveForm" class="target-form">
+          <div class="field-row nowrap">
+            <input id="pveHostInput" class="input" type="text" placeholder="SSH host" autocomplete="off" />
+            <input id="pveVmidInput" class="input input-narrow" type="text" inputmode="numeric" placeholder="VMID" autocomplete="off" />
+            <button id="pveConnectBtn" type="submit" class="pill-btn active compact">Connect</button>
+          </div>
+        </form>
+
+        <form id="vncForm" class="target-form" hidden>
+          <div class="field-row nowrap">
+            <input id="vncHostInput" class="input" type="text" placeholder="Host / IP" autocomplete="off" />
+            <input id="vncPortInput" class="input input-narrow" type="text" inputmode="numeric" value="5900" placeholder="5900" autocomplete="off" />
+          </div>
+          <div class="field-row nowrap">
+            <input id="vncPasswordInput" class="input" type="password" placeholder="Password (optional)" autocomplete="off" />
+            <button id="vncConnectBtn" type="submit" class="pill-btn active compact">Connect</button>
+          </div>
+        </form>
+
+        <div id="remoteTargetList" class="device-list" hidden></div>
+      </div>
+
+      <div class="drawer-section">
         <p class="section-label">Paired Workstations</p>
         <div id="drawerDevices" class="device-list"></div>
       </div>
@@ -1112,13 +1290,22 @@
   const state = {
     sessions: [],
     selectedSessionId: null,
+    lastRenderedSessionId: null,
     pairedDevices: [],
     offscreenCount: 0,
     live: true,
+    grid: safeStorage.get('uu.grid') === '1',
     logicalSize: { width: 1920, height: 1080 },
     imageSize: { width: 1280, height: 720 },
     contentTrimmed: false,
+    transport: null,
+    captureMs: null,
+    capabilities: null,
+    streamIdle: false,
+    clipboardUnsupportedError: false,
     takeoverActive: false,
+    takeoverInitialized: false,
+    takeoverSessionId: null,
     lastHoverCoord: null,
     streamPort: null,
     streamActive: false,
@@ -1129,6 +1316,7 @@
     pollErrorStreak: 0,
     dragStart: null,
     fpsSamples: [],
+    targetTab: 'pve',
   };
 
   const el = {
@@ -1138,6 +1326,7 @@
     rescueBtn: document.getElementById('rescueBtn'),
     takeoverBtn: document.getElementById('takeoverBtn'),
     takeoverLabel: document.getElementById('takeoverLabel'),
+    gridBtn: document.getElementById('gridBtn'),
     liveBtn: document.getElementById('liveBtn'),
     refreshBtn: document.getElementById('refreshBtn'),
     stage: document.getElementById('stage'),
@@ -1146,6 +1335,7 @@
     emptyMeta: document.getElementById('emptyMeta'),
     pairedList: document.getElementById('pairedList'),
     openClientBtn: document.getElementById('openClientBtn'),
+    openTargetsBtn: document.getElementById('openTargetsBtn'),
     emptyRescueBtn: document.getElementById('emptyRescueBtn'),
     rescanBtn: document.getElementById('rescanBtn'),
     recoveryCard: document.getElementById('recoveryCard'),
@@ -1155,6 +1345,7 @@
     monitorFrame: document.getElementById('monitorFrame'),
     screenSurface: document.getElementById('screenSurface'),
     screenCanvas: document.getElementById('screenCanvas'),
+    gridSvg: document.getElementById('gridSvg'),
     dragSvg: document.getElementById('dragSvg'),
     dragLine: document.getElementById('dragLine'),
     focusWindowBtn: document.getElementById('focusWindowBtn'),
@@ -1163,6 +1354,22 @@
     drawer: document.getElementById('drawer'),
     textForm: document.getElementById('textForm'),
     textInput: document.getElementById('textInput'),
+    clipPullBtn: document.getElementById('clipPullBtn'),
+    clipPushBtn: document.getElementById('clipPushBtn'),
+    clipNotice: document.getElementById('clipNotice'),
+    cadKeyBtn: document.getElementById('cadKeyBtn'),
+    tabPveBtn: document.getElementById('tabPveBtn'),
+    tabVncBtn: document.getElementById('tabVncBtn'),
+    pveForm: document.getElementById('pveForm'),
+    pveHostInput: document.getElementById('pveHostInput'),
+    pveVmidInput: document.getElementById('pveVmidInput'),
+    pveConnectBtn: document.getElementById('pveConnectBtn'),
+    vncForm: document.getElementById('vncForm'),
+    vncHostInput: document.getElementById('vncHostInput'),
+    vncPortInput: document.getElementById('vncPortInput'),
+    vncPasswordInput: document.getElementById('vncPasswordInput'),
+    vncConnectBtn: document.getElementById('vncConnectBtn'),
+    remoteTargetList: document.getElementById('remoteTargetList'),
     drawerDevices: document.getElementById('drawerDevices'),
     statusMsg: document.getElementById('statusMsg'),
     coordBtn: document.getElementById('coordBtn'),
@@ -1176,6 +1383,62 @@
     el.drawer.hidden = false;
     el.drawerToggleBtn.classList.add('active');
   }
+
+  function isRemoteProtocolSession(sel) {
+    if (!sel) return false;
+    if (sel.provider === 'pve-qmp' || sel.provider === 'rfb') return true;
+    const id = String(sel.id || '');
+    return id.startsWith('pve:') || id.startsWith('vnc:');
+  }
+
+  function formatTransportLabel(transport) {
+    switch (transport) {
+      case 'pve-rfb':
+        return 'RFB';
+      case 'pve-qmp':
+        return 'QMP';
+      case 'rfb':
+        return 'VNC';
+      case 'uu-win32':
+        return 'UU';
+      default:
+        return '';
+    }
+  }
+
+  function currentSvgSize() {
+    const sw = Math.max(1, state.logicalSize.width || 1920);
+    const sh = Math.max(1, state.logicalSize.height || 1080);
+    return { vw: Math.round((sw / sh) * 1000), vh: 1000 };
+  }
+
+  function buildGridRulerSvg() {
+    const { vw, vh } = currentSvgSize();
+    el.gridSvg.setAttribute('viewBox', `0 0 ${vw} ${vh}`);
+    el.gridSvg.removeAttribute('preserveAspectRatio');
+    const parts = [];
+    for (let step = 100; step <= 900; step += 100) {
+      const gx = Math.round((step / 1000) * vw);
+      const gy = Math.round((step / 1000) * vh);
+      const op = step === 500 ? '0.50' : '0.26';
+      parts.push(`<line x1="${gx}" y1="0" x2="${gx}" y2="${vh}" stroke="#2c5e4f" stroke-opacity="${op}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`);
+      parts.push(`<line x1="0" y1="${gy}" x2="${vw}" y2="${gy}" stroke="#2c5e4f" stroke-opacity="${op}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`);
+      parts.push(`<rect x="${gx + 4}" y="6" width="34" height="19" rx="4" fill="rgba(22,22,20,0.80)"/>`);
+      parts.push(`<text x="${gx + 21}" y="19" fill="#fcfbf8" font-family="ui-monospace, monospace" font-size="12" font-weight="600" text-anchor="middle">${step}</text>`);
+      parts.push(`<rect x="6" y="${gy + 4}" width="34" height="19" rx="4" fill="rgba(22,22,20,0.80)"/>`);
+      parts.push(`<text x="23" y="${gy + 17}" fill="#fcfbf8" font-family="ui-monospace, monospace" font-size="12" font-weight="600" text-anchor="middle">${step}</text>`);
+    }
+    el.gridSvg.innerHTML = parts.join('');
+  }
+
+  function applyGridUi() {
+    el.gridBtn.classList.toggle('active', state.grid);
+    el.gridBtn.setAttribute('aria-pressed', state.grid ? 'true' : 'false');
+    el.gridSvg.toggleAttribute('hidden', !state.grid);
+    if (state.grid) buildGridRulerSvg();
+  }
+
+  applyGridUi();
 
   const bridge = createPanelClient({
     defaultTimeoutMs: 15000,
@@ -1212,6 +1475,66 @@
     el.statusMsg.textContent = text;
     el.statusMsg.classList.toggle('err', tone === 'error');
     el.statusMsg.classList.toggle('locked', tone === 'locked');
+  }
+
+  function hasNonAscii(text) {
+    return /[^\x00-\x7f]/.test(String(text ?? ''));
+  }
+
+  function describeActionError(res, fallback) {
+    if (res?.code === 'unicode_input_unsupported') {
+      return isZh
+        ? '当前目标不支持剪贴板或 Unicode 注入（仅支持 ASCII）'
+        : 'Target does not support clipboard or Unicode input (ASCII only)';
+    }
+    return res?.message || res?.error || fallback;
+  }
+
+  function updateCapabilitiesUi() {
+    const sel = currentSession();
+    const hasActive = Boolean(sel && sel.state === 'active');
+    el.clipPullBtn.disabled = !hasActive;
+    el.clipPushBtn.disabled = !hasActive;
+    el.cadKeyBtn.hidden = !sel || !isRemoteProtocolSession(sel);
+
+    if (!sel) {
+      el.clipNotice.hidden = true;
+      return;
+    }
+    if (state.clipboardUnsupportedError) {
+      el.clipNotice.textContent = isZh
+        ? '目标不支持剪贴板或 Unicode 注入（仅支持 ASCII）'
+        : 'Clipboard and Unicode injection unsupported (ASCII only)';
+      el.clipNotice.className = 'inline-note err';
+      el.clipNotice.hidden = false;
+      return;
+    }
+    if (state.capabilities && state.capabilities.clipboard === false) {
+      el.clipNotice.textContent = isZh
+        ? '当前目标未开启剪贴板扩展（仅支持 ASCII 键入）'
+        : 'Clipboard sync unavailable on this target (ASCII only)';
+      el.clipNotice.className = 'inline-note';
+      el.clipNotice.hidden = false;
+      return;
+    }
+    el.clipNotice.hidden = true;
+  }
+
+  function handleActionFailure(res, fallback) {
+    if (res?.code === 'unicode_input_unsupported') {
+      state.clipboardUnsupportedError = true;
+      updateCapabilitiesUi();
+    }
+    setStatus(describeActionError(res, fallback), 'error');
+  }
+
+  function extractClipboardText(res) {
+    if (Array.isArray(res?.results)) {
+      const hit = res.results.find((r) => r && r.kind === 'clipboard_get' && typeof r.text === 'string');
+      if (hit) return hit.text;
+    }
+    if (typeof res?.text === 'string') return res.text;
+    return '';
   }
 
   function pulseTakeoverGate() {
@@ -1268,7 +1591,8 @@
   function updateTelemetry() {
     const lw = state.logicalSize.width || 0;
     const lh = state.logicalSize.height || 0;
-    if (!lw || !lh) {
+    const sel = currentSession();
+    if (!sel || !lw || !lh) {
       el.telemetryText.textContent = '--';
       el.aspectPill.hidden = true;
       return;
@@ -1278,9 +1602,20 @@
     el.aspectPill.textContent = pillParts.join(' · ');
     el.aspectPill.hidden = false;
 
-    const fps = computeFps();
     const parts = [`${lw}×${lh}`];
-    if (state.live && fps > 0) parts.push(`${fps}fps`);
+    if (state.live) {
+      if (state.streamIdle) {
+        parts.push('Idle');
+      } else {
+        const fps = computeFps();
+        if (fps > 0) parts.push(`${fps}fps`);
+        if (Number.isFinite(state.captureMs)) parts.push(`${Math.round(state.captureMs)}ms`);
+      }
+    } else {
+      parts.push('Paused');
+    }
+    const transportLabel = formatTransportLabel(state.transport || sel.transport);
+    if (transportLabel) parts.push(transportLabel);
     el.telemetryText.textContent = parts.join(' · ');
   }
 
@@ -1299,6 +1634,7 @@
     }
     el.monitorFrame.style.width = `${Math.round(w + 12)}px`;
     el.monitorFrame.style.height = `${Math.round(h + 12)}px`;
+    if (state.grid) buildGridRulerSvg();
   }
 
   new ResizeObserver(layoutMonitorFrame).observe(el.stage);
@@ -1346,9 +1682,23 @@
     return out;
   }
 
-  function applyTakeoverUi(active, { focusCanvas = false } = {}) {
-    state.takeoverActive = Boolean(active);
+  function applyTakeoverUi(active, { focusCanvas = false, forceStatus = false, silentStatus = false } = {}) {
+    const nextActive = Boolean(active);
     const sel = currentSession();
+    const sid = sel?.id || null;
+    const changed = !state.takeoverInitialized
+      || state.takeoverSessionId !== sid
+      || state.takeoverActive !== nextActive;
+    if (!changed && !forceStatus) {
+      if (focusCanvas && nextActive && !el.monitorFrame.hidden) {
+        try { el.screenSurface.focus({ preventScroll: true }); } catch {}
+      }
+      return;
+    }
+
+    state.takeoverInitialized = true;
+    state.takeoverSessionId = sid;
+    state.takeoverActive = nextActive;
     if (sel) sel.takeoverActive = state.takeoverActive;
     el.takeoverBtn.classList.toggle('takeover-locked', state.takeoverActive);
     el.takeoverBtn.setAttribute('aria-pressed', state.takeoverActive ? 'true' : 'false');
@@ -1365,13 +1715,79 @@
     if (!state.takeoverActive) {
       updateCoordReadout(null);
     }
+    if (focusCanvas && state.takeoverActive && !el.monitorFrame.hidden) {
+      try { el.screenSurface.focus({ preventScroll: true }); } catch {}
+    }
+    if (silentStatus) return;
     if (state.takeoverActive) {
       setStatus(isZh ? '接管操控已开启 · 点击/滚轮/按键/粘贴直发远端' : 'Takeover active · Direct canvas & keyboard ready', 'locked');
-      if (focusCanvas && !el.monitorFrame.hidden) {
-        try { el.screenSurface.focus({ preventScroll: true }); } catch {}
-      }
     } else if (sel?.state === 'active') {
       setStatus(state.live ? (isZh ? '实时画面 · 观察模式' : 'Live · Watch mode') : (isZh ? '已暂停' : 'Paused'));
+    }
+  }
+
+  function renderRemoteTargets(sessions) {
+    const targets = (Array.isArray(sessions) ? sessions : []).filter((s) => isRemoteProtocolSession(s));
+    el.remoteTargetList.replaceChildren();
+    el.remoteTargetList.hidden = targets.length === 0;
+    if (targets.length === 0) return;
+
+    for (const target of targets) {
+      const row = document.createElement('div');
+      row.className = 'device-row';
+
+      const mainBtn = document.createElement('button');
+      mainBtn.type = 'button';
+      mainBtn.className = 'device-row-main';
+      mainBtn.title = target.id;
+      mainBtn.addEventListener('click', async () => {
+        if (state.selectedSessionId === target.id) return;
+        state.selectedSessionId = target.id;
+        await panelCall('action', { action: 'select', sessionId: target.id }).catch(() => {});
+        await refreshState();
+      });
+
+      const dot = document.createElement('span');
+      dot.className = 'status-dot' + (target.state === 'active' ? ' online' : ' warn');
+
+      const name = document.createElement('span');
+      name.className = 'device-name';
+      name.textContent = target.label || target.id;
+
+      mainBtn.append(dot, name);
+
+      const tLabel = formatTransportLabel(target.transport);
+      if (tLabel) {
+        const badge = document.createElement('span');
+        badge.className = 'transport-tag';
+        badge.textContent = tLabel;
+        mainBtn.append(badge);
+      }
+
+      const disconnectBtn = document.createElement('button');
+      disconnectBtn.type = 'button';
+      disconnectBtn.className = 'pill-btn compact';
+      disconnectBtn.textContent = isZh ? '断开' : 'Disconnect';
+      disconnectBtn.addEventListener('click', async () => {
+        disconnectBtn.disabled = true;
+        try {
+          setStatus(isZh ? `正在断开 ${target.label || target.id}...` : `Disconnecting ${target.label || target.id}...`);
+          const res = await panelCall('action', { action: 'disconnectTarget', sessionId: target.id });
+          if (res && res.ok === false) {
+            setStatus(res.error || 'Disconnect failed', 'error');
+          } else {
+            await refreshState();
+            setStatus(isZh ? `已断开 ${target.label || target.id}` : `Disconnected ${target.label || target.id}`);
+          }
+        } catch (err) {
+          setStatus(err.message || 'Disconnect failed', 'error');
+        } finally {
+          disconnectBtn.disabled = false;
+        }
+      });
+
+      row.append(mainBtn, disconnectBtn);
+      el.remoteTargetList.appendChild(row);
     }
   }
 
@@ -1455,6 +1871,13 @@
       const frame = await panelCall('frame', { sessionId, maxWidth: 1280, maxHeight: 800 });
       if (frame?.ok && frame.dataUrl) {
         state.pollErrorStreak = 0;
+        state.streamIdle = false;
+        if (frame.transport) state.transport = frame.transport;
+        if (Number.isFinite(frame.captureMs)) state.captureMs = frame.captureMs;
+        if (frame.capabilities && typeof frame.capabilities === 'object') {
+          state.capabilities = frame.capabilities;
+          updateCapabilitiesUi();
+        }
         if (frame.logicalSize?.width && frame.logicalSize?.height) {
           const changed = frame.logicalSize.width !== state.logicalSize.width ||
             frame.logicalSize.height !== state.logicalSize.height;
@@ -1462,7 +1885,9 @@
           state.contentTrimmed = Boolean(frame.contentTrimmed);
           if (changed) layoutMonitorFrame();
         }
-        applyTakeoverUi(frame.takeoverActive);
+        if (typeof frame.takeoverActive === 'boolean') {
+          applyTakeoverUi(frame.takeoverActive);
+        }
         await paintPngBytes(decodeBase64DataUrl(frame.dataUrl));
         return true;
       }
@@ -1519,7 +1944,7 @@
 
     if (!state.streamUnsupported) {
       try {
-        const { port } = await openStream('screen', {
+        const { result, port } = await openStream('screen', {
           sessionId: session.id,
           maxWidth: 1280,
           maxHeight: 820,
@@ -1532,6 +1957,10 @@
         if (port) {
           state.streamPort = port;
           state.streamActive = true;
+          if (result?.transport) {
+            state.transport = result.transport;
+            updateTelemetry();
+          }
           port.onmessage = (ev) => {
             if (gen !== state.streamGen) return;
             const d = ev.data;
@@ -1541,6 +1970,7 @@
               const flags = dv.getUint8(2);
               const lw = dv.getUint16(8, false);
               const lh = dv.getUint16(10, false);
+              state.streamIdle = false;
               state.contentTrimmed = (flags & 1) !== 0;
               applyTakeoverUi((flags & 2) !== 0);
               if (lw && lh) {
@@ -1551,11 +1981,50 @@
               void paintPngBytes(new Uint8Array(d, 16));
               return;
             }
-            if (d && typeof d === 'object' && d.__kikiStreamEvent === 'close') {
+            const msg = typeof d === 'string'
+              ? (() => { try { return JSON.parse(d); } catch { return null; } })()
+              : d;
+            if (!msg || typeof msg !== 'object') return;
+            if (msg.__kikiStreamEvent === 'close') {
               state.streamActive = false;
               void startPollingFallback(gen, session.id);
+              return;
+            }
+            if (msg.type === 'telemetry') {
+              if (msg.sessionId && session.id && msg.sessionId !== session.id) return;
+              if (msg.transport) state.transport = msg.transport;
+              if (msg.capabilities && typeof msg.capabilities === 'object') {
+                state.capabilities = msg.capabilities;
+              }
+              state.streamIdle = Boolean(msg.unchanged);
+              if (msg.unchanged) {
+                state.fpsSamples = [];
+              } else if (Number.isFinite(msg.captureMs)) {
+                state.captureMs = msg.captureMs;
+              }
+              if (msg.width > 0 && msg.height > 0) {
+                const changed = msg.width !== state.logicalSize.width || msg.height !== state.logicalSize.height;
+                state.logicalSize = { width: msg.width, height: msg.height };
+                if (changed) layoutMonitorFrame();
+              }
+              if (typeof msg.takeoverActive === 'boolean') {
+                applyTakeoverUi(msg.takeoverActive);
+              }
+              updateCapabilitiesUi();
+              updateTelemetry();
+              return;
+            }
+            if (msg.type === 'sessionState') {
+              if (msg.state && msg.state !== 'active') {
+                void refreshState();
+              }
+              return;
+            }
+            if (msg.type === 'streamWarning' && msg.message) {
+              setStatus(msg.message, 'error');
             }
           };
+          if (typeof port.start === 'function') port.start();
           return;
         }
       } catch {
@@ -1589,19 +2058,39 @@
 
     const hasOffscreen = state.offscreenCount > 0;
     const sel = currentSession();
+    const sessionChanged = (sel?.id ?? null) !== state.lastRenderedSessionId;
+    if (sessionChanged) {
+      state.lastRenderedSessionId = sel?.id ?? null;
+      state.transport = sel?.transport || null;
+      state.captureMs = null;
+      state.capabilities = null;
+      state.streamIdle = false;
+      state.clipboardUnsupportedError = false;
+      state.fpsSamples = [];
+      state.takeoverInitialized = false;
+      state.takeoverSessionId = null;
+    } else if (sel?.transport && !state.transport) {
+      state.transport = sel.transport;
+    }
+
     el.rescueBtn.hidden = !hasOffscreen;
     el.emptyRescueBtn.hidden = Boolean(sel) || !hasOffscreen || !el.rescueBtn.hidden;
     el.takeoverBtn.disabled = !sel;
+    el.gridBtn.disabled = !sel || sel.state !== 'active';
     el.liveBtn.disabled = !sel || sel.state !== 'active';
-    el.focusWindowBtn.disabled = !sel || sel.provider === 'pve-qmp';
+    el.focusWindowBtn.disabled = !sel || isRemoteProtocolSession(sel);
     el.downloadShotBtn.disabled = !sel || sel.state !== 'active';
 
+    renderRemoteTargets(sessions);
     renderPairedDevices(el.drawerDevices, state.pairedDevices);
+    updateCapabilitiesUi();
 
     if (!sel) {
       stopLiveTransport();
+      applyTakeoverUi(false, { forceStatus: true, silentStatus: true });
       el.statusDot.className = 'status-dot';
       el.aspectPill.hidden = true;
+      el.telemetryText.textContent = '--';
       el.monitorFrame.hidden = true;
       el.recoveryCard.hidden = true;
       el.emptyCard.hidden = false;
@@ -1610,12 +2099,14 @@
       if (state.pairedDevices.length > 0) {
         renderPairedDevices(el.pairedList, state.pairedDevices);
       }
-      setStatus(state.offscreenCount > 0 ? 'Off-screen window detected' : 'Waiting for UU Remote session');
+      if (sessionChanged) {
+        setStatus(state.offscreenCount > 0 ? 'Off-screen window detected' : 'Waiting for remote session');
+      }
       return;
     }
 
     el.emptyCard.hidden = true;
-    applyTakeoverUi(sel.takeoverActive);
+    applyTakeoverUi(sel.takeoverActive, { forceStatus: sessionChanged });
 
     if (sel.state === 'minimized' || sel.state === 'offscreen' || sel.state === 'stopped' || sel.state === 'disconnected') {
       stopLiveTransport();
@@ -1623,6 +2114,7 @@
       el.monitorFrame.hidden = true;
       el.recoveryCard.hidden = false;
       updateCoordReadout(null);
+      updateTelemetry();
       if (sel.state === 'minimized') {
         el.recoveryTitle.textContent = `${sel.label} is minimized`;
         el.recoveryMeta.textContent = 'Restore the session window to resume background capture.';
@@ -1635,7 +2127,11 @@
         el.recoveryActionBtn.dataset.mode = 'rescue';
       } else {
         el.recoveryTitle.textContent = `${sel.label} is ${sel.vmStatus || sel.state}`;
-        el.recoveryMeta.textContent = sel.error || 'Start the Proxmox VE VM or check SSH connectivity, then refresh.';
+        el.recoveryMeta.textContent = sel.error || (
+          sel.provider === 'rfb'
+            ? 'Check VNC target reachability, then refresh.'
+            : 'Start the Proxmox VE VM or check SSH connectivity, then refresh.'
+        );
         el.recoveryActionBtn.textContent = 'Refresh';
         el.recoveryActionBtn.dataset.mode = 'refresh';
       }
@@ -1652,7 +2148,9 @@
     state.contentTrimmed = Boolean(sel.contentTrimmed);
     layoutMonitorFrame();
     updateTelemetry();
-    void startLiveForSession(sel);
+    if (sessionChanged || !state.streamActive) {
+      void startLiveForSession(sel);
+    }
   }
 
   async function refreshState() {
@@ -1724,6 +2222,31 @@
     return mods;
   }
 
+  async function sendRpcInput(payload, { silentTakeover = false } = {}) {
+    const sel = currentSession();
+    if (!sel) return { ok: false };
+    if (!state.takeoverActive) {
+      applyTakeoverUi(true, { silentStatus: silentTakeover });
+    }
+    try {
+      const res = await panelCall('action', {
+        action: 'input',
+        sessionId: sel.id,
+        ...payload,
+        fromHumanPanel: true,
+      });
+      if (res && res.ok === false) {
+        handleActionFailure(res, isZh ? '输入发送失败' : 'Input failed');
+        return { ok: false, res };
+      }
+      scheduleImmediateFrame(40);
+      return { ok: true, res };
+    } catch (err) {
+      setStatus(err.message || 'Input failed', 'error');
+      return { ok: false, err };
+    }
+  }
+
   function sendInteractiveInput(payload) {
     const sel = currentSession();
     if (!sel) return;
@@ -1741,16 +2264,7 @@
         return;
       } catch {}
     }
-    void panelCall('action', {
-      action: 'input',
-      sessionId: sel.id,
-      ...payload,
-      fromHumanPanel: true,
-    })
-      .then(() => {
-        scheduleImmediateFrame(40);
-      })
-      .catch((err) => setStatus(err.message || 'Input failed', 'error'));
+    void sendRpcInput(payload, { silentTakeover: true });
   }
 
   function spawnRipple(localX, localY, alt = false) {
@@ -1773,7 +2287,10 @@
         active: nextActive,
       });
       if (res?.ok) {
-        applyTakeoverUi(Boolean(res.takeoverActive), { focusCanvas: Boolean(res.takeoverActive) });
+        applyTakeoverUi(Boolean(res.takeoverActive), {
+          focusCanvas: Boolean(res.takeoverActive),
+          forceStatus: true,
+        });
       }
     } catch (err) {
       setStatus(err.message || 'Takeover toggle failed', 'error');
@@ -1918,12 +2435,18 @@
 
   let composing = false;
   el.screenSurface.addEventListener('compositionstart', () => { composing = true; });
-  el.screenSurface.addEventListener('compositionend', (ev) => {
+  el.screenSurface.addEventListener('compositionend', async (ev) => {
     composing = false;
     if (!state.takeoverActive || !currentSession()) return;
     const text = ev.data || '';
     if (text) {
-      sendInteractiveInput({ subAction: 'paste', text });
+      const outcome = await sendRpcInput({ subAction: 'paste', text }, { silentTakeover: true });
+      if (outcome.ok) {
+        setStatus(
+          isZh ? `已输入 ${text.length} 个字符至远端` : `Sent ${text.length} chars to remote`,
+          'locked',
+        );
+      }
     }
   });
 
@@ -1942,7 +2465,7 @@
       return;
     }
 
-    if (ev.ctrlKey && ev.altKey && currentSession()?.provider !== 'pve-qmp') {
+    if (ev.ctrlKey && ev.altKey && !isRemoteProtocolSession(currentSession())) {
       ev.preventDefault();
       setStatus(
         isZh ? '已拦截 Ctrl+Alt 组合键（避免触发本地 UU 客户端快捷键）' : 'Blocked Ctrl+Alt chord (reserved by local UU Remote overlay)',
@@ -1968,20 +2491,26 @@
 
     if (key.length === 1) {
       ev.preventDefault();
-      sendInteractiveInput({ subAction: 'type', text: key, mode: 'auto' });
+      if (hasNonAscii(key)) {
+        void sendRpcInput({ subAction: 'type', text: key, mode: 'auto' }, { silentTakeover: true });
+      } else {
+        sendInteractiveInput({ subAction: 'type', text: key, mode: 'auto' });
+      }
     }
   });
 
-  el.screenSurface.addEventListener('paste', (ev) => {
+  el.screenSurface.addEventListener('paste', async (ev) => {
     if (!state.takeoverActive || !currentSession()) return;
     ev.preventDefault();
     const text = ev.clipboardData?.getData('text/plain') || '';
     if (text) {
-      sendInteractiveInput({ subAction: 'paste', text });
-      setStatus(
-        isZh ? `已粘贴 ${text.length} 个字符至远端` : `Pasted ${text.length} chars to remote`,
-        'locked',
-      );
+      const outcome = await sendRpcInput({ subAction: 'paste', text }, { silentTakeover: true });
+      if (outcome.ok) {
+        setStatus(
+          isZh ? `已粘贴 ${text.length} 个字符至远端` : `Pasted ${text.length} chars to remote`,
+          'locked',
+        );
+      }
     } else {
       sendInteractiveInput({ subAction: 'key', keys: ['Ctrl', 'V'] });
     }
@@ -2036,9 +2565,16 @@
     await refreshState();
   });
 
+  el.gridBtn.addEventListener('click', () => {
+    state.grid = !state.grid;
+    safeStorage.set('uu.grid', state.grid ? '1' : '0');
+    applyGridUi();
+  });
+
   el.liveBtn.addEventListener('click', () => {
     state.live = !state.live;
     el.liveBtn.classList.toggle('active', state.live);
+    if (!state.live) state.streamIdle = false;
     if (state.streamActive && state.streamPort) {
       try {
         state.streamPort.postMessage(JSON.stringify({ type: 'configure', paused: !state.live }));
@@ -2046,7 +2582,8 @@
     } else if (state.live && currentSession()) {
       void startLiveForSession(currentSession());
     }
-    setStatus(state.live ? 'Streaming' : 'Paused', state.takeoverActive ? 'locked' : 'normal');
+    updateTelemetry();
+    setStatus(state.live ? (isZh ? '实时画面' : 'Streaming') : (isZh ? '已暂停' : 'Paused'), state.takeoverActive ? 'locked' : 'normal');
   });
 
   el.refreshBtn.addEventListener('click', () => void refreshState());
@@ -2062,17 +2599,40 @@
     }
   });
 
+  function setDrawerOpen(open) {
+    el.drawer.hidden = !open;
+    el.drawerToggleBtn.classList.toggle('active', open);
+    safeStorage.set('uu.drawerOpen', open ? '1' : '0');
+  }
+
+  function setTargetTab(tab) {
+    state.targetTab = tab === 'vnc' ? 'vnc' : 'pve';
+    const isPve = state.targetTab === 'pve';
+    el.tabPveBtn.classList.toggle('active', isPve);
+    el.tabPveBtn.setAttribute('aria-selected', isPve ? 'true' : 'false');
+    el.tabVncBtn.classList.toggle('active', !isPve);
+    el.tabVncBtn.setAttribute('aria-selected', !isPve ? 'true' : 'false');
+    el.pveForm.hidden = !isPve;
+    el.vncForm.hidden = isPve;
+  }
+
+  el.tabPveBtn.addEventListener('click', () => setTargetTab('pve'));
+  el.tabVncBtn.addEventListener('click', () => setTargetTab('vnc'));
+
+  el.openTargetsBtn.addEventListener('click', () => {
+    setDrawerOpen(true);
+    const focusTarget = state.targetTab === 'vnc' ? el.vncHostInput : el.pveHostInput;
+    try { focusTarget.focus(); } catch {}
+  });
+
   el.focusWindowBtn.addEventListener('click', async () => {
     const sel = currentSession();
-    if (!sel) return;
+    if (!sel || isRemoteProtocolSession(sel)) return;
     await panelCall('action', { action: 'focus', sessionId: sel.id }).catch(() => {});
   });
 
   el.drawerToggleBtn.addEventListener('click', () => {
-    const nextHidden = !el.drawer.hidden;
-    el.drawer.hidden = nextHidden;
-    el.drawerToggleBtn.classList.toggle('active', !nextHidden);
-    safeStorage.set('uu.drawerOpen', nextHidden ? '0' : '1');
+    setDrawerOpen(el.drawer.hidden);
   });
 
   el.downloadShotBtn.addEventListener('click', () => {
@@ -2083,17 +2643,146 @@
     a.click();
   });
 
-  el.textForm.addEventListener('submit', (ev) => {
+  el.textForm.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const text = el.textInput.value;
     if (!text) return;
-    sendInteractiveInput({ subAction: 'paste', text, submit: true });
-    el.textInput.value = '';
+    const outcome = await sendRpcInput({ subAction: 'paste', text, submit: true }, { silentTakeover: true });
+    if (outcome.ok) {
+      el.textInput.value = '';
+      setStatus(
+        isZh ? `已发送 ${text.length} 个字符至远端` : `Sent ${text.length} chars to remote`,
+        'locked',
+      );
+    }
+  });
+
+  el.clipPullBtn.addEventListener('click', async () => {
+    const sel = currentSession();
+    if (!sel) return;
+    el.clipPullBtn.disabled = true;
+    try {
+      const res = await panelCall('action', { action: 'clipboardGet', sessionId: sel.id });
+      if (!res || res.ok === false) {
+        handleActionFailure(res, isZh ? '读取远端剪贴板失败' : 'Failed to read remote clipboard');
+        return;
+      }
+      const text = extractClipboardText(res);
+      if (!text) {
+        setStatus(isZh ? '远端剪贴板为空' : 'Remote clipboard is empty', state.takeoverActive ? 'locked' : 'normal');
+        return;
+      }
+      el.textInput.value = text;
+      const copied = await copyTextSafe(text);
+      setStatus(
+        copied
+          ? (isZh ? `已拉取并复制远端剪贴板 (${text.length} 字符)` : `Pulled & copied ${text.length} chars`)
+          : (isZh ? `已拉取 ${text.length} 字符至输入框` : `Pulled ${text.length} chars to input`),
+        state.takeoverActive ? 'locked' : 'normal',
+      );
+    } catch (err) {
+      setStatus(err.message || 'Clipboard pull failed', 'error');
+    } finally {
+      updateCapabilitiesUi();
+    }
+  });
+
+  el.clipPushBtn.addEventListener('click', async () => {
+    const sel = currentSession();
+    if (!sel) return;
+    let text = el.textInput.value;
+    if (!text) {
+      try {
+        if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+          text = await navigator.clipboard.readText();
+        }
+      } catch {}
+    }
+    if (!text) {
+      try { el.textInput.focus(); } catch {}
+      setStatus(isZh ? '请先输入文本或复制内容到本地剪贴板' : 'Enter text or copy to local clipboard first', 'error');
+      return;
+    }
+    el.clipPushBtn.disabled = true;
+    try {
+      const res = await panelCall('action', { action: 'clipboardSet', sessionId: sel.id, text });
+      if (!res || res.ok === false) {
+        handleActionFailure(res, isZh ? '推送剪贴板失败' : 'Failed to push clipboard');
+        return;
+      }
+      setStatus(
+        isZh ? `已推送 ${text.length} 字符至远端剪贴板` : `Pushed ${text.length} chars to remote clipboard`,
+        state.takeoverActive ? 'locked' : 'normal',
+      );
+    } catch (err) {
+      setStatus(err.message || 'Clipboard push failed', 'error');
+    } finally {
+      updateCapabilitiesUi();
+    }
+  });
+
+  el.pveForm.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const pveHost = el.pveHostInput.value.trim();
+    const vmidRaw = el.pveVmidInput.value.trim();
+    const vmid = Number.parseInt(vmidRaw, 10);
+    if (!pveHost || !Number.isFinite(vmid) || vmid <= 0) {
+      setStatus(isZh ? '请输入有效的 SSH 主机与 VMID' : 'Enter a valid SSH host and numeric VMID', 'error');
+      return;
+    }
+    el.pveConnectBtn.disabled = true;
+    try {
+      setStatus(isZh ? `正在连接 PVE ${pveHost}:${vmid}...` : `Connecting PVE ${pveHost}:${vmid}...`);
+      const res = await panelCall('action', { action: 'connectPve', pveHost, vmid }, 25000);
+      if (!res || res.ok === false) {
+        setStatus(res?.error || res?.message || 'PVE connection failed', 'error');
+        return;
+      }
+      el.pveVmidInput.value = '';
+      if (res.sessionId) state.selectedSessionId = res.sessionId;
+      await refreshState();
+      setStatus(isZh ? `已连接 PVE ${pveHost}:${vmid}` : `Connected PVE ${pveHost}:${vmid}`);
+    } catch (err) {
+      setStatus(err.message || 'PVE connection failed', 'error');
+    } finally {
+      el.pveConnectBtn.disabled = false;
+    }
+  });
+
+  el.vncForm.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const vncHost = el.vncHostInput.value.trim();
+    const vncPortRaw = el.vncPortInput.value.trim();
+    const vncPort = Number.parseInt(vncPortRaw || '5900', 10);
+    const vncPassword = el.vncPasswordInput.value;
+    el.vncPasswordInput.value = '';
+    if (!vncHost || !Number.isFinite(vncPort) || vncPort < 1 || vncPort > 65535) {
+      setStatus(isZh ? '请输入有效的 VNC 主机与端口' : 'Enter a valid VNC host and port', 'error');
+      return;
+    }
+    el.vncConnectBtn.disabled = true;
+    try {
+      setStatus(isZh ? `正在连接 VNC ${vncHost}:${vncPort}...` : `Connecting VNC ${vncHost}:${vncPort}...`);
+      const payload = { action: 'connectVnc', vncHost, vncPort };
+      if (vncPassword) payload.vncPassword = vncPassword;
+      const res = await panelCall('action', payload, 25000);
+      if (!res || res.ok === false) {
+        setStatus(res?.error || res?.message || 'VNC connection failed', 'error');
+        return;
+      }
+      if (res.sessionId) state.selectedSessionId = res.sessionId;
+      await refreshState();
+      setStatus(isZh ? `已连接 VNC ${vncHost}:${vncPort}` : `Connected VNC ${vncHost}:${vncPort}`);
+    } catch (err) {
+      setStatus(err.message || 'VNC connection failed', 'error');
+    } finally {
+      el.vncConnectBtn.disabled = false;
+    }
   });
 
   for (const btn of document.querySelectorAll('[data-key]')) {
     btn.addEventListener('click', () => {
-      sendInteractiveInput({ subAction: 'key', key: btn.dataset.key });
+      void sendRpcInput({ subAction: 'key', key: btn.dataset.key }, { silentTakeover: true });
     });
   }
 

@@ -565,12 +565,15 @@
       "id": "kiki-uu-remote",
       "tier": "official",
       "displayName": "UU Remote",
-      "version": "0.2.0",
-      "description": "Connect, preview and operate NetEase UU Remote desktop sessions (uuyc-cli + background swapchain capture) and Proxmox VE QEMU VMs (SSH + QMP), and bridge active sessions into Kiki Computer Use.",
+      "version": "0.3.0",
+      "description": "Connect, preview, and operate NetEase UU Remote (GameViewer), Proxmox VE QEMU VMs (RFB 3.8 over SSH with QMP/QGA fallback), and direct/SSH-tunneled VNC desktops, bridged into Kiki Computer Use.",
       "keywords": [
         "uu-remote",
         "uuremote",
         "gameviewer",
+        "proxmox",
+        "vnc",
+        "rfb",
         "remote-desktop",
         "cua"
       ],
@@ -585,11 +588,13 @@
       "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-uu-remote",
       "localizations": {
         "zh": {
-          "description": "通过官方 uuyc-cli 与后台渲染画布捕获连接、预览并操控网易 UU远程桌面会话，并自动桥接为 Kiki 电脑操控目标。",
+          "description": "连接、预览并操控网易 UU远程桌面、Proxmox VE 虚拟机（RFB 3.8 直连 + QMP/QGA 兜底）及 VNC 远程桌面，并桥接至 Kiki 电脑操控总线。",
           "keywords": [
             "UU远程",
             "远程桌面",
             "远控",
+            "Proxmox",
+            "VNC",
             "GameViewer",
             "CUA"
           ]

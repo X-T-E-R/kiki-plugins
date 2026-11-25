@@ -1,4 +1,11 @@
-import { cropRgba, decodePng, encodePng, resizeRgbaToFit } from './png-codec.mjs';
+import {
+  applyGridOverlay,
+  cropRgba,
+  decodePng,
+  encodePng,
+  hashPngOrSample,
+  resizeRgbaToFit,
+} from './png-codec.mjs';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -252,6 +259,7 @@ export function mapPointToTarget({
   x,
   y,
   coordinateMode = 'normalized_1000',
+  zoomRelative = false,
   stageBounds = { x: 0, y: 0, width: 1920, height: 1080 },
   contentRect,
   lastObservation = null,
@@ -266,50 +274,92 @@ export function mapPointToTarget({
     throw new Error(`Invalid coordinates: x=${String(x)}, y=${String(y)}`);
   }
 
-  let rawTargetX;
-  let rawTargetY;
+  const cropBounds = lastObservation?.cropBounds || null;
+  if (zoomRelative && !cropBounds) {
+    throw new Error('zoomRelative=true requires a prior zoomed screenshot on this session.');
+  }
+  const refRect = zoomRelative && cropBounds
+    ? cropBounds
+    : { x: 0, y: 0, width: cr.width, height: cr.height };
+
+  let floatTargetX;
+  let floatTargetY;
+  let norm01X;
+  let norm01Y;
 
   switch (coordinateMode) {
-    case 'normalized_1000':
-      rawTargetX = cr.width <= 1 ? 0 : Math.round((clamp(numX, 0, 1000) / 1000) * (cr.width - 1));
-      rawTargetY = cr.height <= 1 ? 0 : Math.round((clamp(numY, 0, 1000) / 1000) * (cr.height - 1));
-      break;
-    case 'normalized_01':
-      rawTargetX = cr.width <= 1 ? 0 : Math.round(clamp(numX, 0, 1) * (cr.width - 1));
-      rawTargetY = cr.height <= 1 ? 0 : Math.round(clamp(numY, 0, 1) * (cr.height - 1));
-      break;
-    case 'image_pixels': {
-      if (lastObservation?.imageSize?.width > 0 && lastObservation?.imageSize?.height > 0) {
-        const base = lastObservation.cropBounds || { x: 0, y: 0, width: cr.width, height: cr.height };
-        const rx = clamp(numX / lastObservation.imageSize.width, 0, 1);
-        const ry = clamp(numY / lastObservation.imageSize.height, 0, 1);
-        rawTargetX = Math.round(base.x + rx * base.width);
-        rawTargetY = Math.round(base.y + ry * base.height);
+    case 'normalized_1000': {
+      const u = clamp(numX, 0, 1000) / 1000;
+      const v = clamp(numY, 0, 1000) / 1000;
+      if (zoomRelative && cropBounds) {
+        floatTargetX = refRect.x + (refRect.width > 1 ? u * (refRect.width - 1) : 0);
+        floatTargetY = refRect.y + (refRect.height > 1 ? v * (refRect.height - 1) : 0);
+        norm01X = cr.width > 1 ? clamp(floatTargetX, 0, cr.width - 1) / (cr.width - 1) : 0;
+        norm01Y = cr.height > 1 ? clamp(floatTargetY, 0, cr.height - 1) / (cr.height - 1) : 0;
       } else {
-        rawTargetX = Math.round(numX);
-        rawTargetY = Math.round(numY);
+        norm01X = u;
+        norm01Y = v;
+        floatTargetX = cr.width > 1 ? u * (cr.width - 1) : 0;
+        floatTargetY = cr.height > 1 ? v * (cr.height - 1) : 0;
       }
       break;
     }
-    case 'target_pixels':
-    default:
-      rawTargetX = Math.round(numX);
-      rawTargetY = Math.round(numY);
+    case 'normalized_01': {
+      const u = clamp(numX, 0, 1);
+      const v = clamp(numY, 0, 1);
+      if (zoomRelative && cropBounds) {
+        floatTargetX = refRect.x + (refRect.width > 1 ? u * (refRect.width - 1) : 0);
+        floatTargetY = refRect.y + (refRect.height > 1 ? v * (refRect.height - 1) : 0);
+        norm01X = cr.width > 1 ? clamp(floatTargetX, 0, cr.width - 1) / (cr.width - 1) : 0;
+        norm01Y = cr.height > 1 ? clamp(floatTargetY, 0, cr.height - 1) / (cr.height - 1) : 0;
+      } else {
+        norm01X = u;
+        norm01Y = v;
+        floatTargetX = cr.width > 1 ? u * (cr.width - 1) : 0;
+        floatTargetY = cr.height > 1 ? v * (cr.height - 1) : 0;
+      }
       break;
+    }
+    case 'image_pixels': {
+      const base = cropBounds || { x: 0, y: 0, width: cr.width, height: cr.height };
+      const imgW = lastObservation?.imageSize?.width > 0 ? lastObservation.imageSize.width : base.width;
+      const imgH = lastObservation?.imageSize?.height > 0 ? lastObservation.imageSize.height : base.height;
+      const rx = imgW > 1 ? clamp(numX / (imgW - 1), 0, 1) : 0;
+      const ry = imgH > 1 ? clamp(numY / (imgH - 1), 0, 1) : 0;
+      floatTargetX = base.x + (base.width > 1 ? rx * (base.width - 1) : 0);
+      floatTargetY = base.y + (base.height > 1 ? ry * (base.height - 1) : 0);
+      norm01X = cr.width > 1 ? clamp(floatTargetX, 0, cr.width - 1) / (cr.width - 1) : 0;
+      norm01Y = cr.height > 1 ? clamp(floatTargetY, 0, cr.height - 1) / (cr.height - 1) : 0;
+      break;
+    }
+    case 'target_pixels':
+    default: {
+      floatTargetX = zoomRelative && cropBounds
+        ? clamp(refRect.x + numX, refRect.x, refRect.x + Math.max(0, refRect.width - 1))
+        : clamp(numX, 0, Math.max(0, cr.width - 1));
+      floatTargetY = zoomRelative && cropBounds
+        ? clamp(refRect.y + numY, refRect.y, refRect.y + Math.max(0, refRect.height - 1))
+        : clamp(numY, 0, Math.max(0, cr.height - 1));
+      norm01X = cr.width > 1 ? floatTargetX / (cr.width - 1) : 0;
+      norm01Y = cr.height > 1 ? floatTargetY / (cr.height - 1) : 0;
+      break;
+    }
   }
 
-  const targetX = clamp(rawTargetX, 0, Math.max(0, cr.width - 1));
-  const targetY = clamp(rawTargetY, 0, Math.max(0, cr.height - 1));
+  const targetX = cr.width <= 1 ? 0 : clamp(Math.round(floatTargetX), 0, cr.width - 1);
+  const targetY = cr.height <= 1 ? 0 : clamp(Math.round(floatTargetY), 0, cr.height - 1);
   const screenX = Math.round(stageBounds.x + cr.x + targetX);
   const screenY = Math.round(stageBounds.y + cr.y + targetY);
-  const normX = cr.width > 1 ? clamp(Math.round((targetX / (cr.width - 1)) * 1000), 0, 1000) : 0;
-  const normY = cr.height > 1 ? clamp(Math.round((targetY / (cr.height - 1)) * 1000), 0, 1000) : 0;
+  const normX = cr.width > 1 ? clamp(Math.round(norm01X * 1000), 0, 1000) : 0;
+  const normY = cr.height > 1 ? clamp(Math.round(norm01Y * 1000), 0, 1000) : 0;
 
   return {
     x: targetX,
     y: targetY,
     normX,
     normY,
+    norm01X,
+    norm01Y,
     screenX,
     screenY,
   };
@@ -372,6 +422,7 @@ export function processCapturedStagePng(pngBytesOrImage, {
   maxHeight = 1080,
   lastObservation = null,
   pngCompressionLevel = 3,
+  overlay = 'none',
 } = {}) {
   const stageImage = Buffer.isBuffer(pngBytesOrImage) || (pngBytesOrImage instanceof Uint8Array && !pngBytesOrImage.width)
     ? decodePng(pngBytesOrImage)
@@ -391,13 +442,18 @@ export function processCapturedStagePng(pngBytesOrImage, {
     : null;
 
   const croppedView = cropBounds ? cropRgba(nativeStreamImage, cropBounds) : nativeStreamImage;
-  const finalImage = resizeRgbaToFit(croppedView, { maxWidth, maxHeight });
-  const pngBuffer = encodePng(finalImage, { level: pngCompressionLevel });
+  const resizedImage = resizeRgbaToFit(croppedView, { maxWidth, maxHeight });
+  const encodedImage = overlay === 'grid' ? applyGridOverlay(resizedImage) : resizedImage;
+  const pngBuffer = encodePng(encodedImage, { level: pngCompressionLevel });
+  const frameHash = hashPngOrSample(pngBuffer);
 
   return {
     mimeType: 'image/png',
     pngBuffer,
     imageBase64: pngBuffer.toString('base64'),
+    frameHash,
+    rgbaImage: resizedImage,
+    overlay: overlay === 'grid' ? 'grid' : 'none',
     stageSize,
     contentRect: {
       x: contentRect.x,
@@ -409,7 +465,7 @@ export function processCapturedStagePng(pngBytesOrImage, {
     contentAxis: contentRect.axis || 'none',
     logicalSize,
     cropBounds,
-    imageSize: { width: finalImage.width, height: finalImage.height },
+    imageSize: { width: encodedImage.width, height: encodedImage.height },
   };
 }
 
