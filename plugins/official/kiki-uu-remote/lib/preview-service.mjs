@@ -1,10 +1,15 @@
 import { hashPngOrSample } from './png-codec.mjs';
 import { isPveTargetId } from './pve-qmp-driver.mjs';
-import { isVncTargetId } from './rfb-driver.mjs';
+import { isVncTargetId, packDirtyRectFrame } from './rfb-driver.mjs';
 
 const STREAM_MAGIC_0 = 0x55; // 'U'
 const STREAM_MAGIC_1 = 0x52; // 'R'
+export const CLIENT_POINTER_MAGIC = 0x50; // 'P'
+export const CLIENT_WHEEL_MAGIC = 0x57; // 'W'
+export const CLIENT_RAW_KEY_MAGIC = 0x4b; // 'K'
+
 const MAX_BUFFERED_BYTES = 1_500_000;
+const DIRTY_COALESCE_BUFFERED_BYTES = 64 * 1024;
 const PEEK_DEFAULT_MAX_AGE_MS = 15_000;
 const PEEK_DEFAULT_WAIT_BUDGET_MS = 200;
 const STREAM_TOPO_REFRESH_MS = 3_000;
@@ -32,8 +37,84 @@ export function packStreamPngFrame({
   return Buffer.concat([header, pngBuffer]);
 }
 
+export function decodeClientBinaryInput(rawBuf) {
+  const b = Buffer.isBuffer(rawBuf)
+    ? rawBuf
+    : (rawBuf instanceof ArrayBuffer
+      ? Buffer.from(rawBuf)
+      : (ArrayBuffer.isView(rawBuf) ? Buffer.from(rawBuf.buffer, rawBuf.byteOffset, rawBuf.byteLength) : null));
+  if (!b || b.length < 2) return null;
+
+  if (b[0] === CLIENT_POINTER_MAGIC && b.length >= 8) {
+    const op = b.readUInt8(1); // 0=move, 1=down, 2=up
+    const buttonsMask = b.readUInt8(2);
+    const clickCount = b.readUInt8(3) || 1;
+    const norm1000X = b.readUInt16BE(4);
+    const norm1000Y = b.readUInt16BE(6);
+    return {
+      type: 'pointer',
+      op,
+      buttonsMask,
+      clickCount,
+      norm1000X,
+      norm1000Y,
+      engageTakeover: op === 1,
+    };
+  }
+
+  if (b[0] === CLIENT_WHEEL_MAGIC && b.length >= 10) {
+    const norm1000X = b.readUInt16BE(2);
+    const norm1000Y = b.readUInt16BE(4);
+    const deltaX = b.readInt16BE(6);
+    const deltaY = b.readInt16BE(8);
+    return {
+      type: 'wheel',
+      norm1000X,
+      norm1000Y,
+      deltaX,
+      deltaY,
+      engageTakeover: true,
+    };
+  }
+
+  if (b[0] === CLIENT_RAW_KEY_MAGIC && b.length >= 5) {
+    const downFlag = b.readUInt8(1); // 1=down, 0=up, 2=tap
+    const flags = b.readUInt8(2);
+    const codeLen = b.readUInt8(3);
+    if (4 + codeLen > b.length) return null;
+    const code = b.subarray(4, 4 + codeLen).toString('utf8');
+    let key = '';
+    if (4 + codeLen < b.length) {
+      const keyLen = b.readUInt8(4 + codeLen);
+      if (5 + codeLen + keyLen <= b.length) {
+        key = b.subarray(5 + codeLen, 5 + codeLen + keyLen).toString('utf8');
+      }
+    }
+    return {
+      type: 'key',
+      down: downFlag === 2 ? 2 : Boolean(downFlag),
+      shiftKey: Boolean(flags & 1),
+      code,
+      key,
+      engageTakeover: downFlag !== 0,
+    };
+  }
+
+  return null;
+}
+
 function isRemoteSessionId(sessionId) {
   return isPveTargetId(sessionId) || isVncTargetId(sessionId);
+}
+
+function mergeRectBounds(a, b) {
+  if (!b) return a;
+  if (!a) return { x: b.x, y: b.y, width: b.width, height: b.height };
+  const minX = Math.min(a.x, b.x);
+  const minY = Math.min(a.y, b.y);
+  const maxX = Math.max(a.x + a.width, b.x + b.width);
+  const maxY = Math.max(a.y + a.height, b.y + b.height);
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
 export function createUuPreviewService({ uuService, ensureProviderBus = async () => null, nowFn = Date.now } = {}) {
@@ -328,17 +409,22 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
       if (kind === 'input') {
         const fromHumanPanel = input.fromHumanPanel !== false;
         if (fromHumanPanel) {
-          await uuService
-            .setTakeover(
-              {
-                sessionId: input.sessionId,
-                active: true,
-                holder: 'human',
-                reason: 'Interactive input from UU Remote workspace panel',
-              },
-              context,
-            )
-            .catch(() => {});
+          const alreadyLocked = typeof uuService.getTakeoverEntry === 'function'
+            ? uuService.getTakeoverEntry(input.sessionId)?.active === true
+            : false;
+          if (!alreadyLocked) {
+            await uuService
+              .setTakeover(
+                {
+                  sessionId: input.sessionId,
+                  active: true,
+                  holder: 'human',
+                  reason: 'Interactive input from UU Remote workspace panel',
+                },
+                context,
+              )
+              .catch(() => {});
+          }
         }
         const normalizedSubAction = input.subAction === 'paste' ? 'type' : input.subAction;
         const normalizedMode = input.subAction === 'paste' ? 'clipboard' : input.mode;
@@ -407,17 +493,32 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
     let targetSessionId = args?.sessionId || null;
     let maxWidth = Math.max(320, Math.min(2560, Number(args?.maxWidth) || 1280));
     let maxHeight = Math.max(240, Math.min(1600, Number(args?.maxHeight) || 900));
-    let fps = Math.max(1, Math.min(20, Number(args?.fps) || 12));
+    let fps = Math.max(1, Math.min(30, Number(args?.fps) || 24));
+    const allowDirtyRects = args?.protocol !== 'uu-png-stream-v1';
     let paused = false;
     let forceSingleFrame = false;
+    let needFullKeyframe = false;
     let dirtySinceLastFrame = true;
     let closed = false;
     let timer = null;
+    let dirtyFlushTimer = null;
     let inFlight = false;
 
     let lastSentFrameHash = null;
     let lastFrameSentAtMs = 0;
     let lastTelemetryAtMs = 0;
+    let usingDirtyRectStream = false;
+    let coalescedBounds = null;
+    let outboundSeq = 0;
+
+    const sendDirtyPacket = (buf) => {
+      outboundSeq = (outboundSeq + 1) >>> 0;
+      const out = Buffer.isBuffer(buf) ? Buffer.from(buf) : Buffer.from(buf);
+      if (out.length >= 6) {
+        out.writeUInt32BE(outboundSeq, 2);
+      }
+      return streamSession.sendBinary(out);
+    };
     let lastMeta = {
       transport: 'uu-win32',
       width: 0,
@@ -432,6 +533,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
     let cachedSession = initialSession;
     let lastTopoAt = nowFn();
     let unsubscribeRfb = null;
+    let unsubscribeClipboard = null;
 
     const scheduleNext = (delayMs) => {
       if (closed) return;
@@ -449,14 +551,107 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
       streamSession.sendText?.(JSON.stringify({ type: 'telemetry', ...payload }));
     };
 
+    const flushCoalescedDirtyBounds = () => {
+      dirtyFlushTimer = null;
+      if (closed || paused || !usingDirtyRectStream || !coalescedBounds) return;
+      const buffered = streamSession.bufferedAmount?.() ?? 0;
+      if (buffered > DIRTY_COALESCE_BUFFERED_BYTES) {
+        dirtyFlushTimer = setTimeout(flushCoalescedDirtyBounds, Math.max(16, Math.round(1000 / Math.max(1, fps))));
+        dirtyFlushTimer.unref?.();
+        return;
+      }
+      const bounds = coalescedBounds;
+      coalescedBounds = null;
+      const pkt = uuService.buildRfbCoalescedBoundsPacket?.(targetSessionId, bounds);
+      if (pkt) {
+        const ok = sendDirtyPacket(pkt);
+        if (ok !== false) {
+          lastFrameSentAtMs = nowFn();
+        } else {
+          needFullKeyframe = true;
+        }
+      }
+    };
+
     const bindRfbSubscription = (sid) => {
       if (unsubscribeRfb) {
         try { unsubscribeRfb(); } catch {}
         unsubscribeRfb = null;
       }
-      if (!sid || typeof uuService.subscribeSessionUpdates !== 'function') return;
-      unsubscribeRfb = uuService.subscribeSessionUpdates(sid, () => {
+      if (unsubscribeClipboard) {
+        try { unsubscribeClipboard(); } catch {}
+        unsubscribeClipboard = null;
+      }
+      if (!sid) return;
+
+      if (typeof uuService.subscribeSessionClipboard === 'function') {
+        unsubscribeClipboard = uuService.subscribeSessionClipboard(sid, (clipEvt) => {
+          if (closed || !clipEvt?.text) return;
+          streamSession.sendText?.(JSON.stringify({
+            type: 'remoteClipboard',
+            sessionId: sid,
+            text: clipEvt.text,
+            updatedAtMs: clipEvt.updatedAtMs || nowFn(),
+          }));
+        });
+      }
+
+      if (typeof uuService.subscribeSessionUpdates !== 'function') return;
+      unsubscribeRfb = uuService.subscribeSessionUpdates(sid, (evt) => {
         if (closed) return;
+        if (usingDirtyRectStream && Array.isArray(evt?.rects) && evt.rects.length > 0 && !needFullKeyframe) {
+          if (paused) {
+            coalescedBounds = mergeRectBounds(coalescedBounds, evt.dirtyBounds || { x: 0, y: 0, width: evt.width || 1024, height: evt.height || 768 });
+            return;
+          }
+          const minIntervalMs = Math.round(1000 / Math.max(1, fps));
+          const now = nowFn();
+          const buffered = streamSession.bufferedAmount?.() ?? 0;
+          if (buffered > DIRTY_COALESCE_BUFFERED_BYTES || coalescedBounds || (now - lastFrameSentAtMs < minIntervalMs - 2)) {
+            coalescedBounds = mergeRectBounds(coalescedBounds, evt.dirtyBounds || { x: 0, y: 0, width: evt.width || 1024, height: evt.height || 768 });
+            if (!dirtyFlushTimer) {
+              const waitMs = Math.max(8, minIntervalMs - (now - lastFrameSentAtMs));
+              dirtyFlushTimer = setTimeout(flushCoalescedDirtyBounds, waitMs);
+              dirtyFlushTimer.unref?.();
+            }
+            return;
+          }
+          const tkActive = typeof uuService.getTakeoverEntry === 'function'
+            ? Boolean(uuService.getTakeoverEntry(sid)?.active)
+            : lastMeta.takeoverActive;
+          const pkt = packDirtyRectFrame({
+            frameSeq: 0,
+            fbWidth: evt.width || lastMeta.width || 1024,
+            fbHeight: evt.height || lastMeta.height || 768,
+            keyFrame: false,
+            takeoverActive: tkActive,
+            rects: evt.rects,
+          });
+          const ok = sendDirtyPacket(pkt);
+          if (ok === false) {
+            needFullKeyframe = true;
+            scheduleNext(40);
+          } else {
+            lastFrameSentAtMs = now;
+            lastMeta.width = evt.width || lastMeta.width;
+            lastMeta.height = evt.height || lastMeta.height;
+            lastMeta.takeoverActive = tkActive;
+            if (now - lastTelemetryAtMs >= TELEMETRY_HEARTBEAT_MS) {
+              emitTelemetry({
+                unchanged: false,
+                sessionId: sid,
+                transport: lastMeta.transport,
+                captureMs: 0,
+                width: lastMeta.width,
+                height: lastMeta.height,
+                capabilities: lastMeta.capabilities,
+                takeoverActive: tkActive,
+              });
+            }
+          }
+          return;
+        }
+
         dirtySinceLastFrame = true;
         if (!paused && !inFlight) {
           const intervalMs = Math.round(1000 / Math.max(1, fps));
@@ -475,14 +670,39 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
           try { unsubscribeRfb(); } catch {}
           unsubscribeRfb = null;
         }
+        if (unsubscribeClipboard) {
+          try { unsubscribeClipboard(); } catch {}
+          unsubscribeClipboard = null;
+        }
         if (timer) {
           clearTimeout(timer);
           timer = null;
+        }
+        if (dirtyFlushTimer) {
+          clearTimeout(dirtyFlushTimer);
+          dirtyFlushTimer = null;
         }
       },
       nudge(sessionId = null, delayMs = 35) {
         if (closed) return;
         if (sessionId && targetSessionId && sessionId !== targetSessionId) return;
+        if (usingDirtyRectStream) {
+          const tk = typeof uuService.getTakeoverEntry === 'function'
+            ? Boolean(uuService.getTakeoverEntry(targetSessionId)?.active)
+            : lastMeta.takeoverActive;
+          lastMeta.takeoverActive = tk;
+          emitTelemetry({
+            unchanged: true,
+            sessionId: targetSessionId,
+            transport: lastMeta.transport,
+            captureMs: 0,
+            width: lastMeta.width,
+            height: lastMeta.height,
+            capabilities: lastMeta.capabilities,
+            takeoverActive: tk,
+          });
+          return;
+        }
         forceSingleFrame = true;
         dirtySinceLastFrame = true;
         if (!inFlight) {
@@ -496,6 +716,75 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
     streamSession.onClose?.(subscriber.stop);
     streamSession.signal?.addEventListener?.('abort', subscriber.stop, { once: true });
 
+    let winDragStart = null;
+    streamSession.onBinary?.((rawBuf) => {
+      if (closed || !targetSessionId) return;
+      const decoded = decodeClientBinaryInput(rawBuf);
+      if (!decoded) return;
+      if (typeof uuService.sendLiveRfbInput === 'function') {
+        const handled = uuService.sendLiveRfbInput(targetSessionId, decoded, context);
+        if (handled !== false) return;
+      }
+      // Fallback for non-RFB sessions (uu:<hwnd> / pve-qmp): map discrete down/up/wheel/key cleanly
+      if (decoded.type === 'pointer') {
+        if (decoded.op === 1) {
+          winDragStart = { x: decoded.norm1000X, y: decoded.norm1000Y, buttonsMask: decoded.buttonsMask, clickCount: decoded.clickCount };
+        } else if (decoded.op === 2 && winDragStart) {
+          const start = winDragStart;
+          winDragStart = null;
+          const dist = Math.hypot(decoded.norm1000X - start.x, decoded.norm1000Y - start.y);
+          const button = (start.buttonsMask & 4) ? 'right' : ((start.buttonsMask & 2) ? 'middle' : 'left');
+          if (dist >= 12) {
+            void performAction({
+              action: 'input',
+              sessionId: targetSessionId,
+              subAction: 'drag',
+              startX: start.x,
+              startY: start.y,
+              endX: decoded.norm1000X,
+              endY: decoded.norm1000Y,
+              button,
+              fromHumanPanel: true,
+            }, context).catch(() => {});
+          } else {
+            const subAction = button === 'right' ? 'right_click' : (start.clickCount >= 2 ? 'double_click' : 'click');
+            void performAction({
+              action: 'input',
+              sessionId: targetSessionId,
+              subAction,
+              x: decoded.norm1000X,
+              y: decoded.norm1000Y,
+              button,
+              count: start.clickCount,
+              fromHumanPanel: true,
+            }, context).catch(() => {});
+          }
+        }
+      } else if (decoded.type === 'wheel') {
+        void performAction({
+          action: 'input',
+          sessionId: targetSessionId,
+          subAction: 'scroll',
+          x: decoded.norm1000X,
+          y: decoded.norm1000Y,
+          deltaX: decoded.deltaX,
+          deltaY: decoded.deltaY,
+          fromHumanPanel: true,
+        }, context).catch(() => {});
+      } else if (decoded.type === 'key' && decoded.down) {
+        const keyToken = decoded.key || decoded.code;
+        if (keyToken) {
+          void performAction({
+            action: 'input',
+            sessionId: targetSessionId,
+            subAction: 'key',
+            keys: [keyToken],
+            fromHumanPanel: true,
+          }, context).catch(() => {});
+        }
+      }
+    });
+
     streamSession.onText?.((rawText) => {
       let msg;
       try {
@@ -504,22 +793,34 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
         return;
       }
       if (!msg || typeof msg !== 'object') return;
+      if (msg.type === 'requestKeyframe') {
+        needFullKeyframe = true;
+        coalescedBounds = null;
+        if (!inFlight) scheduleNext(5);
+        return;
+      }
       if (msg.type === 'configure') {
         if (msg.sessionId && String(msg.sessionId) !== targetSessionId) {
           targetSessionId = String(msg.sessionId);
           cachedSession = null;
           lastTopoAt = 0;
           lastSentFrameHash = null;
+          usingDirtyRectStream = false;
+          needFullKeyframe = true;
+          coalescedBounds = null;
           dirtySinceLastFrame = true;
           bindRfbSubscription(targetSessionId);
-          if (!paused && !inFlight) scheduleNext(15);
+          if (!paused && !inFlight) scheduleNext(10);
         }
         if (Number.isFinite(msg.maxWidth)) maxWidth = Math.max(320, Math.min(2560, msg.maxWidth));
         if (Number.isFinite(msg.maxHeight)) maxHeight = Math.max(240, Math.min(1600, msg.maxHeight));
-        if (Number.isFinite(msg.fps)) fps = Math.max(1, Math.min(20, msg.fps));
+        if (Number.isFinite(msg.fps)) fps = Math.max(1, Math.min(30, msg.fps));
         if (typeof msg.paused === 'boolean') {
           paused = msg.paused;
-          if (!paused && !inFlight) scheduleNext(15);
+          if (!paused && !inFlight) {
+            if (usingDirtyRectStream && coalescedBounds) flushCoalescedDirtyBounds();
+            else scheduleNext(15);
+          }
         }
         return;
       }
@@ -543,7 +844,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
     const pumpFrame = async () => {
       if (closed) return;
       const intervalMs = Math.round(1000 / Math.max(1, fps));
-      const runForced = forceSingleFrame;
+      const runForced = forceSingleFrame || needFullKeyframe;
       if ((paused && !runForced) || inFlight) {
         scheduleNext(intervalMs);
         return;
@@ -557,14 +858,44 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
       inFlight = true;
       const started = nowFn();
       const isRemote = isRemoteSessionId(targetSessionId);
+
+      // Fast dirty-rect heartbeat & keyframe recovery path once active on RFB
+      if (usingDirtyRectStream && !needFullKeyframe) {
+        inFlight = false;
+        if (coalescedBounds) {
+          flushCoalescedDirtyBounds();
+        }
+        if (nowFn() - lastTelemetryAtMs >= TELEMETRY_HEARTBEAT_MS) {
+          const capInfo = typeof uuService.getSessionTransportAndCapabilities === 'function'
+            ? await uuService.getSessionTransportAndCapabilities(targetSessionId).catch(() => null)
+            : null;
+          const tk = typeof uuService.getTakeoverEntry === 'function'
+            ? Boolean(uuService.getTakeoverEntry(targetSessionId)?.active)
+            : lastMeta.takeoverActive;
+          lastMeta.capabilities = capInfo?.capabilities || lastMeta.capabilities;
+          lastMeta.takeoverActive = tk;
+          emitTelemetry({
+            unchanged: true,
+            sessionId: targetSessionId,
+            transport: capInfo?.transport || lastMeta.transport,
+            captureMs: 0,
+            width: lastMeta.width,
+            height: lastMeta.height,
+            capabilities: lastMeta.capabilities,
+            takeoverActive: tk,
+          });
+        }
+        scheduleNext(TELEMETRY_HEARTBEAT_MS);
+        return;
+      }
+
       const usingRfbPush = Boolean(
         cachedSession &&
         (cachedSession.transport === 'pve-rfb' || cachedSession.transport === 'rfb') &&
-        lastSentFrameHash !== null,
+        lastSentFrameHash !== null &&
+        !needFullKeyframe,
       );
 
-      // Event-driven RFB idle path: skip PNG encoding completely when no dirty rect arrived;
-      // emit a lightweight telemetry heartbeat every 2s instead.
       if (usingRfbPush && !dirtySinceLastFrame && !runForced) {
         inFlight = false;
         if (nowFn() - lastTelemetryAtMs >= TELEMETRY_HEARTBEAT_MS) {
@@ -603,6 +934,55 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
         }
 
         if (session.state === 'active') {
+          // Try native RFB 0x02 dirty-rect keyframe stream first when supported
+          if (
+            allowDirtyRects &&
+            (session.transport === 'pve-rfb' || session.transport === 'rfb') &&
+            typeof uuService.buildRfbKeyframePacket === 'function'
+          ) {
+            const kf = await uuService.buildRfbKeyframePacket(session.id, { signal: streamSession.signal }).catch(() => null);
+            if (kf?.packet) {
+              const captureMs = Math.max(0, Math.round(nowFn() - started));
+              const capInfo = typeof uuService.getSessionTransportAndCapabilities === 'function'
+                ? await uuService.getSessionTransportAndCapabilities(session.id).catch(() => null)
+                : null;
+              const tkActive = typeof uuService.getTakeoverEntry === 'function'
+                ? Boolean(uuService.getTakeoverEntry(session.id)?.active)
+                : false;
+              const sent = sendDirtyPacket(kf.packet);
+              if (sent !== false) {
+                usingDirtyRectStream = true;
+                needFullKeyframe = false;
+                coalescedBounds = null;
+                lastFrameSentAtMs = nowFn();
+                lastMeta = {
+                  transport: capInfo?.transport || session.transport,
+                  width: kf.width,
+                  height: kf.height,
+                  takeoverActive: tkActive,
+                  capabilities: capInfo?.capabilities || kf.capabilities || null,
+                };
+                bindRfbSubscription(session.id);
+                emitTelemetry({
+                  unchanged: false,
+                  sessionId: session.id,
+                  transport: lastMeta.transport,
+                  captureMs,
+                  width: kf.width,
+                  height: kf.height,
+                  capabilities: lastMeta.capabilities,
+                  takeoverActive: tkActive,
+                });
+                inFlight = false;
+                scheduleNext(TELEMETRY_HEARTBEAT_MS);
+                return;
+              }
+            }
+          }
+
+          usingDirtyRectStream = false;
+          needFullKeyframe = false;
+
           const obs = await uuService.observeSession(
             session,
             { maxWidth, maxHeight, pngCompressionLevel: 1 },
@@ -631,7 +1011,6 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
 
           if (!closed) {
             if (lastSentFrameHash && frameHash === lastSentFrameHash) {
-              // Unchanged frame: skip binary PNG; send lightweight telemetry every 2s.
               if (nowFn() - lastTelemetryAtMs >= TELEMETRY_HEARTBEAT_MS) {
                 emitTelemetry({
                   unchanged: true,
@@ -678,6 +1057,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
         }
       } catch (error) {
         cachedSession = null;
+        usingDirtyRectStream = false;
         lastTopoAt = 0;
         dirtySinceLastFrame = true;
         if (!closed) {
@@ -694,7 +1074,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
 
       const elapsed = nowFn() - started;
       const isActiveRfbPush = cachedSession && (cachedSession.transport === 'pve-rfb' || cachedSession.transport === 'rfb');
-      if (isActiveRfbPush && !dirtySinceLastFrame) {
+      if ((usingDirtyRectStream || isActiveRfbPush) && !dirtySinceLastFrame && !needFullKeyframe) {
         scheduleNext(TELEMETRY_HEARTBEAT_MS);
       } else {
         scheduleNext(Math.max(25, intervalMs - elapsed));
@@ -705,6 +1085,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
 
     return {
       protocol: 'uu-png-stream-v1',
+      dirtyRectSupported: allowDirtyRects,
       sessionId: initialSession.id,
       label: initialSession.label,
       transport: initialSession.transport || 'uu-win32',

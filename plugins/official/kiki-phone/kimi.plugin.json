@@ -1,8 +1,8 @@
 {
   "name": "kiki-phone",
-  "version": "0.3.7",
+  "version": "0.4.0",
   "description": "Prepare, preview and operate Android or iOS phones with live workspace screen streaming, Mobilewright semantic scripts, snapshots and screenshots, plus the complete Mobile MCP toolset and optional Android su commands.",
-  "license": "MIT",
+  "license": "MIT AND Apache-2.0",
   "icon": "./icon.svg",
   "author": "Kiki",
   "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-phone",
@@ -95,6 +95,10 @@
               ],
               "default": "android",
               "description": "iOS prepares upstream packages without requiring Android ADB."
+            },
+            "deviceId": {
+              "type": "string",
+              "description": "Optional target device serial to check readiness for without mutating the global selected device."
             }
           },
           "required": [],
@@ -110,7 +114,7 @@
       {
         "schemaVersion": 1,
         "name": "phone_run",
-        "description": "Preferred phone interface: run async JavaScript with Mobilewright device, screen and expect, plus snapshot(), screenshot(), Android device.wake()/unlock()/sleep()/screenState()/ensureCleanIme(), device.humanDelay(), and screen.typeText()/humanTap()/humanSwipe(). screen.tap/swipe and locator.tap use humanized touch by default ({ raw: true } for raw input); on strict anti-bot apps avoid snapshot()/getBy* and use screenshot() + screen.humanTap(box). No script lists online devices; chosen device persists. Observe unclear outcomes before repeating.",
+        "description": "Preferred phone interface: run async JavaScript with Mobilewright device, screen and expect, plus snapshot(), screenshot(), Android device.wake()/unlock()/sleep()/screenState()/ensureCleanIme(), device.humanDelay(), and screen.typeText()/humanTap()/humanSwipe(). screen.tap/swipe and locator.tap use humanized touch by default ({ raw: true } or { transport: \"raw\" } for raw input, with automatic ADB fallback on HyperOS bottom-edge INJECT_EVENTS zones); pass deviceId for isolated concurrent multi-phone operation without overwriting selected-device.json.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -118,9 +122,13 @@
               "type": "string",
               "description": "Async JavaScript body. Example: await device.wake(); console.log(await snapshot()); await screenshot(); Native device/screen/expect are Mobilewright 0.0.67 APIs with humanized touch by default ({ raw: true } or KIKI_PHONE_RAW_INPUT=1 for raw input) plus Android power/lock/IME helpers and humanTap/humanSwipe/humanDelay; console output is returned."
             },
+            "deviceId": {
+              "type": "string",
+              "description": "Per-call target device serial/id. Runs in an isolated per-serial warm worker and never overwrites global selected-device.json."
+            },
             "device": {
               "type": "string",
-              "description": "Online upstream device id. Required when multiple devices are online and none has been selected. Reuses the selected device on later calls."
+              "description": "Online upstream device id. Required when multiple devices are online and none has been selected. Reuses and persists the selected device when deviceId is omitted."
             },
             "platform": {
               "type": "string",
@@ -129,6 +137,11 @@
                 "ios"
               ],
               "default": "android"
+            },
+            "overrideHumanTakeover": {
+              "type": "boolean",
+              "default": false,
+              "description": "Set true only when the user explicitly instructs the agent to act while Human Takeover is active on this target phone."
             },
             "timeoutMs": {
               "type": "integer",
@@ -151,7 +164,7 @@
       {
         "schemaVersion": 1,
         "name": "android_connection",
-        "description": "Manage Android ADB connections, separate from screen control. devices returns raw adb devices -l output including unauthorized/offline states; pair uses the wireless pairing address and code; connect/disconnect use the connection address. Pairing and connection ports differ. Requires official Android platform-tools. Does not restart ADB.",
+        "description": "Manage Android ADB connections, separate from screen control. devices returns raw adb devices -l output including unauthorized/offline states; select persists default selected-device.json; pair uses the wireless pairing address and code; connect/disconnect use the connection address. Pairing and connection ports differ. Requires official Android platform-tools. Does not restart ADB.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -161,12 +174,17 @@
                 "devices",
                 "pair",
                 "connect",
-                "disconnect"
+                "disconnect",
+                "select"
               ]
             },
             "address": {
               "type": "string",
               "description": "IP:port or host:port. Required for pair, connect and disconnect. Use the pairing port for pair and the debugging port for connect."
+            },
+            "deviceId": {
+              "type": "string",
+              "description": "Android serial to set as the global default selected device when action=\"select\"."
             },
             "code": {
               "type": "string",
@@ -188,13 +206,17 @@
       {
         "schemaVersion": 1,
         "name": "android_shell",
-        "description": "Run one explicit Android shell command through official adb, optionally using su for a rooted phone. Pass the adb transport serial (from android_connection devices) and command argv, not a shell program. root=true invokes su -c and may prompt on the phone; it does not run adb root. Use upstream Mobile MCP for UI, text and app operations. Returns actual stdout/stderr/exit status; never retries.",
+        "description": "Run one explicit Android shell command through official adb, optionally using su for a rooted phone. Pass serial (or deviceId) from android_connection devices and command argv, not a shell program. root=true invokes su -c and may prompt on the phone; it does not run adb root. Use upstream Mobile MCP for UI, text and app operations. Returns actual stdout/stderr/exit status; never retries.",
         "parameters": {
           "type": "object",
           "properties": {
             "serial": {
               "type": "string",
               "description": "Exact adb transport serial from android_connection devices, including IP:port for wireless devices. May differ from the Mobile MCP device id."
+            },
+            "deviceId": {
+              "type": "string",
+              "description": "Alias for serial when targeting a specific Android device."
             },
             "argv": {
               "type": "array",
@@ -211,7 +233,6 @@
             }
           },
           "required": [
-            "serial",
             "argv"
           ],
           "additionalProperties": false

@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process';
-import { findAdb } from './environment.mjs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { findAdb, phoneDataDir } from './environment.mjs';
 
 const ADB_DRAIN_GRACE_MS = 50;
 const ADB_START_SERVER_TIMEOUT_MS = 5_000;
@@ -49,6 +51,7 @@ export function ensureAdbServerStarted(adbBinary, options = {}) {
       settled = true;
       clearTimeout(timer);
       options.signal?.removeEventListener?.('abort', onAbort);
+      proc?.unref?.();
       resolve();
     };
 
@@ -77,7 +80,6 @@ export function ensureAdbServerStarted(adbBinary, options = {}) {
     const timer = setTimeout(() => {
       finish();
     }, waitMs);
-    timer.unref?.();
 
     options.signal?.addEventListener?.('abort', onAbort, { once: true });
     proc.once('error', () => {
@@ -88,7 +90,6 @@ export function ensureAdbServerStarted(adbBinary, options = {}) {
       if (code !== 0) startedAdbServers.delete(key);
       finish();
     });
-    proc.unref?.();
   });
 
   startedAdbServers.set(key, flight);
@@ -313,7 +314,6 @@ export async function execAdb(file, args = [], options = {}) {
         child.unref?.();
         settle(null);
       }, Math.max(10, Number(drainGraceMs) || ADB_DRAIN_GRACE_MS));
-      drainTimer.unref?.();
     });
 
     child.once('close', (code, sig) => {
@@ -349,22 +349,30 @@ export function adbArguments(name, args) {
       case 'pair': return ['pair', target(args.address, 'address'), nonempty(args.code, 'code')];
       case 'connect': return ['connect', target(args.address, 'address')];
       case 'disconnect': return ['disconnect', target(args.address, 'address')];
-      default: throw new Error('Choose devices, pair, connect or disconnect.');
+      default: throw new Error('Choose devices, pair, connect, disconnect or select.');
     }
   }
   if (name === 'android_shell') {
-    target(args.serial, 'serial');
+    const resolvedSerial = target(args.serial || args.deviceId, 'serial');
     if (!Array.isArray(args.argv) || args.argv.length === 0 || args.argv.some(value => typeof value !== 'string' || value.includes('\0')) || !args.argv[0]) {
       throw new Error('argv must contain a command followed by string arguments, without NUL characters.');
     }
     const command = args.argv.map(quote).join(' ');
-    return ['-s', args.serial, 'shell', args.root ? `su -c ${quote(command)}` : command];
+    return ['-s', resolvedSerial, 'shell', args.root ? `su -c ${quote(command)}` : command];
   }
   throw new Error(`Unknown phone tool: ${name}`);
 }
 
 export async function runAdb(name, args, context = {}, execute = execAdb) {
   try {
+    if (name === 'android_connection' && args?.action === 'select') {
+      const selectedId = target(args.deviceId || args.address, 'deviceId');
+      const dataDir = context.dataDir || phoneDataDir();
+      await mkdir(dataDir, { recursive: true });
+      const selected = { platform: 'android', id: selectedId };
+      await writeFile(path.join(dataDir, 'selected-device.json'), `${JSON.stringify(selected)}\n`, 'utf8');
+      return { output: JSON.stringify({ exitCode: 0, selected }) };
+    }
     const argv = adbArguments(name, args);
     const binary = context.settings?.adbPath || await findAdb({ dataDir: context.dataDir }) || 'adb';
     const { stdout, stderr } = await execute(binary, argv, {

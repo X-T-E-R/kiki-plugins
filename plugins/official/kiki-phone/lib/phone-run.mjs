@@ -1,17 +1,20 @@
 import { access, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { formatWithOptions } from 'node:util';
 import { findAdb, phoneDataDir } from './environment.mjs';
 import { execAdb } from './adb.mjs';
 import { mobilecliBinary, runtimeInstalled, upstreamEnvironment } from './prepare.mjs';
 import {
+  DEFAULT_MOBILECLI_PORT,
   DEFAULT_MOBILECLI_URL,
   ensureMobilecliRuntimePatched,
   ensureMobilecliServer,
 } from './mobilecli-server.mjs';
 import { nodeExecutable } from './node-executable.mjs';
+import { isHyperOsBottomEdgeZone } from './scrcpy-stream.mjs';
+import { createRemoteLeaseStore } from './remote-lease.mjs';
 import {
   sampleGaussian,
   samplePointInBox,
@@ -30,6 +33,9 @@ export {
   sampleHumanDelayMs,
 } from './human-input.mjs';
 
+export const WARM_WORKER_IDLE_TTL_MS = 5 * 60_000;
+export const phoneLeaseStore = createRemoteLeaseStore();
+
 const defaultExecuteAdb = execAdb;
 const locatorTapHooks = new WeakMap();
 const defaultDelay = (ms, signal) => new Promise((resolve, reject) => {
@@ -38,6 +44,29 @@ const defaultDelay = (ms, signal) => new Promise((resolve, reject) => {
   const onAbort = () => { clearTimeout(timer); reject(signal.reason ?? Object.assign(new Error('Aborted'), { name: 'AbortError' })); };
   signal?.addEventListener('abort', onAbort, { once: true });
 });
+
+function isInjectEventsError(err) {
+  return /INJECT_EVENTS|SecurityException|Injecting to another application/i.test(
+    String(err?.message || err?.stderr || err || ''),
+  );
+}
+
+function killWorkerProcessTree(proc, platform = process.platform) {
+  if (!proc) return;
+  if (platform === 'win32' && proc.pid) {
+    try {
+      const killer = spawn('taskkill', ['/PID', String(proc.pid), '/T', '/F'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      killer.on('error', () => {});
+      killer.unref();
+    } catch {}
+  }
+  try { proc.kill('SIGKILL'); } catch {
+    try { proc.kill(); } catch {}
+  }
+}
 
 export function parseAndroidScreenState({ power = '', policy = '', wmSize = '', fallbackSize } = {}) {
   const wakefulness = power.match(/mWakefulness=([A-Za-z]+)/)?.[1]
@@ -71,11 +100,42 @@ export function attachPhoneConvenienceApis(device, screen, {
 } = {}) {
   let cachedSize;
   let lastTransitionAt = 0;
+  let injectBlocked = false;
   const TRANSITION_SETTLE_MS = 950;
   const isRawInput = (opts) => Boolean(opts?.raw) || /^(1|true|yes)$/i.test(String(env?.KIKI_PHONE_RAW_INPUT ?? ''));
+  const isForceAdbRaw = (opts) => platform === 'android' && opts?.transport === 'raw';
   const rawScreenTap = typeof screen?.tap === 'function' ? screen.tap.bind(screen) : undefined;
   const rawOriginalSwipe = typeof screen?.swipe === 'function' ? screen.swipe.bind(screen) : undefined;
   const rawScreenGesture = typeof screen?.gesture === 'function' ? screen.gesture.bind(screen) : undefined;
+
+  const adbTapFallback = async (x, y, holdMs = 0) => {
+    const rx = String(Math.round(x));
+    const ry = String(Math.round(y));
+    const args = holdMs >= 50
+      ? ['-s', serial, 'shell', 'input', 'swipe', rx, ry, rx, ry, String(Math.round(holdMs))]
+      : ['-s', serial, 'shell', 'input', 'tap', rx, ry];
+    await executeAdb(adbBinary || 'adb', args, { encoding: 'utf8', windowsHide: true, timeout: 15_000, signal });
+  };
+
+  const adbSwipeFallback = async (x1, y1, x2, y2, durationMs) => {
+    const args = [
+      '-s', serial, 'shell', 'input', 'swipe',
+      String(Math.round(x1)), String(Math.round(y1)),
+      String(Math.round(x2)), String(Math.round(y2)),
+    ];
+    if (typeof durationMs === 'number' && durationMs > 0) {
+      args.push(String(Math.round(durationMs)));
+    }
+    await executeAdb(adbBinary || 'adb', args, { encoding: 'utf8', windowsHide: true, timeout: 15_000, signal });
+  };
+
+  const shouldUseBottomEdgeAdb = (y, screenHeight, opts) =>
+    platform === 'android' && Boolean(serial) && (
+      isForceAdbRaw(opts)
+      || injectBlocked
+      || isHyperOsBottomEdgeZone(y, screenHeight)
+    );
+
   const waitPostTransitionSettle = async () => {
     if (!lastTransitionAt) return;
     const elapsed = Date.now() - lastTransitionAt;
@@ -113,27 +173,39 @@ export function attachPhoneConvenienceApis(device, screen, {
     return cachedSize;
   };
 
-  const rawSwipe = async (directionOrX1, optsOrY1, x2, y2, duration) => {
+  const rawSwipe = async (directionOrX1, optsOrY1, x2, y2, duration, extraOpts) => {
     if (typeof directionOrX1 === 'number' && typeof optsOrY1 === 'number' && typeof x2 === 'number' && typeof y2 === 'number') {
+      const { height } = await resolveScreenDimensions(extraOpts);
+      if (shouldUseBottomEdgeAdb(optsOrY1, height, extraOpts) || shouldUseBottomEdgeAdb(y2, height, extraOpts)) {
+        await adbSwipeFallback(directionOrX1, optsOrY1, x2, y2, duration);
+        return;
+      }
       if (typeof device?.driver?.call === 'function') {
-        return device.driver.call('device.io.swipe', {
-          x1: Math.round(directionOrX1),
-          y1: Math.round(optsOrY1),
-          x2: Math.round(x2),
-          y2: Math.round(y2),
-          ...(typeof duration === 'number' ? { duration: Math.round(duration) } : {}),
-        });
+        try {
+          return await device.driver.call('device.io.swipe', {
+            x1: Math.round(directionOrX1),
+            y1: Math.round(optsOrY1),
+            x2: Math.round(x2),
+            y2: Math.round(y2),
+            ...(typeof duration === 'number' ? { duration: Math.round(duration) } : {}),
+          });
+        } catch (err) {
+          if (platform === 'android' && serial && isInjectEventsError(err)) {
+            injectBlocked = true;
+            await adbSwipeFallback(directionOrX1, optsOrY1, x2, y2, duration);
+            return;
+          }
+          throw err;
+        }
       }
       if (platform === 'android') {
-        const args = ['-s', serial, 'shell', 'input', 'swipe', String(Math.round(directionOrX1)), String(Math.round(optsOrY1)), String(Math.round(x2)), String(Math.round(y2))];
-        if (typeof duration === 'number') args.push(String(Math.round(duration)));
-        await executeAdb(adbBinary || 'adb', args, { encoding: 'utf8', windowsHide: true, timeout: 15_000, signal });
+        await adbSwipeFallback(directionOrX1, optsOrY1, x2, y2, duration);
         return;
       }
     }
     if (rawOriginalSwipe) {
-      if (optsOrY1 && typeof optsOrY1 === 'object' && 'raw' in optsOrY1) {
-        const { raw: _raw, ...cleanOpts } = optsOrY1;
+      if (optsOrY1 && typeof optsOrY1 === 'object' && ('raw' in optsOrY1 || 'transport' in optsOrY1)) {
+        const { raw: _raw, transport: _transport, ...cleanOpts } = optsOrY1;
         return rawOriginalSwipe(directionOrX1, Object.keys(cleanOpts).length ? cleanOpts : undefined);
       }
       return rawOriginalSwipe(directionOrX1, optsOrY1);
@@ -188,9 +260,24 @@ export function attachPhoneConvenienceApis(device, screen, {
       const { width, height } = await resolveScreenDimensions(opts);
       const tap = buildHumanTapKeyframes(point, { holdMs: opts.holdMs, screenWidth: width, screenHeight: height, rng: localRng });
       signal?.throwIfAborted();
+
+      if (shouldUseBottomEdgeAdb(tap.y, height, opts)) {
+        await adbTapFallback(tap.x, tap.y, opts?.transport === 'raw' ? 0 : tap.holdMs);
+        return { x: tap.x, y: tap.y, holdMs: tap.holdMs, channel: 'adb_input_fallback' };
+      }
+
       if (rawScreenGesture) {
         await waitPostTransitionSettle();
-        await rawScreenGesture({ pointers: [tap.points] });
+        try {
+          await rawScreenGesture({ pointers: [tap.points] });
+        } catch (err) {
+          if (platform === 'android' && serial && isInjectEventsError(err)) {
+            injectBlocked = true;
+            await adbTapFallback(tap.x, tap.y, tap.holdMs);
+            return { x: tap.x, y: tap.y, holdMs: tap.holdMs, channel: 'adb_input_fallback' };
+          }
+          throw err;
+        }
       } else if (platform === 'android') {
         const [p0, p1] = tap.points;
         await executeAdb(adbBinary || 'adb', ['-s', serial, 'shell', 'input', 'swipe', String(p0.x), String(p0.y), String(p1.x), String(p1.y), String(tap.holdMs)], {
@@ -208,13 +295,14 @@ export function attachPhoneConvenienceApis(device, screen, {
     screen.humanSwipe = async (directionOrX1, optsOrY1, x2, y2, durationOrOpts, maybeOpts) => {
       let opts;
       let swipe;
+      let screenDims;
       if (typeof directionOrX1 === 'string') {
         opts = (optsOrY1 && typeof optsOrY1 === 'object') ? optsOrY1 : (typeof optsOrY1 === 'number' ? { durationMs: optsOrY1 } : {});
         const localRng = opts.rng ?? rng;
-        const { width, height } = await resolveScreenDimensions(opts);
+        screenDims = await resolveScreenDimensions(opts);
         const endpoints = resolveDirectionEndpoints(directionOrX1, {
-          width,
-          height,
+          width: screenDims.width,
+          height: screenDims.height,
           startX: opts.startX,
           startY: opts.startY,
           distance: opts.distance,
@@ -222,28 +310,57 @@ export function attachPhoneConvenienceApis(device, screen, {
           rng: localRng,
         });
         swipe = buildHumanSwipeKeyframes(endpoints.x1, endpoints.y1, endpoints.x2, endpoints.y2, {
-          durationMs: opts.durationMs ?? opts.duration, jitterPx: opts.jitterPx, screenWidth: width, screenHeight: height, rng: localRng,
+          durationMs: opts.durationMs ?? opts.duration, jitterPx: opts.jitterPx, screenWidth: screenDims.width, screenHeight: screenDims.height, rng: localRng,
         });
       } else if (typeof directionOrX1 === 'number' && typeof optsOrY1 === 'number' && typeof x2 === 'number' && typeof y2 === 'number') {
         opts = typeof durationOrOpts === 'number' ? { ...(maybeOpts ?? {}), durationMs: durationOrOpts } : (durationOrOpts ?? {});
         const localRng = opts.rng ?? rng;
-        const { width, height } = await resolveScreenDimensions(opts);
+        screenDims = await resolveScreenDimensions(opts);
         swipe = buildHumanSwipeKeyframes(directionOrX1, optsOrY1, x2, y2, {
-          durationMs: opts.durationMs ?? opts.duration, jitterPx: opts.jitterPx, screenWidth: width, screenHeight: height, rng: localRng,
+          durationMs: opts.durationMs ?? opts.duration, jitterPx: opts.jitterPx, screenWidth: screenDims.width, screenHeight: screenDims.height, rng: localRng,
         });
       } else {
         throw new TypeError('screen.humanSwipe expects (direction, opts?) or (x1, y1, x2, y2, durationOrOpts?).');
       }
       signal?.throwIfAborted();
+
+      if (shouldUseBottomEdgeAdb(swipe.y1, screenDims.height, opts) || shouldUseBottomEdgeAdb(swipe.y2, screenDims.height, opts)) {
+        await adbSwipeFallback(swipe.x1, swipe.y1, swipe.x2, swipe.y2, swipe.durationMs);
+        return {
+          x1: swipe.x1,
+          y1: swipe.y1,
+          x2: swipe.x2,
+          y2: swipe.y2,
+          durationMs: swipe.durationMs,
+          steps: swipe.points.length - 1,
+          channel: 'adb_input_fallback',
+        };
+      }
+
       if (rawScreenGesture) {
         await waitPostTransitionSettle();
-        await rawScreenGesture({ pointers: [swipe.points] });
+        try {
+          await rawScreenGesture({ pointers: [swipe.points] });
+        } catch (err) {
+          if (platform === 'android' && serial && isInjectEventsError(err)) {
+            injectBlocked = true;
+            await adbSwipeFallback(swipe.x1, swipe.y1, swipe.x2, swipe.y2, swipe.durationMs);
+            return {
+              x1: swipe.x1,
+              y1: swipe.y1,
+              x2: swipe.x2,
+              y2: swipe.y2,
+              durationMs: swipe.durationMs,
+              steps: swipe.points.length - 1,
+              channel: 'adb_input_fallback',
+            };
+          }
+          throw err;
+        }
       } else if (rawOriginalSwipe || typeof device?.driver?.call === 'function') {
-        await rawSwipe(swipe.x1, swipe.y1, swipe.x2, swipe.y2, swipe.durationMs);
+        await rawSwipe(swipe.x1, swipe.y1, swipe.x2, swipe.y2, swipe.durationMs, opts);
       } else if (platform === 'android') {
-        await executeAdb(adbBinary || 'adb', ['-s', serial, 'shell', 'input', 'swipe', String(swipe.x1), String(swipe.y1), String(swipe.x2), String(swipe.y2), String(swipe.durationMs)], {
-          encoding: 'utf8', windowsHide: true, timeout: 15_000, signal,
-        });
+        await adbSwipeFallback(swipe.x1, swipe.y1, swipe.x2, swipe.y2, swipe.durationMs);
       } else {
         throw new Error('No gesture or swipe transport available on screen.');
       }
@@ -259,8 +376,26 @@ export function attachPhoneConvenienceApis(device, screen, {
   }
   if (screen && rawScreenTap && !screen.tap.__kikiHumanPatched) {
     const wrappedTap = async (x, y, opts) => {
+      if (isForceAdbRaw(opts)) {
+        await adbTapFallback(x, y, 0);
+        return { x: Math.round(x), y: Math.round(y), channel: 'adb_input_fallback' };
+      }
       if (!rawScreenGesture || isRawInput(opts)) {
-        return rawScreenTap(x, y);
+        const { height } = await resolveScreenDimensions(opts);
+        if (shouldUseBottomEdgeAdb(y, height, opts)) {
+          await adbTapFallback(x, y, 0);
+          return { x: Math.round(x), y: Math.round(y), channel: 'adb_input_fallback' };
+        }
+        try {
+          return await rawScreenTap(x, y);
+        } catch (err) {
+          if (platform === 'android' && serial && isInjectEventsError(err)) {
+            injectBlocked = true;
+            await adbTapFallback(x, y, 0);
+            return { x: Math.round(x), y: Math.round(y), channel: 'adb_input_fallback' };
+          }
+          throw err;
+        }
       }
       return screen.humanTap(x, y, { jitterPx: 4, ...opts });
     };
@@ -272,12 +407,18 @@ export function attachPhoneConvenienceApis(device, screen, {
       if (typeof directionOrX1 === 'number' && typeof optsOrY1 === 'number' && typeof x2 === 'number' && typeof y2 === 'number') {
         const opts = (durationOrOpts && typeof durationOrOpts === 'object') ? durationOrOpts : (maybeOpts ?? {});
         const durationVal = typeof durationOrOpts === 'number' ? durationOrOpts : (opts.duration ?? opts.durationMs);
-        if (!rawScreenGesture || isRawInput(opts)) {
-          return rawSwipe(directionOrX1, optsOrY1, x2, y2, durationVal);
+        if (isForceAdbRaw(opts) || !rawScreenGesture || isRawInput(opts)) {
+          return rawSwipe(directionOrX1, optsOrY1, x2, y2, durationVal, opts);
         }
         return screen.humanSwipe(directionOrX1, optsOrY1, x2, y2, durationVal, opts);
       }
       const opts = (optsOrY1 && typeof optsOrY1 === 'object') ? optsOrY1 : undefined;
+      if (isForceAdbRaw(opts)) {
+        const dims = await resolveScreenDimensions(opts);
+        const ep = resolveDirectionEndpoints(directionOrX1, { width: dims.width, height: dims.height, rng });
+        await adbSwipeFallback(ep.x1, ep.y1, ep.x2, ep.y2, opts?.durationMs ?? opts?.duration ?? 260);
+        return;
+      }
       if (!rawScreenGesture || isRawInput(opts)) {
         return rawSwipe(directionOrX1, optsOrY1);
       }
@@ -412,53 +553,123 @@ export function attachPhoneConvenienceApis(device, screen, {
   }
 }
 
-export async function executePhoneScript({ script, device: requested, platform = 'android' }, context = {}, support = {}) {
+export async function executePhoneScript({
+  script,
+  deviceId,
+  device: requested,
+  platform = 'android',
+  overrideHumanTakeover = false,
+} = {}, context = {}, support = {}) {
   const dataDir = support.dataDir || phoneDataDir();
   const output = [];
   let device;
   let driver;
   let startedServer;
+  const warmState = support.warmState || null;
   const environmentKeys = ['PATH', 'ANDROID_HOME', 'ANDROID_SDK_ROOT', 'MOBILEMCP_DISABLE_TELEMETRY', 'npm_config_ignore_scripts', 'npm_config_cache'];
   const previousEnvironment = Object.fromEntries(environmentKeys.map(key => [key, process.env[key]]));
   try {
-    if (!support.sdk && !(await runtimeInstalled(dataDir))) throw new Error('Mobilewright runtime missing. Run phone_prepare first.');
-    context.signal?.throwIfAborted();
-    const adbBinary = context.settings?.adbPath || process.env.KIKI_PHONE_ADB_PATH || await findAdb({ dataDir });
-    Object.assign(process.env, upstreamEnvironment(adbBinary, process.env, dataDir));
-    const modules = path.join(dataDir, 'runtime/node_modules');
-    if (!support.driverModule) {
-      await ensureMobilecliRuntimePatched(dataDir).catch(() => {});
+    if (!support.sdk && !warmState?.runtimeVerified && !(await runtimeInstalled(dataDir))) {
+      throw new Error('Mobilewright runtime missing. Run phone_prepare first.');
     }
-    const sdk = support.sdk || await import(pathToFileURL(path.join(modules, 'mobilewright/dist/index.js')));
-    const { MobilecliDriver } = support.driverModule || await import(pathToFileURL(path.join(modules, '@mobilewright/driver-mobilecli/dist/index.js')));
-    const cliPath = await mobilecliBinary(dataDir);
-    const hasCliBinary = await access(cliPath).then(() => true, () => false);
-    let serverUrl = DEFAULT_MOBILECLI_URL;
-    if (!support.driverModule && !support.sdk && script && hasCliBinary) {
+    if (warmState) warmState.runtimeVerified = true;
+    context.signal?.throwIfAborted();
+
+    const adbBinary = context.settings?.adbPath || process.env.KIKI_PHONE_ADB_PATH || warmState?.adbBinary || await findAdb({ dataDir });
+    if (warmState && adbBinary) warmState.adbBinary = adbBinary;
+    Object.assign(process.env, upstreamEnvironment(adbBinary, process.env, dataDir));
+
+    const modules = path.join(dataDir, 'runtime/node_modules');
+    if (!support.driverModule && !warmState?.runtimePatched) {
+      await ensureMobilecliRuntimePatched(dataDir).catch(() => {});
+      if (warmState) warmState.runtimePatched = true;
+    }
+
+    const sdk = support.sdk || warmState?.sdk || await import(pathToFileURL(path.join(modules, 'mobilewright/dist/index.js')));
+    const driverMod = support.driverModule || warmState?.driverMod || await import(pathToFileURL(path.join(modules, '@mobilewright/driver-mobilecli/dist/index.js')));
+    if (warmState) {
+      warmState.sdk = sdk;
+      warmState.driverMod = driverMod;
+    }
+    const { MobilecliDriver } = driverMod;
+
+    const cliPath = warmState?.cliPath || await mobilecliBinary(dataDir);
+    const hasCliBinary = warmState?.hasCliBinary !== undefined
+      ? warmState.hasCliBinary
+      : await access(cliPath).then(() => true, () => false);
+    if (warmState) {
+      warmState.cliPath = cliPath;
+      warmState.hasCliBinary = hasCliBinary;
+    }
+
+    const workerPort = Number(support.mobilecliPort) || DEFAULT_MOBILECLI_PORT;
+    let serverUrl = warmState?.serverUrl || `ws://localhost:${workerPort}/ws`;
+    if (!support.driverModule && !support.sdk && script && hasCliBinary && !warmState?.serverReady) {
       const ensured = await ensureMobilecliServer({
         binaryPath: cliPath,
+        port: workerPort,
         env: process.env,
       });
       serverUrl = ensured.url;
-      if (ensured.started) startedServer = ensured.serverProcess;
+      if (warmState) {
+        warmState.serverUrl = serverUrl;
+        warmState.serverReady = true;
+        if (ensured.started) warmState.startedServer = ensured.serverProcess;
+      } else if (ensured.started) {
+        startedServer = ensured.serverProcess;
+      }
     }
-    driver = new MobilecliDriver({ mobilecliPath: cliPath, autoStart: false, url: serverUrl });
-    const devices = (await driver.listDevices({ platform })).filter(item => item.state === 'online');
-    let saved;
-    try { saved = JSON.parse(await readFile(path.join(dataDir, 'selected-device.json'), 'utf8')); }
-    catch (error) { if (error.code !== 'ENOENT') throw error; }
-    const selected = requested || (saved?.platform === platform ? saved.id : undefined) || (devices.length === 1 ? devices[0].id : undefined);
-    if (!selected || !devices.some(item => item.id === selected)) {
-      const message = selected
-        ? `Selected device ${selected} is not online. Run android_connection({ action: "devices" }) to check USB/wireless state, or pass an online device id to phone_run.`
-        : devices.length
-          ? 'Multiple phones online. Choose one device id from devices[] and pass device to phone_run.'
-          : 'No online device. Run android_connection({ action: "devices" }) or phone_prepare to check USB/wireless debugging.';
-      return { isError: Boolean(script || requested), output: JSON.stringify({ message, devices, selected, platform }) };
+
+    driver = warmState?.driver || new MobilecliDriver({ mobilecliPath: cliPath, autoStart: false, url: serverUrl });
+    if (warmState) warmState.driver = driver;
+
+    const explicitTarget = deviceId || requested;
+    let devices = null;
+    let selected = explicitTarget;
+
+    if (!selected || !script || !warmState?.connectedDevices?.has(`${platform}:${selected}`)) {
+      devices = (await driver.listDevices({ platform })).filter(item => item.state === 'online');
+      let saved;
+      if (!explicitTarget) {
+        try { saved = JSON.parse(await readFile(path.join(dataDir, 'selected-device.json'), 'utf8')); }
+        catch (error) { if (error.code !== 'ENOENT') throw error; }
+      }
+      selected = explicitTarget || (saved?.platform === platform ? saved.id : undefined) || (devices.length === 1 ? devices[0].id : undefined);
+      if (!selected || !devices.some(item => item.id === selected)) {
+        const message = selected
+          ? `Selected device ${selected} is not online. Run android_connection({ action: "devices" }) to check USB/wireless state, or pass an online device id to phone_run.`
+          : devices.length
+            ? 'Multiple phones online. Choose one device id from devices[] and pass deviceId or device to phone_run.'
+            : 'No online device. Run android_connection({ action: "devices" }) or phone_prepare to check USB/wireless debugging.';
+        return { isError: Boolean(script || explicitTarget), output: JSON.stringify({ message, devices, selected, platform }) };
+      }
+      // Non-destructive deviceId: NEVER overwrite selected-device.json when deviceId was explicitly supplied!
+      if (!deviceId) {
+        await writeFile(path.join(dataDir, 'selected-device.json'), JSON.stringify({ platform, id: selected }) + '\n');
+      }
     }
-    await writeFile(path.join(dataDir, 'selected-device.json'), JSON.stringify({ platform, id: selected }) + '\n');
+
+    if (support.leaseStore) {
+      const gate = support.leaseStore.checkAgentAllowed(selected, { overrideHumanTakeover });
+      if (!gate.allowed) {
+        return { isError: true, output: JSON.stringify(gate) };
+      }
+    }
+
     if (!script) return { output: JSON.stringify({ devices, selected, platform }) };
-    device = await sdk.connectDevice({ platform, deviceId: selected, driver });
+
+    const devCacheKey = `${platform}:${selected}`;
+    if (warmState) {
+      if (!warmState.connectedDevices) warmState.connectedDevices = new Map();
+      device = warmState.connectedDevices.get(devCacheKey);
+      if (!device) {
+        device = await sdk.connectDevice({ platform, deviceId: selected, driver });
+        warmState.connectedDevices.set(devCacheKey, device);
+      }
+    } else {
+      device = await sdk.connectDevice({ platform, deviceId: selected, driver });
+    }
+
     const screen = device.screen;
     attachPhoneConvenienceApis(device, screen, {
       platform,
@@ -486,12 +697,24 @@ export async function executePhoneScript({ script, device: requested, platform =
     output.unshift({ type: 'text', text: JSON.stringify({ device: selected, platform, result: result ?? null }) });
     return { output };
   } catch (error) {
+    if (warmState && selectedKeyFromArgs({ deviceId, requested, platform })) {
+      const key = selectedKeyFromArgs({ deviceId, requested, platform });
+      const cached = warmState.connectedDevices?.get(key);
+      if (cached) {
+        warmState.connectedDevices.delete(key);
+        await cached.close?.().catch(() => {});
+      }
+    }
     output.unshift({ type: 'text', text: `Phone script failed: ${error.message || String(error)}. Re-observe via snapshot() or screenshot() before retrying any modifying action.` });
     return { isError: true, output };
   } finally {
-    try { if (device) await device.close(); else await driver?.dispose(); }
-    finally {
-      if (startedServer) await startedServer.kill().catch(() => {});
+    try {
+      if (!warmState) {
+        if (device) await device.close();
+        else await driver?.dispose();
+      }
+    } finally {
+      if (!warmState && startedServer) await startedServer.kill().catch(() => {});
       for (const [key, value] of Object.entries(previousEnvironment)) {
         if (value === undefined) delete process.env[key]; else process.env[key] = value;
       }
@@ -499,21 +722,210 @@ export async function executePhoneScript({ script, device: requested, platform =
   }
 }
 
-export function createPhoneScriptRunner({ executeFile = execFile, resolveNode = nodeExecutable, dataDir } = {}) {
-  let running;
+function selectedKeyFromArgs({ deviceId, requested, platform }) {
+  const id = deviceId || requested;
+  return id ? `${platform || 'android'}:${id}` : '';
+}
+
+export function createPhoneScriptRunner({
+  executeFile: customExecuteFile,
+  spawnWorker = spawn,
+  resolveNode = nodeExecutable,
+  dataDir,
+  leaseStore = phoneLeaseStore,
+  idleTtlMs = WARM_WORKER_IDLE_TTL_MS,
+  basePort = DEFAULT_MOBILECLI_PORT + 10,
+} = {}) {
+  const runningBySerial = new Map();
+  const warmWorkers = new Map();
+  const serialPortSlots = new Map();
+  let nextSlotOffset = 0;
+  let reqSeq = 0;
   const lifetime = new AbortController();
+
+  function allocateSlotPort(serialKey) {
+    if (serialKey === '__default__') return DEFAULT_MOBILECLI_PORT;
+    if (!serialPortSlots.has(serialKey)) {
+      serialPortSlots.set(serialKey, basePort + (nextSlotOffset++ % 48));
+    }
+    return serialPortSlots.get(serialKey);
+  }
+
+  function evictWarmWorker(poolKey, kill = true) {
+    const entry = warmWorkers.get(poolKey);
+    if (!entry) return;
+    warmWorkers.delete(poolKey);
+    clearTimeout(entry.idleTimer);
+    if (kill) {
+      killWorkerProcessTree(entry.proc);
+    }
+  }
+
+  function touchWarmWorkerIdle(poolKey, entry) {
+    clearTimeout(entry.idleTimer);
+    if (idleTtlMs > 0) {
+      entry.idleTimer = setTimeout(() => {
+        evictWarmWorker(poolKey, true);
+      }, idleTtlMs);
+      entry.idleTimer.unref?.();
+    }
+  }
+
+  async function acquireWarmWorker(poolKey, effectiveDataDir, serialKey, adbPath) {
+    const existing = warmWorkers.get(poolKey);
+    if (existing && existing.proc.connected && existing.proc.exitCode === null && !existing.proc.killed) {
+      touchWarmWorkerIdle(poolKey, existing);
+      return existing;
+    }
+    evictWarmWorker(poolKey, true);
+
+    const node = await resolveNode();
+    const port = allocateSlotPort(serialKey);
+    const workerEnv = { ...process.env };
+    if (effectiveDataDir) workerEnv.KIKI_PHONE_DATA_DIR = effectiveDataDir;
+    if (adbPath) workerEnv.KIKI_PHONE_ADB_PATH = adbPath;
+
+    const proc = spawnWorker(
+      node,
+      [fileURLToPath(import.meta.url), '--warm-worker', '--port', String(port)],
+      {
+        stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+        windowsHide: true,
+        env: workerEnv,
+      },
+    );
+
+    let stderrTail = '';
+    proc.stderr?.on('data', (c) => {
+      stderrTail = (stderrTail + c.toString('utf8')).slice(-2048);
+    });
+    proc.stderr?.unref?.();
+
+    const entry = {
+      poolKey,
+      serialKey,
+      port,
+      proc,
+      idleTimer: null,
+      pending: null,
+      getStderr: () => stderrTail,
+    };
+
+    proc.on('message', (msg) => {
+      if (!msg || typeof msg !== 'object') return;
+      if (entry.pending && msg.id === entry.pending.id) {
+        const current = entry.pending;
+        entry.pending = null;
+        current.resolve(msg.result);
+      }
+    });
+
+    const onWorkerDead = (err) => {
+      if (warmWorkers.get(poolKey) === entry) {
+        warmWorkers.delete(poolKey);
+      }
+      clearTimeout(entry.idleTimer);
+      if (entry.pending) {
+        const current = entry.pending;
+        entry.pending = null;
+        current.reject(err || new Error(stderrTail.trim() || 'Phone worker exited unexpectedly'));
+      }
+    };
+    proc.once('error', onWorkerDead);
+    proc.once('exit', (code, sig) => onWorkerDead(new Error(stderrTail.trim() || `worker exited (${code ?? sig})`)));
+    proc.once('disconnect', () => onWorkerDead(new Error(stderrTail.trim() || 'worker IPC disconnected')));
+
+    proc.channel?.unref?.();
+    proc.unref?.();
+    warmWorkers.set(poolKey, entry);
+    touchWarmWorkerIdle(poolKey, entry);
+    return entry;
+  }
+
+  async function resolveEffectiveSerialKey(args = {}, effectiveDataDir) {
+    const explicit = String(args?.deviceId || args?.device || '').trim();
+    if (explicit) return explicit;
+    if (!customExecuteFile && effectiveDataDir) {
+      try {
+        const saved = JSON.parse(await readFile(path.join(effectiveDataDir, 'selected-device.json'), 'utf8'));
+        const platform = args?.platform || 'android';
+        if (saved?.id && (!saved.platform || saved.platform === platform)) {
+          return String(saved.id);
+        }
+      } catch {}
+    }
+    return '__default__';
+  }
+
   return {
-    async run(args, context = {}) {
-      if (running) return { isError: true, output: 'A phone script is already running. Wait for it to finish before operating the phone.' };
-      const signal = context.signal ? AbortSignal.any([context.signal, lifetime.signal]) : lifetime.signal;
-      running = (async () => {
-        try {
+    async run(args = {}, context = {}) {
+      const effectiveDataDir = dataDir || context.dataDir || (!customExecuteFile ? phoneDataDir() : undefined);
+      const syncSerialKey = String(args?.deviceId || args?.device || '').trim() || '__default__';
+
+      if (runningBySerial.has(syncSerialKey)) {
+        const targetLabel = syncSerialKey === '__default__' ? 'the phone' : `device ${syncSerialKey}`;
+        return {
+          isError: true,
+          output: `A phone script is already running on ${targetLabel}. Wait for it to finish or pass deviceId for a different phone.`,
+        };
+      }
+
+      const claimedKeys = new Set([syncSerialKey]);
+      let releaseReservation;
+      const reservation = new Promise((resolve) => { releaseReservation = resolve; });
+      runningBySerial.set(syncSerialKey, reservation);
+
+      let abortOp = { signal: null, cleanup() {} };
+      try {
+        if (leaseStore && effectiveDataDir && !customExecuteFile) {
+          await leaseStore.ensureLoaded(effectiveDataDir);
+        }
+
+        const serialKey = (syncSerialKey === '__default__' && !customExecuteFile)
+          ? await resolveEffectiveSerialKey(args, effectiveDataDir)
+          : syncSerialKey;
+
+        if (serialKey !== syncSerialKey) {
+          if (runningBySerial.has(serialKey)) {
+            return {
+              isError: true,
+              output: `A phone script is already running on device ${serialKey}. Wait for it to finish or pass deviceId for a different phone.`,
+            };
+          }
+          claimedKeys.add(serialKey);
+          runningBySerial.set(serialKey, reservation);
+        }
+
+        if (serialKey !== '__default__' && leaseStore) {
+          const gate = leaseStore.checkAgentAllowed(serialKey, {
+            overrideHumanTakeover: Boolean(args?.overrideHumanTakeover),
+          });
+          if (!gate.allowed) {
+            return { isError: true, output: JSON.stringify(gate) };
+          }
+        }
+
+        const baseSignal = context.signal ? AbortSignal.any([context.signal, lifetime.signal]) : lifetime.signal;
+        if (baseSignal.aborted) {
+          return {
+            isError: true,
+            output: 'Phone script interrupted or failed: Aborted. Observe before repeating an action; completed actions are not rolled back.',
+          };
+        }
+
+        abortOp = (serialKey !== '__default__' && leaseStore)
+          ? leaseStore.registerAbortableOp(serialKey, baseSignal, { overrideHumanTakeover: Boolean(args?.overrideHumanTakeover) })
+          : { signal: baseSignal, cleanup() {} };
+        const signal = abortOp.signal;
+
+        // Legacy injected executeFile path (used by deterministic unit fixtures)
+        if (customExecuteFile) {
           const node = await resolveNode();
           return await new Promise((resolve) => {
             const workerEnv = { ...process.env };
             if (dataDir) workerEnv.KIKI_PHONE_DATA_DIR = dataDir;
             if (context.settings?.adbPath) workerEnv.KIKI_PHONE_ADB_PATH = context.settings.adbPath;
-            const child = executeFile(node, [fileURLToPath(import.meta.url), '--worker'], {
+            const child = customExecuteFile(node, [fileURLToPath(import.meta.url), '--worker'], {
               signal, timeout: args.timeoutMs || 90_000, maxBuffer: 24 * 1024 * 1024,
               encoding: 'utf8', windowsHide: true,
               env: workerEnv,
@@ -527,16 +939,109 @@ export function createPhoneScriptRunner({ executeFile = execFile, resolveNode = 
             child.stdin.on('error', () => {});
             child.stdin.end(JSON.stringify(args));
           });
-        } catch (error) {
-          return { isError: true, output: error.message };
         }
-      })();
-      try { return await running; }
-      finally { running = undefined; }
+
+        // Warm per-serial IPC worker pool path (<80ms warm execution)
+        const poolKey = `${effectiveDataDir || ''}::${serialKey}`;
+        const worker = await acquireWarmWorker(poolKey, effectiveDataDir, serialKey, context.settings?.adbPath);
+        const id = ++reqSeq;
+        const timeoutMs = Math.max(1_000, Number(args.timeoutMs) || 90_000);
+
+        return await new Promise((resolve) => {
+          let settled = false;
+          const finish = (val, killWorker = false) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            signal.removeEventListener('abort', onAbort);
+            worker.pending = null;
+            worker.proc.channel?.unref?.();
+            worker.proc.unref?.();
+            if (killWorker) {
+              evictWarmWorker(poolKey, true);
+            } else {
+              touchWarmWorkerIdle(poolKey, worker);
+            }
+            resolve(val);
+          };
+
+          const onAbort = () => {
+            const reason = signal.reason;
+            if (reason && reason.code === 'human_takeover_active') {
+              finish({
+                isError: true,
+                output: JSON.stringify({
+                  ok: false,
+                  code: 'human_takeover_active',
+                  error_code: 'human_takeover_active',
+                  targetKey: serialKey,
+                  message: reason.message || `Human takeover engaged on ${serialKey}`,
+                }),
+              }, true);
+              return;
+            }
+            finish({
+              isError: true,
+              output: `Phone script interrupted or failed: ${reason?.message || 'Aborted'}. Observe before repeating an action; completed actions are not rolled back.`,
+            }, true);
+          };
+
+          const timer = setTimeout(() => {
+            finish({
+              isError: true,
+              output: `Phone script interrupted or failed: Timed out after ${timeoutMs}ms. Observe before repeating an action; completed actions are not rolled back.`,
+            }, true);
+          }, timeoutMs);
+          timer.unref?.();
+
+          if (signal.aborted) {
+            onAbort();
+            return;
+          }
+          signal.addEventListener('abort', onAbort, { once: true });
+
+          worker.pending = {
+            id,
+            resolve: (res) => finish(res, false),
+            reject: (err) => finish({
+              isError: true,
+              output: `Phone script interrupted or failed: ${err.message || String(err)}. Observe before repeating an action; completed actions are not rolled back.`,
+            }, true),
+          };
+
+          worker.proc.channel?.ref?.();
+          try {
+            worker.proc.send({
+              id,
+              args,
+              dataDir: effectiveDataDir,
+              adbPath: context.settings?.adbPath,
+            });
+          } catch (err) {
+            finish({
+              isError: true,
+              output: `Phone script interrupted or failed: ${err.message || String(err)}. Observe before repeating an action; completed actions are not rolled back.`,
+            }, true);
+          }
+        });
+      } catch (error) {
+        return { isError: true, output: error.message };
+      } finally {
+        for (const k of claimedKeys) {
+          if (runningBySerial.get(k) === reservation) {
+            runningBySerial.delete(k);
+          }
+        }
+        abortOp.cleanup();
+        releaseReservation();
+      }
     },
     async close() {
       lifetime.abort(new Error('Phone script runner disposed'));
-      await running;
+      for (const key of [...warmWorkers.keys()]) {
+        evictWarmWorker(key, true);
+      }
+      await Promise.allSettled([...runningBySerial.values()]);
     },
   };
 }
@@ -546,6 +1051,15 @@ export function runPhoneScript(args, context = {}) {
   return defaultRunner.run(args, context);
 }
 
+export async function disposeDefaultPhoneRunner() {
+  for (const fn of [...warmCleanupCallbacks]) {
+    try { await fn(); } catch {}
+  }
+}
+
+const warmCleanupCallbacks = new Set();
+warmCleanupCallbacks.add(() => defaultRunner.close());
+
 if (process.argv[2] === '--worker' && process.argv[1] === fileURLToPath(import.meta.url)) {
   let input = '';
   for await (const chunk of process.stdin) input += chunk;
@@ -553,4 +1067,68 @@ if (process.argv[2] === '--worker' && process.argv[1] === fileURLToPath(import.m
   try { result = await executePhoneScript(JSON.parse(input)); }
   catch (error) { result = { isError: true, output: `Phone runtime cleanup failed: ${error.message}` }; }
   process.stdout.write(JSON.stringify(result));
+} else if (process.argv[2] === '--warm-worker' && process.argv[1] === fileURLToPath(import.meta.url)) {
+  const portIdx = process.argv.indexOf('--port');
+  const slotPort = portIdx !== -1 ? Number(process.argv[portIdx + 1]) || DEFAULT_MOBILECLI_PORT : DEFAULT_MOBILECLI_PORT;
+  const warmState = {
+    sdk: null,
+    driverMod: null,
+    driver: null,
+    connectedDevices: new Map(),
+    startedServer: null,
+    serverReady: false,
+    serverUrl: `ws://localhost:${slotPort}/ws`,
+    runtimeVerified: false,
+    runtimePatched: false,
+    cliPath: null,
+    hasCliBinary: undefined,
+    adbBinary: null,
+  };
+
+  let shuttingDown = false;
+  const shutdownWarmWorker = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    for (const dev of warmState.connectedDevices.values()) {
+      await dev.close?.().catch(() => {});
+    }
+    warmState.connectedDevices.clear();
+    await warmState.driver?.dispose?.().catch(() => {});
+    if (warmState.startedServer) {
+      await warmState.startedServer.kill().catch(() => {});
+    }
+    process.exit(0);
+  };
+
+  let idleExitTimer = setTimeout(shutdownWarmWorker, WARM_WORKER_IDLE_TTL_MS);
+  idleExitTimer.unref?.();
+
+  process.on('disconnect', () => { void shutdownWarmWorker(); });
+  process.on('SIGTERM', () => { void shutdownWarmWorker(); });
+  process.on('SIGINT', () => { void shutdownWarmWorker(); });
+
+  process.on('message', async (msg) => {
+    if (!msg || typeof msg !== 'object') return;
+    clearTimeout(idleExitTimer);
+    idleExitTimer = setTimeout(shutdownWarmWorker, WARM_WORKER_IDLE_TTL_MS);
+    idleExitTimer.unref?.();
+
+    let result;
+    try {
+      result = await executePhoneScript(
+        msg.args || {},
+        { settings: msg.adbPath ? { adbPath: msg.adbPath } : {} },
+        {
+          dataDir: msg.dataDir || process.env.KIKI_PHONE_DATA_DIR,
+          mobilecliPort: slotPort,
+          warmState,
+        },
+      );
+    } catch (error) {
+      result = { isError: true, output: `Phone runtime cleanup failed: ${error.message}` };
+    }
+    if (process.connected) {
+      try { process.send({ id: msg.id, result }); } catch {}
+    }
+  });
 }

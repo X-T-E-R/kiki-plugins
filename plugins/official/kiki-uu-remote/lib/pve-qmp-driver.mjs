@@ -236,6 +236,8 @@ def handle_qga_probe(req):
     sock_exists = os.path.exists(f"/var/run/qemu-server/{vmid}.qga")
     available = False
     os_type = "unknown"
+    os_version = ""
+    is_legacy_nt5 = False
     try:
         proc = subprocess.run(["qm", "agent", str(vmid), "ping"], capture_output=True, text=True, timeout=3)
         available = proc.returncode == 0
@@ -248,11 +250,25 @@ def handle_qga_probe(req):
                 low = info.stdout.lower()
                 if "windows" in low or "mswindows" in low:
                     os_type = "windows"
+                    try:
+                        parsed_info = json.loads(info.stdout)
+                        if isinstance(parsed_info, dict):
+                            os_version = str(parsed_info.get("version-id") or parsed_info.get("kernel-release") or "")
+                    except Exception:
+                        pass
+                    if os_version.startswith("5.") or "xp" in low or "2003" in low:
+                        is_legacy_nt5 = True
                 elif "linux" in low or "ubuntu" in low or "debian" in low or "fedora" in low or "arch" in low:
                     os_type = "linux"
         except Exception:
             pass
-    return {"available": available, "socketExists": sock_exists, "osType": os_type}
+    return {
+        "available": available,
+        "socketExists": sock_exists,
+        "osType": os_type,
+        "osVersion": os_version,
+        "isLegacyNt5": is_legacy_nt5,
+    }
 
 def parse_guest_exec_output(proc):
     if proc.returncode != 0:
@@ -266,6 +282,35 @@ def parse_guest_exec_output(proc):
         raise RuntimeError(str(err_msg).strip())
     return data
 
+def windows_mshta_clipboard_set(vmid, text_b64):
+    raw_utf8 = base64.b64decode(text_b64).decode("utf-8", errors="replace")
+    js_str = json.dumps(raw_utf8)
+    hta_expr = f"javascript:try{{window.clipboardData.setData('Text',{js_str});}}catch(e){{}}close();"
+    cmd = ["qm", "guest", "exec", str(vmid), "--", "mshta.exe", hta_expr]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+    parse_guest_exec_output(proc)
+    return {"ok": True, "mode": "qga_mshta"}
+
+def windows_mshta_clipboard_get(vmid):
+    js = (
+        "javascript:try{"
+        "var fso=new ActiveXObject('Scripting.FileSystemObject');"
+        "var sh=new ActiveXObject('WScript.Shell');"
+        "var p=sh.ExpandEnvironmentStrings('%TEMP%')+'\\\\kiki_qga_clip.txt';"
+        "var t=window.clipboardData.getData('Text')||'';"
+        "var s=fso.CreateTextFile(p,true,true);s.Write(t);s.Close();"
+        "}catch(e){}close();"
+    )
+    proc_hta = subprocess.run(["qm", "guest", "exec", str(vmid), "--", "mshta.exe", js], capture_output=True, text=True, timeout=8)
+    parse_guest_exec_output(proc_hta)
+    proc_read = subprocess.run(
+        ["qm", "guest", "exec", str(vmid), "--", "cmd.exe", "/d", "/c", "type %TEMP%\\kiki_qga_clip.txt & del /f /q %TEMP%\\kiki_qga_clip.txt >nul 2>&1"],
+        capture_output=True, text=True, timeout=6,
+    )
+    data = parse_guest_exec_output(proc_read)
+    out_raw = str(data.get("out-data") or "")
+    return {"textB64": base64.b64encode(out_raw.encode("utf-8")).decode("ascii"), "mode": "qga_mshta"}
+
 def handle_qga_clipboard_set(req):
     vmid = int(req["vmid"])
     text_b64 = str(req.get("textB64") or "")
@@ -273,6 +318,8 @@ def handle_qga_clipboard_set(req):
         raise RuntimeError("Invalid base64 clipboard payload")
     os_type = str(req.get("osType") or "linux").lower()
     if os_type == "windows":
+        if bool(req.get("isLegacyNt5")):
+            return windows_mshta_clipboard_set(vmid, text_b64)
         ps = (
             "Add-Type -AssemblyName System.Windows.Forms;"
             f"$t=[System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{text_b64}'));"
@@ -281,20 +328,27 @@ def handle_qga_clipboard_set(req):
         )
         ps_b64 = base64.b64encode(ps.encode("utf-16le")).decode("ascii")
         cmd = ["qm", "guest", "exec", str(vmid), "--", "powershell.exe", "-NoProfile", "-NonInteractive", "-STA", "-EncodedCommand", ps_b64]
-    else:
-        cmd = [
-            "qm", "guest", "exec", str(vmid), "--", "sh", "-c",
-            'printf %s "$1" | base64 -d | (wl-copy 2>/dev/null || xclip -selection clipboard 2>/dev/null || xsel --clipboard --input)',
-            "--", text_b64,
-        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+        try:
+            parse_guest_exec_output(proc)
+            return {"ok": True, "mode": "qga_powershell"}
+        except Exception:
+            return windows_mshta_clipboard_set(vmid, text_b64)
+    cmd = [
+        "qm", "guest", "exec", str(vmid), "--", "sh", "-c",
+        'printf %s "$1" | base64 -d | (wl-copy 2>/dev/null || xclip -selection clipboard 2>/dev/null || xsel --clipboard --input)',
+        "--", text_b64,
+    ]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
     parse_guest_exec_output(proc)
-    return {"ok": True}
+    return {"ok": True, "mode": "qga_posix"}
 
 def handle_qga_clipboard_get(req):
     vmid = int(req["vmid"])
     os_type = str(req.get("osType") or "linux").lower()
     if os_type == "windows":
+        if bool(req.get("isLegacyNt5")):
+            return windows_mshta_clipboard_get(vmid)
         ps = (
             "Add-Type -AssemblyName System.Windows.Forms;"
             "$t='';if([System.Windows.Forms.Clipboard]::ContainsText()){$t=[System.Windows.Forms.Clipboard]::GetText()};"
@@ -302,15 +356,21 @@ def handle_qga_clipboard_get(req):
         )
         ps_b64 = base64.b64encode(ps.encode("utf-16le")).decode("ascii")
         cmd = ["qm", "guest", "exec", str(vmid), "--", "powershell.exe", "-NoProfile", "-NonInteractive", "-STA", "-EncodedCommand", ps_b64]
-    else:
-        cmd = [
-            "qm", "guest", "exec", str(vmid), "--", "sh", "-c",
-            '(wl-paste -n 2>/dev/null || xclip -o -selection clipboard 2>/dev/null || xsel --clipboard --output) | base64 -w0',
-        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+        try:
+            data = parse_guest_exec_output(proc)
+            out_b64 = str(data.get("out-data") or "").strip().replace("\\n", "").replace("\\r", "")
+            return {"textB64": out_b64, "mode": "qga_powershell"}
+        except Exception:
+            return windows_mshta_clipboard_get(vmid)
+    cmd = [
+        "qm", "guest", "exec", str(vmid), "--", "sh", "-c",
+        '(wl-paste -n 2>/dev/null || xclip -o -selection clipboard 2>/dev/null || xsel --clipboard --output) | base64 -w0',
+    ]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
     data = parse_guest_exec_output(proc)
     out_b64 = str(data.get("out-data") or "").strip().replace("\\n", "").replace("\\r", "")
-    return {"textB64": out_b64}
+    return {"textB64": out_b64, "mode": "qga_posix"}
 
 for raw_line in sys.stdin:
     line = raw_line.strip()
@@ -1347,17 +1407,19 @@ export function createPveQmpDriver({
         available: Boolean(res?.available),
         socketExists: Boolean(res?.socketExists),
         osType: String(res?.osType || 'unknown'),
+        osVersion: String(res?.osVersion || ''),
+        isLegacyNt5: Boolean(res?.isLegacyNt5),
       };
       qgaCacheByKey.set(key, normalized);
       return normalized;
     } catch {
-      const fallback = { available: false, socketExists: false, osType: 'unknown' };
+      const fallback = { available: false, socketExists: false, osType: 'unknown', osVersion: '', isLegacyNt5: false };
       qgaCacheByKey.set(key, fallback);
       return fallback;
     }
   }
 
-  async function qgaClipboardSet(targetOrId, text, { osType, timeoutMs = 10_000, signal } = {}) {
+  async function qgaClipboardSet(targetOrId, text, { osType, isLegacyNt5, timeoutMs = 10_000, signal } = {}) {
     const { target, key } = resolveTargetKey(targetOrId);
     const str = String(text ?? '');
     const byteLen = Buffer.byteLength(str, 'utf8');
@@ -1371,15 +1433,21 @@ export function createPveQmpDriver({
       });
     }
     const textB64 = Buffer.from(str, 'utf8').toString('base64');
-    await callHost(
+    const res = await callHost(
       target.sshHost,
-      { op: 'qga_clipboard_set', vmid: target.vmid, textB64, osType: osType || cachedQga.osType || 'linux' },
+      {
+        op: 'qga_clipboard_set',
+        vmid: target.vmid,
+        textB64,
+        osType: osType || cachedQga.osType || 'linux',
+        isLegacyNt5: isLegacyNt5 !== undefined ? Boolean(isLegacyNt5) : Boolean(cachedQga.isLegacyNt5),
+      },
       { timeoutMs, signal },
     );
-    return { ok: true, length: str.length, mode: 'qga_guest_exec' };
+    return { ok: true, length: str.length, mode: res?.mode || 'qga_guest_exec' };
   }
 
-  async function qgaClipboardGet(targetOrId, { osType, timeoutMs = 10_000, signal } = {}) {
+  async function qgaClipboardGet(targetOrId, { osType, isLegacyNt5, timeoutMs = 10_000, signal } = {}) {
     const { target, key } = resolveTargetKey(targetOrId);
     const cachedQga = qgaCacheByKey.get(key) || await probeQga(target, { signal });
     if (!cachedQga.available) {
@@ -1389,11 +1457,16 @@ export function createPveQmpDriver({
     }
     const res = await callHost(
       target.sshHost,
-      { op: 'qga_clipboard_get', vmid: target.vmid, osType: osType || cachedQga.osType || 'linux' },
+      {
+        op: 'qga_clipboard_get',
+        vmid: target.vmid,
+        osType: osType || cachedQga.osType || 'linux',
+        isLegacyNt5: isLegacyNt5 !== undefined ? Boolean(isLegacyNt5) : Boolean(cachedQga.isLegacyNt5),
+      },
       { timeoutMs, signal },
     );
     const text = res?.textB64 ? Buffer.from(String(res.textB64), 'base64').toString('utf8') : '';
-    return { ok: true, text };
+    return { ok: true, text, mode: res?.mode || 'qga_guest_exec' };
   }
 
   async function disconnectHost(sshHost) {

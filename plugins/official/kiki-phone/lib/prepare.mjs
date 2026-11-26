@@ -77,7 +77,7 @@ async function canonicalAdb(binary, dataDir) {
   return path.join(target, path.basename(binary));
 }
 
-export async function preparePhone({ download = false, adbPath, warmup = true, platform: targetPlatform = 'android' } = {}, {
+export async function preparePhone({ download = false, adbPath, deviceId, warmup = true, platform: targetPlatform = 'android' } = {}, {
   env = process.env, dataDir = phoneDataDir(env), platform = process.platform, nodeVersion = process.versions.node,
   execute = exec, install = installOfficialTools, signal,
 } = {}) {
@@ -117,6 +117,9 @@ export async function preparePhone({ download = false, adbPath, warmup = true, p
     if (targetPlatform === 'ios') return { ...result, status: 'runtime_ready', message: 'Upstream packages are prepared. iOS UI use still requires a trusted device and a valid signed DeviceKit agent.' };
     const { stdout, stderr } = await runAdbCmd(binary, ['devices', '-l'], { ...options, env: sharedEnv });
     result.devices = parseDevices(stdout);
+    if (deviceId) {
+      result.targetDevice = result.devices.find(device => device.serial === deviceId) ?? { serial: deviceId, state: 'missing' };
+    }
     result.stdout = stdout;
     result.stderr = stderr;
     result.status = result.devices.some(device => device.state === 'device') ? 'transport_ready'

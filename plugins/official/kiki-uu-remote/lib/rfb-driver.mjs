@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import net from 'node:net';
 import { Duplex } from 'node:stream';
+import { deflateSync, inflateSync } from 'node:zlib';
 import {
   buttons as RFB_BUTTONS,
   connect as rfbConnect,
@@ -22,9 +23,114 @@ import {
   createUnicodeUnsupportedError,
   isAsciiOnlyText,
   normalizeRfbKeyChord,
+  resolveDomCodeOrKey,
 } from './xt-scancode-map.mjs';
 
 export const MAX_RFB_CLIPBOARD_BYTES = 2 * 1024 * 1024; // 2 MiB (Frame Audit B5)
+export const DIRTY_FRAME_MAGIC = 0x02;
+export const RECT_RAW_RGBA = 0;
+export const RECT_DEFLATE_RGBA = 1;
+export const RECT_COPYRECT = 2;
+
+export function packDirtyRectFrame({
+  frameSeq = 1,
+  fbWidth,
+  fbHeight,
+  keyFrame = false,
+  takeoverActive = false,
+  rects = [],
+}) {
+  const encodedParts = [];
+  let bodyLen = 0;
+  for (const r of rects) {
+    if (r.encoding === RECT_COPYRECT) {
+      const hdr = Buffer.allocUnsafe(13);
+      hdr.writeUInt8(RECT_COPYRECT, 0);
+      hdr.writeUInt16BE(r.x & 0xffff, 1);
+      hdr.writeUInt16BE(r.y & 0xffff, 3);
+      hdr.writeUInt16BE(r.width & 0xffff, 5);
+      hdr.writeUInt16BE(r.height & 0xffff, 7);
+      hdr.writeUInt16BE(r.srcX & 0xffff, 9);
+      hdr.writeUInt16BE(r.srcY & 0xffff, 11);
+      encodedParts.push(hdr);
+      bodyLen += hdr.length;
+      continue;
+    }
+    const rgba = Buffer.isBuffer(r.rgba) ? r.rgba : Buffer.from(r.rgba.buffer, r.rgba.byteOffset, r.rgba.byteLength);
+    const useRaw = rgba.length <= 512;
+    const payload = useRaw ? rgba : deflateSync(rgba, { level: 1 });
+    const encType = (useRaw || payload.length >= rgba.length) ? RECT_RAW_RGBA : RECT_DEFLATE_RGBA;
+    const finalBytes = encType === RECT_RAW_RGBA ? rgba : payload;
+    const hdr = Buffer.allocUnsafe(13);
+    hdr.writeUInt8(encType, 0);
+    hdr.writeUInt16BE(r.x & 0xffff, 1);
+    hdr.writeUInt16BE(r.y & 0xffff, 3);
+    hdr.writeUInt16BE(r.width & 0xffff, 5);
+    hdr.writeUInt16BE(r.height & 0xffff, 7);
+    hdr.writeUInt32BE(finalBytes.length >>> 0, 9);
+    encodedParts.push(hdr, finalBytes);
+    bodyLen += hdr.length + finalBytes.length;
+  }
+
+  const header = Buffer.allocUnsafe(12);
+  header.writeUInt8(DIRTY_FRAME_MAGIC, 0);
+  header.writeUInt8((keyFrame ? 1 : 0) | (takeoverActive ? 2 : 0), 1);
+  header.writeUInt32BE(frameSeq >>> 0, 2);
+  header.writeUInt16BE(Math.min(65535, Math.max(1, fbWidth || 1)), 6);
+  header.writeUInt16BE(Math.min(65535, Math.max(1, fbHeight || 1)), 8);
+  header.writeUInt16BE(Math.min(65535, rects.length), 10);
+  return Buffer.concat([header, ...encodedParts], 12 + bodyLen);
+}
+
+export function unpackDirtyRectFrame(buf) {
+  const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+  if (b.length < 12 || b[0] !== DIRTY_FRAME_MAGIC) return null;
+  const flags = b.readUInt8(1);
+  const frameSeq = b.readUInt32BE(2);
+  const fbWidth = b.readUInt16BE(6);
+  const fbHeight = b.readUInt16BE(8);
+  const rectCount = b.readUInt16BE(10);
+  const rects = [];
+  let off = 12;
+  for (let i = 0; i < rectCount; i += 1) {
+    if (off >= b.length) break;
+    const enc = b.readUInt8(off);
+    if (enc === RECT_COPYRECT) {
+      if (off + 13 > b.length) break;
+      rects.push({
+        encoding: RECT_COPYRECT,
+        x: b.readUInt16BE(off + 1),
+        y: b.readUInt16BE(off + 3),
+        width: b.readUInt16BE(off + 5),
+        height: b.readUInt16BE(off + 7),
+        srcX: b.readUInt16BE(off + 9),
+        srcY: b.readUInt16BE(off + 11),
+      });
+      off += 13;
+    } else {
+      if (off + 13 > b.length) break;
+      const x = b.readUInt16BE(off + 1);
+      const y = b.readUInt16BE(off + 3);
+      const width = b.readUInt16BE(off + 5);
+      const height = b.readUInt16BE(off + 7);
+      const dataLen = b.readUInt32BE(off + 9);
+      off += 13;
+      if (off + dataLen > b.length) break;
+      const slice = b.subarray(off, off + dataLen);
+      off += dataLen;
+      const rgba = enc === RECT_DEFLATE_RGBA ? inflateSync(slice) : Buffer.from(slice);
+      rects.push({ encoding: enc, x, y, width, height, rgba });
+    }
+  }
+  return {
+    keyFrame: Boolean(flags & 1),
+    takeoverActive: Boolean(flags & 2),
+    frameSeq,
+    fbWidth,
+    fbHeight,
+    rects,
+  };
+}
 const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
 const DEFAULT_INITIAL_FRAME_TIMEOUT_MS = 4_000;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 8 * 60 * 1000; // < 15 min qm vncproxy idle timeout (OQ1)
@@ -429,6 +535,7 @@ export function createRfbDriver({
   const connectFlights = new Map();
   const passwordsByTargetId = new Map(); // In-memory only; NEVER persisted or logged.
   const subscribersByTargetId = new Map();
+  const clipboardSubscribersByTargetId = new Map();
   const resizeListeners = new Set();
   const needsConservativeRelease = new Set();
 
@@ -478,10 +585,41 @@ export function createRfbDriver({
       subscribersByTargetId.set(targetId, set);
     }
     set.add(listener);
+    const active = sessionsById.get(targetId);
+    if (active && !active.closed && active.client?.connected && !active.continuousUpdatesActive && !active.updatePending) {
+      try {
+        active.updatePending = true;
+        active.client.requestUpdate(true);
+      } catch {
+        active.updatePending = false;
+      }
+    }
     return () => {
       set.delete(listener);
       if (set.size === 0) subscribersByTargetId.delete(targetId);
     };
+  }
+
+  function subscribeClipboard(targetId, listener) {
+    if (typeof listener !== 'function') return () => {};
+    let set = clipboardSubscribersByTargetId.get(targetId);
+    if (!set) {
+      set = new Set();
+      clipboardSubscribersByTargetId.set(targetId, set);
+    }
+    set.add(listener);
+    return () => {
+      set.delete(listener);
+      if (set.size === 0) clipboardSubscribersByTargetId.delete(targetId);
+    };
+  }
+
+  function emitSubscriberClipboard(targetId, text, updatedAtMs) {
+    const set = clipboardSubscribersByTargetId.get(targetId);
+    if (!set) return;
+    for (const fn of [...set]) {
+      try { fn({ targetId, text, updatedAtMs }); } catch {}
+    }
   }
 
   function emitSubscriberUpdate(targetId, payload) {
@@ -726,6 +864,8 @@ export function createRfbDriver({
       clipboardText: '',
       clipboardGeneration: 0,
       clipboardUpdatedAtMs: 0,
+      lastSelfClipboardText: '',
+      lastSelfClipboardAtMs: 0,
       settleWaiters: [],
     };
 
@@ -737,6 +877,9 @@ export function createRfbDriver({
         session.initialQuietTimer = null;
       }
       resolveInitialFrame();
+      if (!session.continuousUpdatesActive && client.connected && subscribersByTargetId.has(target.id)) {
+        scheduleIncrementalPull(10);
+      }
     };
 
     const tryEnableContinuousUpdates = () => {
@@ -751,7 +894,7 @@ export function createRfbDriver({
       }
     };
 
-    const scheduleIncrementalPull = () => {
+    const scheduleIncrementalPull = (delayMs = 16) => {
       if (session.closed || !client.connected || session.continuousUpdatesActive) return;
       if (session.updatePending) return;
       session.updatePending = true;
@@ -767,7 +910,7 @@ export function createRfbDriver({
         } catch {
           session.updatePending = false;
         }
-      }, 25);
+      }, Math.max(4, delayMs));
       session.updateThrottleTimer.unref?.();
     };
 
@@ -830,12 +973,72 @@ export function createRfbDriver({
         for (const waiter of [...session.settleWaiters]) {
           waiter.onUpdate(session.frameSeq, bounds);
         }
+
+        let orderedRects = null;
+        if (subscribersByTargetId.has(target.id) && fb.width > 0 && fb.height > 0) {
+          const hasResize = rects.some((r) => r && (r.type === 'desktopSize' || r.type === 'extendedDesktopSize'));
+          if (!hasResize && rects.length <= 48) {
+            // Check whether any CopyRect destination overlaps an earlier pixel rect in the same batch;
+            // if so, materialize from authoritative fb so order-dependent overwrites never diverge!
+            let copyOverlapsEarlier = false;
+            const seenPixelRects = [];
+            for (const r of rects) {
+              if (!r) continue;
+              if (r.type === 'pixels') {
+                seenPixelRects.push(r);
+              } else if (r.type === 'copy') {
+                for (const p of seenPixelRects) {
+                  const overlap = r.x < p.x + p.width && r.x + r.width > p.x && r.y < p.y + p.height && r.y + r.height > p.y;
+                  if (overlap) {
+                    copyOverlapsEarlier = true;
+                    break;
+                  }
+                }
+                if (copyOverlapsEarlier) break;
+              }
+            }
+
+            if (!copyOverlapsEarlier) {
+              orderedRects = [];
+              for (const r of rects) {
+                if (!r || r.width <= 0 || r.height <= 0) continue;
+                const rx = clamp(r.x, 0, Math.max(0, fb.width - 1));
+                const ry = clamp(r.y, 0, Math.max(0, fb.height - 1));
+                const rw = Math.min(r.width, fb.width - rx);
+                const rh = Math.min(r.height, fb.height - ry);
+                if (rw <= 0 || rh <= 0) continue;
+                if (r.type === 'copy') {
+                  orderedRects.push({
+                    encoding: RECT_COPYRECT,
+                    x: rx,
+                    y: ry,
+                    width: rw,
+                    height: rh,
+                    srcX: clamp(r.srcX || 0, 0, Math.max(0, fb.width - rw)),
+                    srcY: clamp(r.srcY || 0, 0, Math.max(0, fb.height - rh)),
+                  });
+                } else if (r.type === 'pixels') {
+                  orderedRects.push({
+                    encoding: RECT_DEFLATE_RGBA,
+                    x: rx,
+                    y: ry,
+                    width: rw,
+                    height: rh,
+                    rgba: fb.toRgba(client.colorMap, { x: rx, y: ry, width: rw, height: rh }),
+                  });
+                }
+              }
+            }
+          }
+        }
+
         emitSubscriberUpdate(target.id, {
           targetId: target.id,
           frameSeq: session.frameSeq,
           width: fb.width,
           height: fb.height,
           dirtyBounds: bounds,
+          rects: orderedRects,
         });
       }
 
@@ -860,9 +1063,14 @@ export function createRfbDriver({
     });
 
     client.on('clipboard', (text) => {
-      session.clipboardText = String(text ?? '');
+      const str = String(text ?? '');
+      const now = nowFn();
+      session.clipboardText = str;
       session.clipboardGeneration += 1;
-      session.clipboardUpdatedAtMs = nowFn();
+      session.clipboardUpdatedAtMs = now;
+      if (str && (str !== session.lastSelfClipboardText || now - session.lastSelfClipboardAtMs > 1200)) {
+        emitSubscriberClipboard(target.id, str, now);
+      }
     });
 
     client.on('clipboardEmpty', () => {
@@ -1232,10 +1440,12 @@ export function createRfbDriver({
     const session = await ensureConnected(targetOrId, { signal });
     const unicodeOk = Boolean(session.client.supports?.unicodeClipboard);
     if (unicodeOk) {
+      session.lastSelfClipboardText = str;
+      session.lastSelfClipboardAtMs = nowFn();
       session.client.updateClipboard(str);
       session.clipboardText = str;
       session.clipboardGeneration += 1;
-      session.clipboardUpdatedAtMs = nowFn();
+      session.clipboardUpdatedAtMs = session.lastSelfClipboardAtMs;
       return { ok: true, length: str.length, mode: 'extended_clipboard_utf8' };
     }
     if (!isAsciiOnlyText(str)) {
@@ -1244,6 +1454,8 @@ export function createRfbDriver({
     if (!allowLatin1Fallback) {
       throw createUnicodeUnsupportedError('RFB server does not advertise ExtendedClipboard');
     }
+    session.lastSelfClipboardText = str;
+    session.lastSelfClipboardAtMs = nowFn();
     session.client.updateClipboard(str);
     session.clipboardText = str;
     session.clipboardGeneration += 1;
@@ -1660,6 +1872,137 @@ export function createRfbDriver({
     }
   }
 
+  async function buildKeyframePacket(targetOrId, { takeoverActive = false, signal } = {}) {
+    const session = await ensureConnected(targetOrId, { signal });
+    if (!session.hasInitialFrame) {
+      await Promise.race([
+        session.initialFramePromise,
+        sleep(initialFrameTimeoutMs, signal).catch(() => {}),
+      ]);
+    }
+    const fb = session.framebuffer;
+    const width = Math.max(1, fb.width || session.client.width || 1024);
+    const height = Math.max(1, fb.height || session.client.height || 768);
+    if (session.frameSeq === 0) session.frameSeq = 1;
+    const rgba = fb.toRgba(session.client.colorMap);
+    const packet = packDirtyRectFrame({
+      frameSeq: session.frameSeq,
+      fbWidth: width,
+      fbHeight: height,
+      keyFrame: true,
+      takeoverActive,
+      rects: [{ encoding: RECT_DEFLATE_RGBA, x: 0, y: 0, width, height, rgba }],
+    });
+    return {
+      packet,
+      frameSeq: session.frameSeq,
+      width,
+      height,
+      capabilities: await getSessionCapabilities(session.target),
+    };
+  }
+
+  function buildCoalescedBoundsPacket(targetOrId, bounds, { takeoverActive = false } = {}) {
+    const target = normalizeRfbTarget(targetOrId);
+    const session = sessionsById.get(target.id);
+    if (!session || session.closed || !session.client?.connected) return null;
+    const fb = session.framebuffer;
+    const width = Math.max(1, fb.width || session.client.width || 1024);
+    const height = Math.max(1, fb.height || session.client.height || 768);
+    const bx = clamp(Math.round(bounds?.x || 0), 0, width - 1);
+    const by = clamp(Math.round(bounds?.y || 0), 0, height - 1);
+    const bw = clamp(Math.round(bounds?.width || width), 1, width - bx);
+    const bh = clamp(Math.round(bounds?.height || height), 1, height - by);
+    const isFull = bx === 0 && by === 0 && bw === width && bh === height;
+    const rgba = fb.toRgba(session.client.colorMap, { x: bx, y: by, width: bw, height: bh });
+    return packDirtyRectFrame({
+      frameSeq: session.frameSeq,
+      fbWidth: width,
+      fbHeight: height,
+      keyFrame: isFull,
+      takeoverActive,
+      rects: [{ encoding: RECT_DEFLATE_RGBA, x: bx, y: by, width: bw, height: bh, rgba }],
+    });
+  }
+
+  function armInteractivePull(session) {
+    if (!session || session.closed || !session.client?.connected || session.continuousUpdatesActive) return;
+    if (!session.updatePending) {
+      session.updatePending = true;
+      try {
+        session.client.requestUpdate(true);
+      } catch {
+        session.updatePending = false;
+      }
+    }
+  }
+
+  function sendLivePointer(targetOrId, { norm1000X, norm1000Y, buttonsMask = 0 } = {}) {
+    const target = normalizeRfbTarget(targetOrId);
+    const session = sessionsById.get(target.id);
+    if (!session || session.closed || !session.client?.connected) return false;
+    const w = Math.max(1, session.framebuffer.width || session.client.width || 1024);
+    const h = Math.max(1, session.framebuffer.height || session.client.height || 768);
+    const nx = clamp(Number(norm1000X) || 0, 0, 1000) / 1000;
+    const ny = clamp(Number(norm1000Y) || 0, 0, 1000) / 1000;
+    const px = w <= 1 ? 0 : Math.round(nx * (w - 1));
+    const py = h <= 1 ? 0 : Math.round(ny * (h - 1));
+    sendPointerOnSession(session, px, py, buttonsMask & 0x07);
+    armInteractivePull(session);
+    return { x: px, y: py };
+  }
+
+  function sendLiveWheel(targetOrId, { norm1000X, norm1000Y, deltaX = 0, deltaY = 0 } = {}) {
+    const target = normalizeRfbTarget(targetOrId);
+    const session = sessionsById.get(target.id);
+    if (!session || session.closed || !session.client?.connected) return false;
+    const w = Math.max(1, session.framebuffer.width || session.client.width || 1024);
+    const h = Math.max(1, session.framebuffer.height || session.client.height || 768);
+    const nx = clamp(Number(norm1000X) || 0, 0, 1000) / 1000;
+    const ny = clamp(Number(norm1000Y) || 0, 0, 1000) / 1000;
+    const px = w <= 1 ? 0 : Math.round(nx * (w - 1));
+    const py = h <= 1 ? 0 : Math.round(ny * (h - 1));
+    const toTicks = (d) => {
+      if (!d) return 0;
+      const mag = Math.abs(d);
+      return clamp(mag <= 20 ? Math.round(mag) : Math.max(1, Math.round(mag / 100)), 1, 8);
+    };
+    const yTicks = toTicks(deltaY);
+    if (yTicks > 0) {
+      const bit = deltaY > 0 ? RFB_BUTTONS.wheelDown : RFB_BUTTONS.wheelUp;
+      for (let i = 0; i < yTicks; i += 1) {
+        sendPointerOnSession(session, px, py, session.heldButtonMask | bit);
+        sendPointerOnSession(session, px, py, session.heldButtonMask & ~bit);
+      }
+    }
+    const xTicks = toTicks(deltaX);
+    if (xTicks > 0) {
+      const bit = deltaX > 0 ? RFB_BUTTONS.wheelRight : RFB_BUTTONS.wheelLeft;
+      for (let i = 0; i < xTicks; i += 1) {
+        sendPointerOnSession(session, px, py, session.heldButtonMask | bit);
+        sendPointerOnSession(session, px, py, session.heldButtonMask & ~bit);
+      }
+    }
+    armInteractivePull(session);
+    return { x: px, y: py, yTicks, xTicks };
+  }
+
+  function sendLiveRawKey(targetOrId, { code = '', key = '', down = true, shiftKey = false } = {}) {
+    const target = normalizeRfbTarget(targetOrId);
+    const session = sessionsById.get(target.id);
+    if (!session || session.closed || !session.client?.connected) return false;
+    const keyInfo = resolveDomCodeOrKey({ code, key, shiftKey });
+    if (!keyInfo) return false;
+    if (down === 2) {
+      sendKeyOnSession(session, keyInfo, true);
+      sendKeyOnSession(session, keyInfo, false);
+    } else {
+      sendKeyOnSession(session, keyInfo, Boolean(down));
+    }
+    armInteractivePull(session);
+    return keyInfo;
+  }
+
   async function disconnectTarget(targetOrId) {
     const target = normalizeRfbTarget(targetOrId);
     teardownSession(target.id, { markNeedsRelease: false });
@@ -1673,12 +2016,18 @@ export function createRfbDriver({
     }
     passwordsByTargetId.clear();
     subscribersByTargetId.clear();
+    clipboardSubscribersByTargetId.clear();
     needsConservativeRelease.clear();
   }
 
   return {
     ensureConnected,
     captureRgba,
+    buildKeyframePacket,
+    buildCoalescedBoundsPacket,
+    sendLivePointer,
+    sendLiveWheel,
+    sendLiveRawKey,
     getCurrentFrameSeq,
     waitForSettle,
     executeActions,
@@ -1687,6 +2036,7 @@ export function createRfbDriver({
     releaseAllInputs,
     getSessionCapabilities,
     subscribeUpdates,
+    subscribeClipboard,
     onResize,
     setVncPassword,
     clearVncPassword,

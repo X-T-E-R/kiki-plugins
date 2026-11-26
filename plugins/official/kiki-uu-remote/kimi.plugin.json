@@ -1,6 +1,6 @@
 {
   "name": "kiki-uu-remote",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Discover, preview, and operate NetEase UU Remote (GameViewer), Proxmox VE QEMU VMs (RFB 3.8 over SSH vncproxy with QMP/QGA fallback), and direct/SSH-tunneled VNC desktops with lossless dirty-rect capture, zoom & opt-in grid overlay, Human Takeover abort/release, and kiki.cua.provider.v1 integration.",
   "license": "MIT",
   "icon": "./icon.svg",

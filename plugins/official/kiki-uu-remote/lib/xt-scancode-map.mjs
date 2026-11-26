@@ -363,4 +363,114 @@ export function normalizeRfbKeyChord(keysOrKey) {
   return out;
 }
 
+const DOM_CODE_TO_KEY_NAME = new Map([
+  ['ShiftLeft', 'shift'],
+  ['ShiftRight', 'rshift'],
+  ['ControlLeft', 'ctrl'],
+  ['ControlRight', 'rctrl'],
+  ['AltLeft', 'alt'],
+  ['AltRight', 'ralt'],
+  ['MetaLeft', 'win'],
+  ['MetaRight', 'rwin'],
+  ['OSLeft', 'win'],
+  ['OSRight', 'rwin'],
+  ['Escape', 'esc'],
+  ['Backspace', 'backspace'],
+  ['Tab', 'tab'],
+  ['Enter', 'enter'],
+  ['Space', 'space'],
+  ['CapsLock', 'capslock'],
+  ['NumLock', 'numlock'],
+  ['ScrollLock', 'scrolllock'],
+  ['Home', 'home'],
+  ['ArrowUp', 'up'],
+  ['PageUp', 'pageup'],
+  ['ArrowLeft', 'left'],
+  ['ArrowRight', 'right'],
+  ['End', 'end'],
+  ['ArrowDown', 'down'],
+  ['PageDown', 'pagedown'],
+  ['Insert', 'insert'],
+  ['Delete', 'delete'],
+  ['PrintScreen', 'printscreen'],
+  ['Pause', 'pause'],
+  ['ContextMenu', 'menu'],
+  ['Minus', 'minus'],
+  ['Equal', 'equal'],
+  ['BracketLeft', 'bracket_left'],
+  ['BracketRight', 'bracket_right'],
+  ['Semicolon', 'semicolon'],
+  ['Quote', 'apostrophe'],
+  ['Backquote', 'grave_accent'],
+  ['Backslash', 'backslash'],
+  ['IntlBackslash', 'backslash'],
+  ['Comma', 'comma'],
+  ['Period', 'dot'],
+  ['Slash', 'slash'],
+  ['Numpad0', 'kp_0'],
+  ['Numpad1', 'kp_1'],
+  ['Numpad2', 'kp_2'],
+  ['Numpad3', 'kp_3'],
+  ['Numpad4', 'kp_4'],
+  ['Numpad5', 'kp_5'],
+  ['Numpad6', 'kp_6'],
+  ['Numpad7', 'kp_7'],
+  ['Numpad8', 'kp_8'],
+  ['Numpad9', 'kp_9'],
+  ['NumpadMultiply', 'kp_multiply'],
+  ['NumpadSubtract', 'kp_subtract'],
+  ['NumpadAdd', 'kp_add'],
+  ['NumpadDecimal', 'kp_decimal'],
+  ['NumpadEnter', 'kp_enter'],
+  ['NumpadDivide', 'kp_divide'],
+]);
+for (let c = 65; c <= 90; c += 1) {
+  const ch = String.fromCharCode(c);
+  DOM_CODE_TO_KEY_NAME.set(`Key${ch}`, ch.toLowerCase());
+}
+for (let d = 0; d <= 9; d += 1) {
+  DOM_CODE_TO_KEY_NAME.set(`Digit${d}`, String(d));
+}
+for (let f = 1; f <= 12; f += 1) {
+  DOM_CODE_TO_KEY_NAME.set(`F${f}`, `f${f}`);
+}
+
+/**
+ * Resolve a physical DOM KeyboardEvent `{ code, key, shiftKey }` into a single physical
+ * `{ name, keysym, xtScancode, isModifier }` descriptor suitable for Raw Keys / Guest IME mode.
+ */
+export function resolveDomCodeOrKey({ code = '', key = '', shiftKey = false } = {}) {
+  const mappedName = code && DOM_CODE_TO_KEY_NAME.get(String(code));
+  if (mappedName && RFB_KEY_BY_NAME.has(mappedName)) {
+    const base = RFB_KEY_BY_NAME.get(mappedName);
+    if (shiftKey && String(key).length === 1) {
+      const cp = String(key).charCodeAt(0);
+      if (cp >= 0x20 && cp <= 0x7e) {
+        return { ...base, keysym: cp };
+      }
+    }
+    return base;
+  }
+  const keyStr = String(key || '').trim();
+  if (!keyStr) return null;
+  const lower = keyStr.toLowerCase();
+  if (RFB_KEY_BY_NAME.has(lower)) {
+    return RFB_KEY_BY_NAME.get(lower);
+  }
+  if (keyStr.length === 1 && keyStr.charCodeAt(0) >= 0x20 && keyStr.charCodeAt(0) <= 0x7e) {
+    try {
+      const ascii = asciiCharToRfbKey(keyStr);
+      return {
+        name: keyStr,
+        keysym: ascii.keysym,
+        xtScancode: ascii.xtScancode,
+        isModifier: false,
+      };
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 export { SHIFT_LEFT_KEY };

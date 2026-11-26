@@ -1,4 +1,6 @@
-import { access, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { access, appendFile, readFile, rm, writeFile, mkdir, mkdtemp } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { findAdb, phoneDataDir } from './environment.mjs';
@@ -12,6 +14,7 @@ import {
 } from './mobilecli-server.mjs';
 import { parseAndroidScreenState } from './phone-run.mjs';
 import { createScrcpyManager } from './scrcpy-stream.mjs';
+import { createRemoteLeaseStore } from './remote-lease.mjs';
 
 const defaultExecFile = execAdb;
 const SESSION_IDLE_MS = 60_000;
@@ -275,12 +278,14 @@ export function createPhonePreviewService({
   executeFile = defaultExecFile,
   loadDriverModule,
   scrcpyManager: customScrcpyManager,
+  leaseStore: customLeaseStore,
   metadataTtlMs = DEFAULT_METADATA_TTL_MS,
   fastStateTtlMs = DEFAULT_FAST_STATE_TTL_MS,
   fastProbeTimeoutMs = DEFAULT_FAST_PROBE_TIMEOUT_MS,
   disappearDebounceMs = DEFAULT_TRANSIENT_DISAPPEAR_DEBOUNCE_MS,
 } = {}) {
   const resolveDataDir = () => customDataDir || phoneDataDir();
+  const leaseStore = customLeaseStore ?? createRemoteLeaseStore();
   const captureSessions = new Map();
   const actionSessions = new Map();
   const deviceMetaCache = new Map();
@@ -288,6 +293,7 @@ export function createPhonePreviewService({
   const transientMissingSince = new Map();
   const adbEnrichFlights = new Map();
   const inflightCaptures = new Map();
+  const pendingUploads = new Map();
   let selectedMemoryCache = null;
 
   const scrcpyEnabledByDefault = !loadDriverModule || Boolean(customScrcpyManager);
@@ -949,6 +955,7 @@ export function createPhonePreviewService({
       }
     }
 
+    await leaseStore.ensureLoaded(dataDir);
     const saved = await readSelectedDevice(dataDir);
     const online = allDevices.filter((d) => d.state === 'online');
     let selected = saved && allDevices.some((d) => d.id === saved.id && d.platform === saved.platform)
@@ -959,14 +966,23 @@ export function createPhonePreviewService({
       await writeSelectedDevice(dataDir, selected).catch(() => {});
     }
 
+    const enrichedDevices = allDevices.map((d) => {
+      const tk = leaseStore.getTakeover(d.id);
+      return {
+        ...d,
+        takeoverActive: tk.active,
+        controlledBy: tk.controlledBy,
+      };
+    });
+
     const snapshot = {
       ok: true,
       authoritative,
       selected,
-      devices: allDevices,
+      devices: enrichedDevices,
       groups: {
-        android: allDevices.filter((d) => d.platform === 'android'),
-        ios: allDevices.filter((d) => d.platform === 'ios'),
+        android: enrichedDevices.filter((d) => d.platform === 'android'),
+        ios: enrichedDevices.filter((d) => d.platform === 'ios'),
       },
       diagnostics,
     };
@@ -1031,17 +1047,24 @@ export function createPhonePreviewService({
 
   async function resolveTarget({ deviceId, platform, settings = {} }) {
     const dataDir = resolveDataDir();
-    if (deviceId && (platform === 'android' || platform === 'ios')) {
-      return { id: String(deviceId), platform, dataDir };
+    let normId = typeof deviceId === 'string' ? deviceId.trim() : (deviceId ? String(deviceId) : '');
+    let normPlatform = platform;
+    const prefixMatch = normId.match(/^(android|ios):(.+)$/i);
+    if (prefixMatch) {
+      normPlatform = normPlatform || prefixMatch[1].toLowerCase();
+      normId = prefixMatch[2];
+    }
+    if (normId && (normPlatform === 'android' || normPlatform === 'ios')) {
+      return { id: normId, platform: normPlatform, dataDir };
     }
     const saved = await readSelectedDevice(dataDir);
-    if (deviceId) {
-      if (saved?.id === deviceId && (saved.platform === 'android' || saved.platform === 'ios')) {
-        return { id: String(deviceId), platform: saved.platform, dataDir };
+    if (normId) {
+      if (saved?.id === normId && (saved.platform === 'android' || saved.platform === 'ios')) {
+        return { id: normId, platform: saved.platform, dataDir };
       }
       const state = await listState({ settings, fast: true });
-      const hit = state.devices.find((d) => d.id === deviceId);
-      return { id: String(deviceId), platform: hit?.platform || platform || 'android', dataDir };
+      const hit = state.devices.find((d) => d.id === normId);
+      return { id: normId, platform: hit?.platform || normPlatform || 'android', dataDir };
     }
     if (saved?.id && (saved.platform === 'android' || saved.platform === 'ios')) {
       return { id: String(saved.id), platform: saved.platform, dataDir };
@@ -1315,6 +1338,19 @@ export function createPhonePreviewService({
     const { action } = input;
     const dataDir = resolveDataDir();
 
+    if (action === 'takeover') {
+      await leaseStore.ensureLoaded(dataDir);
+      const id = String(input.deviceId || '').trim();
+      if (!id) return { ok: false, error: 'takeover requires deviceId.' };
+      const tk = leaseStore.setTakeover(id, {
+        active: Boolean(input.active),
+        holder: input.active ? 'human' : 'agent',
+        reason: input.reason || 'Phone panel takeover',
+      });
+      invalidateProbeCaches(true);
+      return { ok: true, action: 'takeover', ...tk };
+    }
+
     if (action === 'select') {
       if (!input.deviceId || (input.platform !== 'android' && input.platform !== 'ios')) {
         return { ok: false, error: 'select requires deviceId and platform ("android" | "ios").' };
@@ -1377,10 +1413,18 @@ export function createPhonePreviewService({
       const meta = ensureMetaEntry(target.platform, target.id);
       const effectiveSize = meta.effectiveSize;
 
-      if (target.platform === 'android' && ['tap', 'doubleTap', 'longPress', 'swipe', 'scroll', 'button', 'key', 'pasteText'].includes(action)) {
+      if (target.platform === 'android' && ['tap', 'doubleTap', 'longPress', 'swipe', 'scroll', 'button', 'key', 'pasteText', 'expandNotifications', 'shade', 'collapsePanels'].includes(action)) {
         const fastCtrl = await resolveFastScrcpyControl(target, effectiveSize, settings);
         if (fastCtrl) {
           try {
+            if (action === 'expandNotifications' || action === 'shade') {
+              fastCtrl.expandNotificationPanel?.();
+              return { ok: true, action: 'expandNotifications', channel: 'scrcpy' };
+            }
+            if (action === 'collapsePanels') {
+              fastCtrl.collapsePanels?.();
+              return { ok: true, action: 'collapsePanels', channel: 'scrcpy' };
+            }
             if (action === 'tap') {
               const pt = input.normX !== undefined && input.normY !== undefined
                 ? normalizePointerToDevice(input.normX, input.normY, effectiveSize.width, effectiveSize.height)
@@ -1580,6 +1624,21 @@ export function createPhonePreviewService({
             await session.driver.pressButton('POWER');
             return { ok: true, action };
           }
+          case 'expandNotifications':
+          case 'shade': {
+            if (target.platform === 'android' && session.adbBinary) {
+              await runAndroidShell(session.adbBinary, target.id, ['cmd', 'statusbar', 'expand-notifications']);
+              return { ok: true, action: 'expandNotifications' };
+            }
+            throw new Error('Notification shade expansion requires Android ADB.');
+          }
+          case 'collapsePanels': {
+            if (target.platform === 'android' && session.adbBinary) {
+              await runAndroidShell(session.adbBinary, target.id, ['cmd', 'statusbar', 'collapse']);
+              return { ok: true, action: 'collapsePanels' };
+            }
+            throw new Error('Panel collapse requires Android ADB.');
+          }
           case 'rotate': {
             const next = input.orientation || (meta.orientation === 'portrait' ? 'landscape' : 'portrait');
             await session.driver.setOrientation(next);
@@ -1681,6 +1740,134 @@ export function createPhonePreviewService({
     return handshake;
   }
 
+  function sanitizeUploadFileName(rawName) {
+    const cleaned = String(rawName ?? '')
+      .replace(/^.*[\\/]/, '')
+      .replace(/[\x00-\x1f\x7f<>:"/\\|?*]+/g, '_')
+      .replace(/^\.+/, '')
+      .trim();
+    const fallback = cleaned || `upload-${Date.now()}.bin`;
+    return fallback.slice(0, 140);
+  }
+
+  async function cleanupPendingUpload(uploadId) {
+    const entry = pendingUploads.get(uploadId);
+    if (!entry) return;
+    pendingUploads.delete(uploadId);
+    clearTimeout(entry.ttlTimer);
+    await rm(entry.stagingDir, { recursive: true, force: true }).catch(() => {});
+  }
+
+  async function uploadInit(body = {}, settings = {}) {
+    const target = await resolveTarget({
+      deviceId: body.deviceId || body.serial,
+      platform: body.platform || 'android',
+      settings,
+    });
+    if (target.platform !== 'android') {
+      return { ok: false, error: 'Drag-and-drop file/APK upload currently requires an Android device.' };
+    }
+    const byteLength = Math.max(0, Number(body.byteLength) || 0);
+    if (byteLength > 512 * 1024 * 1024) {
+      return { ok: false, error: 'File exceeds 512 MiB upload limit.' };
+    }
+    const safeName = sanitizeUploadFileName(body.fileName);
+    const mode = body.mode === 'install_apk' || /\.apk$/i.test(safeName) ? 'install_apk' : 'push_file';
+    const stagingDir = await mkdtemp(path.join(os.tmpdir(), 'kiki-phone-upload-'));
+    const stagedPath = path.join(stagingDir, safeName);
+    await writeFile(stagedPath, Buffer.alloc(0));
+    const uploadId = randomUUID();
+    const ttlTimer = setTimeout(() => {
+      void cleanupPendingUpload(uploadId);
+    }, 5 * 60_000);
+    ttlTimer.unref?.();
+
+    pendingUploads.set(uploadId, {
+      uploadId,
+      serial: target.id,
+      dataDir: target.dataDir,
+      fileName: safeName,
+      expectedBytes: byteLength,
+      receivedBytes: 0,
+      mode,
+      stagingDir,
+      stagedPath,
+      ttlTimer,
+    });
+    return { ok: true, uploadId, fileName: safeName, mode };
+  }
+
+  async function uploadChunk(body = {}) {
+    const uploadId = String(body.uploadId || '');
+    const entry = pendingUploads.get(uploadId);
+    if (!entry) return { ok: false, error: 'Upload session expired or not found.' };
+    const chunk = Buffer.from(String(body.dataBase64 || body.chunkBase64 || ''), 'base64');
+    if (entry.receivedBytes + chunk.length > 512 * 1024 * 1024) {
+      await cleanupPendingUpload(uploadId);
+      return { ok: false, error: 'Upload exceeded 512 MiB limit.' };
+    }
+    await appendFile(entry.stagedPath, chunk);
+    entry.receivedBytes += chunk.length;
+    return { ok: true, uploadId, receivedBytes: entry.receivedBytes };
+  }
+
+  async function uploadFinish(body = {}, settings = {}) {
+    const uploadId = String(body.uploadId || '');
+    const entry = pendingUploads.get(uploadId);
+    if (!entry) return { ok: false, error: 'Upload session expired or not found.' };
+    try {
+      const adbBinary = settings?.adbPath || await findAdb({ dataDir: entry.dataDir });
+      if (!adbBinary) {
+        return { ok: false, error: 'ADB is not configured. Run phone_prepare first.' };
+      }
+      if (entry.mode === 'install_apk') {
+        const { stdout = '' } = await executeFile(adbBinary, ['-s', entry.serial, 'install', '-r', entry.stagedPath], {
+          encoding: 'utf8',
+          windowsHide: true,
+          timeout: 120_000,
+        });
+        return {
+          ok: true,
+          action: 'install_apk',
+          serial: entry.serial,
+          fileName: entry.fileName,
+          byteLength: entry.receivedBytes,
+          stdout: stdout.trim(),
+        };
+      }
+      const remotePath = `/sdcard/Download/${entry.fileName}`;
+      await executeFile(adbBinary, ['-s', entry.serial, 'push', entry.stagedPath, remotePath], {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 60_000,
+      });
+      await executeFile(adbBinary, [
+        '-s', entry.serial, 'shell', 'am', 'broadcast',
+        '-a', 'android.intent.action.MEDIA_SCANNER_SCAN_FILE',
+        '-d', `file://${remotePath}`,
+      ], {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 8_000,
+      }).catch(() => {});
+      return {
+        ok: true,
+        action: 'push_file',
+        serial: entry.serial,
+        fileName: entry.fileName,
+        remotePath,
+        byteLength: entry.receivedBytes,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error.stderr?.trim() || error.message || String(error),
+      };
+    } finally {
+      await cleanupPendingUpload(uploadId);
+    }
+  }
+
   async function handlePanelRequest(action, args = {}, context = {}) {
     const settings = context?.settings ?? {};
     const body = args !== null && typeof args === 'object' ? args : {};
@@ -1693,6 +1880,12 @@ export function createPhonePreviewService({
         return inspectHierarchy({ ...body, settings });
       case 'action':
         return performAction(body, { settings });
+      case 'uploadInit':
+        return uploadInit(body, settings);
+      case 'uploadChunk':
+        return uploadChunk(body);
+      case 'uploadFinish':
+        return uploadFinish(body, settings);
       default:
         return { ok: false, error: `Unsupported panel action: ${String(action)}` };
     }
@@ -1702,7 +1895,9 @@ export function createPhonePreviewService({
     await Promise.all([
       ...[...captureSessions.keys()].map((key) => closeLaneSession(captureSessions, key)),
       ...[...actionSessions.keys()].map((key) => closeLaneSession(actionSessions, key)),
+      ...[...pendingUploads.keys()].map((id) => cleanupPendingUpload(id)),
       scrcpy.dispose(),
+      leaseStore.flush().catch(() => {}),
       loadDriverModule ? Promise.resolve() : disposeMobilecliServers(),
     ]);
   }

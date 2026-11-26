@@ -420,7 +420,7 @@
       "id": "kiki-phone",
       "tier": "official",
       "displayName": "Kiki Phone",
-      "version": "0.3.7",
+      "version": "0.4.0",
       "description": "Prepare the runtime, then use Mobilewright semantic scripts or Mobile MCP to operate a connected Android or iOS phone. Rooted Android also supports su commands.",
       "keywords": [
         "phone",
@@ -431,7 +431,7 @@
         "root"
       ],
       "author": "Kiki",
-      "license": "MIT",
+      "license": "MIT AND Apache-2.0",
       "source": "./official/kiki-phone",
       "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-phone",
       "localizations": {
@@ -535,7 +535,7 @@
       "id": "kiki-cua",
       "tier": "official",
       "displayName": "Kiki Computer Use",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "description": "Operate local multi-DPI desktops and registered remote display/input target providers with native zoom cropping, human-takeover protection and live workspace preview.",
       "keywords": [
         "computer-use",
@@ -565,7 +565,7 @@
       "id": "kiki-uu-remote",
       "tier": "official",
       "displayName": "UU Remote",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "description": "Connect, preview, and operate NetEase UU Remote (GameViewer), Proxmox VE QEMU VMs (RFB 3.8 over SSH with QMP/QGA fallback), and direct/SSH-tunneled VNC desktops, bridged into Kiki Computer Use.",
       "keywords": [
         "uu-remote",
@@ -596,45 +596,6 @@
             "Proxmox",
             "VNC",
             "GameViewer",
-            "CUA"
-          ]
-        }
-      }
-    },
-    {
-      "id": "kiki-v42",
-      "tier": "official",
-      "displayName": "Vibe42 Remote Workbench",
-      "version": "0.3.0",
-      "description": "Orchestrate Vibe42 remote Computers, Workspaces, coding Agent seats, COW workspace copies, remote desktops, mobile screens, and TCP port tunnels.",
-      "keywords": [
-        "vibe42",
-        "v42",
-        "remote",
-        "seats",
-        "terminal",
-        "desktop",
-        "port-forward",
-        "cua"
-      ],
-      "author": "Kiki",
-      "license": "MIT",
-      "relevance": {
-        "commands": [
-          "v42"
-        ]
-      },
-      "source": "./official/kiki-v42",
-      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-v42",
-      "localizations": {
-        "zh": {
-          "description": "编排 Vibe42 远端电脑、工作区、编码工位、COW 隔离副本、远程桌面、真机屏幕与本地端口隧道。",
-          "keywords": [
-            "Vibe42",
-            "远端工位",
-            "跨设备",
-            "端口转发",
-            "远程桌面",
             "CUA"
           ]
         }

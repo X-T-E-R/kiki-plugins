@@ -45,15 +45,27 @@ import {
   parsePveTargetId,
   ppmToPngBuffer,
 } from '../lib/pve-qmp-driver.mjs';
-import { createUuPreviewService } from '../lib/preview-service.mjs';
 import {
+  CLIENT_POINTER_MAGIC,
+  CLIENT_RAW_KEY_MAGIC,
+  CLIENT_WHEEL_MAGIC,
+  createUuPreviewService,
+  decodeClientBinaryInput,
+} from '../lib/preview-service.mjs';
+import {
+  DIRTY_FRAME_MAGIC,
   LOSSLESS_RFB_ENCODINGS,
   MAX_RFB_CLIPBOARD_BYTES,
+  RECT_COPYRECT,
+  RECT_DEFLATE_RGBA,
+  RECT_RAW_RGBA,
   buildPveVncProxyArgs,
   buildVncSshTunnelArgs,
   buildVncTargetId,
   createRfbDriver,
+  packDirtyRectFrame,
   parseVncTargetId,
+  unpackDirtyRectFrame,
 } from '../lib/rfb-driver.mjs';
 import { createUuSlotHandlers } from '../lib/slots.mjs';
 import { compileWin32StepsForAction, createUuRemoteService } from '../lib/uu-service.mjs';
@@ -64,6 +76,7 @@ import {
   ALL_MODIFIER_RFB_KEYS,
   asciiCharToRfbKey,
   normalizeRfbKeyChord,
+  resolveDomCodeOrKey,
   resolveRfbKeyToken,
 } from '../lib/xt-scancode-map.mjs';
 import {
@@ -288,7 +301,7 @@ test('manifest, sync-manifest --check, validateRegistration, packageFiles, and r
 
   const manifest = JSON.parse(await readFile(path.join(PLUGIN_ROOT, 'kimi.plugin.json'), 'utf8'));
   assert.equal(manifest.name, 'kiki-uu-remote');
-  assert.equal(manifest.version, '0.3.0');
+  assert.equal(manifest.version, '0.4.0');
   assert.equal(manifest.license, 'MIT');
   assert.equal(manifest['x-kiki'].activation, 'app');
   assert.deepEqual(manifest['x-kiki'].tools, definitions);
@@ -1461,18 +1474,18 @@ function buildSyntheticPpmP6({ width, height, comment = null, quadrants = true }
 }
 
 test('PVE QMP: target validation rejects command injection and parses valid pve:<host>:<vmid>', () => {
-  const parsed = parsePveTargetId('PVE:assistant-pve-campus:103', { strict: true });
+  const parsed = parsePveTargetId('PVE:pve-lab-node:103', { strict: true });
   assert.deepEqual(parsed, {
-    id: 'pve:assistant-pve-campus:103',
-    sshHost: 'assistant-pve-campus',
+    id: 'pve:pve-lab-node:103',
+    sshHost: 'pve-lab-node',
     vmid: 103,
   });
   assert.equal(buildPveTargetId('Node_01.lan', 42), 'pve:Node_01.lan:42');
 
-  const sshArgs = buildSshBridgeArgs('assistant-pve-campus');
+  const sshArgs = buildSshBridgeArgs('pve-lab-node');
   const sepIdx = sshArgs.indexOf('--');
   assert.ok(sepIdx > 0);
-  assert.equal(sshArgs[sepIdx + 1], 'assistant-pve-campus');
+  assert.equal(sshArgs[sepIdx + 1], 'pve-lab-node');
   assert.ok(sshArgs.includes('BatchMode=yes'));
 
   const maliciousInputs = [
@@ -1642,7 +1655,7 @@ test('PVE QMP: persistent SSH worker reuses process, decodes gzipped PPM, and ki
             stdout.write(JSON.stringify({
               id: req.id,
               ok: true,
-              result: { vmid: req.vmid, vmStatus: 'running', running: true, vmName: 'kaimu-pdm-xp', width: 160, height: 120 },
+              result: { vmid: req.vmid, vmStatus: 'running', running: true, vmName: 'legacy-cad-xp', width: 160, height: 120 },
             }) + '\n');
           } else if (req.op === 'screendump') {
             stdout.write(JSON.stringify({
@@ -1659,13 +1672,13 @@ test('PVE QMP: persistent SSH worker reuses process, decodes gzipped PPM, and ki
     },
   });
 
-  const st = await pveDriver.probeStatus('pve:assistant-pve-campus:103', { probeResolution: true });
+  const st = await pveDriver.probeStatus('pve:pve-lab-node:103', { probeResolution: true });
   assert.equal(st.running, true);
-  assert.equal(st.vmName, 'kaimu-pdm-xp');
+  assert.equal(st.vmName, 'legacy-cad-xp');
   assert.equal(spawned.length, 1);
 
   // Second call reuses the same SSH child process
-  const cap = await pveDriver.captureScreen('pve:assistant-pve-campus:103');
+  const cap = await pveDriver.captureScreen('pve:pve-lab-node:103');
   assert.equal(spawned.length, 1);
   assert.equal(cap.width, 160);
   assert.equal(cap.height, 120);
@@ -1674,13 +1687,13 @@ test('PVE QMP: persistent SSH worker reuses process, decodes gzipped PPM, and ki
   // Simulate wedged SSH worker -> timeout tears it down and next RPC spawns a clean worker
   wedgeNext = true;
   await assert.rejects(
-    pveDriver.probeStatus('pve:assistant-pve-campus:103', { timeoutMs: 500, forceRefresh: true }),
+    pveDriver.probeStatus('pve:pve-lab-node:103', { timeoutMs: 500, forceRefresh: true }),
     /timed out/i,
   );
   assert.equal(spawned[0].proc.killed, true);
 
   wedgeNext = false;
-  const recovered = await pveDriver.probeStatus('pve:assistant-pve-campus:103');
+  const recovered = await pveDriver.probeStatus('pve:pve-lab-node:103');
   assert.equal(spawned.length, 2);
   assert.equal(recovered.running, true);
   await pveDriver.dispose();
@@ -1703,7 +1716,7 @@ test('PVE QMP: end-to-end uu_launch, uu_sessions, uu_control, Human Takeover, Li
         vmid: target.vmid,
         vmStatus: 'running',
         running: true,
-        vmName: 'kaimu-pdm-xp',
+        vmName: 'legacy-cad-xp',
         width: 800,
         height: 600,
       };
@@ -1735,19 +1748,19 @@ test('PVE QMP: end-to-end uu_launch, uu_sessions, uu_control, Human Takeover, Li
   // 1. Register & connect PVE target via uu_launch(action="connect")
   const connected = await service.launchAction({
     action: 'connect',
-    deviceId: 'pve:assistant-pve-campus:103',
+    deviceId: 'pve:pve-lab-node:103',
   });
   assert.equal(connected.ok, true);
   assert.equal(connected.provider, 'pve-qmp');
-  assert.equal(connected.sessionId, 'pve:assistant-pve-campus:103');
-  assert.equal(connected.selectedSessionId, 'pve:assistant-pve-campus:103');
+  assert.equal(connected.sessionId, 'pve:pve-lab-node:103');
+  assert.equal(connected.selectedSessionId, 'pve:pve-lab-node:103');
   assert.equal(connected.session.vmStatus, 'running');
-  assert.equal(connected.session.label, 'kaimu-pdm-xp');
+  assert.equal(connected.session.label, 'legacy-cad-xp');
 
   // Verify persistence in pve-targets.json across fresh service instance
   const persisted = JSON.parse(await readFile(path.join(stateDir, 'pve-targets.json'), 'utf8'));
   assert.equal(persisted.targets.length, 1);
-  assert.equal(persisted.targets[0].id, 'pve:assistant-pve-campus:103');
+  assert.equal(persisted.targets[0].id, 'pve:pve-lab-node:103');
 
   const restartedService = createUuRemoteService({
     systemDriver: winDriver,
@@ -1757,8 +1770,8 @@ test('PVE QMP: end-to-end uu_launch, uu_sessions, uu_control, Human Takeover, Li
 
   // 2. uu_sessions(action="list") merges Win32 + PVE targets seamlessly
   const listed = await restartedService.manageSessions({ action: 'list', includeDevices: false });
-  assert.equal(listed.selectedSessionId, 'pve:assistant-pve-campus:103');
-  const pveSess = listed.sessions.find((s) => s.id === 'pve:assistant-pve-campus:103');
+  assert.equal(listed.selectedSessionId, 'pve:pve-lab-node:103');
+  const pveSess = listed.sessions.find((s) => s.id === 'pve:pve-lab-node:103');
   assert.ok(pveSess);
   assert.equal(pveSess.provider, 'pve-qmp');
   assert.equal(pveSess.state, 'active');
@@ -1773,7 +1786,7 @@ test('PVE QMP: end-to-end uu_launch, uu_sessions, uu_control, Human Takeover, Li
   });
   assert.equal(zoomShot.ok, true);
   assert.equal(zoomShot.provider, 'pve-qmp');
-  assert.equal(zoomShot.sessionId, 'pve:assistant-pve-campus:103');
+  assert.equal(zoomShot.sessionId, 'pve:pve-lab-node:103');
   assert.deepEqual(zoomShot.logicalSize, { width: 800, height: 600 });
   assert.deepEqual(zoomShot.cropBounds, { x: 400, y: 300, width: 400, height: 300 });
   const decodedZoom = decodePng(Buffer.from(zoomShot.imageBase64, 'base64'));
@@ -1800,12 +1813,12 @@ test('PVE QMP: end-to-end uu_launch, uu_sessions, uu_control, Human Takeover, Li
   // 5. Explicit Human Takeover lock blocks agent control on PVE target with 409
   await restartedService.manageSessions({
     action: 'takeover',
-    sessionId: 'pve:assistant-pve-campus:103',
+    sessionId: 'pve:pve-lab-node:103',
     active: true,
     reason: 'User operating KaMu PDM',
   });
   const blocked = await restartedService.controlSession({
-    sessionId: 'pve:assistant-pve-campus:103',
+    sessionId: 'pve:pve-lab-node:103',
     action: 'click',
     x: 500,
     y: 500,
@@ -1818,7 +1831,7 @@ test('PVE QMP: end-to-end uu_launch, uu_sessions, uu_control, Human Takeover, Li
   assert.equal(sentQmpBatches.length, 1);
   await restartedService.manageSessions({
     action: 'takeover',
-    sessionId: 'pve:assistant-pve-campus:103',
+    sessionId: 'pve:pve-lab-node:103',
     active: false,
   });
 
@@ -1829,7 +1842,7 @@ test('PVE QMP: end-to-end uu_launch, uu_sessions, uu_control, Human Takeover, Li
   let closeStream = null;
   const hs = await previewService.openPanelStream(
     'screen',
-    { sessionId: 'pve:assistant-pve-campus:103', fps: 15, maxWidth: 640 },
+    { sessionId: 'pve:pve-lab-node:103', fps: 15, maxWidth: 640 },
     {
       bufferedAmount: () => 0,
       sendBinary(buf) { packets.push(buf); return true; },
@@ -1839,7 +1852,7 @@ test('PVE QMP: end-to-end uu_launch, uu_sessions, uu_control, Human Takeover, Li
     },
     {},
   );
-  assert.equal(hs.sessionId, 'pve:assistant-pve-campus:103');
+  assert.equal(hs.sessionId, 'pve:pve-lab-node:103');
   const dl = Date.now() + 1500;
   while (packets.length === 0 && Date.now() < dl) {
     await new Promise((r) => setTimeout(r, 20));
@@ -1861,7 +1874,7 @@ test('PVE QMP: end-to-end uu_launch, uu_sessions, uu_control, Human Takeover, Li
   const lease = JSON.parse(await readFile(path.join(busDir, 'kiki-uu-remote.json'), 'utf8'));
   const headers = { Authorization: `Bearer ${lease.authToken}`, 'Content-Type': 'application/json' };
   const targetsRes = await (await fetch(`${lease.endpoint}/v1/targets`, { headers })).json();
-  const cuaPve = targetsRes.targets.find((item) => item.id === 'pve:assistant-pve-campus:103');
+  const cuaPve = targetsRes.targets.find((item) => item.id === 'pve:pve-lab-node:103');
   assert.ok(cuaPve);
   assert.equal(cuaPve.online, true);
   assert.equal(cuaPve.provider, 'pve-qmp');
@@ -1870,21 +1883,21 @@ test('PVE QMP: end-to-end uu_launch, uu_sessions, uu_control, Human Takeover, Li
     await fetch(`${lease.endpoint}/v1/observe`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ targetId: 'pve:assistant-pve-campus:103' }),
+      body: JSON.stringify({ targetId: 'pve:pve-lab-node:103' }),
     })
   ).json();
   assert.equal(cuaObs.ok, true);
-  assert.equal(cuaObs.targetId, 'pve:assistant-pve-campus:103');
+  assert.equal(cuaObs.targetId, 'pve:pve-lab-node:103');
 
   // 8. Disconnect via pveHost + vmid removes target from pve-targets.json and closes host worker
   const disc = await restartedService.launchAction({
     action: 'disconnect',
-    pveHost: 'assistant-pve-campus',
+    pveHost: 'pve-lab-node',
     vmid: 103,
   });
   assert.equal(disc.ok, true);
   assert.equal(disc.removed, true);
-  assert.ok(disconnectedHosts.includes('assistant-pve-campus'));
+  assert.ok(disconnectedHosts.includes('pve-lab-node'));
   const afterDisc = JSON.parse(await readFile(path.join(stateDir, 'pve-targets.json'), 'utf8'));
   assert.equal(afterDisc.targets.length, 0);
 });
@@ -2461,7 +2474,7 @@ test('v0.3.0 Frame Audit A3 & OSWorld non-idempotent guard: PVE SSH launcher, RF
   const { PassThrough } = await import('node:stream');
 
   // 1. Verify A3 launcher command: zero double quotes, uses secrets.token_hex(4) + stderr KIKI_PVE_TICKET + execvp qm vncproxy (zero stdin read)
-  const pveArgs = buildPveVncProxyArgs('assistant-pve-campus', 103);
+  const pveArgs = buildPveVncProxyArgs('pve-lab-node', 103);
   assert.ok(pveArgs.includes('-T') && pveArgs.includes('none') && pveArgs.includes('BatchMode=yes'));
   const remoteCmd = pveArgs[pveArgs.length - 1];
   assert.equal(remoteCmd.includes('"'), false, 'Remote SSH cmd must contain zero double quotes for Windows OpenSSH parity');
@@ -2494,7 +2507,7 @@ test('v0.3.0 Frame Audit A3 & OSWorld non-idempotent guard: PVE SSH launcher, RF
     },
   });
   await assert.rejects(
-    badDriver.ensureConnected('pve:assistant-pve-campus:103'),
+    badDriver.ensureConnected('pve:pve-lab-node:103'),
     (err) => /RFB handshake gate failed/i.test(err.message) && !err.message.includes('deadbeef'),
   );
   await badDriver.dispose();
@@ -2807,7 +2820,7 @@ test('v0.3.0 PVE RFB->QMP one-time fallback, /dev/shm + lastHash dedup, 5s statu
             proc.stdout.write(JSON.stringify({
               id: req.id,
               ok: true,
-              result: { vmid: req.vmid, vmStatus: 'running', running: true, vmName: 'kaimu-pdm-xp', width: 160, height: 120 },
+              result: { vmid: req.vmid, vmStatus: 'running', running: true, vmName: 'legacy-cad-xp', width: 160, height: 120 },
             }) + '\n');
           } else if (req.op === 'screendump') {
             screendumpRpcCount += 1;
@@ -2850,16 +2863,16 @@ test('v0.3.0 PVE RFB->QMP one-time fallback, /dev/shm + lastHash dedup, 5s statu
   t.after(() => qmpDriver.dispose());
 
   // 5s probeStatus TTL cache
-  await qmpDriver.probeStatus('pve:assistant-pve-campus:103');
-  await qmpDriver.probeStatus('pve:assistant-pve-campus:103');
+  await qmpDriver.probeStatus('pve:pve-lab-node:103');
+  await qmpDriver.probeStatus('pve:pve-lab-node:103');
   assert.equal(statusRpcCount, 1, 'Second probeStatus within 5s must hit cache');
-  await qmpDriver.probeStatus('pve:assistant-pve-campus:103', { forceRefresh: true });
+  await qmpDriver.probeStatus('pve:pve-lab-node:103', { forceRefresh: true });
   assert.equal(statusRpcCount, 2, 'forceRefresh=true must bypass 5s cache');
 
   // lastHash unchanged frame skip reuses cached RGBA with compressedBytes=0
-  const f1 = await qmpDriver.captureScreen('pve:assistant-pve-campus:103');
+  const f1 = await qmpDriver.captureScreen('pve:pve-lab-node:103');
   assert.equal(f1.unchanged, false);
-  const f2 = await qmpDriver.captureScreen('pve:assistant-pve-campus:103');
+  const f2 = await qmpDriver.captureScreen('pve:pve-lab-node:103');
   assert.equal(f2.unchanged, true);
   assert.equal(f2.compressedBytes, 0);
   assert.equal(f2.width, 160);
@@ -2898,20 +2911,20 @@ test('v0.3.0 PVE RFB->QMP one-time fallback, /dev/shm + lastHash dedup, 5s statu
   });
   t.after(() => svc.dispose());
 
-  const conn = await svc.launchAction({ action: 'connect', pveHost: 'assistant-pve-campus', vmid: 103 });
+  const conn = await svc.launchAction({ action: 'connect', pveHost: 'pve-lab-node', vmid: 103 });
   assert.equal(conn.provider, 'pve-qmp', 'OQ5: provider field must stay pve-qmp');
   assert.equal(conn.transport, 'pve-qmp');
   assert.equal(rfbAttempts, 1);
 
   // Subsequent screenshot & QGA Chinese type do NOT retry failed RFB
-  const shot = await svc.controlSession({ sessionId: 'pve:assistant-pve-campus:103', action: 'screenshot' });
+  const shot = await svc.controlSession({ sessionId: 'pve:pve-lab-node:103', action: 'screenshot' });
   assert.equal(shot.ok, true);
   assert.equal(shot.provider, 'pve-qmp');
   assert.equal(shot.transport, 'pve-qmp');
   assert.equal(rfbAttempts, 1, 'OQ5: must NOT retry RFB on every call after one-time fallback');
 
   const qgaType = await svc.controlSession({
-    sessionId: 'pve:assistant-pve-campus:103',
+    sessionId: 'pve:pve-lab-node:103',
     action: 'type',
     text: '中文QGA通道',
     observeAfter: false,
@@ -2921,7 +2934,7 @@ test('v0.3.0 PVE RFB->QMP one-time fallback, /dev/shm + lastHash dedup, 5s statu
   assert.equal(qgaType.results[0].mode, 'qga_clipboard_paste');
 
   // Explicit connect resets fallback and attempts RFB again
-  await svc.launchAction({ action: 'connect', pveHost: 'assistant-pve-campus', vmid: 103 });
+  await svc.launchAction({ action: 'connect', pveHost: 'pve-lab-node', vmid: 103 });
   assert.equal(rfbAttempts, 2, 'Explicit uu_launch(connect) resets fallback to retry RFB');
 });
 
@@ -3033,9 +3046,9 @@ test('v0.3.0 VNC host whitelist (B1), normalizeSessionId, and preview-service st
   assert.equal(clipGet.ok, true);
   assert.equal(clipGet.results[0].text, 'remote-clip');
 
-  const pveConn = await previewService.performAction({ action: 'connectPve', pveHost: 'assistant-pve-campus', vmid: 103 });
+  const pveConn = await previewService.performAction({ action: 'connectPve', pveHost: 'pve-lab-node', vmid: 103 });
   assert.equal(pveConn.ok, true);
-  assert.equal(pveConn.sessionId, 'pve:assistant-pve-campus:103');
+  assert.equal(pveConn.sessionId, 'pve:pve-lab-node:103');
 
   // Stream static-frame skip + RFB event-driven dirty push + telemetry text messages
   const binaryPackets = [];
@@ -3093,7 +3106,7 @@ test('v0.3.0 VNC host whitelist (B1), normalizeSessionId, and preview-service st
 
   closeStream?.();
 
-  const discPve = await previewService.performAction({ action: 'disconnectTarget', sessionId: 'pve:assistant-pve-campus:103' });
+  const discPve = await previewService.performAction({ action: 'disconnectTarget', sessionId: 'pve:pve-lab-node:103' });
   assert.equal(discPve.ok, true);
   assert.equal(discPve.removed, true);
   const discVnc = await previewService.performAction({ action: 'disconnectTarget', sessionId: vncConn.sessionId });
@@ -3119,7 +3132,7 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
     vmid: 103,
     vmStatus: 'running',
     running: true,
-    vmName: 'kaimu-pdm-xp',
+    vmName: 'legacy-cad-xp',
     width: 160,
     height: 120,
     vdagentConfigured: false,
@@ -3205,7 +3218,7 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
   });
 
   // Register PVE VM 103
-  const conn = await uuService.launchAction({ action: 'connect', pveHost: 'assistant-pve-campus', vmid: 103 });
+  const conn = await uuService.launchAction({ action: 'connect', pveHost: 'pve-lab-node', vmid: 103 });
   assert.equal(conn.ok, true);
   assert.equal(conn.provider, 'pve-qmp');
   assert.equal(conn.session.vdagentConfigured, false);
@@ -3213,7 +3226,7 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
 
   // Scenario (a): RFB negotiated extendedClipboard=true, vdagentConfigured=false, no QGA
   const setA = await uuService.controlSession({
-    sessionId: 'pve:assistant-pve-campus:103',
+    sessionId: 'pve:pve-lab-node:103',
     action: 'clipboard_set',
     text: '你好测试',
   });
@@ -3228,7 +3241,7 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
   assert.equal(rfbExecuteCalls.length, 0, 'Must NEVER send clipboard_set into QEMU RFB black hole when vdagent is absent');
 
   const typeA = await uuService.controlSession({
-    sessionId: 'pve:assistant-pve-campus:103',
+    sessionId: 'pve:pve-lab-node:103',
     action: 'type',
     text: '中文输入测试',
   });
@@ -3243,7 +3256,7 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
 
   // ASCII-only type still works over RFB keyboard without touching clipboard
   const asciiType = await uuService.controlSession({
-    sessionId: 'pve:assistant-pve-campus:103',
+    sessionId: 'pve:pve-lab-node:103',
     action: 'type',
     text: 'echo ok',
   });
@@ -3252,7 +3265,7 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
   assert.equal(rfbExecuteCalls[0].kind, 'type');
 
   // Screenshot and preview telemetry both expose gated capabilities (clipboard=false, unicodeClipboard=false)
-  const shotA = await uuService.controlSession({ sessionId: 'pve:assistant-pve-campus:103', action: 'screenshot' });
+  const shotA = await uuService.controlSession({ sessionId: 'pve:pve-lab-node:103', action: 'screenshot' });
   assert.equal(shotA.ok, true);
   assert.equal(shotA.capabilities.rfbExtendedClipboardNegotiated, true);
   assert.equal(shotA.capabilities.vdagentConfigured, false);
@@ -3264,7 +3277,7 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
   let closeStreamA = null;
   await previewService.openPanelStream(
     'screen',
-    { sessionId: 'pve:assistant-pve-campus:103', fps: 10 },
+    { sessionId: 'pve:pve-lab-node:103', fps: 10 },
     {
       bufferedAmount: () => 0,
       sendBinary() { return true; },
@@ -3291,7 +3304,7 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
   pveStatusPayload = { vmid: 103, vmStatus: 'running', running: true, vmName: 'legacy-qemu', width: 160, height: 120 };
   rfbExecuteCalls.length = 0;
   const setOmitted = await uuService.controlSession({
-    sessionId: 'pve:assistant-pve-campus:103',
+    sessionId: 'pve:pve-lab-node:103',
     action: 'clipboard_set',
     text: 'fail-closed',
   });
@@ -3306,7 +3319,7 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
     vmid: 103,
     vmStatus: 'running',
     running: true,
-    vmName: 'kaimu-pdm-xp',
+    vmName: 'legacy-cad-xp',
     width: 160,
     height: 120,
     vdagentConfigured: true,
@@ -3316,7 +3329,7 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
   rfbExecuteCalls.length = 0;
 
   const setBNoQga = await uuService.controlSession({
-    sessionId: 'pve:assistant-pve-campus:103',
+    sessionId: 'pve:pve-lab-node:103',
     action: 'clipboard_set',
     text: '未连vdagent',
   });
@@ -3334,7 +3347,7 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
   qgaSetCalls.length = 0;
   rfbExecuteCalls.length = 0;
   const setBQga = await uuService.controlSession({
-    sessionId: 'pve:assistant-pve-campus:103',
+    sessionId: 'pve:pve-lab-node:103',
     action: 'clipboard_set',
     text: '走QGA兜底',
   });
@@ -3344,7 +3357,7 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
   assert.equal(rfbExecuteCalls.length, 0, 'QGA clipboard_set must not invoke RFB');
 
   const typeBQga = await uuService.controlSession({
-    sessionId: 'pve:assistant-pve-campus:103',
+    sessionId: 'pve:pve-lab-node:103',
     action: 'type',
     text: '粘贴中文',
     submit: true,
@@ -3356,7 +3369,7 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
   assert.ok(rfbExecuteCalls.every((c) => c.kind === 'key'));
 
   // Cached QGA availability is now surfaced on screenshot capabilities (guestAgent=true, clipboard=true, unicodeClipboard=false)
-  const shotBQga = await uuService.controlSession({ sessionId: 'pve:assistant-pve-campus:103', action: 'screenshot' });
+  const shotBQga = await uuService.controlSession({ sessionId: 'pve:pve-lab-node:103', action: 'screenshot' });
   assert.equal(shotBQga.capabilities.unicodeClipboard, false);
   assert.equal(shotBQga.capabilities.guestAgent, true);
   assert.equal(shotBQga.capabilities.clipboard, true);
@@ -3366,7 +3379,7 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
     vmid: 103,
     vmStatus: 'running',
     running: true,
-    vmName: 'kaimu-pdm-xp',
+    vmName: 'legacy-cad-xp',
     width: 160,
     height: 120,
     vdagentConfigured: true,
@@ -3377,9 +3390,9 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
   rfbExecuteCalls.length = 0;
 
   // Reconnect clears stale QGA cache
-  await uuService.launchAction({ action: 'connect', pveHost: 'assistant-pve-campus', vmid: 103 });
+  await uuService.launchAction({ action: 'connect', pveHost: 'pve-lab-node', vmid: 103 });
   const setC = await uuService.controlSession({
-    sessionId: 'pve:assistant-pve-campus:103',
+    sessionId: 'pve:pve-lab-node:103',
     action: 'clipboard_set',
     text: '正常走RFB剪贴板',
   });
@@ -3390,7 +3403,7 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
   assert.equal(rfbExecuteCalls[0].kind, 'clipboard_set');
 
   const typeC = await uuService.controlSession({
-    sessionId: 'pve:assistant-pve-campus:103',
+    sessionId: 'pve:pve-lab-node:103',
     action: 'type',
     text: '你好世界',
   });
@@ -3398,7 +3411,7 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
   assert.equal(typeC.results[0].mode, 'extended_clipboard_paste');
   assert.equal(qgaProbeCalls, 0);
 
-  const shotC = await uuService.controlSession({ sessionId: 'pve:assistant-pve-campus:103', action: 'screenshot' });
+  const shotC = await uuService.controlSession({ sessionId: 'pve:pve-lab-node:103', action: 'screenshot' });
   assert.equal(shotC.capabilities.rfbExtendedClipboardNegotiated, true);
   assert.equal(shotC.capabilities.vdagentConfigured, true);
   assert.equal(shotC.capabilities.vdagentConnected, true);
@@ -3421,4 +3434,277 @@ test('v0.3.0 PVE qemu-vdagent clipboard gating prevents QEMU VNC silent drop and
   assert.equal(vncShot.capabilities.unicodeClipboard, true);
   assert.equal(vncShot.capabilities.clipboard, true);
   assert.equal(vncShot.capabilities.vdagentConnected, undefined);
+});
+
+test('v0.4.0: 0x02 dirty-rect + CopyRect zlib binary stream (<25 KB incremental) + frameSeq requestKeyframe recovery + 0x50/0x57/0x4b live input', async (t) => {
+  // 1. Pack & unpack 1024x768 incremental dirty rect (<25 KB) + 13-byte CopyRect
+  const rectW = 120;
+  const rectH = 80;
+  const rgba = Buffer.alloc(rectW * rectH * 4);
+  for (let i = 0; i < rgba.length; i += 4) {
+    rgba[i] = 0x2c;
+    rgba[i + 1] = 0x5e;
+    rgba[i + 2] = 0x4f;
+    rgba[i + 3] = 0xff;
+  }
+  const deltaPkt = packDirtyRectFrame({
+    fbWidth: 1024,
+    fbHeight: 768,
+    frameSeq: 7,
+    keyFrame: false,
+    takeoverActive: true,
+    rects: [
+      { encoding: RECT_DEFLATE_RGBA, x: 40, y: 60, width: rectW, height: rectH, rgba },
+      { encoding: RECT_COPYRECT, x: 200, y: 60, width: rectW, height: rectH, srcX: 40, srcY: 60 },
+    ],
+  });
+  assert.equal(deltaPkt[0], DIRTY_FRAME_MAGIC);
+  assert.ok(deltaPkt.length < 25 * 1024, `Expected <25 KB incremental packet, got ${deltaPkt.length} B`);
+
+  const unpacked = unpackDirtyRectFrame(deltaPkt);
+  assert.equal(unpacked.keyFrame, false);
+  assert.equal(unpacked.takeoverActive, true);
+  assert.equal(unpacked.frameSeq, 7);
+  assert.equal(unpacked.fbWidth, 1024);
+  assert.equal(unpacked.fbHeight, 768);
+  assert.equal(unpacked.rects.length, 2);
+  assert.equal(unpacked.rects[0].encoding, RECT_DEFLATE_RGBA);
+  assert.deepEqual(unpacked.rects[0].rgba, rgba);
+  assert.equal(unpacked.rects[1].encoding, RECT_COPYRECT);
+  assert.equal(unpacked.rects[1].srcX, 40);
+  assert.equal(unpacked.rects[1].srcY, 60);
+
+  const copyOnly = packDirtyRectFrame({
+    fbWidth: 1024,
+    fbHeight: 768,
+    frameSeq: 8,
+    keyFrame: false,
+    takeoverActive: false,
+    rects: [{ encoding: RECT_COPYRECT, x: 10, y: 20, width: 300, height: 400, srcX: 10, srcY: 80 }],
+  });
+  assert.equal(copyOnly.length, 12 + 13);
+
+  // 2. DOM KeyboardEvent.code -> AT Set-1 XT scancode mapping for Guest IME (Ctrl+Space, letters, digits)
+  assert.equal(resolveDomCodeOrKey({ code: 'ControlLeft', key: 'Control' }).xtScancode, 0x1d);
+  assert.equal(resolveDomCodeOrKey({ code: 'Space', key: ' ' }).xtScancode, 0x39);
+  assert.equal(resolveDomCodeOrKey({ code: 'KeyN', key: 'n' }).xtScancode, 0x31);
+  assert.equal(resolveDomCodeOrKey({ code: 'Digit1', key: '!', shiftKey: true }).xtScancode, 0x02);
+  assert.equal(resolveDomCodeOrKey({ code: 'Digit1', key: '!', shiftKey: true }).keysym, 0x21);
+
+  // 3. Binary client input packet round-trip (0x50 pointer, 0x57 wheel, 0x4b raw key)
+  const ptrBuf = Buffer.alloc(8);
+  ptrBuf[0] = CLIENT_POINTER_MAGIC;
+  ptrBuf[1] = 0; // hover move
+  ptrBuf[2] = 0;
+  ptrBuf[3] = 0;
+  ptrBuf.writeUInt16BE(512, 4);
+  ptrBuf.writeUInt16BE(384, 6);
+  assert.deepEqual(decodeClientBinaryInput(ptrBuf), {
+    type: 'pointer',
+    op: 0,
+    buttonsMask: 0,
+    clickCount: 1,
+    norm1000X: 512,
+    norm1000Y: 384,
+    engageTakeover: false,
+  });
+
+  const wheelBuf = Buffer.alloc(10);
+  wheelBuf[0] = CLIENT_WHEEL_MAGIC;
+  wheelBuf.writeUInt16BE(400, 2);
+  wheelBuf.writeUInt16BE(300, 4);
+  wheelBuf.writeInt16BE(0, 6);
+  wheelBuf.writeInt16BE(-120, 8);
+  assert.deepEqual(decodeClientBinaryInput(wheelBuf), {
+    type: 'wheel',
+    norm1000X: 400,
+    norm1000Y: 300,
+    deltaX: 0,
+    deltaY: -120,
+    engageTakeover: true,
+  });
+
+  const codeBytes = Buffer.from('ControlLeft', 'utf8');
+  const keyBytes = Buffer.from('Control', 'utf8');
+  const keyBuf = Buffer.alloc(5 + codeBytes.length + keyBytes.length);
+  keyBuf[0] = CLIENT_RAW_KEY_MAGIC;
+  keyBuf[1] = 1; // keydown
+  keyBuf[2] = 0;
+  keyBuf[3] = codeBytes.length;
+  codeBytes.copy(keyBuf, 4);
+  keyBuf[4 + codeBytes.length] = keyBytes.length;
+  keyBytes.copy(keyBuf, 5 + codeBytes.length);
+  assert.deepEqual(decodeClientBinaryInput(keyBuf), {
+    type: 'key',
+    down: true,
+    shiftKey: false,
+    code: 'ControlLeft',
+    key: 'Control',
+    engageTakeover: true,
+  });
+
+  // 4. End-to-end live RFB server + previewService 0x02 stream + requestKeyframe + live input
+  const serverFb = Buffer.alloc(64 * 48 * 4, 0x20);
+  let lastPointerEvt = null;
+  const receivedKeyEvts = [];
+  let activeServerClient = null;
+  const openSockets = new Set();
+  const server = createRfbServer(
+    { width: 64, height: 48, name: 'dirty-stream-vm', pixelFormat: RFB_PIXEL_FORMATS.bgrx },
+    (conn) => {
+      activeServerClient = conn;
+      conn.on('updateRequest', (req) => {
+        if (!req.incremental) {
+          conn.sendUpdate([
+            { type: 'pixels', x: 0, y: 0, width: 64, height: 48, data: serverFb },
+          ]);
+        }
+      });
+      conn.on('pointer', (ev) => {
+        lastPointerEvt = ev;
+      });
+      conn.on('key', (ev) => {
+        receivedKeyEvts.push(ev);
+      });
+      conn.on('error', () => {});
+    },
+  );
+  server.on('connection', (sock) => {
+    openSockets.add(sock);
+    sock.once('close', () => openSockets.delete(sock));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  t.after(() => new Promise((resolve) => {
+    for (const s of openSockets) s.destroy();
+    server.close(() => resolve());
+  }));
+
+  const stateDir = await makeTempDir(t, 'v040-stream-');
+  const mockSys = createMockDriverFixture();
+  mockSys.state.sessions = [];
+  const rfbDriver = createRfbDriver();
+  t.after(() => rfbDriver.dispose());
+  const uuService = createUuRemoteService({
+    stateDir,
+    systemDriver: mockSys.driver,
+    cliClient: { listDevices: async () => ({ ok: false, devices: [] }) },
+    rfbDriver,
+  });
+  t.after(() => uuService.dispose());
+  const preview = createUuPreviewService({ uuService });
+  t.after(() => preview.dispose());
+
+  const conn = await uuService.launchAction({ action: 'connect', vncHost: '127.0.0.1', vncPort: port });
+  assert.equal(conn.ok, true);
+
+  const binaryFrames = [];
+  let onTextCb = null;
+  let onBinaryCb = null;
+  let closeCb = null;
+  const hs = await preview.openPanelStream(
+    'screen',
+    { sessionId: `vnc:127.0.0.1:${port}`, fps: 30 },
+    {
+      sendBinary: (buf) => {
+        binaryFrames.push(Buffer.from(buf));
+        return true;
+      },
+      sendText: () => true,
+      bufferedAmount: () => 0,
+      onText: (fn) => { onTextCb = fn; },
+      onBinary: (fn) => { onBinaryCb = fn; },
+      onClose: (fn) => { closeCb = fn; },
+    },
+  );
+  assert.equal(hs.dirtyRectSupported, true);
+  assert.equal(hs.sessionId, `vnc:127.0.0.1:${port}`);
+
+  // Wait for initial 0x02 keyframe
+  for (let i = 0; i < 40 && binaryFrames.length === 0; i += 1) {
+    await new Promise((r) => setTimeout(r, 15));
+  }
+  assert.ok(binaryFrames.length >= 1, 'Expected initial 0x02 keyframe');
+  const kf0 = unpackDirtyRectFrame(binaryFrames[0]);
+  assert.equal(kf0.keyFrame, true);
+  assert.equal(kf0.fbWidth, 64);
+  assert.equal(kf0.fbHeight, 48);
+
+  // Push small dirty rect from RFB server -> should stream incremental 0x02 frame
+  const patch = Buffer.alloc(10 * 10 * 4, 0xdd);
+  activeServerClient.sendUpdate([{ type: 'pixels', x: 8, y: 12, width: 10, height: 10, data: patch }]);
+  for (let i = 0; i < 40 && binaryFrames.length < 2; i += 1) {
+    await new Promise((r) => setTimeout(r, 15));
+  }
+  assert.ok(binaryFrames.length >= 2, 'Expected incremental 0x02 dirty-rect frame');
+  const inc1 = unpackDirtyRectFrame(binaryFrames[1]);
+  assert.equal(inc1.keyFrame, false);
+  assert.equal(inc1.frameSeq, (kf0.frameSeq + 1) >>> 0);
+  assert.equal(inc1.rects[0].x, 8);
+  assert.equal(inc1.rects[0].y, 12);
+
+  // Simulate sequence gap recovery via requestKeyframe
+  const countBeforeKf = binaryFrames.length;
+  onTextCb(JSON.stringify({ type: 'requestKeyframe' }));
+  for (let i = 0; i < 40 && binaryFrames.length <= countBeforeKf; i += 1) {
+    await new Promise((r) => setTimeout(r, 15));
+  }
+  const recoveredKf = unpackDirtyRectFrame(binaryFrames[binaryFrames.length - 1]);
+  assert.equal(recoveredKf.keyFrame, true);
+
+  // Send live 0x50 hover move and 0x4b raw key over stream binary channel
+  onBinaryCb(ptrBuf);
+  onBinaryCb(keyBuf);
+  for (let i = 0; i < 30 && (!lastPointerEvt || receivedKeyEvts.length === 0); i += 1) {
+    await new Promise((r) => setTimeout(r, 15));
+  }
+  assert.ok(lastPointerEvt, 'RFB server should receive live pointer hover move');
+  assert.equal(lastPointerEvt.x, Math.round(0.512 * 63));
+  assert.equal(lastPointerEvt.y, Math.round(0.384 * 47));
+  assert.ok(receivedKeyEvts.length >= 1, 'RFB server should receive live raw keydown');
+
+  closeCb?.();
+});
+
+test('v0.4.0: pve-qmp-driver uses mshta clipboard bridge on legacy Windows XP (NT 5.x) and uu-service avoids per-call disk readFile', async (t) => {
+  // Verify Python bridge embeds mshta.exe fallback for Windows NT 5.x (XP/2003)
+  assert.match(REMOTE_PYTHON_BRIDGE, /isLegacyNt5/);
+  assert.match(REMOTE_PYTHON_BRIDGE, /mshta\.exe/);
+  assert.match(REMOTE_PYTHON_BRIDGE, /windows_mshta_clipboard_set/);
+  assert.match(REMOTE_PYTHON_BRIDGE, /windows_mshta_clipboard_get/);
+
+  // Verify uu-service reads state files once during initial sync and does zero readFile on subsequent hot calls
+  const stateDir = await makeTempDir(t, 'ram-state-');
+  let diskReadCount = 0;
+  const wrappedFs = {
+    mkdir,
+    writeFile,
+    readFile: async (...args) => {
+      diskReadCount += 1;
+      return readFile(...args);
+    },
+  };
+
+  const mockFixture = createMockDriverFixture();
+  const svc = createUuRemoteService({
+    stateDir,
+    fsModule: wrappedFs,
+    systemDriver: mockFixture.driver,
+    cliClient: { listDevices: async () => ({ ok: true, devices: [] }) },
+  });
+  t.after(() => svc.dispose());
+
+  await svc.manageSessions({ action: 'list' });
+  const readsAfterWarm = diskReadCount;
+
+  // Run 10 consecutive hot input calls — diskReadCount must remain unchanged (0 new fs.readFile calls!)
+  for (let i = 0; i < 10; i += 1) {
+    const res = await svc.controlSession({
+      sessionId: 'uu:24780134',
+      action: 'key',
+      key: 'Enter',
+    });
+    assert.equal(res.ok, true);
+  }
+  assert.equal(diskReadCount, readsAfterWarm, 'Hot controlSession calls must not re-read state JSON from disk');
 });

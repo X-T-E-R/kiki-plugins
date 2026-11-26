@@ -374,6 +374,8 @@ export function createUuRemoteService({
   const pveVdagentBySession = new Map(); // Live QMP query-chardev vdagentConfigured/vdagentConnected per PVE target
   const pveQgaAvailableBySession = new Map(); // Cached QGA availability per PVE target (updated lazily on probeQga)
   let stateLoadedFromDir = null;
+  let stateLoadFlight = null;
+  let externalDiskDirty = false;
 
   function invalidateSessionGeometry(sessionId, dims = null) {
     const sid = normalizeSessionId(sessionId);
@@ -401,7 +403,14 @@ export function createUuRemoteService({
   });
 
   function setStateDir(dir) {
-    if (dir) configuredStateDir = path.resolve(dir);
+    if (dir) {
+      const resolved = path.resolve(dir);
+      if (configuredStateDir !== resolved) {
+        configuredStateDir = resolved;
+        stateLoadedFromDir = null;
+        externalDiskDirty = true;
+      }
+    }
   }
 
   function resolveStateDir(context = {}) {
@@ -524,31 +533,44 @@ export function createUuRemoteService({
     } catch {}
   }
 
-  async function syncPersistedState(context = {}) {
-    const file = resolveStateFile(context);
-    try {
-      const raw = JSON.parse(await readFile(file, 'utf8'));
-      if (typeof raw.selectedSessionId === 'string' && raw.selectedSessionId) {
-        selectedSessionId = raw.selectedSessionId;
-      }
-      takeoverBySession.clear();
-      if (raw.takeover && typeof raw.takeover === 'object') {
-        for (const [sid, entry] of Object.entries(raw.takeover)) {
-          if (entry && typeof entry === 'object') {
-            takeoverBySession.set(sid, {
-              active: Boolean(entry.active),
-              controlledBy: entry.active ? (entry.controlledBy || 'human') : 'agent',
-              reason: entry.reason || undefined,
-              updatedAtMs: Number(entry.updatedAtMs) || nowFn(),
-            });
+  async function syncPersistedState(context = {}, { force = false } = {}) {
+    const dir = resolveStateDir(context);
+    const file = path.join(dir, 'runtime-state.json');
+    if (!force && stateLoadedFromDir === dir && !externalDiskDirty) {
+      return;
+    }
+    if (stateLoadFlight) {
+      return stateLoadFlight;
+    }
+    stateLoadFlight = (async () => {
+      externalDiskDirty = false;
+      try {
+        const raw = JSON.parse(await readFile(file, 'utf8'));
+        if (typeof raw.selectedSessionId === 'string' && raw.selectedSessionId) {
+          selectedSessionId = raw.selectedSessionId;
+        }
+        takeoverBySession.clear();
+        if (raw.takeover && typeof raw.takeover === 'object') {
+          for (const [sid, entry] of Object.entries(raw.takeover)) {
+            if (entry && typeof entry === 'object') {
+              takeoverBySession.set(sid, {
+                active: Boolean(entry.active),
+                controlledBy: entry.active ? (entry.controlledBy || 'human') : 'agent',
+                reason: entry.reason || undefined,
+                updatedAtMs: Number(entry.updatedAtMs) || nowFn(),
+              });
+            }
           }
         }
+      } catch {
+        // State file may not exist yet.
       }
-      stateLoadedFromDir = file;
-    } catch {
-      stateLoadedFromDir = file;
-    }
-    await Promise.all([syncPveTargets(context), syncVncTargets(context)]);
+      await Promise.all([syncPveTargets(context), syncVncTargets(context)]);
+      stateLoadedFromDir = dir;
+    })().finally(() => {
+      stateLoadFlight = null;
+    });
+    return stateLoadFlight;
   }
 
   async function persistState(context = {}) {
@@ -886,6 +908,18 @@ export function createUuRemoteService({
     const sid = normalizeSessionId(rawId);
     const nextActive = Boolean(active);
     const controlledBy = nextActive ? (holder === 'agent' ? 'human' : holder || 'human') : (holder || 'agent');
+    const prev = takeoverBySession.get(sid);
+    if (prev && prev.active === nextActive && prev.controlledBy === controlledBy && (!reason || prev.reason === String(reason))) {
+      return {
+        ok: true,
+        targetId: sid,
+        sessionId: sid,
+        takeoverActive: nextActive,
+        controlledBy,
+        reason: prev.reason,
+        changed: false,
+      };
+    }
     let releasedSummary;
 
     if (nextActive) {
@@ -2974,6 +3008,78 @@ export function createUuRemoteService({
     return () => {};
   }
 
+  function subscribeSessionClipboard(sessionId, listener) {
+    const sid = normalizeSessionId(sessionId);
+    if (!effectiveRfbDriver || typeof effectiveRfbDriver.subscribeClipboard !== 'function') {
+      return () => {};
+    }
+    if (isVncTargetId(sid) || (isPveTargetId(sid) && shouldUsePveRfb(sid))) {
+      return effectiveRfbDriver.subscribeClipboard(sid, listener);
+    }
+    return () => {};
+  }
+
+  function resolveRegisteredRfbTarget(sessionId) {
+    const sid = normalizeSessionId(sessionId);
+    if (isVncTargetId(sid)) {
+      return vncTargetsById.get(sid) || sid;
+    }
+    if (isPveTargetId(sid) && shouldUsePveRfb(sid)) {
+      return pveTargetsById.get(sid) || sid;
+    }
+    return null;
+  }
+
+  async function buildRfbKeyframePacket(sessionId, { signal } = {}) {
+    const target = resolveRegisteredRfbTarget(sessionId);
+    if (!target || typeof effectiveRfbDriver?.buildKeyframePacket !== 'function') return null;
+    const tk = getTakeoverEntry(sessionId);
+    return effectiveRfbDriver.buildKeyframePacket(target, { takeoverActive: tk.active, signal });
+  }
+
+  function buildRfbCoalescedBoundsPacket(sessionId, bounds) {
+    const target = resolveRegisteredRfbTarget(sessionId);
+    if (!target || typeof effectiveRfbDriver?.buildCoalescedBoundsPacket !== 'function') return null;
+    const tk = getTakeoverEntry(sessionId);
+    return effectiveRfbDriver.buildCoalescedBoundsPacket(target, bounds, { takeoverActive: tk.active });
+  }
+
+  function sendLiveRfbInput(sessionId, event = {}, context = {}) {
+    const sid = normalizeSessionId(sessionId);
+    const target = resolveRegisteredRfbTarget(sid);
+    if (!target || !effectiveRfbDriver) return false;
+
+    if (event.engageTakeover && !getTakeoverEntry(sid).active) {
+      void setTakeover(
+        {
+          sessionId: sid,
+          active: true,
+          holder: 'human',
+          reason: 'Interactive input from UU Remote workspace panel',
+        },
+        context,
+      ).catch(() => {});
+    }
+
+    if (event.type === 'pointer') {
+      if (event.op === 1 && typeof recordHumanPanelAction === 'function') {
+        recordHumanPanelAction(sid, { kind: 'click', x: event.norm1000X, y: event.norm1000Y });
+      }
+      return effectiveRfbDriver.sendLivePointer?.(target, event) ?? false;
+    }
+    if (event.type === 'wheel') {
+      recordHumanPanelAction(sid, { kind: 'scroll', deltaY: event.deltaY });
+      return effectiveRfbDriver.sendLiveWheel?.(target, event) ?? false;
+    }
+    if (event.type === 'key') {
+      if (event.down) {
+        recordHumanPanelAction(sid, { kind: 'key', key: event.code || event.key });
+      }
+      return effectiveRfbDriver.sendLiveRawKey?.(target, event) ?? false;
+    }
+    return false;
+  }
+
   async function dispose() {
     for (const set of activeActionControllers.values()) {
       for (const ac of set) {
@@ -3002,7 +3108,12 @@ export function createUuRemoteService({
     getLastHumanSummary,
     clearHumanSummary,
     getSessionTransportAndCapabilities,
+    getTakeoverEntry,
     subscribeSessionUpdates,
+    subscribeSessionClipboard,
+    buildRfbKeyframePacket,
+    buildRfbCoalescedBoundsPacket,
+    sendLiveRfbInput,
     listCuaTargets,
     observeCuaTarget,
     actOnCuaTarget,

@@ -59,7 +59,7 @@ test('manifest, sync-manifest --check, validateRegistration, packageFiles, and v
 
   const manifest = JSON.parse(await readFile(path.join(pluginRoot, 'kimi.plugin.json'), 'utf8'));
   assert.equal(manifest.name, 'kiki-cua');
-  assert.equal(manifest.version, '0.1.3');
+  assert.equal(manifest.version, '0.1.4');
   assert.equal(manifest.license, 'MIT');
   assert.equal(manifest.icon, './icon.svg');
   assert.deepEqual(manifest.skills, ['./skills']);

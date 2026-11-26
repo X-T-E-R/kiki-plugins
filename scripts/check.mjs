@@ -49,11 +49,10 @@ async function checkPackages(){
   }
   if(!selected||packages.some(p=>p.source.startsWith('./official/')))run('scripts/build-media.mjs',['--check']);
   run('scripts/sync-panel-kit.mjs',['--check']);
-  for(const id of ['kiki-extract','kiki-office','kiki-media','kiki-bilibili','kiki-voice','kiki-qq','kiki-phone','kiki-everything','kiki-cua','kiki-uu-remote','kiki-v42'])if(!selected||selected===id)run(`plugins/official/${id}/scripts/sync-manifest.mjs`,['--check']);
+  for(const id of ['kiki-extract','kiki-office','kiki-media','kiki-bilibili','kiki-voice','kiki-qq','kiki-phone','kiki-everything','kiki-cua','kiki-uu-remote'])if(!selected||selected===id)run(`plugins/official/${id}/scripts/sync-manifest.mjs`,['--check']);
   if(!selected||selected==='kiki-everything')run('--test',['--test-timeout=15000','plugins/official/kiki-everything/test/everything.test.mjs']);
   if(!selected||selected==='kiki-cua')run('--test',['--test-timeout=30000','plugins/official/kiki-cua/test/cua.test.mjs']);
   if(!selected||selected==='kiki-uu-remote')run('--test',['--test-timeout=30000','plugins/official/kiki-uu-remote/test/uu-remote.test.mjs']);
-  if(!selected||selected==='kiki-v42')run('--test',['--test-timeout=30000','plugins/official/kiki-v42/test/v42.test.mjs']);
   if(!selected||selected==='kiki-bilibili')run('--test',['plugins/official/kiki-bilibili/test/bilibili.test.mjs']);
   if(!selected||selected==='kiki-voice')run('--test',['plugins/official/kiki-voice/test/voice.test.mjs']);
   if(!selected||selected==='kiki-phone')run('--test',['plugins/official/kiki-phone/test/phone.test.mjs']);

@@ -1,14 +1,19 @@
 import { definitions } from './lib/definitions.mjs';
 import { runAdb } from './lib/adb.mjs';
 import { preparePhone } from './lib/prepare.mjs';
-import { runPhoneScript } from './lib/phone-run.mjs';
+import { phoneLeaseStore, runPhoneScript, disposeDefaultPhoneRunner } from './lib/phone-run.mjs';
 import { createPhonePreviewService } from './lib/preview-service.mjs';
 import { createPhoneSlotHandlers } from './lib/slots.mjs';
 
-const previewService = createPhonePreviewService();
+const previewService = createPhonePreviewService({ leaseStore: phoneLeaseStore });
 
 export function prepareOptions(args, settings) {
-  return { download: args.download, platform: args.platform, adbPath: settings?.adbPath };
+  return {
+    download: args.download,
+    platform: args.platform,
+    ...(args.deviceId !== undefined ? { deviceId: args.deviceId } : {}),
+    adbPath: settings?.adbPath,
+  };
 }
 
 export function register(api) {
@@ -37,7 +42,10 @@ export async function activate(context) {
 }
 
 export async function deactivate() {
-  await previewService.dispose();
+  await Promise.all([
+    previewService.dispose(),
+    disposeDefaultPhoneRunner(),
+  ]);
 }
 
 export const slots = createPhoneSlotHandlers(previewService);

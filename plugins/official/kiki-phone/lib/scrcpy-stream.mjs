@@ -4,6 +4,7 @@ import { access, copyFile, mkdir, readFile, rename, rm, stat, writeFile } from '
 import { constants as fsConstants } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execAdb } from './adb.mjs';
 
 const defaultExecFile = execAdb;
@@ -13,6 +14,7 @@ export const SCRCPY_SERVER_URL = 'https://github.com/Genymobile/scrcpy/releases/
 export const SCRCPY_SERVER_SHA256 = '84924bd564a1eb6089c872c7521f968058977f91f5ff02514a8c74aff3210f3a';
 export const SCRCPY_DEVICE_JAR_PATH = '/data/local/tmp/kiki-scrcpy-server-v4.0.jar';
 export const SCRCPY_STREAM_PROTOCOL = 'h264-scrcpy-v1';
+export const BUNDLED_SCRCPY_SERVER_PATH = fileURLToPath(new URL('../vendor/scrcpy-server-v4.0.jar', import.meta.url));
 
 export const FRAME_PACKET_MAGIC = 0x4b; // 'K'
 export const CLIENT_TOUCH_MAGIC = 0x54; // 'T'
@@ -37,6 +39,12 @@ export const CONTROL_MSG = Object.freeze({
   SET_DISPLAY_POWER: 10,
   ROTATE_DEVICE: 11,
   RESET_VIDEO: 17,
+});
+
+export const DEVICE_MSG = Object.freeze({
+  CLIPBOARD: 0,
+  ACK_CLIPBOARD: 1,
+  UHID_OUTPUT: 2,
 });
 
 export const ANDROID_KEYCODE = Object.freeze({
@@ -74,9 +82,11 @@ export const ANDROID_KEYCODE = Object.freeze({
 });
 
 const POINTER_ID_GENERIC_FINGER = -2n;
+const POINTER_ID_VIRTUAL_FINGER = -4n;
 const CONTROL_IDLE_TTL_MS = 90_000;
 const MAX_REPLAY_EPOCH_DELTAS = 12;
 const DEFAULT_CLIENT_READY_FALLBACK_MS = 250;
+const MAX_DEVICE_CLIPBOARD_BYTES = 2 * 1024 * 1024;
 
 export function sha256Hex(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
@@ -84,6 +94,101 @@ export function sha256Hex(bytes) {
 
 function clamp(val, min, max) {
   return Math.min(max, Math.max(min, val));
+}
+
+export function isHyperOsBottomEdgeZone(y, screenHeight = 2400) {
+  const sh = Math.max(1, Math.round(Number(screenHeight) || 2400));
+  const py = Math.round(Number(y) || 0);
+  const edgeMargin = Math.max(96, Math.round(sh * 0.042));
+  return py >= sh - edgeMargin;
+}
+
+/**
+ * O(1) push/consume byte queue avoiding repeated Buffer.concat copies on socket chunks.
+ */
+class ByteChunkQueue {
+  constructor() {
+    this.chunks = [];
+    this.headIdx = 0;
+    this.headOffset = 0;
+    this.length = 0;
+  }
+
+  push(chunk) {
+    if (!chunk || chunk.length === 0) return;
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    this.chunks.push(buf);
+    this.length += buf.length;
+  }
+
+  peek(byteCount) {
+    if (this.length < byteCount) return null;
+    if (byteCount === 0) return Buffer.alloc(0);
+    const first = this.chunks[this.headIdx];
+    const firstAvail = first.length - this.headOffset;
+    if (firstAvail >= byteCount) {
+      return first.subarray(this.headOffset, this.headOffset + byteCount);
+    }
+    const out = Buffer.allocUnsafe(byteCount);
+    let copied = 0;
+    let idx = this.headIdx;
+    let off = this.headOffset;
+    while (copied < byteCount) {
+      const c = this.chunks[idx];
+      const take = Math.min(byteCount - copied, c.length - off);
+      c.copy(out, copied, off, off + take);
+      copied += take;
+      idx += 1;
+      off = 0;
+    }
+    return out;
+  }
+
+  readOwned(byteCount) {
+    if (this.length < byteCount) return null;
+    if (byteCount === 0) return Buffer.alloc(0);
+    const out = Buffer.allocUnsafe(byteCount);
+    let copied = 0;
+    while (copied < byteCount) {
+      const first = this.chunks[this.headIdx];
+      const avail = first.length - this.headOffset;
+      const take = Math.min(byteCount - copied, avail);
+      first.copy(out, copied, this.headOffset, this.headOffset + take);
+      copied += take;
+      this.headOffset += take;
+      this.length -= take;
+      if (this.headOffset >= first.length) {
+        this.headIdx += 1;
+        this.headOffset = 0;
+      }
+    }
+    this._compact();
+    return out;
+  }
+
+  skip(byteCount) {
+    let remaining = Math.min(this.length, Math.max(0, byteCount));
+    while (remaining > 0) {
+      const first = this.chunks[this.headIdx];
+      const avail = first.length - this.headOffset;
+      const take = Math.min(remaining, avail);
+      this.headOffset += take;
+      this.length -= take;
+      remaining -= take;
+      if (this.headOffset >= first.length) {
+        this.headIdx += 1;
+        this.headOffset = 0;
+      }
+    }
+    this._compact();
+  }
+
+  _compact() {
+    if (this.headIdx >= 32 || (this.headIdx > 0 && this.headIdx >= this.chunks.length)) {
+      this.chunks = this.chunks.slice(this.headIdx);
+      this.headIdx = 0;
+    }
+  }
 }
 
 export function extractAvcCodecFromAnnexB(buf) {
@@ -139,7 +244,7 @@ export class ScrcpyVideoStreamParser {
   constructor({ expectDummyByte = true } = {}) {
     this.expectDummyByte = expectDummyByte;
     this.stage = expectDummyByte ? 'dummy' : 'meta';
-    this.buffer = Buffer.alloc(0);
+    this.queue = new ByteChunkQueue();
     this.deviceName = '';
     this.codecId = '';
     this.codecProfile = 'avc1.42e01f';
@@ -150,45 +255,46 @@ export class ScrcpyVideoStreamParser {
 
   push(chunk) {
     if (!chunk || chunk.length === 0) return [];
-    const incoming = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    this.buffer = this.buffer.length === 0 ? incoming : Buffer.concat([this.buffer, incoming]);
+    this.queue.push(chunk);
     const events = [];
 
     if (this.stage === 'dummy') {
-      if (this.buffer.length < 1) return events;
-      this.buffer = this.buffer.subarray(1);
+      if (this.queue.length < 1) return events;
+      this.queue.skip(1);
       this.stage = 'meta';
     }
 
     if (this.stage === 'meta') {
-      if (this.buffer.length < 68) return events;
-      const rawName = this.buffer.subarray(0, 64);
+      const hdr = this.queue.peek(68);
+      if (!hdr) return events;
+      const rawName = hdr.subarray(0, 64);
       const nul = rawName.indexOf(0);
       this.deviceName = rawName.subarray(0, nul === -1 ? 64 : nul).toString('utf8');
-      const codecCode = this.buffer.readUInt32BE(64);
+      const codecCode = hdr.readUInt32BE(64);
       if (codecCode === 0 || codecCode === 1) {
-        this.buffer = this.buffer.subarray(68);
+        this.queue.skip(68);
         this.stage = 'failed';
         events.push({ kind: 'error', message: `scrcpy device video stream disabled (code=${codecCode})` });
         return events;
       }
-      this.codecId = this.buffer.subarray(64, 68).toString('ascii').replace(/\0+$/, '');
-      this.buffer = this.buffer.subarray(68);
+      this.codecId = hdr.subarray(64, 68).toString('ascii').replace(/\0+$/, '');
+      this.queue.skip(68);
       this.stage = 'packets';
       events.push({ kind: 'header', deviceName: this.deviceName, codecId: this.codecId });
     }
 
     if (this.stage !== 'packets') return events;
 
-    while (this.buffer.length >= 12) {
-      const ptsFlags = this.buffer.readBigUInt64BE(0);
-      const thirdWord = this.buffer.readUInt32BE(8);
+    while (this.queue.length >= 12) {
+      const hdr = this.queue.peek(12);
+      const ptsFlags = hdr.readBigUInt64BE(0);
+      const thirdWord = hdr.readUInt32BE(8);
 
       if ((ptsFlags & PACKET_FLAG_SESSION) !== 0n) {
-        const flagsHi = this.buffer.readUInt32BE(0);
-        const width = this.buffer.readUInt32BE(4);
+        const flagsHi = hdr.readUInt32BE(0);
+        const width = hdr.readUInt32BE(4);
         const height = thirdWord;
-        this.buffer = this.buffer.subarray(12);
+        this.queue.skip(12);
         this.width = width;
         this.height = height;
         events.push({
@@ -206,10 +312,10 @@ export class ScrcpyVideoStreamParser {
         events.push({ kind: 'error', message: `scrcpy frame exceeded 16 MiB sanity limit (${packetSize})` });
         return events;
       }
-      if (this.buffer.length < 12 + packetSize) break;
+      if (this.queue.length < 12 + packetSize) break;
 
-      const payload = Buffer.from(this.buffer.subarray(12, 12 + packetSize));
-      this.buffer = this.buffer.subarray(12 + packetSize);
+      this.queue.skip(12);
+      const payload = this.queue.readOwned(packetSize);
 
       const isConfig = (ptsFlags & PACKET_FLAG_CONFIG) !== 0n;
       const isKeyFrame = (ptsFlags & PACKET_FLAG_KEY_FRAME) !== 0n;
@@ -245,16 +351,93 @@ export class ScrcpyVideoStreamParser {
   }
 }
 
+/**
+ * Parses scrcpy v4.0 device->client control socket messages:
+ * - TYPE_CLIPBOARD (0): [u8=0][u32be len][utf8]
+ * - TYPE_ACK_CLIPBOARD (1): [u8=1][u64be sequence]
+ * - TYPE_UHID_OUTPUT (2): [u8=2][u16be id][u16be size][bytes]
+ */
+export class ScrcpyDeviceMessageParser {
+  constructor({ expectDummyByte = false } = {}) {
+    this.stage = expectDummyByte ? 'dummy' : 'messages';
+    this.queue = new ByteChunkQueue();
+  }
+
+  push(chunk) {
+    if (!chunk || chunk.length === 0) return [];
+    this.queue.push(chunk);
+    const events = [];
+
+    if (this.stage === 'dummy') {
+      if (this.queue.length < 1) return events;
+      this.queue.skip(1);
+      this.stage = 'messages';
+    }
+    if (this.stage !== 'messages') return events;
+
+    while (this.queue.length >= 1) {
+      const head = this.queue.peek(1);
+      const type = head[0];
+
+      if (type === DEVICE_MSG.CLIPBOARD) {
+        if (this.queue.length < 5) break;
+        const hdr = this.queue.peek(5);
+        const len = hdr.readUInt32BE(1);
+        if (len > MAX_DEVICE_CLIPBOARD_BYTES) {
+          this.stage = 'failed';
+          events.push({ type: 'error', message: `scrcpy clipboard message exceeded limit (${len})` });
+          break;
+        }
+        if (this.queue.length < 5 + len) break;
+        this.queue.skip(5);
+        const body = this.queue.readOwned(len);
+        events.push({ type: 'clipboard', text: body.toString('utf8') });
+        continue;
+      }
+
+      if (type === DEVICE_MSG.ACK_CLIPBOARD) {
+        if (this.queue.length < 9) break;
+        const hdr = this.queue.readOwned(9);
+        const sequence = hdr.readBigUInt64BE(1);
+        events.push({ type: 'ack_clipboard', sequence });
+        continue;
+      }
+
+      if (type === DEVICE_MSG.UHID_OUTPUT) {
+        if (this.queue.length < 5) break;
+        const hdr = this.queue.peek(5);
+        const id = hdr.readUInt16BE(1);
+        const size = hdr.readUInt16BE(3);
+        if (this.queue.length < 5 + size) break;
+        this.queue.skip(5);
+        const data = this.queue.readOwned(size);
+        events.push({ type: 'uhid_output', id, size, data });
+        continue;
+      }
+
+      // Unknown framing byte — stop parsing further to avoid corrupt reads
+      this.stage = 'failed';
+      events.push({ type: 'error', message: `Unknown scrcpy device message type: ${type}` });
+      break;
+    }
+
+    return events;
+  }
+}
+
 export function encodeTouchEvent({ action, x, y, screenWidth, screenHeight, pointerSlot = 0, buttons = 1 }) {
   const sw = clamp(Math.round(screenWidth) || 1080, 1, 65535);
   const sh = clamp(Math.round(screenHeight) || 2400, 1, 65535);
   const px = clamp(Math.round(x) || 0, 0, sw - 1);
   const py = clamp(Math.round(y) || 0, 0, sh - 1);
   const isRelease = action === 1 || action === 3;
+  const pointerId = pointerSlot === 0
+    ? POINTER_ID_GENERIC_FINGER
+    : (pointerSlot === 1 ? POINTER_ID_VIRTUAL_FINGER : BigInt(pointerSlot));
   const buf = Buffer.allocUnsafe(32);
   buf.writeUInt8(CONTROL_MSG.INJECT_TOUCH_EVENT, 0);
   buf.writeUInt8(action & 0xff, 1);
-  buf.writeBigInt64BE(pointerSlot === 0 ? POINTER_ID_GENERIC_FINGER : BigInt(pointerSlot), 2);
+  buf.writeBigInt64BE(pointerId, 2);
   buf.writeInt32BE(px, 10);
   buf.writeInt32BE(py, 14);
   buf.writeUInt16BE(sw, 18);
@@ -350,33 +533,42 @@ export function encodeSetClipboard({ text, paste = true, sequence = 1n }) {
   const capped = raw.length > 260_000 ? raw.subarray(0, 260_000) : raw;
   const pkt = Buffer.allocUnsafe(14 + capped.length);
   pkt.writeUInt8(CONTROL_MSG.SET_CLIPBOARD, 0);
-  pkt.writeBigInt64BE(BigInt(sequence), 1);
+  pkt.writeBigUInt64BE(BigInt(sequence), 1);
   pkt.writeUInt8(paste ? 1 : 0, 9);
   pkt.writeUInt32BE(capped.length, 10);
   capped.copy(pkt, 14);
   return pkt;
 }
 
-export function parseClientBinaryControl(buf, screenWidth, screenHeight) {
+export function decodeClientTouchInfo(buf, screenWidth, screenHeight) {
   const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
-  if (b.length >= 12 && b[0] === CLIENT_TOUCH_MAGIC) {
-    const action = b[1];
-    const buttons = b[2];
-    const pointerSlot = b[3];
-    const normX = clamp(b.readFloatBE(4) || 0, 0, 1);
-    const normY = clamp(b.readFloatBE(8) || 0, 0, 1);
-    const sw = Math.max(1, Math.round(screenWidth) || 1080);
-    const sh = Math.max(1, Math.round(screenHeight) || 2400);
-    return encodeTouchEvent({
-      action,
-      buttons,
-      pointerSlot,
-      x: Math.min(sw - 1, Math.round(normX * sw)),
-      y: Math.min(sh - 1, Math.round(normY * sh)),
-      screenWidth: sw,
-      screenHeight: sh,
-    });
+  if (b.length < 12 || b[0] !== CLIENT_TOUCH_MAGIC) return null;
+  const action = b[1];
+  const buttons = b[2];
+  const pointerSlot = b[3];
+  const normX = clamp(b.readFloatBE(4) || 0, 0, 1);
+  const normY = clamp(b.readFloatBE(8) || 0, 0, 1);
+  const sw = Math.max(1, Math.round(screenWidth) || 1080);
+  const sh = Math.max(1, Math.round(screenHeight) || 2400);
+  return {
+    action,
+    buttons,
+    pointerSlot,
+    normX,
+    normY,
+    x: Math.min(sw - 1, Math.round(normX * sw)),
+    y: Math.min(sh - 1, Math.round(normY * sh)),
+    screenWidth: sw,
+    screenHeight: sh,
+  };
+}
+
+export function parseClientBinaryControl(buf, screenWidth, screenHeight) {
+  const touch = decodeClientTouchInfo(buf, screenWidth, screenHeight);
+  if (touch) {
+    return encodeTouchEvent(touch);
   }
+  const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
   if (b.length >= 16 && b[0] === CLIENT_SCROLL_MAGIC) {
     const normX = clamp(b.readFloatBE(4) || 0, 0, 1);
     const normY = clamp(b.readFloatBE(8) || 0, 0, 1);
@@ -425,12 +617,14 @@ export async function ensureScrcpyServer({
   platform = process.platform,
   fetchImpl = fetch,
   allowDownload = true,
+  useBundled = true,
+  bundledPath = BUNDLED_SCRCPY_SERVER_PATH,
   signal,
 } = {}) {
-  const targetDir = path.join(dataDir, 'scrcpy');
-  const cachedJar = path.join(targetDir, `scrcpy-server-v${SCRCPY_SERVER_VERSION}.jar`);
+  const targetDir = dataDir ? path.join(dataDir, 'scrcpy') : null;
+  const cachedJar = targetDir ? path.join(targetDir, `scrcpy-server-v${SCRCPY_SERVER_VERSION}.jar`) : null;
 
-  if (verifiedJarCache.get(cachedJar) === SCRCPY_SERVER_SHA256) {
+  if (cachedJar && verifiedJarCache.get(cachedJar) === SCRCPY_SERVER_SHA256) {
     try {
       await access(cachedJar, fsConstants.R_OK);
       return { jarPath: cachedJar, version: SCRCPY_SERVER_VERSION, source: 'cache' };
@@ -439,9 +633,24 @@ export async function ensureScrcpyServer({
     }
   }
 
-  if (await verifyJarSha256(cachedJar)) {
+  if (cachedJar && await verifyJarSha256(cachedJar)) {
     verifiedJarCache.set(cachedJar, SCRCPY_SERVER_SHA256);
     return { jarPath: cachedJar, version: SCRCPY_SERVER_VERSION, source: 'cache' };
+  }
+
+  if (useBundled && bundledPath) {
+    if (verifiedJarCache.get(bundledPath) === SCRCPY_SERVER_SHA256) {
+      try {
+        await access(bundledPath, fsConstants.R_OK);
+        return { jarPath: bundledPath, version: SCRCPY_SERVER_VERSION, source: 'bundled' };
+      } catch {
+        verifiedJarCache.delete(bundledPath);
+      }
+    }
+    if (await verifyJarSha256(bundledPath)) {
+      verifiedJarCache.set(bundledPath, SCRCPY_SERVER_SHA256);
+      return { jarPath: bundledPath, version: SCRCPY_SERVER_VERSION, source: 'bundled' };
+    }
   }
 
   const candidates = new Set();
@@ -472,6 +681,10 @@ export async function ensureScrcpyServer({
   for (const candidate of candidates) {
     const validBytes = await verifyJarSha256(candidate);
     if (validBytes) {
+      if (!cachedJar) {
+        verifiedJarCache.set(candidate, SCRCPY_SERVER_SHA256);
+        return { jarPath: candidate, version: SCRCPY_SERVER_VERSION, source: 'local' };
+      }
       await mkdir(targetDir, { recursive: true });
       const tmp = `${cachedJar}.${process.pid}.${Date.now()}.tmp`;
       await copyFile(candidate, tmp);
@@ -484,7 +697,7 @@ export async function ensureScrcpyServer({
     }
   }
 
-  if (!allowDownload) {
+  if (!allowDownload || !cachedJar) {
     throw new Error(`scrcpy-server v${SCRCPY_SERVER_VERSION} is not cached locally and download is disabled.`);
   }
 
@@ -515,7 +728,6 @@ export async function ensureScrcpyServer({
 async function allocateEphemeralPort() {
   return new Promise((resolve, reject) => {
     const srv = net.createServer();
-    srv.unref();
     srv.once('error', reject);
     srv.listen(0, '127.0.0.1', () => {
       const addr = srv.address();
@@ -535,7 +747,6 @@ function sleep(ms, signal) {
       signal?.removeEventListener('abort', onAbort);
       resolve();
     }, ms);
-    timer.unref?.();
     function onAbort() {
       clearTimeout(timer);
       reject(signal.reason || new Error('Aborted'));
@@ -561,7 +772,6 @@ async function connectFirstSocketWithDummyByte(createSocket, port, { timeoutMs =
             reject(new Error('scrcpy first socket dummy byte timed out'));
           }
         }, 450);
-        timer.unref?.();
 
         const finish = (fn, val) => {
           if (settled) return;
@@ -612,7 +822,6 @@ async function connectSecondarySocket(createSocket, port, { timeoutMs = 1_500 } 
       sock.destroy();
       reject(new Error('scrcpy control socket connection timed out'));
     }, timeoutMs);
-    timer.unref?.();
     sock.once('connect', () => {
       clearTimeout(timer);
       sock.setNoDelay?.(true);
@@ -626,19 +835,60 @@ async function connectSecondarySocket(createSocket, port, { timeoutMs = 1_500 } 
   });
 }
 
-function createControlActions(writePacket, getDimensions) {
+function createControlActions(writePacket, getDimensions, hooks = {}) {
+  let nextClipSeq = BigInt(Date.now());
+  const pendingClipboardAcks = new Map();
+  let lastSelfClipboard = { text: '', atMs: 0 };
+
   const writeRaw = (buf) => {
     if (!buf) return false;
     return writePacket(buf);
   };
 
+  const handleDeviceMessage = (ev) => {
+    if (!ev) return;
+    if (ev.type === 'ack_clipboard') {
+      const waiter = pendingClipboardAcks.get(ev.sequence);
+      if (waiter) {
+        pendingClipboardAcks.delete(ev.sequence);
+        clearTimeout(waiter.timer);
+        waiter.resolve(true);
+      }
+      return;
+    }
+    if (ev.type === 'clipboard') {
+      const now = Date.now();
+      if (ev.text && (ev.text !== lastSelfClipboard.text || now - lastSelfClipboard.atMs > 1200)) {
+        hooks.onRemoteClipboard?.(ev.text);
+      }
+    }
+  };
+
+  const waitAckClipboard = (seq, timeoutMs = 250) => new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      pendingClipboardAcks.delete(seq);
+      resolve(false);
+    }, Math.max(10, timeoutMs));
+    timer.unref?.();
+    pendingClipboardAcks.set(seq, { resolve, timer });
+  });
+
+  const shouldFallbackTouchToAdb = (y, height) =>
+    Boolean(hooks.adbFallback && (hooks.isInjectBlocked?.() || isHyperOsBottomEdgeZone(y, height)));
+
   return {
     writeRaw,
+    _handleDeviceMessage: handleDeviceMessage,
     async tap(x, y, fallbackSize) {
       const { width, height } = getDimensions(fallbackSize);
+      if (shouldFallbackTouchToAdb(y, height)) {
+        await hooks.adbFallback(['input', 'tap', String(Math.round(x)), String(Math.round(y))]);
+        return { channel: 'adb_input_fallback' };
+      }
       writeRaw(encodeTouchEvent({ action: 0, x, y, screenWidth: width, screenHeight: height }));
       await sleep(8);
       writeRaw(encodeTouchEvent({ action: 1, x, y, screenWidth: width, screenHeight: height }));
+      return { channel: 'scrcpy' };
     },
     async doubleTap(x, y, fallbackSize) {
       await this.tap(x, y, fallbackSize);
@@ -647,13 +897,30 @@ function createControlActions(writePacket, getDimensions) {
     },
     async longPress(x, y, durationMs, fallbackSize) {
       const { width, height } = getDimensions(fallbackSize);
+      const hold = clamp(Math.round(durationMs) || 650, 200, 5000);
+      if (shouldFallbackTouchToAdb(y, height)) {
+        const rx = String(Math.round(x));
+        const ry = String(Math.round(y));
+        await hooks.adbFallback(['input', 'swipe', rx, ry, rx, ry, String(hold)]);
+        return { channel: 'adb_input_fallback' };
+      }
       writeRaw(encodeTouchEvent({ action: 0, x, y, screenWidth: width, screenHeight: height }));
-      await sleep(clamp(Math.round(durationMs) || 650, 200, 5000));
+      await sleep(hold);
       writeRaw(encodeTouchEvent({ action: 1, x, y, screenWidth: width, screenHeight: height }));
+      return { channel: 'scrcpy' };
     },
     async swipe(x1, y1, x2, y2, durationMs, fallbackSize) {
       const { width, height } = getDimensions(fallbackSize);
       const totalMs = clamp(Math.round(durationMs) || 240, 60, 3000);
+      if (shouldFallbackTouchToAdb(y1, height) || shouldFallbackTouchToAdb(y2, height)) {
+        await hooks.adbFallback([
+          'input', 'swipe',
+          String(Math.round(x1)), String(Math.round(y1)),
+          String(Math.round(x2)), String(Math.round(y2)),
+          String(totalMs),
+        ]);
+        return { channel: 'adb_input_fallback' };
+      }
       const steps = clamp(Math.round(totalMs / 14), 4, 90);
       const stepDelay = totalMs / steps;
       writeRaw(encodeTouchEvent({ action: 0, x: x1, y: y1, screenWidth: width, screenHeight: height }));
@@ -671,6 +938,7 @@ function createControlActions(writePacket, getDimensions) {
       }
       await sleep(Math.max(4, stepDelay));
       writeRaw(encodeTouchEvent({ action: 1, x: x2, y: y2, screenWidth: width, screenHeight: height }));
+      return { channel: 'scrcpy' };
     },
     async scroll(x, y, hScroll, vScroll, fallbackSize) {
       const { width, height } = getDimensions(fallbackSize);
@@ -692,17 +960,27 @@ function createControlActions(writePacket, getDimensions) {
       await this.pressKeycode(code);
       return true;
     },
-    async injectText(text, { pasteUnicode = false } = {}) {
+    async setClipboard(text, { paste = true, waitAckMs = 250 } = {}) {
+      const str = String(text ?? '');
+      const seq = ++nextClipSeq;
+      lastSelfClipboard = { text: str, atMs: Date.now() };
+      const ackPromise = waitAckMs > 0 ? waitAckClipboard(seq, waitAckMs) : Promise.resolve(false);
+      const wrote = writeRaw(encodeSetClipboard({ text: str, paste, sequence: seq }));
+      if (!wrote) return { ok: false, acked: false };
+      const acked = await ackPromise;
+      return { ok: true, acked, sequence: seq };
+    },
+    async injectText(text, { pasteUnicode = false, forcePaste = false } = {}) {
       const str = String(text ?? '');
       if (!str) return true;
-      const isAsciiPrintable = /^[\x20-\x7e\r\n\t]+$/.test(str);
+      const isAsciiPrintable = !forcePaste && /^[\x20-\x7e\r\n\t]+$/.test(str);
       if (isAsciiPrintable) {
         for (const pkt of encodeInjectTextPackets(str)) writeRaw(pkt);
         return true;
       }
-      if (pasteUnicode) {
-        writeRaw(encodeSetClipboard({ text: str, paste: true, sequence: BigInt(Date.now()) }));
-        return true;
+      if (pasteUnicode || forcePaste) {
+        const res = await this.setClipboard(str, { paste: true, waitAckMs: 220 });
+        return res.ok;
       }
       return false;
     },
@@ -711,6 +989,15 @@ function createControlActions(writePacket, getDimensions) {
     },
     rotateDevice() {
       writeRaw(encodeEmptyControl(CONTROL_MSG.ROTATE_DEVICE));
+    },
+    expandNotificationPanel() {
+      writeRaw(encodeEmptyControl(CONTROL_MSG.EXPAND_NOTIFICATION_PANEL));
+    },
+    expandSettingsPanel() {
+      writeRaw(encodeEmptyControl(CONTROL_MSG.EXPAND_SETTINGS_PANEL));
+    },
+    collapsePanels() {
+      writeRaw(encodeEmptyControl(CONTROL_MSG.COLLAPSE_PANELS));
     },
     resetVideo() {
       writeRaw(encodeEmptyControl(CONTROL_MSG.RESET_VIDEO));
@@ -727,6 +1014,7 @@ export function createScrcpyManager({
   ensureServer = ensureScrcpyServer,
   fetchImpl = fetch,
   allowDownload = true,
+  onRemoteClipboard,
   env = process.env,
   platform = process.platform,
 } = {}) {
@@ -735,6 +1023,43 @@ export function createScrcpyManager({
   const controlSessions = new Map();
   const controlFlights = new Map();
   const activeVideoStreams = new Map();
+  const injectBlockedSerials = new Set();
+  const physicalSizeBySerial = new Map();
+
+  async function ensurePhysicalSize(adbBinary, serial, fallbackSize) {
+    if (physicalSizeBySerial.has(serial)) return physicalSizeBySerial.get(serial);
+    if (fallbackSize?.width > 0 && fallbackSize?.height > 0 && Math.max(fallbackSize.width, fallbackSize.height) >= 1200) {
+      const sz = { width: Math.round(fallbackSize.width), height: Math.round(fallbackSize.height) };
+      physicalSizeBySerial.set(serial, sz);
+      return sz;
+    }
+    try {
+      const res = await executeFile(adbBinary, ['-s', serial, 'shell', 'wm', 'size'], {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 3_000,
+      });
+      const out = String(res?.stdout ?? '');
+      const m = out.match(/Override size:\s*(\d+)x(\d+)/i) || out.match(/Physical size:\s*(\d+)x(\d+)/i);
+      if (m) {
+        const sz = { width: Number(m[1]), height: Number(m[2]) };
+        if (sz.width > 0 && sz.height > 0) {
+          physicalSizeBySerial.set(serial, sz);
+          return sz;
+        }
+      }
+    } catch {}
+    return fallbackSize?.width > 0 && fallbackSize?.height > 0 ? fallbackSize : { width: 1080, height: 2400 };
+  }
+
+  async function runAdbInputFallback(adbBinary, serial, shellArgs) {
+    if (!adbBinary || !serial) return;
+    await executeFile(adbBinary, ['-s', serial, 'shell', ...shellArgs], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 8_000,
+    });
+  }
 
   async function ensureDeviceJar(adbBinary, serial, signal) {
     const key = `${adbBinary}:${serial}`;
@@ -834,21 +1159,30 @@ export function createScrcpyManager({
         'log_level=warn',
         'tunnel_forward=true',
         'cleanup=false',
-        'clipboard_autosync=false',
+        'clipboard_autosync=true',
         'power_on=false',
         'video=false',
         'audio=false',
         'control=true',
-        'send_device_meta=true',
+        'send_device_meta=false',
         'send_dummy_byte=true',
       ], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
 
       let stderrTail = '';
-      proc.stderr?.on('data', (c) => { stderrTail = (stderrTail + c.toString('utf8')).slice(-512); });
+      const onControlServerLog = (c) => {
+        const text = c.toString('utf8');
+        stderrTail = (stderrTail + text).slice(-512);
+        if (/INJECT_EVENTS|SecurityException:\s*Injecting/i.test(text)) {
+          injectBlockedSerials.add(serial);
+        }
+      };
+      proc.stdout?.on('data', onControlServerLog);
+      proc.stderr?.on('data', onControlServerLog);
 
       try {
-        const { socket } = await connectFirstSocketWithDummyByte(createSocket, port, { timeoutMs: 3_500 });
-        socket.on('data', () => {});
+        const first = await connectFirstSocketWithDummyByte(createSocket, port, { timeoutMs: 3_500 });
+        const socket = first.socket;
+        const devMsgParser = new ScrcpyDeviceMessageParser({ expectDummyByte: true });
         const entry = {
           serial,
           adbBinary,
@@ -880,7 +1214,21 @@ export function createScrcpyManager({
             return true;
           },
           (overrideSize) => overrideSize?.width && overrideSize?.height ? overrideSize : entry.fallbackSize,
+          {
+            isInjectBlocked: () => injectBlockedSerials.has(serial),
+            adbFallback: (shellArgs) => runAdbInputFallback(adbBinary, serial, shellArgs),
+            onRemoteClipboard: (text) => onRemoteClipboard?.({ serial, text }),
+          },
         );
+
+        const consumeDevBytes = (chunk) => {
+          for (const ev of devMsgParser.push(chunk)) {
+            entry.control._handleDeviceMessage(ev);
+          }
+        };
+        socket.on('data', consumeDevBytes);
+        if (first.initialChunk?.length) consumeDevBytes(first.initialChunk);
+
         controlSessions.set(serial, entry);
         touchControlIdle(serial, entry);
         return entry.control;
@@ -941,7 +1289,7 @@ export function createScrcpyManager({
       'log_level=info',
       'tunnel_forward=true',
       'cleanup=false',
-      'clipboard_autosync=false',
+      'clipboard_autosync=true',
       'power_on=true',
       'video=true',
       'audio=false',
@@ -958,7 +1306,15 @@ export function createScrcpyManager({
     ], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
 
     let stderrTail = '';
-    proc.stderr?.on('data', (c) => { stderrTail = (stderrTail + c.toString('utf8')).slice(-1024); });
+    const onVideoServerLog = (c) => {
+      const text = c.toString('utf8');
+      stderrTail = (stderrTail + text).slice(-1024);
+      if (/INJECT_EVENTS|SecurityException:\s*Injecting/i.test(text)) {
+        injectBlockedSerials.add(serial);
+      }
+    };
+    proc.stdout?.on('data', onVideoServerLog);
+    proc.stderr?.on('data', onVideoServerLog);
 
     let videoSocket = null;
     let controlSocket = null;
@@ -1022,12 +1378,26 @@ export function createScrcpyManager({
     try {
       const first = await connectFirstSocketWithDummyByte(createSocket, port, { timeoutMs: 4_000, signal: connectSignal });
       videoSocket = first.socket;
+      const bufferedVideoChunks = first.initialChunk?.length ? [first.initialChunk] : [];
+      let earlyVideoClosed = false;
+      let earlyVideoErr = null;
+      const onBufferedData = (c) => bufferedVideoChunks.push(c);
+      const onBufferedClose = () => { earlyVideoClosed = true; };
+      const onBufferedErr = (e) => { earlyVideoErr = e; };
+      videoSocket.on('data', onBufferedData);
+      videoSocket.once('close', onBufferedClose);
+      videoSocket.once('error', onBufferedErr);
+
       if (procExitErr) throw procExitErr;
       controlSocket = await connectSecondarySocket(createSocket, port, { timeoutMs: 2_000 });
       if (procExitErr) throw procExitErr;
-      controlSocket.on('data', () => {});
+      if (earlyVideoErr) throw earlyVideoErr;
+      if (earlyVideoClosed || videoSocket.destroyed) {
+        throw new Error(`scrcpy video socket closed during control connect (${stderrTail.trim() || 'EOF'})`);
+      }
 
       const parser = new ScrcpyVideoStreamParser({ expectDummyByte: true });
+      const devMsgParser = new ScrcpyDeviceMessageParser({ expectDummyByte: false });
       let seq = 0;
       let streamFlushed = false;
       let droppingUntilKeyframe = false;
@@ -1052,7 +1422,6 @@ export function createScrcpyManager({
         clearTimeout(graceTimer);
         rejectInitial(new Error(`scrcpy initial video metadata timed out (${stderrTail.trim() || 'no frames'})`));
       }, 4_000);
-      initTimer.unref?.();
 
       const control = createControlActions(
         (buf) => {
@@ -1064,7 +1433,29 @@ export function createScrcpyManager({
           if (parser.width > 0 && parser.height > 0) return { width: parser.width, height: parser.height };
           return overrideSize?.width && overrideSize?.height ? overrideSize : (fallbackSize || { width: 1080, height: 2400 });
         },
+        {
+          isInjectBlocked: () => injectBlockedSerials.has(serial),
+          adbFallback: (shellArgs) => runAdbInputFallback(adbBinary, serial, shellArgs),
+          onRemoteClipboard: (text) => {
+            onRemoteClipboard?.({ serial, text });
+            if (!closed) {
+              session.sendText?.(JSON.stringify({
+                type: 'remoteClipboard',
+                serial,
+                text,
+                updatedAtMs: Date.now(),
+              }));
+            }
+          },
+        },
       );
+      controlSocket.on('data', (chunk) => {
+        if (closed) return;
+        for (const ev of devMsgParser.push(chunk)) {
+          control._handleDeviceMessage(ev);
+        }
+      });
+
       streamRecord.control = control;
       if (!activeVideoStreams.has(serial)) activeVideoStreams.set(serial, new Set());
       activeVideoStreams.get(serial).add(streamRecord);
@@ -1112,7 +1503,6 @@ export function createScrcpyManager({
             epochBroken = false;
             if (!handshakeDone && !graceTimer) {
               graceTimer = setTimeout(finishHandshake, 180);
-              graceTimer.unref?.();
             } else if (handshakeDone) {
               session.sendText?.(JSON.stringify({
                 type: 'meta',
@@ -1171,8 +1561,10 @@ export function createScrcpyManager({
               continue;
             }
 
-            if (droppingUntilKeyframe && !ev.keyFrame) {
-              if ((session.bufferedAmount?.() ?? 0) === 0) {
+            const buffered = session.bufferedAmount?.() ?? 0;
+            if ((droppingUntilKeyframe || buffered > 512 * 1024) && !ev.keyFrame) {
+              droppingUntilKeyframe = true;
+              if (buffered === 0) {
                 const now = Date.now();
                 if (now - lastBackpressureResetAt >= 350) {
                   lastBackpressureResetAt = now;
@@ -1191,6 +1583,9 @@ export function createScrcpyManager({
         }
       };
 
+      videoSocket.removeListener('data', onBufferedData);
+      videoSocket.removeListener('close', onBufferedClose);
+      videoSocket.removeListener('error', onBufferedErr);
       videoSocket.on('data', (chunk) => {
         if (closed) return;
         handleParsedEvents(parser.push(chunk));
@@ -1215,19 +1610,62 @@ export function createScrcpyManager({
       };
       if (procExitErr) {
         onEarlyProcExit(procExitErr);
+      } else if (earlyVideoErr) {
+        rejectInitial(earlyVideoErr);
+      } else if (earlyVideoClosed || videoSocket.destroyed) {
+        rejectInitial(new Error(`scrcpy video socket closed early (${stderrTail.trim() || 'EOF'})`));
       }
 
-      if (first.initialChunk?.length) {
-        handleParsedEvents(parser.push(first.initialChunk));
+      for (const chunk of bufferedVideoChunks.splice(0)) {
+        if (chunk?.length) {
+          handleParsedEvents(parser.push(chunk));
+        }
       }
 
       await initialReady;
+      const basePhys = await ensurePhysicalSize(adbBinary, serial, fallbackSize);
 
+      let activeBottomGesture = null;
       if (typeof session.onBinary === 'function') {
         unsubs.push(session.onBinary((buf) => {
           if (closed) return;
           const sw = parser.width || fallbackSize?.width || 1080;
           const sh = parser.height || fallbackSize?.height || 2400;
+          const isLandscape = sw > sh;
+          const physMin = Math.min(basePhys.width, basePhys.height);
+          const physMax = Math.max(basePhys.width, basePhys.height);
+          const physW = isLandscape ? physMax : physMin;
+          const physH = isLandscape ? physMin : physMax;
+          const physTouch = decodeClientTouchInfo(buf, physW, physH);
+          if (physTouch && physTouch.pointerSlot === 0) {
+            if (physTouch.action === 0 && (injectBlockedSerials.has(serial) || isHyperOsBottomEdgeZone(physTouch.y, physH))) {
+              activeBottomGesture = { startX: physTouch.x, startY: physTouch.y, lastX: physTouch.x, lastY: physTouch.y, startedAt: Date.now() };
+              return;
+            }
+            if (activeBottomGesture) {
+              if (physTouch.action === 2) {
+                activeBottomGesture.lastX = physTouch.x;
+                activeBottomGesture.lastY = physTouch.y;
+                return;
+              }
+              const g = activeBottomGesture;
+              activeBottomGesture = null;
+              if (physTouch.action === 1) {
+                const dist = Math.hypot(physTouch.x - g.startX, physTouch.y - g.startY);
+                const dur = clamp(Date.now() - g.startedAt, 90, 1200);
+                if (dist >= 12) {
+                  void runAdbInputFallback(adbBinary, serial, [
+                    'input', 'swipe', String(g.startX), String(g.startY), String(physTouch.x), String(physTouch.y), String(dur),
+                  ]).catch(() => {});
+                } else {
+                  void runAdbInputFallback(adbBinary, serial, [
+                    'input', 'tap', String(physTouch.x), String(physTouch.y),
+                  ]).catch(() => {});
+                }
+              }
+              return;
+            }
+          }
           const raw = parseClientBinaryControl(buf, sw, sh);
           if (raw) control.writeRaw(raw);
         }));
@@ -1253,14 +1691,22 @@ export function createScrcpyManager({
               if (Number.isInteger(msg.keycode)) void control.pressKeycode(msg.keycode);
               break;
             case 'text':
+              void control.injectText(msg.text, { pasteUnicode: true, forcePaste: false });
+              break;
             case 'paste':
-              void control.injectText(msg.text, { pasteUnicode: true });
+              void control.injectText(msg.text, { pasteUnicode: true, forcePaste: true });
               break;
             case 'power':
               control.setDisplayPower(msg.on !== false);
               break;
             case 'rotate':
               control.rotateDevice();
+              break;
+            case 'expandNotifications':
+              control.expandNotificationPanel();
+              break;
+            case 'collapsePanels':
+              control.collapsePanels();
               break;
             case 'resetVideo':
               control.resetVideo();

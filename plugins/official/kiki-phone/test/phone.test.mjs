@@ -53,6 +53,7 @@ test('manifest retains exact native tools and selects only the compact MCP facad
   for (const file of ['kimi.plugin.json', 'entry.mjs', 'panel.html', 'icon.svg', 'lib/adb.mjs', 'lib/definitions.mjs', 'lib/human-input.mjs', 'lib/launch-mobile-mcp.mjs', 'lib/mobile-facade.mjs', 'lib/environment.mjs', 'lib/prepare.mjs', 'lib/prepare-cli.mjs', 'lib/preview-service.mjs', 'lib/scrcpy-stream.mjs', 'lib/slots.mjs', 'lib/start.cmd', 'lib/phone-run.mjs', 'lib/node-executable.mjs', 'skills/phone-control/SKILL.md', 'skills/phone-control/references/anti-risk-control.md', 'skills/phone-control/agents/openai.yaml', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md']) assert.ok(files.includes(file), file);
   assert.ok(files.every(file => !file.startsWith('test/') && !file.includes('node_modules') && !file.includes('.cache')));
   for (const file of files) {
+    if (file.endsWith('.jar')) continue;
     const content = await readFile(resolve(root, file), 'utf8');
     assert.doesNotMatch(content, /C:\\Programs|C:\/Programs|C:\\Users|C:\/Users/);
     assert.doesNotMatch(content, /100%\s*\u514d\u75ab|\u96f6\u98ce\u63a7|zero\s+risk[- ]control|100%\s*immune/i);
@@ -66,8 +67,8 @@ test('settings match the strict Host contribution shape, not arbitrary JSON Sche
   assert.deepEqual(Object.keys(manifest['x-kiki'].settings.schema).sort(), ['properties', 'type']);
   assert.deepEqual(Object.keys(manifest['x-kiki'].settings.schema.properties), ['adbPath']);
   assert.equal(manifest['x-kiki'].settings.schema.properties.adbPath.type, 'string');
-  assert.deepEqual(Object.keys(manifest['x-kiki'].tools.find(tool => tool.name === 'phone_prepare').parameters.properties).sort(), ['download', 'platform']);
-  assert.deepEqual(prepareOptions({ download: true, platform: 'android', adbPath: '/untrusted/other.exe' }, { adbPath: '/user/adb' }), { download: true, platform: 'android', adbPath: '/user/adb' });
+  assert.deepEqual(Object.keys(manifest['x-kiki'].tools.find(tool => tool.name === 'phone_prepare').parameters.properties).sort(), ['deviceId', 'download', 'platform']);
+  assert.deepEqual(prepareOptions({ download: true, platform: 'android', deviceId: 'SER-1', adbPath: '/untrusted/other.exe' }, { adbPath: '/user/adb' }), { download: true, platform: 'android', deviceId: 'SER-1', adbPath: '/user/adb' });
   assert.equal(prepareOptions({ adbPath: '/untrusted/other.exe' }, {}).adbPath, undefined);
   for (const definition of definitions) assert.equal(definition.parameters.additionalProperties, false);
 });
@@ -1062,6 +1063,182 @@ test('P0-4: ensureMobilecliServer spawns with windowsHide:true + error handler a
     const second = await ensureMobilecliRuntimePatched(dir);
     assert.deepEqual(second, { serverPatched: false, driverPatched: false });
   } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('v0.4.0: ScrcpyDeviceMessageParser parses fragmented CLIPBOARD + ACK_CLIPBOARD + UHID_OUTPUT and virtual pinch slot 1 encodes -4n', async () => {
+  const { ScrcpyDeviceMessageParser, encodeTouchEvent, isHyperOsBottomEdgeZone } = await import('../lib/scrcpy-stream.mjs');
+  const parser = new ScrcpyDeviceMessageParser({ expectDummyByte: true });
+
+  const textBytes = Buffer.from('验证码 918273', 'utf8');
+  const clipPkt = Buffer.alloc(5 + textBytes.length);
+  clipPkt.writeUInt8(0, 0);
+  clipPkt.writeUInt32BE(textBytes.length, 1);
+  textBytes.copy(clipPkt, 5);
+
+  const ackPkt = Buffer.alloc(9);
+  ackPkt.writeUInt8(1, 0);
+  ackPkt.writeBigUInt64BE(420099n, 1);
+
+  const uhidPkt = Buffer.from([2, 0, 7, 0, 2, 0xaa, 0xbb]);
+  const fullStream = Buffer.concat([Buffer.from([0x00]), clipPkt, ackPkt, uhidPkt]);
+
+  const seen = [];
+  for (let i = 0; i < fullStream.length; i += 3) {
+    seen.push(...parser.push(fullStream.subarray(i, i + 3)));
+  }
+  assert.equal(seen.length, 3);
+  assert.deepEqual(seen[0], { type: 'clipboard', text: '验证码 918273' });
+  assert.deepEqual(seen[1], { type: 'ack_clipboard', sequence: 420099n });
+  assert.equal(seen[2].type, 'uhid_output');
+
+  const slot0 = encodeTouchEvent({ action: 0, x: 300, y: 600, screenWidth: 1080, screenHeight: 2400, pointerSlot: 0 });
+  const slot1 = encodeTouchEvent({ action: 0, x: 780, y: 1800, screenWidth: 1080, screenHeight: 2400, pointerSlot: 1 });
+  assert.equal(slot0.readBigInt64BE(2), -2n);
+  assert.equal(slot1.readBigInt64BE(2), -4n);
+  assert.equal(isHyperOsBottomEdgeZone(2350, 2400), true);
+  assert.equal(isHyperOsBottomEdgeZone(1800, 2400), false);
+});
+
+test('v0.4.0: HyperOS bottom-edge and INJECT_EVENTS SecurityException automatically fall back to adb shell input', async () => {
+  const adbCmds = [];
+  const executeAdb = async (_bin, argv) => {
+    adbCmds.push(argv);
+    return { stdout: '', stderr: '' };
+  };
+  let rejectInject = false;
+  const device = {
+    async screenSize() { return { width: 1080, height: 2400 }; },
+  };
+  const screen = {
+    async tap() {},
+    async swipe() {},
+    async gesture() {
+      if (rejectInject) {
+        throw new Error('java.lang.SecurityException: Injecting to another application requires INJECT_EVENTS permission');
+      }
+    },
+  };
+  attachPhoneConvenienceApis(device, screen, {
+    platform: 'android',
+    serial: 'hyperos-dev',
+    adbBinary: 'adb',
+    executeAdb,
+    rng: () => 0.5,
+  });
+
+  // 1) Bottom-edge tap (y=2350 on 1080x2400) bypasses INJECT_TOUCH_EVENT directly to adb shell input
+  const edgeRes = await screen.tap(540, 2350);
+  assert.equal(edgeRes.channel, 'adb_input_fallback');
+  assert.equal(adbCmds.length, 1);
+  assert.equal(adbCmds[0][1], 'hyperos-dev');
+  assert.match(adbCmds[0].slice(3).join(' '), /^input swipe 5\d\d 23\d\d 5\d\d 23\d\d \d+$/);
+
+  // 2) Mid-screen tap throwing SecurityException: INJECT_EVENTS seamlessly recovers via adb shell input
+  rejectInject = true;
+  const midRes = await screen.tap(540, 1200);
+  assert.equal(midRes.channel, 'adb_input_fallback');
+  assert.equal(adbCmds.length, 2);
+
+  // 3) Explicit { transport: 'raw' } uses direct adb input tap
+  const rawRes = await screen.tap(400, 900, { transport: 'raw' });
+  assert.equal(rawRes.channel, 'adb_input_fallback');
+  assert.deepEqual(adbCmds.at(-1).slice(3), ['input', 'tap', '400', '900']);
+});
+
+test('v0.4.0: non-destructive deviceId, per-serial concurrency, warm worker <80ms latency, takeover isolation, and chunked APK/file upload', async () => {
+  const dir = await scratch('warm-multi-');
+  const { createPhonePreviewService } = await import('../lib/preview-service.mjs');
+  const { createRemoteLeaseStore } = await import('../lib/remote-lease.mjs');
+  const leaseStore = createRemoteLeaseStore({ dataDir: dir, debounceMs: 0 });
+  const runner = createPhoneScriptRunner({ dataDir: dir, leaseStore, basePort: 12880 });
+
+  try {
+    for (const [name, version] of [['@mobilenext/mobile-mcp', '1.0.13'], ['mobilecli', '1.0.21'], ['mobilewright', '0.0.67'], ['@mobilewright/driver-mobilecli', '0.0.67']]) {
+      const location = join(dir, 'runtime/node_modules', name);
+      await mkdir(join(location, 'dist'), { recursive: true });
+      await writeFile(join(location, 'package.json'), JSON.stringify({ version, type: 'module' }));
+    }
+    await writeFile(
+      join(dir, 'runtime/node_modules/@mobilewright/driver-mobilecli/dist/index.js'),
+      "export class MobilecliDriver { async listDevices() { return [{id:'phone-daily',state:'online'},{id:'phone-test',state:'online'}]; } async dispose() {} }",
+    );
+    await writeFile(
+      join(dir, 'runtime/node_modules/mobilewright/dist/index.js'),
+      "export const expect = v => v; export async function connectDevice({ deviceId }) { return { async close() {}, screen: { async viewTree() { return [{id: deviceId}]; }, async screenshot() { return Buffer.from('png'); } } }; }",
+    );
+
+    // Explicitly select phone-daily via android_connection(action='select')
+    const selectRes = await runAdb('android_connection', { action: 'select', deviceId: 'phone-daily' }, { dataDir: dir });
+    assert.equal(JSON.parse(selectRes.output).selected.id, 'phone-daily');
+
+    // Cold call on phone-test via deviceId -> must NOT overwrite selected-device.json!
+    const coldRes = await runner.run({ deviceId: 'phone-test', script: 'return "cold-ok";' });
+    assert.notEqual(coldRes.isError, true);
+    assert.equal(JSON.parse(coldRes.output[0].text).device, 'phone-test');
+    const savedAfter = JSON.parse(await readFile(join(dir, 'selected-device.json'), 'utf8'));
+    assert.equal(savedAfter.id, 'phone-daily');
+
+    // Warm 2nd call on phone-test -> <80ms!
+    const t0 = performance.now();
+    const warmRes = await runner.run({ deviceId: 'phone-test', script: 'return "warm-ok";' });
+    const warmMs = performance.now() - t0;
+    assert.notEqual(warmRes.isError, true);
+    assert.ok(warmMs < 80, `Expected warm phone_run < 80ms, got ${warmMs.toFixed(1)}ms`);
+
+    // Two phones run concurrently in parallel without blocking each other
+    const [parA, parB] = await Promise.all([
+      runner.run({ deviceId: 'phone-daily', script: 'await new Promise(r => setTimeout(r, 40)); return "A";' }),
+      runner.run({ deviceId: 'phone-test', script: 'await new Promise(r => setTimeout(r, 40)); return "B";' }),
+    ]);
+    assert.equal(JSON.parse(parA.output[0].text).result, 'A');
+    assert.equal(JSON.parse(parB.output[0].text).result, 'B');
+
+    // Engaging takeover on phone-test blocks ONLY phone-test while phone-daily remains allowed
+    leaseStore.setTakeover('phone-test', { active: true, holder: 'human' });
+    const blockedRes = await runner.run({ deviceId: 'phone-test', script: 'return "nope";' });
+    assert.equal(blockedRes.isError, true);
+    assert.match(blockedRes.output, /human_takeover_active/);
+    const siblingOk = await runner.run({ deviceId: 'phone-daily', script: 'return "still-free";' });
+    assert.notEqual(siblingOk.isError, true);
+
+    // Chunked APK + media upload in preview-service
+    const uploadAdbCalls = [];
+    const preview = createPhonePreviewService({
+      dataDir: dir,
+      leaseStore,
+      loadDriverModule: async () => ({
+        MobilecliDriver: class {
+          async listDevices() { return [{ id: 'phone-test', platform: 'android', state: 'online' }]; }
+          async dispose() {}
+        },
+      }),
+      executeFile: async (_bin, argv) => {
+        uploadAdbCalls.push(argv);
+        return { stdout: 'Success\n', stderr: '' };
+      },
+    });
+    const initMedia = await preview.handlePanelRequest('uploadInit', {
+      deviceId: 'phone-test',
+      fileName: 'sample photo.png',
+      byteLength: 4,
+    }, { settings: { adbPath: '/mock/adb' } });
+    assert.equal(initMedia.ok, true);
+    await preview.handlePanelRequest('uploadChunk', {
+      uploadId: initMedia.uploadId,
+      dataBase64: Buffer.from([1, 2, 3, 4]).toString('base64'),
+    });
+    const finMedia = await preview.handlePanelRequest('uploadFinish', {
+      uploadId: initMedia.uploadId,
+    }, { settings: { adbPath: '/mock/adb' } });
+    assert.equal(finMedia.ok, true);
+    assert.equal(finMedia.action, 'push_file');
+    assert.ok(uploadAdbCalls.some((a) => a.includes('push') && a.includes('/sdcard/Download/sample photo.png')));
+    assert.ok(uploadAdbCalls.some((a) => a.includes('android.intent.action.MEDIA_SCANNER_SCAN_FILE')));
+    await preview.dispose();
+  } finally {
+    await runner.close();
     await rm(dir, { recursive: true, force: true });
   }
 });

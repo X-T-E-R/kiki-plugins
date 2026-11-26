@@ -1,9 +1,9 @@
 {
   "name": "@kiki/phone-business",
-  "version": "0.3.7",
+  "version": "0.4.0",
   "description": "Host-independent Kiki Phone business implementation",
   "type": "module",
-  "license": "MIT",
+  "license": "MIT AND Apache-2.0",
   "exports": {
     "./adb": { "types": "./types/adb.d.ts", "default": "./lib/adb.mjs" },
     "./definitions": "./lib/definitions.mjs",
@@ -25,6 +25,7 @@
     "skills/phone-control/SKILL.md",
     "skills/phone-control/references/*.md",
     "skills/phone-control/agents/*.yaml",
+    "vendor/*",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md"
   ],

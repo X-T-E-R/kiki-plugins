@@ -431,12 +431,26 @@ test('openPanelStream negotiates scrcpy v4.0 H.264 stream, handles backpressure 
   const controlWrites = [];
   let killedProc = false;
 
-  // Prepare a fake cached jar that we pre-verify by testing ensureScrcpyServer rejection first
+  // Verify bundled scrcpy-server-v4.0.jar resolves offline with zero network fetch
+  const bundledResolved = await ensureScrcpyServer({
+    dataDir,
+    env: { PATH: '' },
+    platform: 'linux',
+    allowDownload: false,
+    fetchImpl: async () => {
+      throw new Error('Bundled jar must not hit network');
+    },
+  });
+  assert.equal(bundledResolved.source, 'bundled');
+  assert.equal(bundledResolved.version, '4.0');
+
+  // Prepare a fake cached jar that we pre-verify by testing ensureScrcpyServer rejection when bundled is disabled
   await assert.rejects(
     () => ensureScrcpyServer({
       dataDir,
       env: { PATH: '' },
       platform: 'linux',
+      useBundled: false,
       fetchImpl: async (url) => {
         assert.equal(url, SCRCPY_SERVER_URL);
         return {
