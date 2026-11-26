@@ -535,7 +535,7 @@
       "id": "kiki-cua",
       "tier": "official",
       "displayName": "Kiki Computer Use",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "description": "Operate local multi-DPI desktops and registered remote display/input target providers with native zoom cropping, human-takeover protection and live workspace preview.",
       "keywords": [
         "computer-use",

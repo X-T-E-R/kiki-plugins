@@ -59,7 +59,7 @@ test('manifest, sync-manifest --check, validateRegistration, packageFiles, and v
 
   const manifest = JSON.parse(await readFile(path.join(pluginRoot, 'kimi.plugin.json'), 'utf8'));
   assert.equal(manifest.name, 'kiki-cua');
-  assert.equal(manifest.version, '0.1.2');
+  assert.equal(manifest.version, '0.1.3');
   assert.equal(manifest.license, 'MIT');
   assert.equal(manifest.icon, './icon.svg');
   assert.deepEqual(manifest.skills, ['./skills']);
@@ -1261,6 +1261,455 @@ test('P1-1 & P1-5: openPanelStream resumes after backpressure clears and discove
     opened.onClose();
     await service.dispose();
   } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
+});
+
+test('openPanelStream caches target discovery within TTL, re-discovers on selectTarget or TTL expiry, and auto-falls back on cache miss', async () => {
+  const workDir = await makeIsolatedTmpDir('cua-stream-cache');
+  const busDir = path.join(workDir, 'providers');
+  const stateDir = path.join(workDir, 'state');
+  await mkdir(busDir, { recursive: true });
+
+  const mockLocal = createMockLocalDriver();
+  let listMonitorsCalls = 0;
+  let localCaptureCalls = 0;
+  const origListMonitors = mockLocal.listMonitors.bind(mockLocal);
+  const origCapture = mockLocal.capture.bind(mockLocal);
+  mockLocal.listMonitors = async (...args) => {
+    listMonitorsCalls += 1;
+    return origListMonitors(...args);
+  };
+  mockLocal.capture = async (...args) => {
+    localCaptureCalls += 1;
+    return origCapture(...args);
+  };
+
+  const remotePng = createSyntheticSurfacePng(640, 360, { x: 200, y: 180, radius: 14 });
+  let remoteListCalls = 0;
+  let remoteObserveCalls = 0;
+  let exposeLateTarget = false;
+
+  const providerServer = await createCuaProviderServer({
+    providerId: 'kiki-uu-remote',
+    displayName: 'Stream Cache Remote Provider',
+    busDir,
+    handlers: {
+      async listTargets() {
+        remoteListCalls += 1;
+        const targets = [
+          {
+            id: 'uu:stream-1',
+            providerId: 'kiki-uu-remote',
+            kind: 'remote-desktop',
+            label: 'Remote Stream 1',
+            platform: 'desktop',
+            online: true,
+            takeoverActive: false,
+            controlledBy: 'agent',
+            dimensions: { width: 640, height: 360, scaleFactor: 1 },
+            capabilities: ['screenshot', 'click', 'takeover'],
+          },
+        ];
+        if (exposeLateTarget) {
+          targets.push({
+            id: 'uu:late-2',
+            providerId: 'kiki-uu-remote',
+            kind: 'remote-desktop',
+            label: 'Late Appearing Remote',
+            platform: 'desktop',
+            online: true,
+            takeoverActive: false,
+            controlledBy: 'agent',
+            dimensions: { width: 640, height: 360, scaleFactor: 1 },
+            capabilities: ['screenshot', 'click', 'takeover'],
+          });
+        }
+        return targets;
+      },
+      async observe(req) {
+        remoteObserveCalls += 1;
+        return {
+          ok: true,
+          targetId: req.targetId,
+          capturedAtMs: Date.now(),
+          mimeType: 'image/png',
+          imageBase64: remotePng.toString('base64'),
+          imageSize: { width: 640, height: 360 },
+          logicalSize: { width: 640, height: 360 },
+          cropBounds: null,
+          cursor: { x: 200, y: 180 },
+          takeoverActive: false,
+          controlledBy: 'agent',
+          accessibility: [],
+        };
+      },
+      async act() {
+        return { ok: true, executed: 0, results: [] };
+      },
+      async takeover(req) {
+        return { ok: true, targetId: req.targetId, takeoverActive: Boolean(req.active), controlledBy: req.active ? 'human' : 'agent' };
+      },
+    },
+  });
+
+  try {
+    const service = createCuaService({
+      localDriver: mockLocal,
+      env: { KIKI_CUA_BUS_DIR: busDir },
+      dataDir: stateDir,
+      fastTargetsCacheTtlMs: 800,
+    });
+
+    const binaryFrames = [];
+    const textFrames = [];
+    const ac = new AbortController();
+    const opened = await service.openPanelStream(
+      'screen',
+      { targetId: 'local:primary', maxWidth: 640, fps: 11 },
+      {
+        signal: ac.signal,
+        bufferedAmount: () => 0,
+        sendBinary(buf) { binaryFrames.push(buf); },
+        sendText(msg) { textFrames.push(typeof msg === 'string' ? JSON.parse(msg) : msg); },
+      },
+      {},
+    );
+
+    // Wait for >= 3 captures well inside the 800ms TTL window -> discovery runs only ONCE
+    const waitStart = Date.now();
+    while (localCaptureCalls < 3 && Date.now() - waitStart < 650) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    assert.ok(localCaptureCalls >= 3, `Expected >=3 local captures within cache TTL, got ${localCaptureCalls}`);
+    assert.equal(listMonitorsCalls, 1, 'listMonitors must only run once inside fast target cache TTL');
+    assert.equal(remoteListCalls, 1, 'remote /v1/targets must only run once inside fast target cache TTL');
+
+    // Switching target via selectTarget invalidates cache, re-discovers, and streams remote target
+    opened.onText(JSON.stringify({ type: 'selectTarget', targetId: 'uu:stream-1' }));
+    const switchDeadline = Date.now() + 1_500;
+    while (!textFrames.some((m) => m.type === 'frameMeta' && m.targetId === 'uu:stream-1') && Date.now() < switchDeadline) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    assert.ok(textFrames.some((m) => m.type === 'frameMeta' && m.targetId === 'uu:stream-1'));
+    assert.equal(listMonitorsCalls, 2, 'selectTarget must trigger fresh target discovery');
+    assert.equal(remoteListCalls, 2, 'selectTarget must trigger fresh remote target discovery');
+    assert.ok(remoteObserveCalls >= 1);
+
+    // Waiting past cache TTL (800ms) causes subsequent frames to re-discover automatically
+    const afterSwitchMonitorCalls = listMonitorsCalls;
+    const expireDeadline = Date.now() + 2_500;
+    while (listMonitorsCalls <= afterSwitchMonitorCalls && Date.now() < expireDeadline) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    assert.ok(listMonitorsCalls > afterSwitchMonitorCalls, 'Expired cache TTL must re-discover targets');
+
+    // Cache-miss fallback: a newly appeared target not in cache triggers one fast:false fallback instead of throwing offline
+    exposeLateTarget = true;
+    const lateObs = await service.captureTargetObservation({
+      targetId: 'uu:late-2',
+      maxWidth: 640,
+      maxHeight: 360,
+      recordObservation: false,
+      fastTargetLookup: true,
+    });
+    assert.equal(lateObs.ok, true);
+    assert.equal(lateObs.targetId, 'uu:late-2');
+
+    ac.abort();
+    opened.onClose();
+    await service.dispose();
+  } finally {
+    await providerServer.close();
+    await rm(workDir, { recursive: true, force: true });
+  }
+});
+
+test('openPanelStream deduplicates identical PNG frames, emits unchanged frameMeta heartbeat, and resumes binary on pixel change, nudgeFrame, or selectTarget', async () => {
+  const workDir = await makeIsolatedTmpDir('cua-stream-dedup');
+  try {
+    const mockLocal = createMockLocalDriver();
+    const frameA = createSyntheticSurfacePng(640, 360, { x: 160, y: 120, radius: 16 });
+    const frameB = createSyntheticSurfacePng(640, 360, { x: 480, y: 240, radius: 22 });
+    let activePng = frameA;
+    let captureCount = 0;
+    let releaseBlockedCapture = null;
+    let notifyBlockedCaptureEntered = null;
+    let blockNextCapture = false;
+
+    mockLocal.capture = async ({ originX, originY, targetW, targetH }) => {
+      captureCount += 1;
+      if (blockNextCapture) {
+        blockNextCapture = false;
+        notifyBlockedCaptureEntered?.();
+        await new Promise((resolve) => { releaseBlockedCapture = resolve; });
+      }
+      return {
+        imageBase64: activePng.toString('base64'),
+        byteLength: activePng.length,
+        imageSize: { width: 640, height: 360 },
+        logicalSize: { width: targetW, height: targetH },
+        targetOrigin: { x: originX, y: originY },
+        cropBounds: null,
+        cursor: { x: 200, y: 200 },
+        foregroundWindow: { hwnd: '0x20010', title: 'Sample Editor', processName: 'editor' },
+        accessibility: [],
+      };
+    };
+
+    const service = createCuaService({
+      localDriver: mockLocal,
+      env: { KIKI_CUA_BUS_DIR: path.join(workDir, 'empty-bus') },
+      dataDir: path.join(workDir, 'state'),
+      streamMetaHeartbeatMs: 350,
+    });
+
+    const binaryFrames = [];
+    const textFrames = [];
+    const ac = new AbortController();
+    const opened = await service.openPanelStream(
+      'screen',
+      { targetId: 'local:primary', maxWidth: 640, fps: 11 },
+      {
+        signal: ac.signal,
+        bufferedAmount: () => 0,
+        sendBinary(buf) { binaryFrames.push(buf); },
+        sendText(msg) { textFrames.push(typeof msg === 'string' ? JSON.parse(msg) : msg); },
+      },
+      {},
+    );
+
+    // Wait for >= 5 static captures and at least one unchanged frameMeta heartbeat (>= 260ms)
+    const staticDeadline = Date.now() + 1_500;
+    while (
+      (captureCount < 5 || !textFrames.some((m) => m.type === 'frameMeta' && m.unchanged === true))
+      && Date.now() < staticDeadline
+    ) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    assert.ok(captureCount >= 5, `Expected >=5 captures, got ${captureCount}`);
+    assert.equal(binaryFrames.length, 1, 'Identical PNG frames must skip duplicate binary sends');
+    const firstMeta = textFrames.find((m) => m.type === 'frameMeta');
+    assert.ok(firstMeta && firstMeta.unchanged === undefined);
+    const heartbeatMeta = textFrames.find((m) => m.type === 'frameMeta' && m.unchanged === true);
+    assert.ok(heartbeatMeta, 'Expected lightweight frameMeta heartbeat with unchanged: true');
+
+    // Pixel change triggers immediate binary frame send
+    activePng = frameB;
+    const changeDeadline = Date.now() + 1_000;
+    while (binaryFrames.length < 2 && Date.now() < changeDeadline) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    assert.equal(binaryFrames.length, 2, 'Pixel change must immediately send a new binary PNG');
+
+    // Subsequent identical captures of frameB stay deduplicated
+    const capturesAtChange = captureCount;
+    const stableDeadline = Date.now() + 600;
+    while (captureCount < capturesAtChange + 3 && Date.now() < stableDeadline) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    assert.equal(binaryFrames.length, 2, 'Static frameB captures must remain deduplicated');
+
+    // Explicit nudgeFrame forces immediate binary resend even with identical PNG bytes
+    opened.onText(JSON.stringify({ type: 'nudgeFrame' }));
+    const nudgeDeadline = Date.now() + 1_000;
+    while (binaryFrames.length < 3 && Date.now() < nudgeDeadline) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    assert.equal(binaryFrames.length, 3, 'nudgeFrame must reset lastSentPngHash and send binary immediately');
+
+    // selectTarget forces immediate binary resend even when PNG bytes are identical
+    opened.onText(JSON.stringify({ type: 'selectTarget', targetId: 'local:monitor-0' }));
+    const selectDeadline = Date.now() + 1_000;
+    while (binaryFrames.length < 4 && Date.now() < selectDeadline) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    assert.equal(binaryFrames.length, 4, 'selectTarget must reset lastSentPngHash and send binary immediately');
+    assert.equal(textFrames.filter((m) => m.type === 'frameMeta').at(-1)?.targetId, 'local:monitor-0');
+
+    // selectTarget arriving while a capture is in-flight discards the stale frame,
+    // immediately sends one fresh frame, and restores static PNG deduplication afterward
+    const blockedEntered = new Promise((resolve) => { notifyBlockedCaptureEntered = resolve; });
+    blockNextCapture = true;
+    await blockedEntered;
+    opened.onText(JSON.stringify({ type: 'selectTarget', targetId: 'local:primary' }));
+    releaseBlockedCapture();
+    const inflightDeadline = Date.now() + 1_500;
+    while (binaryFrames.length < 5 && Date.now() < inflightDeadline) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    assert.equal(binaryFrames.length, 5, 'In-flight selectTarget must push exactly one fresh binary frame');
+    assert.equal(textFrames.filter((m) => m.type === 'frameMeta').at(-1)?.targetId, 'local:primary');
+    const capturesAfterInflight = captureCount;
+    const dedupRestoredDeadline = Date.now() + 800;
+    while (captureCount < capturesAfterInflight + 3 && Date.now() < dedupRestoredDeadline) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    assert.equal(binaryFrames.length, 5, 'Static PNG deduplication must remain active after in-flight selectTarget');
+
+    ac.abort();
+    opened.onClose();
+    await service.dispose();
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
+});
+
+test('takeover state changes during fast cache window propagate immediately to frameMeta and collectAllTargets({ fast: true })', async () => {
+  const workDir = await makeIsolatedTmpDir('cua-stream-takeover-cache');
+  const busDir = path.join(workDir, 'providers');
+  const stateDir = path.join(workDir, 'state');
+  await mkdir(busDir, { recursive: true });
+
+  const mockLocal = createMockLocalDriver();
+  let listMonitorsCalls = 0;
+  const origListMonitors = mockLocal.listMonitors.bind(mockLocal);
+  mockLocal.listMonitors = async (...args) => {
+    listMonitorsCalls += 1;
+    return origListMonitors(...args);
+  };
+
+  const staticPng = createSyntheticSurfacePng(640, 360, { x: 320, y: 180, radius: 18 });
+  let remoteListCalls = 0;
+  let remoteTakeover = false;
+
+  const providerServer = await createCuaProviderServer({
+    providerId: 'kiki-uu-remote',
+    displayName: 'Takeover Live Provider',
+    busDir,
+    handlers: {
+      async listTargets() {
+        remoteListCalls += 1;
+        return [
+          {
+            id: 'uu:takeover-live',
+            providerId: 'kiki-uu-remote',
+            kind: 'remote-desktop',
+            label: 'Remote Takeover Surface',
+            platform: 'desktop',
+            online: true,
+            takeoverActive: remoteTakeover,
+            controlledBy: remoteTakeover ? 'human' : 'agent',
+            dimensions: { width: 640, height: 360, scaleFactor: 1 },
+            capabilities: ['screenshot', 'click', 'takeover'],
+          },
+        ];
+      },
+      async observe(req) {
+        return {
+          ok: true,
+          targetId: req.targetId,
+          capturedAtMs: Date.now(),
+          mimeType: 'image/png',
+          imageBase64: staticPng.toString('base64'),
+          imageSize: { width: 640, height: 360 },
+          logicalSize: { width: 640, height: 360 },
+          cropBounds: null,
+          cursor: { x: 320, y: 180 },
+          takeoverActive: remoteTakeover,
+          controlledBy: remoteTakeover ? 'human' : 'agent',
+          accessibility: [],
+        };
+      },
+      async act() {
+        return { ok: true, executed: 0, results: [] };
+      },
+      async takeover(req) {
+        remoteTakeover = Boolean(req.active);
+        return {
+          ok: true,
+          targetId: req.targetId,
+          takeoverActive: remoteTakeover,
+          controlledBy: remoteTakeover ? 'human' : 'agent',
+        };
+      },
+    },
+  });
+
+  try {
+    const service = createCuaService({
+      localDriver: mockLocal,
+      env: { KIKI_CUA_BUS_DIR: busDir },
+      dataDir: stateDir,
+    });
+
+    const binaryFrames = [];
+    const frameMetas = [];
+    const ac = new AbortController();
+    const opened = await service.openPanelStream(
+      'screen',
+      { targetId: 'uu:takeover-live', maxWidth: 640, fps: 11 },
+      {
+        signal: ac.signal,
+        bufferedAmount: () => 0,
+        sendBinary(buf) { binaryFrames.push(buf); },
+        sendText(msg) {
+          const parsed = typeof msg === 'string' ? JSON.parse(msg) : msg;
+          if (parsed?.type === 'frameMeta') frameMetas.push(parsed);
+        },
+      },
+      {},
+    );
+
+    // Wait for initial frame with takeoverActive: false
+    const initDeadline = Date.now() + 1_000;
+    while (frameMetas.length === 0 && Date.now() < initDeadline) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    assert.equal(frameMetas.length, 1);
+    assert.equal(frameMetas[0].takeoverActive, false);
+    assert.equal(frameMetas[0].controlledBy, 'agent');
+    assert.equal(listMonitorsCalls, 1);
+    assert.equal(remoteListCalls, 1);
+
+    // Flip remote takeover while still inside the 5000ms cache window & with identical PNG bytes
+    remoteTakeover = true;
+    const flipStart = Date.now();
+    while (!frameMetas.some((m) => m.takeoverActive === true) && Date.now() - flipStart < 800) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    const takeoverMeta = frameMetas.find((m) => m.takeoverActive === true);
+    assert.ok(takeoverMeta, 'Takeover change must reflect immediately in frameMeta without waiting for 2000ms heartbeat');
+    assert.equal(takeoverMeta.controlledBy, 'human');
+    assert.equal(takeoverMeta.unchanged, undefined);
+    assert.equal(binaryFrames.length, 2, 'Takeover change counts as forceFrame and pushes a fresh frame');
+    assert.equal(listMonitorsCalls, 1, 'Takeover reflection must not invalidate cache unnecessarily');
+    assert.equal(remoteListCalls, 1, 'Remote target discovery must remain cached inside 5000ms window');
+
+    // collectAllTargets({ fast: true }) must overlay live ledger takeover state on top of cached snapshot
+    const cachedInv = await service.collectAllTargets({ fast: true });
+    const cachedRemote = cachedInv.targets.find((t) => t.id === 'uu:takeover-live');
+    assert.equal(cachedRemote?.takeoverActive, true);
+    assert.equal(cachedRemote?.controlledBy, 'human');
+    assert.equal(listMonitorsCalls, 1, 'collectAllTargets({ fast: true }) must still serve from cache');
+
+    // Also verify local takeover via handlePanelRequest('takeover') reflects in cached fast targets and frameMeta
+    opened.onText(JSON.stringify({ type: 'selectTarget', targetId: 'local:primary' }));
+    const localDeadline = Date.now() + 1_000;
+    while (!frameMetas.some((m) => m.targetId === 'local:primary') && Date.now() < localDeadline) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    await service.handlePanelRequest('takeover', { targetId: 'local:primary', active: true }, {});
+    const callsAfterTakeover = listMonitorsCalls;
+    const localTakeoverDeadline = Date.now() + 800;
+    while (
+      !frameMetas.some((m) => m.targetId === 'local:primary' && m.takeoverActive === true)
+      && Date.now() < localTakeoverDeadline
+    ) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    assert.ok(frameMetas.some((m) => m.targetId === 'local:primary' && m.takeoverActive === true));
+    const localCachedInv = await service.collectAllTargets({ fast: true });
+    const localPrimary = localCachedInv.targets.find((t) => t.id === 'local:primary');
+    assert.equal(localPrimary?.takeoverActive, true);
+    assert.equal(localPrimary?.controlledBy, 'human');
+    assert.equal(listMonitorsCalls, callsAfterTakeover, 'Subsequent stream frames and fast lookups must reuse cache with overlaid takeover');
+
+    ac.abort();
+    opened.onClose();
+    await service.dispose();
+  } finally {
+    await providerServer.close();
     await rm(workDir, { recursive: true, force: true });
   }
 });
