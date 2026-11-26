@@ -1,6 +1,6 @@
 {
   "name": "kiki-bilibili",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Discover, watch, comment, read messages and publish Bilibili videos through bili-agent.",
   "license": "MIT",
   "icon": "./icon.svg",

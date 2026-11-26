@@ -77,7 +77,7 @@ const cases = [
 
 test('manifest equals native registrations; runtime has no plan/mock-only tools', async () => {
   const manifest = JSON.parse(await readFile(path.join(root, 'kimi.plugin.json'), 'utf8'));
-  assert.equal(manifest.version, '0.2.0');
+  assert.equal(manifest.version, '0.2.1');
   assert.deepEqual(manifest['x-kiki'].tools, definitions);
   assert.deepEqual(manifest['x-kiki'].permissions.exec, ['bili', 'python', 'ffmpeg']);
   const settingsSchema = manifest['x-kiki'].settings.schema;
@@ -343,6 +343,66 @@ test('installed bili-agent parser accepts every generated argument vector with n
   const feedResult = spawnSync(process.env.BILI_CONTRACT_PYTHON, [path.join(root, 'test/feed-contract.py')], { encoding: 'utf8', env: { ...process.env, BILI_CLI_HOME: dir, PYTHONUTF8: '1' } });
   assert.equal(feedResult.status, 0, feedResult.stderr + feedResult.stdout);
   assert.equal(JSON.parse(feedResult.stdout).inbox.replies[0].rpid, 11);
+});
+
+test('daemon _fast_me_stats normalizes None creative-center payloads on 0-video accounts without AttributeError', { skip: !process.env.BILI_CONTRACT_PYTHON }, async (t) => {
+  const dir = await workspace(t);
+  const probeScript = [
+    'import asyncio, importlib.util, json, socket, sys',
+    'loop = asyncio.new_event_loop()',
+    'def deny(*a, **kw): raise AssertionError("Unexpected network access")',
+    'socket.create_connection = deny',
+    'socket.socket.connect = deny',
+    'spec = importlib.util.spec_from_file_location("kiki_bili_daemon", sys.argv[1])',
+    'mod = importlib.util.module_from_spec(spec)',
+    'spec.loader.exec_module(mod)',
+    'mod.config.require_credential = lambda: object()',
+    'scenarios = [',
+    '  ("all_none", None, None, None, None, None),',
+    '  ("nested_none", {"log_date": 20261126, "play": 0}, {"all_fans": 3}, {"play_proportion": None, "audience_proportion": {"fans": None, "guest": 10}}, None, {"2026-11-26": None}),',
+    '  ("empty_list_survey_and_arc_none", {}, {}, {"play_proportion": {"new_web": None, "new_app": 7500}, "audience_proportion": None}, {"play_pass_peer": 0}, {"2026-11-26": {"arc_inc": [None, {"bvid": "BV1xx", "title": "demo", "incr": 12}]}}),',
+    '  ("list_survey", None, None, None, None, []),',
+    ']',
+    'async def run_all():',
+    '  out = {}',
+    '  for name, ov, fn, src, cmp_, srv in scenarios:',
+    '    async def _ret(val): return val',
+    '    mod.bili_cc.get_overview = lambda cred, p, v=ov: _ret(v)',
+    '    mod.bili_cc.get_fan_overview = lambda cred, p, v=fn: _ret(v)',
+    '    mod.bili_cc.get_video_source = lambda cred, v=src: _ret(v)',
+    '    mod.bili_cc.get_compare = lambda cred, v=cmp_: _ret(v)',
+    '    mod.bili_cc.get_video_survey = lambda cred, v=srv: _ret(v)',
+    '    out[name] = await mod._fast_me_stats("month")',
+    '  return out',
+    'try:',
+    '  mod._IPC_OUT.write((json.dumps(loop.run_until_complete(run_all()), ensure_ascii=False) + "\\n").encode("utf-8"))',
+    'finally:',
+    '  loop.close()',
+  ].join('\n');
+  const result = spawnSync(
+    process.env.BILI_CONTRACT_PYTHON,
+    ['-c', probeScript, path.join(root, 'lib/daemon.py')],
+    { encoding: 'utf8', env: { ...process.env, BILI_CLI_HOME: dir, PYTHONUTF8: '1', PYTHONDONTWRITEBYTECODE: '1' } },
+  );
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  const parsed = JSON.parse(result.stdout);
+
+  assert.equal(parsed.all_none.period, 'month');
+  assert.equal(parsed.all_none.data_date, null);
+  assert.deepEqual(parsed.all_none.plays, { now: null, previous: null });
+  assert.deepEqual(parsed.all_none.fans, { total: null, followed: null, unfollowed: null, interacting_percent: null });
+  assert.deepEqual(parsed.all_none.play_platforms_percent, {});
+  assert.equal(parsed.all_none.plays_from_fans_percent, null);
+  assert.deepEqual(parsed.all_none.top_videos_yesterday, []);
+
+  assert.equal(parsed.nested_none.data_date, '20261126');
+  assert.equal(parsed.nested_none.fans.total, 3);
+  assert.equal(parsed.nested_none.plays_from_fans_percent, 0);
+  assert.deepEqual(parsed.nested_none.top_videos_yesterday, []);
+
+  assert.deepEqual(parsed.empty_list_survey_and_arc_none.play_platforms_percent, { app: 75 });
+  assert.deepEqual(parsed.empty_list_survey_and_arc_none.top_videos_yesterday, [{ bvid: 'BV1xx', title: 'demo', plays: 12 }]);
+  assert.deepEqual(parsed.list_survey.top_videos_yesterday, []);
 });
 
 test('warm daemon reuses a single Python worker per profile, kills on write abort, and closes cleanly', { skip: !process.env.BILI_CONTRACT_PYTHON, timeout: 30000 }, async (t) => {

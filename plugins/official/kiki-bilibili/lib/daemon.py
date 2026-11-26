@@ -780,6 +780,52 @@ async def _fast_video_transcribe(
     return out
 
 
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _normalize_stats_payloads(
+    overview: Any,
+    fans: Any,
+    source: Any,
+    compare: Any,
+    survey: Any,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    norm_overview = _as_dict(overview)
+    norm_fans = _as_dict(fans)
+
+    raw_source = _as_dict(source)
+    raw_play_prop = _as_dict(raw_source.get("play_proportion"))
+    raw_audience = _as_dict(raw_source.get("audience_proportion"))
+    fans_count = raw_audience.get("fans")
+    guest_count = raw_audience.get("guest")
+    norm_source = {
+        **raw_source,
+        "play_proportion": {k: v for k, v in raw_play_prop.items() if _is_number(v)},
+        "audience_proportion": {
+            **raw_audience,
+            "fans": fans_count if _is_number(fans_count) else 0,
+            "guest": guest_count if _is_number(guest_count) else 0,
+        },
+    }
+
+    norm_compare = _as_dict(compare)
+
+    raw_survey = _as_dict(survey)
+    norm_survey: dict[str, Any] = {}
+    for day_key, day_val in raw_survey.items():
+        day_dict = _as_dict(day_val)
+        raw_arcs = day_dict.get("arc_inc")
+        norm_arcs = [arc for arc in raw_arcs if isinstance(arc, dict)] if isinstance(raw_arcs, list) else []
+        norm_survey[day_key] = {**day_dict, "arc_inc": norm_arcs}
+
+    return norm_overview, norm_fans, norm_source, norm_compare, norm_survey
+
+
 async def _fast_me_stats(period: str) -> dict[str, Any]:
     if period not in cmd_me.STATS_PERIODS:
         raise BiliError("invalid_argument", f"--period 只能是 {' / '.join(cmd_me.STATS_PERIODS)} 之一。")
@@ -792,6 +838,7 @@ async def _fast_me_stats(period: str) -> dict[str, Any]:
         bili_cc.get_compare(cred),
         bili_cc.get_video_survey(cred),
     )
+    overview, fans, source, compare, survey = _normalize_stats_payloads(overview, fans, source, compare, survey)
     return {"period": period, **cmd_me.summarize_stats(overview, fans, source, compare, survey), "per_video_with": "bili upload stats <BV>"}
 
 
