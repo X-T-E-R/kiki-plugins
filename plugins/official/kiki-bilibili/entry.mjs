@@ -1,9 +1,19 @@
 import { definitions } from './lib/definitions.mjs';
 import { createBilibiliCore } from './lib/core.mjs';
+import { closeAllDaemons } from './lib/cli.mjs';
 import { fail } from './lib/errors.mjs';
 import { renderResult } from './lib/output.mjs';
 
-const methods = { bilibili_discover: 'discover', bilibili_watch: 'watch', bilibili_interact: 'interact', bilibili_inbox: 'inbox', bilibili_publish: 'publish', bilibili_account: 'account', bilibili_diagnose: 'diagnose' };
+const methods = {
+  bilibili_discover: 'discover',
+  bilibili_watch: 'watch',
+  bilibili_interact: 'interact',
+  bilibili_inbox: 'inbox',
+  bilibili_publish: 'publish',
+  bilibili_account: 'account',
+  bilibili_diagnose: 'diagnose',
+};
+
 export function register(api) {
   for (const definition of definitions) {
     api.registerTool(definition, async (args, context) => {
@@ -18,4 +28,8 @@ export function register(api) {
       }
     });
   }
+}
+
+export async function deactivate() {
+  await closeAllDaemons();
 }

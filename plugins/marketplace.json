@@ -389,7 +389,7 @@
       "id": "kiki-bilibili",
       "tier": "official",
       "displayName": "Kiki Bilibili",
-      "version": "0.1.4",
+      "version": "0.2.0",
       "description": "Search and understand Bilibili videos, manage comments and notifications, and publish through bili-agent.",
       "keywords": [
         "bilibili",

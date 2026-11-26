@@ -2,39 +2,47 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { BilibiliError } from './errors.mjs';
+import { resolveProfileHome, resolveProfileRegistry } from './profiles.mjs';
+import { BEFORE_SEND_CODES, callWarmDaemon, closeAllDaemons, getActiveDaemonPids, resolveDaemonPython, terminateChild } from './daemon.mjs';
 
 export const CLI_VERSION = '1.0.0';
-const beforeSend = new Set(['invalid_argument', 'not_logged_in', 'auth_expired', 'not_found', 'permission_denied', 'captcha_required', 'risk_control', 'rate_limited']);
+export { closeAllDaemons, getActiveDaemonPids };
 
-function validateTimeout(value) {
+export function validateTimeout(value) {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 1000 || value > 2147483647) {
     throw new BilibiliError('CONFIGURATION', 'timeoutMs must be a whole number from 1000 to 2147483647 milliseconds.');
   }
   return value;
 }
 
-function terminateChild(child) {
-  if (!child) return;
-  if (process.platform === 'win32' && child.pid) {
-    const killer = spawn(path.join(process.env.SystemRoot || 'C:/Windows', 'System32/taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], {
-      windowsHide: true,
-      stdio: 'ignore',
-      shell: false,
-    });
-    killer.once('error', () => { try { child.kill(); } catch {} });
-  } else {
-    try { child.kill(); } catch {}
-  }
-}
-
-export function createCli({ settings = {}, workspaceRoot, signal, spawnImpl = spawn } = {}) {
-  const home = String(settings.cliHome || '').trim();
-  if (!home || !path.isAbsolute(home)) throw new BilibiliError('CONFIGURATION', 'Set cliHome to an explicit absolute bili-agent profile directory. No default home is read.');
+export function createCli({ settings = {}, workspaceRoot, signal, spawnImpl } = {}) {
+  resolveProfileRegistry(settings);
   const executable = String(settings.biliCliPath || 'bili');
+  const ffmpegDir = String(settings.ffmpegDir || '').trim();
   const defaultTimeoutMs = validateTimeout(settings.timeoutMs === undefined ? 600000 : settings.timeoutMs);
-  return async function call(args, { write = false, timeoutMs = defaultTimeoutMs } = {}) {
+  const customSpawn = spawnImpl !== undefined && spawnImpl !== spawn;
+  const effectiveSpawn = spawnImpl ?? spawn;
+  const daemonPython = !customSpawn && settings.useDaemon !== false ? resolveDaemonPython(executable) : null;
+
+  return async function call(args, { write = false, timeoutMs = defaultTimeoutMs, profile } = {}) {
     validateTimeout(timeoutMs);
+    const { home } = resolveProfileHome(settings, profile);
     if (signal?.aborted) throw new BilibiliError('LOCAL_ABORTED', 'Cancelled before starting bili.');
+
+    if (daemonPython) {
+      return callWarmDaemon({
+        pythonPath: daemonPython,
+        profileHome: home,
+        ffmpegDir,
+        cliVersion: CLI_VERSION,
+        args,
+        workspaceRoot,
+        write,
+        timeoutMs,
+        signal,
+      });
+    }
+
     return new Promise((resolve, reject) => {
       const decoder = new StringDecoder('utf8');
       let child, timer, stdout = '', started = false, settled = false;
@@ -49,10 +57,17 @@ export function createCli({ settings = {}, workspaceRoot, signal, spawnImpl = sp
       const abort = () => { terminateChild(child); finish(uncertain('LOCAL_ABORTED', 'Local wait cancelled. Inspect the platform before repeating an unknown write.')); };
       signal?.addEventListener('abort', abort, { once: true });
       try {
-        child = spawnImpl(executable, ['--compact', ...args], {
-          shell: false, windowsHide: true, cwd: workspaceRoot,
-          env: { ...process.env, BILI_CLI_HOME: home, BILI_CLI_NO_RATE_LIMIT: '1', PYTHONUTF8: '1',
-            PATH: settings.ffmpegDir ? `${settings.ffmpegDir}${path.delimiter}${process.env.PATH || ''}` : process.env.PATH },
+        child = effectiveSpawn(executable, ['--compact', ...args], {
+          shell: false,
+          windowsHide: true,
+          cwd: workspaceRoot,
+          env: {
+            ...process.env,
+            BILI_CLI_HOME: home,
+            BILI_CLI_NO_RATE_LIMIT: '1',
+            PYTHONUTF8: '1',
+            PATH: ffmpegDir ? `${ffmpegDir}${path.delimiter}${process.env.PATH || ''}` : process.env.PATH,
+          },
           stdio: ['ignore', 'pipe', 'pipe'],
         });
       } catch (error) {
@@ -81,7 +96,9 @@ export function createCli({ settings = {}, workspaceRoot, signal, spawnImpl = sp
         if (code !== 0 || envelope.ok !== true) {
           const error = envelope.error || {};
           return finish(new BilibiliError(error.code || 'CLI_ERROR', error.message || `bili exited ${code}`, {
-            submission: write && !beforeSend.has(error.code) ? 'unknown' : 'not_sent', suggestion: error.hint, detail: error.detail,
+            submission: write && !BEFORE_SEND_CODES.has(error.code) ? 'unknown' : 'not_sent',
+            suggestion: error.hint,
+            detail: error.detail,
           }));
         }
         finish(undefined, envelope.data);

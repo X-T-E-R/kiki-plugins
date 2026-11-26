@@ -1,6 +1,6 @@
 {
   "name": "kiki-bilibili",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Discover, watch, comment, read messages and publish Bilibili videos through bili-agent.",
   "license": "MIT",
   "icon": "./icon.svg",
@@ -22,6 +22,7 @@
       ],
       "exec": [
         "bili",
+        "python",
         "ffmpeg"
       ]
     },
@@ -39,8 +40,23 @@
           "cliHome": {
             "type": "string",
             "title": "Bilibili profile directory",
-            "description": "Required absolute directory for this account's bili-agent login and ASR configuration. No implicit home or browser credentials are used.",
+            "description": "Explicit absolute directory for the default bili-agent login and ASR configuration. Required unless profiles is set; no implicit home or browser credentials are used.",
             "default": ""
+          },
+          "profiles": {
+            "type": "string",
+            "title": "Named account profiles (JSON or name=path lines)",
+            "description": "Optional map of profile alias to explicit absolute bili-agent home directory, e.g. {\"nia\":\"C:\\\\...\\\\bili-nia-home\",\"main\":\"C:\\\\...\\\\bili-main-home\"}.",
+            "default": "",
+            "multiline": true,
+            "advanced": true
+          },
+          "defaultProfile": {
+            "type": "string",
+            "title": "Default profile name",
+            "description": "Optional default key in profiles when tool args omit profile; falls back to cliHome.",
+            "default": "",
+            "advanced": true
           },
           "ffmpegDir": {
             "type": "string",
@@ -61,7 +77,7 @@
       {
         "schemaVersion": 1,
         "name": "bilibili_discover",
-        "description": "Search Bilibili videos or users, inspect hot searches/popular/weekly/precious/rank, get personalized recommendations or read a following timeline. unseen skips videos already watched in this profile.",
+        "description": "Search Bilibili videos or users, inspect UP profiles and video lists (user_info/user_videos), read hot searches/popular/weekly/precious/rank, get personalized recommendations or read a following timeline. unseen skips videos already watched in the selected profile.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -69,6 +85,8 @@
               "enum": [
                 "search",
                 "users",
+                "user_info",
+                "user_videos",
                 "hot",
                 "popular",
                 "weekly",
@@ -103,7 +121,7 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 50,
-              "description": "recommend: at most 30; search/hot/popular/rank/timeline: at most 50."
+              "description": "recommend: at most 30; search/user_videos/hot/popular/rank/timeline: at most 50."
             },
             "cursor": {
               "type": "string",
@@ -152,6 +170,11 @@
             "unseen": {
               "type": "boolean",
               "default": false
+            },
+            "profile": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "description": "Optional named account profile from plugin settings (e.g. nia or main)."
             },
             "reason": {
               "type": "string",
@@ -286,6 +309,11 @@
               "type": "boolean",
               "default": false
             },
+            "profile": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "description": "Optional named account profile from plugin settings (e.g. nia or main)."
+            },
             "reason": {
               "type": "string",
               "maxLength": 500,
@@ -406,6 +434,16 @@
               "type": "string",
               "pattern": "^#?[0-9a-fA-F]{6}$"
             },
+            "expectedMid": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Optional safety lock: require logged-in UID to match before any write."
+            },
+            "profile": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "description": "Optional named account profile from plugin settings (e.g. nia or main)."
+            },
             "reason": {
               "type": "string",
               "maxLength": 500,
@@ -460,6 +498,16 @@
               "maximum": 50,
               "description": "inbox: at most 20 per category; other actions: at most 50."
             },
+            "expectedMid": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Optional safety lock: require logged-in UID to match before any write."
+            },
+            "profile": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "description": "Optional named account profile from plugin settings (e.g. nia or main)."
+            },
             "reason": {
               "type": "string",
               "maxLength": 500,
@@ -481,7 +529,7 @@
       {
         "schemaVersion": 1,
         "name": "bilibili_publish",
-        "description": "Submit one or multiple workspace-local videos, or inspect a submitted archive. submit performs upload and publication in one call; defaults to the AI-content declaration. Unknown outcomes require platform inspection before another submit. Files and symlink targets must be inside the workspace.",
+        "description": "Publish and manage creator works: submit/edit workspace-local videos, inspect archive status/list/stats/zones, manage chapters, post/list/delete dynamics (with images or votes), and manage seasons. submit defaults to AI-content declaration; unknown write outcomes are never retried.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -489,7 +537,21 @@
               "type": "string",
               "enum": [
                 "submit",
-                "status"
+                "status",
+                "list",
+                "stats",
+                "zones",
+                "edit",
+                "chapters_show",
+                "chapters_set",
+                "chapters_clear",
+                "dynamic_post",
+                "dynamic_list",
+                "dynamic_delete",
+                "dynamic_vote",
+                "season_list",
+                "season_create",
+                "season_add"
               ]
             },
             "files": {
@@ -500,6 +562,11 @@
                 "type": "string",
                 "minLength": 1
               }
+            },
+            "video": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Workspace-local replacement video file for edit (single-P archive)."
             },
             "title": {
               "type": "string",
@@ -523,11 +590,26 @@
             "cover": {
               "type": "string",
               "minLength": 1,
-              "description": "Optional workspace-local cover image; otherwise the CLI extracts one with FFmpeg."
+              "description": "Optional workspace-local cover image (required for season_create)."
+            },
+            "cover43": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Optional workspace-local 4:3 mobile cover image for submit or edit."
             },
             "bvid": {
               "type": "string",
               "minLength": 1
+            },
+            "videos": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 50,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Own video BV/av IDs to append for season_add."
             },
             "tid": {
               "type": "integer",
@@ -542,13 +624,144 @@
               "minLength": 1,
               "description": "ISO datetime; platform accepts 2 hours to 15 days ahead."
             },
+            "topic": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Topic name/ID for submit, or numeric topic ID for dynamic_post."
+            },
+            "season": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Season ID for submit or season_add."
+            },
+            "section": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Optional section ID within a season for season_add."
+            },
+            "dynamicText": {
+              "type": "string",
+              "maxLength": 233,
+              "description": "Companion fan dynamic text on submit (max 233 chars)."
+            },
+            "noReprint": {
+              "type": "boolean",
+              "default": false
+            },
             "private": {
               "type": "boolean",
               "default": false
             },
             "aiDeclare": {
               "type": "boolean",
-              "default": true
+              "description": "AI-content declaration (defaults to true on submit; omitted on edit preserves current setting)."
+            },
+            "uploadStatus": {
+              "type": "string",
+              "enum": [
+                "all",
+                "published",
+                "reviewing",
+                "rejected"
+              ],
+              "default": "all"
+            },
+            "page": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "chapters": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 50,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Chapters formatted as \"MM:SS Title\" (first at 0:00) for chapters_set."
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "description": "Dynamic body text for dynamic_post."
+            },
+            "images": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 9,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Workspace-local images (up to 9) for dynamic_post."
+            },
+            "mentions": {
+              "type": "array",
+              "maxItems": 10,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "voteTitle": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "voteOptions": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 20,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "voteMulti": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 1
+            },
+            "voteDays": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30,
+              "default": 7
+            },
+            "dynamicId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "voteId": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "up": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Numeric UID for dynamic_list (defaults to own account)."
+            },
+            "cursor": {
+              "type": "string",
+              "minLength": 1
+            },
+            "expectedMid": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Optional safety lock: require logged-in UID to match before any write."
+            },
+            "profile": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "description": "Optional named account profile from plugin settings (e.g. nia or main)."
             },
             "reason": {
               "type": "string",
@@ -571,7 +784,7 @@
       {
         "schemaVersion": 1,
         "name": "bilibili_account",
-        "description": "Manage the explicitly configured bili-agent profile: login/status/logout, profile (read own profile), set_avatar (workspace-local image), set_sign, set_name, or asr_status. Does not import browser cookies or use an implicit user home.",
+        "description": "Manage explicitly configured bili-agent profiles: login/status/logout (with optional waitSeconds), profiles (list all configured profiles and login states), profile, stats (creator center analytics), following, set_avatar, set_sign, set_name, or asr_status. Never imports browser cookies.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -582,6 +795,9 @@
                 "status",
                 "logout",
                 "profile",
+                "profiles",
+                "stats",
+                "following",
                 "set_avatar",
                 "set_sign",
                 "set_name",
@@ -607,6 +823,43 @@
               "type": "boolean",
               "default": false
             },
+            "waitSeconds": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 180,
+              "default": 0,
+              "description": "Optional QR scan wait seconds for login or status (0 returns immediately)."
+            },
+            "period": {
+              "type": "string",
+              "enum": [
+                "yesterday",
+                "week",
+                "month",
+                "3months"
+              ],
+              "default": "week"
+            },
+            "page": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "expectedMid": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Optional safety lock: require logged-in UID to match before any write."
+            },
+            "profile": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "description": "Optional named account profile from plugin settings (e.g. nia or main)."
+            },
             "reason": {
               "type": "string",
               "maxLength": 500,
@@ -628,10 +881,15 @@
       {
         "schemaVersion": 1,
         "name": "bilibili_diagnose",
-        "description": "Check the installed bili-agent version and ASR dependencies in the explicit profile. Requires bili-agent 1.0.0. No login or external write is started.",
+        "description": "Check the installed bili-agent version and ASR dependencies in the selected explicit profile. Requires bili-agent 1.0.0. No login or external write is started.",
         "parameters": {
           "type": "object",
           "properties": {
+            "profile": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "description": "Optional named account profile from plugin settings (e.g. nia or main)."
+            },
             "reason": {
               "type": "string",
               "maxLength": 500,

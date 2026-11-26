@@ -8,7 +8,7 @@ import { createInterface } from 'node:readline';
 import { definitions } from '../lib/definitions.mjs';
 import { register } from '../entry.mjs';
 import { createBilibiliCore } from '../lib/core.mjs';
-import { createCli } from '../lib/cli.mjs';
+import { createCli, closeAllDaemons, getActiveDaemonPids } from '../lib/cli.mjs';
 
 const root = path.dirname(import.meta.dirname);
 const scratch = path.resolve('.tmp');
@@ -21,6 +21,8 @@ const cases = [
   ['discover', { action: 'precious', unseen: true }, ['hot', 'precious', '--unseen']],
   ['discover', { action: 'rank', zone: 'tech', limit: 15, unseen: true }, ['hot', 'rank', '--zone', 'tech', '--limit', '15', '--unseen']],
   ['discover', { action: 'users', keyword: 'creator' }, ['search', 'user', '--page', '1', '--', 'creator']],
+  ['discover', { action: 'user_info', up: '1245004422' }, ['user', 'info', '--', '1245004422']],
+  ['discover', { action: 'user_videos', up: '1245004422', order: 'views', page: 2, limit: 15, keyword: 'AI' }, ['user', 'videos', '--order', 'views', '--page', '2', '--size', '15', '--keyword', 'AI', '--', '1245004422']],
   ['discover', { action: 'recommend', limit: 5, page: 2, unseen: true }, ['feed', 'recommend', '--count', '5', '--page', '2', '--unseen']],
   ['discover', { action: 'timeline', cursor: '123', up: '456', kind: 'video' }, ['feed', 'timeline', '--type', 'video', '--limit', '20', '--up', '456', '--offset', '123']],
   ['inbox', { action: 'notifications' }, ['feed', 'notifications']],
@@ -49,10 +51,25 @@ const cases = [
   ['inbox', { action: 'read', threadId: '123' }, ['dm', 'read', '--limit', '30', '--', '123']],
   ['inbox', { action: 'mark_read', threadId: '123' }, ['dm', 'read', '--limit', '30', '--mark-read', '--', '123']],
   ['publish', { action: 'status', bvid: 'BV1Q541167Qg' }, ['upload', 'status', '--', 'BV1Q541167Qg']],
+  ['publish', { action: 'list', uploadStatus: 'published', page: 2, limit: 5 }, ['upload', 'list', '--status', 'published', '--page', '2', '--size', '5']],
+  ['publish', { action: 'stats', bvid: 'BV1Q541167Qg' }, ['upload', 'stats', '--', 'BV1Q541167Qg']],
+  ['publish', { action: 'zones' }, ['upload', 'zones']],
+  ['publish', { action: 'chapters_show', bvid: 'BV1Q541167Qg', page: 2 }, ['upload', 'chapters', 'show', '--page', '2', '--', 'BV1Q541167Qg']],
+  ['publish', { action: 'chapters_set', bvid: 'BV1Q541167Qg', chapters: ['00:00 开场', '01:30 实战'] }, ['upload', 'chapters', 'set', '--page', '1', '--chapter', '00:00 开场', '--chapter', '01:30 实战', '--', 'BV1Q541167Qg']],
+  ['publish', { action: 'chapters_clear', bvid: 'BV1Q541167Qg' }, ['upload', 'chapters', 'clear', '--page', '1', '--', 'BV1Q541167Qg']],
+  ['publish', { action: 'dynamic_list', up: '1245004422', cursor: '999' }, ['dynamic', 'list', '--mid', '1245004422', '--offset', '999']],
+  ['publish', { action: 'dynamic_delete', dynamicId: '888888' }, ['dynamic', 'delete', '--', '888888']],
+  ['publish', { action: 'dynamic_vote', voteId: 42 }, ['dynamic', 'vote', '--', '42']],
+  ['publish', { action: 'season_list' }, ['season', 'list']],
+  ['publish', { action: 'season_add', season: 7, section: 9, videos: ['BV1Q541167Qg', 'av123'] }, ['season', 'add', '--section', '9', '--', '7', 'BV1Q541167Qg', 'av123']],
   ['account', { action: 'login' }, ['auth', 'login']],
+  ['account', { action: 'login', waitSeconds: 60 }, ['auth', 'login', '--wait', '60']],
   ['account', { action: 'status' }, ['auth', 'status']],
+  ['account', { action: 'status', waitSeconds: 120 }, ['auth', 'status', '--wait', '120']],
   ['account', { action: 'logout' }, ['auth', 'logout']],
   ['account', { action: 'profile' }, ['me', 'show']],
+  ['account', { action: 'stats', period: 'month' }, ['me', 'stats', '--period', 'month']],
+  ['account', { action: 'following', page: 2, limit: 25 }, ['user', 'following', '--page', '2', '--size', '25']],
   ['account', { action: 'set_sign', sign: 'midnight lab' }, ['me', 'set-sign', '--', 'midnight lab']],
   ['account', { action: 'set_name', name: 'Nia', allowCost: true }, ['me', 'set-name', '--allow-cost', '--', 'Nia']],
   ['account', { action: 'asr_status' }, ['asr', 'status']],
@@ -60,9 +77,13 @@ const cases = [
 
 test('manifest equals native registrations; runtime has no plan/mock-only tools', async () => {
   const manifest = JSON.parse(await readFile(path.join(root, 'kimi.plugin.json'), 'utf8'));
+  assert.equal(manifest.version, '0.2.0');
   assert.deepEqual(manifest['x-kiki'].tools, definitions);
+  assert.deepEqual(manifest['x-kiki'].permissions.exec, ['bili', 'python', 'ffmpeg']);
   const settingsSchema = manifest['x-kiki'].settings.schema;
   assert.equal(settingsSchema.properties.timeoutMs.type, 'number');
+  assert.equal(settingsSchema.properties.profiles.type, 'string');
+  assert.equal(settingsSchema.properties.defaultProfile.type, 'string');
   assert.equal(settingsSchema.properties.timeoutMs.minimum, undefined);
   assert.equal(settingsSchema.additionalProperties, undefined);
   assert.equal(definitions[0].parameters.properties.page.type, 'integer');
@@ -72,8 +93,9 @@ test('manifest equals native registrations; runtime has no plan/mock-only tools'
   register({ registerTool: (d) => actual.push(d) });
   assert.deepEqual(actual, definitions);
   for (const d of definitions) {
-    assert.ok(d.description.length < 600);
+    assert.ok(d.description.length < 600, `${d.name} description length ${d.description.length} >= 600`);
     assert.equal(d.parameters.properties.mode, undefined);
+    assert.equal(d.parameters.properties.profile.type, 'string');
     assert.deepEqual(d.parameters.properties.reason, { type: 'string', maxLength: 500, description: 'Optional brief note on why this tool is being called (ignored at runtime).' });
   }
 });
@@ -94,33 +116,66 @@ async function workspace(t) {
   return dir;
 }
 
-test('real frame provenance, ASR fallback and multi-P upload use production CLI shapes', async (t) => {
+test('real frame provenance, concurrent watch(all), ASR fallback and creator media uploads use production CLI shapes', async (t) => {
   const dir = await workspace(t), calls = [];
+  let inFlight = 0, maxConcurrent = 0;
   const core = createBilibiliCore({ workspaceRoot: dir, cli: async (args, options) => {
     calls.push({ args, options });
-    if (args[1] === 'subtitle') throw Object.assign(new Error('No subtitles'), { code: 'not_found' });
-    if (args[1] === 'frames') return { quality: 'hd', frames: [{ requested_time: 0.5, actual_time: 0.5, path: '/frame.jpg' }] };
-    return { items: [{ from: 0, to: 1, content: 'spoken' }] };
+    inFlight += 1;
+    maxConcurrent = Math.max(maxConcurrent, inFlight);
+    await new Promise((r) => setTimeout(r, 10));
+    try {
+      if (args[1] === 'subtitle') throw Object.assign(new Error('No subtitles'), { code: 'not_found' });
+      if (args[1] === 'frames') return { quality: 'hd', frames: [{ requested_time: 0.5, actual_time: 0.5, path: '/frame.jpg' }] };
+      if (args[0] === 'comment' && args[1] === 'list') return { items: [{ rpid: 99, content: 'nice' }] };
+      return { items: [{ from: 0, to: 1, content: 'spoken' }] };
+    } finally {
+      inFlight -= 1;
+    }
   } });
-  const watched = await core.watch({ action: 'all', video: 'av123', timestamps: [0.5, 1.5] });
+  const watched = await core.watch({ action: 'all', video: 'av123', timestamps: [0.5, 1.5], includeComments: true });
+  assert.ok(maxConcurrent >= 3, `Expected watch(all) fanout concurrency >= 3, got ${maxConcurrent}`);
   assert.equal(watched.transcript.source, 'asr');
   assert.equal(watched.visual.source, 'real-video-stream');
+  assert.equal(watched.comments.items[0].rpid, 99);
   assert.deepEqual(watched.visual.frames[0], { requested_time: 0.5, actual_time: 0.5, path: '/frame.jpg' });
-  assert.ok(calls[2].args.includes('local'));
-  assert.deepEqual(calls[3].args.slice(-6), ['--at', '0.5', '--at', '1.5', '--', 'av123']);
-  await writeFile(path.join(dir, 'a.mp4'), 'fixture'); await writeFile(path.join(dir, 'b.mp4'), 'fixture');
+  const transcribeCall = calls.find((c) => c.args[1] === 'transcribe');
+  const framesCall = calls.find((c) => c.args[1] === 'frames');
+  assert.ok(transcribeCall.args.includes('local'));
+  assert.deepEqual(framesCall.args.slice(-6), ['--at', '0.5', '--at', '1.5', '--', 'av123']);
+
+  await writeFile(path.join(dir, 'a.mp4'), 'fixture');
+  await writeFile(path.join(dir, 'b.mp4'), 'fixture');
   const sent = await core.publish({ action: 'submit', files: ['a.mp4', 'b.mp4'], title: 'title', tags: ['one', 'two'], tid: 1, zone: 2, private: true });
   const last = calls.at(-1);
   assert.equal(last.options.write, true);
   assert.equal(sent.submission, 'accepted');
   assert.deepEqual(last.args.slice(0, 14), ['upload', 'video', '--title', 'title', '--tag', 'one', '--tag', 'two', '--tid', '1', '--zone', '2', '--private', '--ai-declare']);
+
   await writeFile(path.join(dir, 'cover.png'), 'fixture');
-  await core.publish({ action: 'submit', files: ['a.mp4'], cover: 'cover.png', title: 'title', tags: ['one'] });
+  await writeFile(path.join(dir, 'cover43.png'), 'fixture');
+  await core.publish({ action: 'submit', files: ['a.mp4'], cover: 'cover.png', cover43: 'cover43.png', topic: 'AI大赛', season: 12, dynamicText: '新视频！', noReprint: true, title: 'title', tags: ['one'] });
   assert.equal(calls.at(-1).args[5], path.join(dir, 'cover.png'));
+  assert.ok(calls.at(-1).args.includes('--cover43'));
+  assert.ok(calls.at(-1).args.includes('--no-reprint'));
+
+  await core.publish({ action: 'edit', bvid: 'BV1Q541167Qg', title: 'new title', cover: 'cover.png', video: 'b.mp4', aiDeclare: false });
+  assert.deepEqual(calls.at(-1).args, ['upload', 'edit', '--title', 'new title', '--cover', path.join(dir, 'cover.png'), '--no-ai-declare', '--video', path.join(dir, 'b.mp4'), '--', 'BV1Q541167Qg']);
+  assert.equal(calls.at(-1).options.write, true);
+
+  await core.publish({ action: 'dynamic_post', text: 'Vote now', images: ['cover.png'], mentions: ['1245004422'], topic: '99', voteTitle: 'Pick AI topic', voteOptions: ['Agent', 'Video'], voteMulti: 1, voteDays: 3 });
+  assert.deepEqual(calls.at(-1).args, ['dynamic', 'post', '--image', path.join(dir, 'cover.png'), '--topic', '99', '--at', '1245004422', '--vote', 'Pick AI topic', '--option', 'Agent', '--option', 'Video', '--vote-multi', '1', '--vote-days', '3', '--', 'Vote now']);
+  assert.equal(calls.at(-1).options.write, true);
+
+  await core.publish({ action: 'season_create', title: 'AI Series', cover: 'cover.png', description: 'Weekly AI' });
+  assert.deepEqual(calls.at(-1).args, ['season', 'create', '--cover', path.join(dir, 'cover.png'), '--desc', 'Weekly AI', '--', 'AI Series']);
+  assert.equal(calls.at(-1).options.write, true);
+
   await assert.rejects(core.publish({ action: 'submit', files: ['../missing.mp4'], title: 'a', tags: ['a'] }), { code: 'FILE_MISSING' });
   const outside = path.join(scratch, 'bili-outside.mp4');
   await writeFile(outside, 'fixture'); t.after(() => rm(outside, { force: true }));
   await assert.rejects(core.publish({ action: 'submit', files: [outside], title: 'a', tags: ['a'] }), { code: 'PATH_OUTSIDE_WORKSPACE' });
+  await assert.rejects(core.publish({ action: 'dynamic_post', text: 'leak', images: [outside] }), { code: 'PATH_OUTSIDE_WORKSPACE' });
 });
 
 function fakeSpawn({ receipt = { ok: true, data: { rpid: 1 } }, code = 0, error, hang, chunks } = {}) {
@@ -154,6 +209,83 @@ test('CLI process pins an explicit profile, never uses shell and disables donor 
   const bytes = Buffer.from(JSON.stringify({ ok: true, data: { title: '中文标题' } }));
   const splitFixture = fakeSpawn({ chunks: [...bytes].map((value) => Buffer.from([value])) });
   assert.deepEqual(await createCli({ settings: { cliHome: path.resolve('.tmp/profile') }, ...splitFixture })(['video', 'info']), { title: '中文标题' });
+});
+
+test('named profiles, waitSeconds timeout extension, and expectedMid write lock isolate accounts fail-closed', async (t) => {
+  const dir = await workspace(t);
+  const niaHome = path.join(dir, 'nia-home');
+  const mainHome = path.join(dir, 'main-home');
+  await mkdir(niaHome, { recursive: true });
+  await mkdir(mainHome, { recursive: true });
+  await writeFile(path.join(niaHome, 'credential.json'), JSON.stringify({ sessdata: 'nia_sess', bili_jct: 'csrf1', dedeuserid: '1245004422' }));
+
+  const settings = {
+    cliHome: niaHome,
+    profiles: `${`nia=${niaHome}`}\n${`main=${mainHome}`}`,
+    defaultProfile: 'nia',
+    timeoutMs: 5000,
+  };
+
+  const spawned = [];
+  const spawnImpl = (exe, args, options) => {
+    spawned.push({ exe, args, home: options.env.BILI_CLI_HOME });
+    const child = new EventEmitter(); child.stdout = new EventEmitter(); child.stderr = new EventEmitter();
+    child.kill = () => {};
+    queueMicrotask(() => {
+      child.emit('spawn');
+      if (args.includes('status') && options.env.BILI_CLI_HOME === mainHome) {
+        child.stdout.emit('data', Buffer.from(JSON.stringify({ ok: false, error: { code: 'not_logged_in', message: 'not logged in' } })));
+        child.emit('close', 3);
+        return;
+      }
+      child.stdout.emit('data', Buffer.from(JSON.stringify({ ok: true, data: { logged_in: true, user: { mid: 1245004422, name: 'Nia' } } })));
+      child.emit('close', 0);
+    });
+    return child;
+  };
+
+  const core = createBilibiliCore({ settings, workspaceRoot: dir, spawnImpl });
+
+  // Enumerate all profiles without failing on unauthenticated main profile
+  const listed = await core.account({ action: 'profiles' });
+  assert.equal(listed.profiles.length, 3);
+  const niaEntry = listed.profiles.find((p) => p.name === 'nia');
+  const mainEntry = listed.profiles.find((p) => p.name === 'main');
+  assert.equal(niaEntry.active, true);
+  assert.equal(niaEntry.logged_in, true);
+  assert.equal(mainEntry.active, false);
+  assert.equal(mainEntry.logged_in, false);
+  assert.equal(mainEntry.code, 'not_logged_in');
+
+  // Unknown profile or raw path in profile arg fails closed before spawn
+  const beforeCount = spawned.length;
+  await assert.rejects(core.account({ action: 'status', profile: 'unknown' }), (err) => err.code === 'CONFIGURATION' && err.submission === 'not_sent');
+  await assert.rejects(core.account({ action: 'status', profile: mainHome }), (err) => err.code === 'CONFIGURATION' && err.submission === 'not_sent');
+  assert.equal(spawned.length, beforeCount);
+
+  // expectedMid blocks mismatched UID and unauthenticated profile BEFORE any spawn!
+  await assert.rejects(
+    core.interact({ action: 'comment', video: 'BV1Q541167Qg', text: 'hi', profile: 'nia', expectedMid: 999999 }),
+    (err) => err.code === 'ACCOUNT_MISMATCH' && err.submission === 'not_sent',
+  );
+  await assert.rejects(
+    core.interact({ action: 'comment', video: 'BV1Q541167Qg', text: 'hi', profile: 'main', expectedMid: 1245004422 }),
+    (err) => err.code === 'ACCOUNT_MISMATCH' && err.submission === 'not_sent',
+  );
+  assert.equal(spawned.length, beforeCount);
+
+  // Matching expectedMid allows write on niaHome
+  const okComment = await core.interact({ action: 'comment', video: 'BV1Q541167Qg', text: 'hi', profile: 'nia', expectedMid: 1245004422 });
+  assert.equal(okComment.submission, 'accepted');
+  assert.equal(spawned.at(-1).home, niaHome);
+
+  // waitSeconds extends timeout beyond short configured timeoutMs (5000ms -> 75000ms)
+  const cliCalls = [];
+  const mockCore = createBilibiliCore({ settings, cli: async (args, opts) => { cliCalls.push({ args, opts }); return { logged_in: false }; } });
+  await mockCore.account({ action: 'status', profile: 'main', waitSeconds: 60 });
+  assert.deepEqual(cliCalls[0].args, ['auth', 'status', '--wait', '60']);
+  assert.equal(cliCalls[0].opts.timeoutMs, 75000);
+  assert.equal(cliCalls[0].opts.profile, 'main');
 });
 
 test('CLI rejects invalid configured or overridden timeouts before spawning and accepts timer-safe boundaries', async () => {
@@ -199,7 +331,11 @@ test('installed bili-agent parser accepts every generated argument vector with n
   const file = path.join(dir, 'a.mp4'); await writeFile(file, 'fixture');
   const core = createBilibiliCore({ workspaceRoot: dir, cli: async (args) => { commands.push(args); return { quality: 'hd' }; } });
   await writeFile(path.join(dir, 'cover.png'), 'fixture');
-  await core.publish({ action: 'submit', files: ['a.mp4'], cover: 'cover.png', title: 'title', tags: ['tag'], description: 'desc', tid: 1, zone: 2 });
+  await writeFile(path.join(dir, 'cover43.png'), 'fixture');
+  await core.publish({ action: 'submit', files: ['a.mp4'], cover: 'cover.png', cover43: 'cover43.png', topic: 'AI', season: 3, dynamicText: 'hi', noReprint: true, title: 'title', tags: ['tag'], description: 'desc', tid: 1, zone: 2 });
+  await core.publish({ action: 'edit', bvid: 'BV1Q541167Qg', title: 'edited', cover: 'cover.png', video: 'a.mp4', aiDeclare: true });
+  await core.publish({ action: 'dynamic_post', text: 'hello', images: ['cover.png'], mentions: ['123'], topic: '10', voteTitle: 'poll', voteOptions: ['A', 'B'] });
+  await core.publish({ action: 'season_create', title: 'season', cover: 'cover.png', description: 'desc' });
   await core.watch({ action: 'visual', video: 'av123', timestamps: [0.25, 0.5] });
   const result = spawnSync(process.env.BILI_CONTRACT_PYTHON, [path.join(root, 'test/cli-contract.py')], { input: JSON.stringify(commands), encoding: 'utf8', env: { ...process.env, BILI_CLI_HOME: dir, PYTHONUTF8: '1' } });
   assert.equal(result.status, 0, result.stderr + result.stdout);
@@ -207,6 +343,74 @@ test('installed bili-agent parser accepts every generated argument vector with n
   const feedResult = spawnSync(process.env.BILI_CONTRACT_PYTHON, [path.join(root, 'test/feed-contract.py')], { encoding: 'utf8', env: { ...process.env, BILI_CLI_HOME: dir, PYTHONUTF8: '1' } });
   assert.equal(feedResult.status, 0, feedResult.stderr + feedResult.stdout);
   assert.equal(JSON.parse(feedResult.stdout).inbox.replies[0].rpid, 11);
+});
+
+test('warm daemon reuses a single Python worker per profile, kills on write abort, and closes cleanly', { skip: !process.env.BILI_CONTRACT_PYTHON, timeout: 30000 }, async (t) => {
+  t.after(async () => { await closeAllDaemons(); });
+  await closeAllDaemons();
+
+  const dir = await workspace(t);
+  const homeA = path.join(dir, 'profile-a');
+  const homeB = path.join(dir, 'profile-b');
+  await mkdir(homeA, { recursive: true });
+  await mkdir(homeB, { recursive: true });
+
+  const executable = path.join(path.dirname(process.env.BILI_CONTRACT_PYTHON), process.platform === 'win32' ? 'bili.exe' : 'bili');
+  const settings = {
+    biliCliPath: executable,
+    profiles: JSON.stringify({ a: homeA, b: homeB }),
+    defaultProfile: 'a',
+    ffmpegDir: process.env.FFMPEG_PATH || '',
+  };
+
+  const core = createBilibiliCore({ settings, workspaceRoot: dir });
+
+  // Cold boot + warm up daemon for profile 'a'
+  const firstDiag = await core.diagnose({ profile: 'a' });
+  assert.equal(firstDiag.cli.version, '1.0.0');
+  const pidsAfterFirst = getActiveDaemonPids();
+  assert.equal(pidsAfterFirst.length, 1);
+  const pidA = pidsAfterFirst[0].pid;
+
+  // Subsequent warm calls reuse the exact same PID in < 50ms
+  const t0 = performance.now();
+  const secondDiag = await core.diagnose({ profile: 'a' });
+  const warmMs = performance.now() - t0;
+  assert.equal(secondDiag.cli.version, '1.0.0');
+  assert.ok(warmMs < 50, `Expected warm diagnose < 50ms, got ${warmMs.toFixed(2)}ms`);
+  assert.deepEqual(getActiveDaemonPids().map((x) => x.pid), [pidA]);
+
+  // Profile 'b' gets its own isolated daemon process
+  const diagB = await core.diagnose({ profile: 'b' });
+  assert.equal(diagB.cli.version, '1.0.0');
+  const bothPids = getActiveDaemonPids();
+  assert.equal(bothPids.length, 2);
+  const pidB = bothPids.find((x) => x.profileHome === path.resolve(homeB)).pid;
+  assert.notEqual(pidA, pidB);
+
+  // Before-send error (not_logged_in on write) reports submission: 'not_sent' and keeps daemon alive
+  await assert.rejects(
+    core.interact({ action: 'comment', video: 'BV1Q541167Qg', text: 'hello', profile: 'a' }),
+    (err) => err.code === 'not_logged_in' && err.submission === 'not_sent',
+  );
+  assert.ok(getActiveDaemonPids().some((x) => x.pid === pidA));
+
+  // Aborting an in-flight write kills that profile's daemon immediately and reports submission: 'unknown'
+  const abortController = new AbortController();
+  const abortCli = createCli({ settings, workspaceRoot: dir, signal: abortController.signal });
+  const pendingWrite = abortCli(['comment', 'post', '--', 'BV1Q541167Qg', 'abort-me'], { write: true, profile: 'a' });
+  queueMicrotask(() => abortController.abort());
+  await assert.rejects(pendingWrite, (err) => err.code === 'LOCAL_ABORTED' && err.submission === 'unknown');
+  assert.equal(getActiveDaemonPids().some((x) => x.pid === pidA), false, 'Aborted write must evict/kill profile A daemon');
+  assert.equal(getActiveDaemonPids().some((x) => x.pid === pidB), true, 'Profile B daemon remains untouched');
+
+  // Next read on profile 'a' cleanly starts a fresh daemon PID
+  await core.diagnose({ profile: 'a' });
+  const newPidA = getActiveDaemonPids().find((x) => x.profileHome === path.resolve(homeA))?.pid;
+  assert.ok(newPidA && newPidA !== pidA);
+
+  await closeAllDaemons();
+  assert.equal(getActiveDaemonPids().length, 0);
 });
 
 test('notification read effects and current-account comment inspection remain explicit', async () => {
@@ -224,7 +428,6 @@ test('notification read effects and current-account comment inspection remain ex
   assert.deepEqual(calls.at(-1).args, ['comment', 'post', '--type', 'dynamic', '--', '123', 'hello']);
 });
 
-
 test('frames render as image parts with timestamps and original paths; missing images remain visible errors', async (t) => {
   const { renderResult } = await import('../lib/output.mjs');
   const dir = await workspace(t), file = path.join(dir, 'frame.png');
@@ -239,7 +442,6 @@ test('frames render as image parts with timestamps and original paths; missing i
   const missing = await renderResult({ frames: [{ path: path.join(dir, 'missing.jpg') }] }, true);
   assert.match(missing.output[1].text, /Image unavailable/);
 });
-
 
 test('public Host runner registers the plugin, diagnoses its real CLI and reports configuration failures', { skip: !process.env.KIKI_HOST_RUNNER, timeout: 30000 }, async (t) => {
   const dir = await workspace(t);
@@ -269,7 +471,12 @@ test('public Host runner registers the plugin, diagnoses its real CLI and report
   assert.equal(JSON.parse(failed.output).error.code, 'CONFIGURATION');
   if (process.env.BILI_CONTRACT_PYTHON) {
     const executable = path.join(path.dirname(process.env.BILI_CONTRACT_PYTHON), process.platform === 'win32' ? 'bili.exe' : 'bili');
-    const diagnosed = await rpc('execute', { name: 'bilibili_diagnose', args: {}, settings: { biliCliPath: executable, cliHome: dir }, workspaceRoot: dir });
+    const diagnosed = await rpc('execute', {
+      name: 'bilibili_diagnose',
+      args: {},
+      settings: { biliCliPath: executable, cliHome: dir, ffmpegDir: process.env.FFMPEG_PATH || '' },
+      workspaceRoot: dir,
+    });
     assert.equal(diagnosed.isError, undefined);
     assert.equal(JSON.parse(diagnosed.output[0].text).cli.version, '1.0.0');
   }
