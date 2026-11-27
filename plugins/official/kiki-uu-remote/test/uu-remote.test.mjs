@@ -3914,3 +3914,160 @@ test('v0.4.1 SWR topology/device cache, fast listState + stateUpdated, in-place 
 
   closeStream?.();
 });
+
+test('v0.4.1 F1 regression: selectSession during in-flight buildRfbKeyframePacket discards stale A keyframe, keeps subscription on B, and immediately streams B', async (t) => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), 'kiki-uu-f1-race-'));
+  t.after(() => rm(stateDir, { recursive: true, force: true }));
+
+  const SESSION_A = 'vnc:10.0.0.20:5901';
+  const SESSION_B = 'vnc:10.0.0.21:5902';
+
+  let resolveKeyframeA = null;
+  let startedKeyframeAResolve = null;
+  const startedKeyframeA = new Promise((resolve) => { startedKeyframeAResolve = resolve; });
+  let signalAAborted = false;
+  let keyframeASettled = false;
+
+  const activeSubscribers = new Map();
+  const coalescedTargets = [];
+
+  const mockFixture = createMockDriverFixture();
+  const mockRfbDriver = {
+    onResize() {},
+    setVncPassword() {},
+    clearVncPassword() {},
+    requestImmediateUpdate() { return true; },
+    subscribeUpdates(targetOrId, fn) {
+      const id = typeof targetOrId === 'string' ? targetOrId : targetOrId?.id;
+      activeSubscribers.set(id, fn);
+      return () => {
+        if (activeSubscribers.get(id) === fn) activeSubscribers.delete(id);
+      };
+    },
+    async ensureConnected() {
+      return { client: { name: 'RaceRFB', width: 128, height: 96 }, framebuffer: { width: 128, height: 96 } };
+    },
+    async getSessionCapabilities(target) {
+      const id = typeof target === 'string' ? target : target?.id;
+      return { connected: true, unicodeClipboard: true, extendedClipboard: true, qemuExtendedKeyEvent: true, width: id === SESSION_B ? 320 : 128, height: 96, name: id };
+    },
+    async buildKeyframePacket(target, opts = {}) {
+      const id = typeof target === 'string' ? target : target?.id;
+      if (id === SESSION_A) {
+        opts?.signal?.addEventListener?.('abort', () => { signalAAborted = true; }, { once: true });
+        startedKeyframeAResolve?.();
+        await new Promise((resolve) => { resolveKeyframeA = resolve; });
+        keyframeASettled = true;
+        const pktA = Buffer.alloc(16);
+        pktA[0] = DIRTY_FRAME_MAGIC;
+        pktA[1] = 1;
+        pktA.writeUInt16BE(128, 6);
+        pktA.writeUInt16BE(96, 8);
+        return { packet: pktA, width: 128, height: 96, frameSeq: 1 };
+      }
+      const pktB = Buffer.alloc(16);
+      pktB[0] = DIRTY_FRAME_MAGIC;
+      pktB[1] = 1;
+      pktB.writeUInt16BE(320, 6);
+      pktB.writeUInt16BE(96, 8);
+      return { packet: pktB, width: 320, height: 96, frameSeq: 1 };
+    },
+    buildCoalescedBoundsPacket(target, bounds) {
+      const id = typeof target === 'string' ? target : target?.id;
+      coalescedTargets.push(id);
+      const pkt = Buffer.alloc(16);
+      pkt[0] = DIRTY_FRAME_MAGIC;
+      pkt[1] = 0;
+      pkt.writeUInt16BE(bounds.width || 1, 6);
+      return pkt;
+    },
+    async captureRgba() {
+      const data = new Uint8Array(128 * 96 * 4);
+      return { width: 128, height: 96, data, image: { width: 128, height: 96, data }, frameSeq: 1, stageBounds: { x: 0, y: 0, width: 128, height: 96 } };
+    },
+    async executeActions() { return { ok: true, executed: 0, results: [] }; },
+    async disconnectTarget() {},
+    async dispose() {},
+  };
+
+  const svc = createUuRemoteService({
+    stateDir,
+    systemDriver: mockFixture.driver,
+    rfbDriver: mockRfbDriver,
+    cliClient: {
+      listDevices: async () => ({ ok: true, devices: [] }),
+      getVersion: async () => ({ available: true, path: 'uuyc-cli.exe', version: '1.0.0' }),
+    },
+  });
+  const previewService = createUuPreviewService({ uuService: svc });
+  t.after(async () => {
+    await previewService.dispose();
+    await svc.dispose();
+  });
+
+  await previewService.performAction({ action: 'connectVnc', vncHost: '10.0.0.20', vncPort: 5901, label: 'Session A' });
+  await previewService.performAction({ action: 'connectVnc', vncHost: '10.0.0.21', vncPort: 5902, label: 'Session B' });
+
+  const binaryPackets = [];
+  const textMsgs = [];
+  let onTextCb = null;
+  let closeStream = null;
+
+  await previewService.openPanelStream(
+    'screen',
+    { sessionId: SESSION_A, fps: 24, maxWidth: 1280 },
+    {
+      sendBinary(buf) { binaryPackets.push(Buffer.from(buf)); },
+      sendText(txt) { textMsgs.push(JSON.parse(txt)); },
+      onClose(fn) { closeStream = fn; },
+      onText(fn) { onTextCb = fn; },
+    },
+    {},
+  );
+
+  // Wait until Session A is suspended inside buildRfbKeyframePacket
+  await startedKeyframeA;
+  assert.equal(binaryPackets.length, 0);
+
+  // Mid-flight selectSession to Session B BEFORE A resolves
+  onTextCb?.(JSON.stringify({ type: 'selectSession', sessionId: SESSION_B }));
+
+  // B's keyframe (width=320) must arrive immediately even while A is still unresolved
+  const dlB = Date.now() + 800;
+  while (binaryPackets.length < 1 && Date.now() < dlB) {
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  assert.equal(signalAAborted, true, 'Switching sessions must abort in-flight Session A capture signal');
+  assert.equal(binaryPackets.length, 1, 'Session B keyframe must arrive promptly while A is still pending');
+  assert.equal(binaryPackets[0].readUInt16BE(6), 320, 'First binary packet must be Session B (width 320), not A');
+  assert.ok(textMsgs.some((m) => m.type === 'telemetry' && m.sessionId === SESSION_B));
+  assert.equal(textMsgs.some((m) => m.sessionId === SESSION_A), false, 'Stale Session A must not emit telemetry');
+
+  // Now resolve Session A's late promise -> must be completely discarded without overwriting B's subscription or sending A's packet!
+  resolveKeyframeA?.();
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(keyframeASettled, true);
+  assert.equal(binaryPackets.length, 1, 'Late-resolving Session A keyframe must NEVER be sent after switching to B');
+  assert.equal(textMsgs.some((m) => m.sessionId === SESSION_A), false, 'Late-resolving Session A must NEVER emit telemetry');
+  assert.equal(activeSubscribers.has(SESSION_A), false, 'RFB subscription must NOT be rebound to stale Session A');
+  assert.equal(activeSubscribers.has(SESSION_B), true, 'RFB subscription must remain bound to Session B');
+
+  // Confirm live dirty updates on Session B continue flowing cleanly
+  activeSubscribers.get(SESSION_B)?.({
+    targetId: SESSION_B,
+    frameSeq: 2,
+    width: 320,
+    height: 96,
+    rects: null,
+    dirtyBounds: { x: 0, y: 0, width: 64, height: 64 },
+    resized: false,
+  });
+  const dlDirtyB = Date.now() + 400;
+  while (binaryPackets.length < 2 && Date.now() < dlDirtyB) {
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  assert.ok(binaryPackets.length >= 2, 'Session B dirty updates must keep streaming after stale A resolves');
+  assert.ok(coalescedTargets.includes(SESSION_B));
+
+  closeStream?.();
+});

@@ -1725,9 +1725,11 @@ test('v0.1.5: rapid nudgeFrame never drops frames (targetEpoch vs nudgeRequested
   const fakeJpegBytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0xff, 0xd9]);
   let captureIdx = 0;
   const requestedFormats = [];
+  const localCaptureSignals = [];
 
-  mockLocal.capture = async (params) => {
+  mockLocal.capture = async (params, opts) => {
     requestedFormats.push(params.format || 'png');
+    if (opts?.signal) localCaptureSignals.push(opts.signal);
     captureIdx += 1;
     await new Promise((r) => setTimeout(r, 35));
     const isJpeg = params.format === 'jpeg';
@@ -1750,6 +1752,7 @@ test('v0.1.5: rapid nudgeFrame never drops frames (targetEpoch vs nudgeRequested
 
   let slowObserveStartedResolve = null;
   const slowObserveStarted = new Promise((resolve) => { slowObserveStartedResolve = resolve; });
+  const remoteObserveReqs = [];
 
   const providerServer = await createCuaProviderServer({
     providerId: 'kiki-slow-test',
@@ -1771,6 +1774,7 @@ test('v0.1.5: rapid nudgeFrame never drops frames (targetEpoch vs nudgeRequested
         }];
       },
       async observe(req, ctx) {
+        remoteObserveReqs.push({ format: req.format, quality: req.quality });
         slowObserveStartedResolve?.();
         await new Promise((resolve) => {
           const t = setTimeout(resolve, 4_000);
@@ -1869,6 +1873,12 @@ test('v0.1.5: rapid nudgeFrame never drops frames (targetEpoch vs nudgeRequested
     const switchBackMs = performance.now() - switchBackT0;
     assert.ok(binaryFrames.length > framesBeforeSwitchBack, 'Switching away from slow remote must deliver local frame immediately');
     assert.ok(switchBackMs < 600, `Switch back from slow 4s remote must abort immediately, took ${switchBackMs.toFixed(1)}ms`);
+    assert.equal(remoteObserveReqs[0]?.format, 'jpeg', 'Remote CUA provider stream observe must forward format: "jpeg"');
+    assert.equal(remoteObserveReqs[0]?.quality, 82, 'Remote CUA provider stream observe must forward quality: 82');
+    assert.ok(
+      localCaptureSignals.length > 0 && localCaptureSignals.every((sig) => !sig.aborted),
+      'Local capture must use session.signal (not captureAbort) so selectTarget never kills warm Win32 C# worker',
+    );
 
     // 6. setPaused halts frame pushes until resumed
     opened.onText(JSON.stringify({ type: 'setPaused', paused: true }));

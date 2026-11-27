@@ -579,6 +579,7 @@ export function createCuaService({
     quality = 80,
     context = null,
     signal = null,
+    localSignal = undefined,
     recordObservation = true,
     fastTargetLookup = false,
   } = {}) {
@@ -603,6 +604,9 @@ export function createCuaService({
         zoom: zoom || undefined,
         coordinateMode: mode,
         includeAccessibility: Boolean(includeAccessibility),
+        ...(overlay !== 'grid' && normalizedFormat === 'jpeg'
+          ? { format: 'jpeg', quality: clampedQuality }
+          : {}),
       }, { signal });
 
       let imageBase64 = obs.imageBase64;
@@ -644,6 +648,7 @@ export function createCuaService({
         providerId: target.providerId,
         capturedAtMs,
         mimeType,
+        pixelHash: obs.pixelHash || undefined,
         imageBase64,
         imageSize,
         logicalSize,
@@ -688,7 +693,7 @@ export function createCuaService({
       includeAccessibility: Boolean(includeAccessibility),
       format: normalizedFormat,
       quality: clampedQuality,
-    }, { signal });
+    }, { signal: localSignal !== undefined ? localSignal : signal });
 
     const capturedAtMs = Date.now();
     const actualMimeType = rawShot.mimeType || 'image/png';
@@ -1614,6 +1619,7 @@ export function createCuaService({
           quality: 82,
           context,
           signal: captureSignal,
+          localSignal: session.signal,
           recordObservation: false,
           fastTargetLookup: true,
         });
@@ -1693,11 +1699,7 @@ export function createCuaService({
         }
         if (targetEpoch === epochAtStart) {
           inFlight = false;
-        }
-        if (!closed && !paused && !session.signal?.aborted) {
-          if (targetEpoch !== epochAtStart) {
-            if (!inFlight && !loopTimer) scheduleNextFrame(0);
-          } else {
+          if (!closed && !paused && !session.signal?.aborted) {
             const nextDelay = nudgeRequested ? 16 : intervalMs;
             scheduleNextFrame(nextDelay);
           }
