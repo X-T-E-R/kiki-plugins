@@ -215,12 +215,20 @@ export function createUuycCliClient({
   fileExists = existsSync,
   executeFile = defaultExecFile,
   staticCacheTtlMs = 60_000,
+  deviceFreshTtlMs = 15_000,
+  deviceStaleTtlMs = 120_000,
   nowFn = Date.now,
 } = {}) {
   const cliCache = new Map();
   const cliFlights = new Map();
   const versionCache = new Map();
   const versionFlights = new Map();
+  const deviceCache = new Map();
+  const deviceFlights = new Map();
+
+  function invalidateDeviceCache() {
+    deviceCache.clear();
+  }
 
   function settingsKey(settings = {}) {
     return `${String(settings?.cliPath ?? '').trim()}|${String(settings?.executablePath ?? '').trim()}`;
@@ -320,7 +328,7 @@ export function createUuycCliClient({
     }
   }
 
-  async function listDevices(settings = {}, opts = {}) {
+  async function fetchDevicesLive(settings = {}, opts = {}) {
     const found = await resolveCli(settings);
     if (!found.available || !found.path) {
       return { ok: false, available: false, devices: [], connections: null };
@@ -370,6 +378,48 @@ export function createUuycCliClient({
     };
   }
 
+  function startDeviceRefresh(key, settings, opts = {}) {
+    let flight = deviceFlights.get(key);
+    if (!flight) {
+      flight = fetchDevicesLive(settings, opts)
+        .then((value) => {
+          if (deviceFreshTtlMs > 0 || deviceStaleTtlMs > 0) {
+            deviceCache.set(key, { at: nowFn(), value });
+          }
+          return value;
+        })
+        .finally(() => {
+          if (deviceFlights.get(key) === flight) deviceFlights.delete(key);
+        });
+      flight.catch(() => {});
+      deviceFlights.set(key, flight);
+    }
+    return flight;
+  }
+
+  async function listDevices(settings = {}, opts = {}) {
+    const key = settingsKey(settings);
+    const cached = deviceCache.get(key);
+    if (!opts.force && cached) {
+      const age = nowFn() - cached.at;
+      if (age < deviceFreshTtlMs) {
+        return cached.value;
+      }
+      if (age < deviceStaleTtlMs) {
+        startDeviceRefresh(key, settings, { timeoutMs: opts.timeoutMs });
+        return cached.value;
+      }
+    }
+    if (opts.force) {
+      const value = await fetchDevicesLive(settings, opts);
+      if (deviceFreshTtlMs > 0 || deviceStaleTtlMs > 0) {
+        deviceCache.set(key, { at: nowFn(), value });
+      }
+      return value;
+    }
+    return startDeviceRefresh(key, settings, opts);
+  }
+
   async function listTerminals(deviceId, settings = {}, opts = {}) {
     const safeId = assertSafeDeviceId(deviceId, 'term ls');
     const found = await resolveCli(settings);
@@ -404,6 +454,7 @@ export function createUuycCliClient({
       timeoutMs: opts.timeoutMs ?? 20000,
       signal: opts.signal,
     });
+    invalidateDeviceCache();
     return { ok: true, deviceId: safeId, path: found.path, result: data };
   }
 
@@ -419,6 +470,7 @@ export function createUuycCliClient({
       timeoutMs: opts.timeoutMs ?? 15000,
       signal: opts.signal,
     });
+    invalidateDeviceCache();
     return { ok: true, deviceId: safeId, path: found.path, result: data };
   }
 
@@ -427,6 +479,7 @@ export function createUuycCliClient({
     getVersion,
     getStatus,
     listDevices,
+    invalidateDeviceCache,
     listTerminals,
     connectDevice,
     disconnectDevice,

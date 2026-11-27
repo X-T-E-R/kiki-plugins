@@ -162,6 +162,7 @@ test('createPanelClient enforces RPC timeout, cleans up pending requests, and ma
 
   let inited = false;
   let presented = null;
+  const visibilityEvents = [];
   const client = createPanelClient({
     windowObj: winObj,
     parentObj,
@@ -169,23 +170,48 @@ test('createPanelClient enforces RPC timeout, cleans up pending requests, and ma
     autoApplyPresentation: false,
     onInit: () => { inited = true; },
     onPresentation: (pres) => { presented = pres; },
+    onVisibility: (vis, data) => { visibilityEvents.push({ vis, kind: data.kind }); },
   });
 
   assert.equal(DEFAULT_RPC_TIMEOUT_MS, 20_000);
   assert.equal(client.isReady(), false);
+  assert.equal(client.isVisible(), true);
 
-  // Deliver init with presentation + origin
+  // Deliver init with presentation + origin + visible: false
   for (const fn of listeners) {
     fn({
       source: parentObj,
       origin: 'https://kiki.local',
-      data: { channel: PANEL_CHANNEL, kind: 'init', presentation: { theme: 'dark', tokens: { '--color-canvas': '#141413' } } },
+      data: { channel: PANEL_CHANNEL, kind: 'init', visible: false, presentation: { theme: 'dark', tokens: { '--color-canvas': '#141413' } } },
     });
   }
   assert.equal(inited, true);
   assert.equal(client.isReady(), true);
+  assert.equal(client.isVisible(), false);
   assert.equal(client.getOrigin(), 'https://kiki.local');
   assert.equal(presented.theme, 'dark');
+
+  // Visibility event toggles isVisible() and fires onVisibility(visible, data, event)
+  for (const fn of listeners) {
+    fn({
+      source: parentObj,
+      origin: 'https://kiki.local',
+      data: { channel: PANEL_CHANNEL, kind: 'visibility', visible: true },
+    });
+  }
+  assert.equal(client.isVisible(), true);
+  for (const fn of listeners) {
+    fn({
+      source: parentObj,
+      origin: 'https://kiki.local',
+      data: { channel: PANEL_CHANNEL, kind: 'visibility', visible: false },
+    });
+  }
+  assert.equal(client.isVisible(), false);
+  assert.deepEqual(visibilityEvents, [
+    { vis: true, kind: 'visibility' },
+    { vis: false, kind: 'visibility' },
+  ]);
 
   // Successful RPC
   const callPromise = client.call('status', { probe: true });

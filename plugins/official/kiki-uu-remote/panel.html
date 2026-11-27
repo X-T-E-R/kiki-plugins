@@ -1208,6 +1208,7 @@
       let seq = 0;
       let parentOrigin = '';
       let ready = false;
+      let visible = true;
       let disposed = false;
       const pending = new Map();
 
@@ -1258,8 +1259,17 @@
           return;
         }
 
+        if (data.kind === 'visibility') {
+          visible = data.visible !== false;
+          if (typeof options.onVisibility === 'function') {
+            options.onVisibility(visible, data, event);
+          }
+          return;
+        }
+
         if (data.kind === 'init') {
           ready = true;
+          visible = data.visible !== false;
           if (data.presentation || data.theme || data.colorScheme || data.tokens || data.locale) {
             handlePresentation(data, event);
           }
@@ -1376,6 +1386,7 @@
         openStream: (stream, args = {}, opts = {}) =>
           request('plugin.openStream', { stream, args }, { timeoutMs: 4000, ...opts, withPort: true }),
         isReady: () => ready,
+        isVisible: () => visible,
         isStandalone,
         getOrigin: () => parentOrigin,
         pendingCount: () => pending.size,
@@ -2904,13 +2915,15 @@
   let dirtyFrameChain = Promise.resolve();
 
   const savedKeyMode = safeStorage.get('uu.keyMode');
+  const savedSessionId = safeStorage.get('uu.selectedSessionId') || null;
   const state = {
     sessions: [],
-    selectedSessionId: null,
+    selectedSessionId: savedSessionId,
     lastRenderedSessionId: null,
     pairedDevices: [],
     offscreenCount: 0,
     live: true,
+    hostVisible: true,
     grid: safeStorage.get('uu.grid') === '1',
     keyModePref: savedKeyMode === 'raw' || savedKeyMode === 'compose' ? savedKeyMode : 'auto',
     logicalSize: { width: 1920, height: 1080 },
@@ -3065,6 +3078,33 @@
 
   applyGridUi();
 
+  function syncVisibilityPause() {
+    const hidden = !state.hostVisible || document.hidden;
+    if (hidden) {
+      if (state.streamActive && state.streamPort) {
+        try {
+          state.streamPort.postMessage(JSON.stringify({ type: 'configure', paused: true }));
+        } catch {}
+      }
+      if (state.pollTimer) {
+        clearTimeout(state.pollTimer);
+        state.pollTimer = null;
+      }
+    } else if (state.live) {
+      if (state.streamActive && state.streamPort) {
+        try {
+          state.streamPort.postMessage(JSON.stringify({ type: 'configure', paused: false }));
+        } catch {}
+      } else {
+        const sel = currentSession();
+        if (sel && sel.state === 'active') {
+          state.pollErrorStreak = 0;
+          void startLiveForSession(sel);
+        }
+      }
+    }
+  }
+
   const bridge = createPanelClient({
     defaultTimeoutMs: 15000,
     timeoutMessage: 'Panel request timed out',
@@ -3073,11 +3113,17 @@
     onPresentation: (pres, data) => {
       applyPresentation(pres, { fallbackTheme: data?.theme });
     },
+    onVisibility: (visible) => {
+      state.hostVisible = visible !== false;
+      syncVisibilityPause();
+    },
     onInit: (data) => {
+      state.hostVisible = data?.visible !== false;
       applyPresentation(data.presentation || data, { fallbackTheme: data.theme });
       if (!booted) {
-        booted = true;
-        void refreshState();
+        void boot();
+      } else {
+        syncVisibilityPause();
       }
     },
   });
@@ -3715,10 +3761,10 @@
 
   async function startPollingFallback(gen, sessionId) {
     if (gen !== state.streamGen || !state.live) return;
-    if (!document.hidden) {
+    if (state.hostVisible && !document.hidden) {
       await captureSingleFrame(sessionId);
     }
-    if (gen === state.streamGen && state.live && !document.hidden) {
+    if (gen === state.streamGen && state.live && state.hostVisible && !document.hidden) {
       const delayMs = POLL_BACKOFF_MS[Math.min(POLL_BACKOFF_MS.length - 1, state.pollErrorStreak)] || POLL_INTERVAL_MS;
       state.pollTimer = setTimeout(() => {
         void startPollingFallback(gen, sessionId);
@@ -3742,7 +3788,7 @@
           sessionId: session.id,
           maxWidth: 1280,
           maxHeight: 820,
-          fps: 30,
+          fps: 24,
         });
         if (gen !== state.streamGen) {
           port?.close?.();
@@ -3753,18 +3799,26 @@
           state.streamActive = true;
           state.expectedFrameSeq = null;
           state.awaitingKeyframe = false;
+          if (result?.sessionId && !state.selectedSessionId) {
+            state.selectedSessionId = result.sessionId;
+            safeStorage.set('uu.selectedSessionId', result.sessionId);
+          }
           if (result?.transport) {
             state.transport = result.transport;
             updateTelemetry();
           }
+          if (!state.hostVisible || document.hidden) {
+            try { port.postMessage(JSON.stringify({ type: 'configure', paused: true })); } catch {}
+          }
           port.onmessage = (ev) => {
             if (gen !== state.streamGen) return;
+            const activeSid = state.selectedSessionId || session.id;
             const d = ev.data;
             if (d instanceof ArrayBuffer && d.byteLength >= 12) {
               const dv = new DataView(d);
               const magic0 = dv.getUint8(0);
               if (magic0 === DIRTY_FRAME_MAGIC) {
-                enqueueDirtyRectFrame(d, gen, session.id);
+                enqueueDirtyRectFrame(d, gen, activeSid);
                 return;
               }
               if (d.byteLength > 16 && magic0 === STREAM_MAGIC_0 && dv.getUint8(1) === STREAM_MAGIC_1) {
@@ -3790,18 +3844,24 @@
             if (!msg || typeof msg !== 'object') return;
             if (msg.__kikiStreamEvent === 'close') {
               state.streamActive = false;
-              void startPollingFallback(gen, session.id);
+              if (state.live && state.hostVisible && !document.hidden) {
+                void startPollingFallback(gen, activeSid);
+              }
+              return;
+            }
+            if (msg.type === 'stateUpdated' && msg.state && msg.state.ok) {
+              applyStatePayload(msg.state);
               return;
             }
             if (msg.type === 'remoteClipboard' && typeof msg.text === 'string') {
-              if (!msg.sessionId || msg.sessionId === session.id) {
+              if (!msg.sessionId || msg.sessionId === activeSid) {
                 el.textInput.value = msg.text;
                 clipboardBridge.notifyRemoteClipboard(msg.text);
               }
               return;
             }
             if (msg.type === 'telemetry') {
-              if (msg.sessionId && session.id && msg.sessionId !== session.id) return;
+              if (msg.sessionId && activeSid && msg.sessionId !== activeSid) return;
               if (msg.transport) state.transport = msg.transport;
               if (msg.capabilities && typeof msg.capabilities === 'object') {
                 state.capabilities = msg.capabilities;
@@ -3958,21 +4018,42 @@
     state.contentTrimmed = Boolean(sel.contentTrimmed);
     layoutMonitorFrame();
     updateTelemetry();
-    if (sessionChanged || !state.streamActive) {
+    if (sessionChanged) {
+      if (state.streamActive && state.streamPort) {
+        try {
+          state.expectedFrameSeq = null;
+          state.awaitingKeyframe = false;
+          state.streamPort.postMessage(JSON.stringify({ type: 'selectSession', sessionId: sel.id }));
+        } catch {
+          void startLiveForSession(sel);
+        }
+      } else {
+        void startLiveForSession(sel);
+      }
+    } else if (!state.streamActive) {
       void startLiveForSession(sel);
     }
   }
 
-  async function refreshState() {
+  function applyStatePayload(res) {
+    if (!res || !res.ok) return;
+    state.sessions = Array.isArray(res.sessions) ? res.sessions : [];
+    const nextSelected = res.selectedSessionId || (state.sessions[0]?.id ?? null);
+    state.selectedSessionId = nextSelected;
+    if (nextSelected) {
+      safeStorage.set('uu.selectedSessionId', nextSelected);
+    }
+    if (Array.isArray(res.pairedDevices)) {
+      state.pairedDevices = res.pairedDevices;
+    }
+    state.offscreenCount = Number(res.offscreenCount) || 0;
+    renderUi();
+  }
+
+  async function refreshState({ fast = false, force = false } = {}) {
     try {
-      const res = await panelCall('state', { includeDevices: true });
-      if (res && res.ok) {
-        state.sessions = Array.isArray(res.sessions) ? res.sessions : [];
-        state.selectedSessionId = res.selectedSessionId || (state.sessions[0]?.id ?? null);
-        state.pairedDevices = Array.isArray(res.pairedDevices) ? res.pairedDevices : [];
-        state.offscreenCount = Number(res.offscreenCount) || 0;
-        renderUi();
-      }
+      const res = await panelCall('state', { includeDevices: true, fast: Boolean(fast), force: Boolean(force) });
+      applyStatePayload(res);
     } catch (err) {
       setStatus(err.message || 'Failed to read UU Remote state', 'error');
     }
@@ -4450,12 +4531,13 @@
     }
   });
 
-  el.sessionSelect.addEventListener('change', async () => {
+  el.sessionSelect.addEventListener('change', () => {
     const nextId = el.sessionSelect.value;
     if (!nextId) return;
     state.selectedSessionId = nextId;
-    await panelCall('action', { action: 'select', sessionId: nextId }).catch(() => {});
-    await refreshState();
+    safeStorage.set('uu.selectedSessionId', nextId);
+    renderUi();
+    void panelCall('action', { action: 'select', sessionId: nextId }).catch(() => {});
   });
 
   el.takeoverBtn.addEventListener('click', () => {
@@ -4511,8 +4593,8 @@
     setStatus(state.live ? (isZh ? '实时画面' : 'Streaming') : (isZh ? '已暂停' : 'Paused'), state.takeoverActive ? 'locked' : 'normal');
   });
 
-  el.refreshBtn.addEventListener('click', () => void refreshState());
-  el.rescanBtn.addEventListener('click', () => void refreshState());
+  el.refreshBtn.addEventListener('click', () => void refreshState({ force: true }));
+  el.rescanBtn.addEventListener('click', () => void refreshState({ force: true }));
 
   el.openClientBtn.addEventListener('click', async () => {
     try {
@@ -4712,41 +4794,25 @@
   }
 
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      if (state.streamActive && state.streamPort) {
-        try {
-          state.streamPort.postMessage(JSON.stringify({ type: 'configure', paused: true }));
-        } catch {}
-      }
-      if (state.pollTimer) {
-        clearTimeout(state.pollTimer);
-        state.pollTimer = null;
-      }
-    } else if (state.live) {
-      if (state.streamActive && state.streamPort) {
-        try {
-          state.streamPort.postMessage(JSON.stringify({ type: 'configure', paused: false }));
-        } catch {}
-      } else {
-        const sel = currentSession();
-        if (sel && sel.state === 'active') {
-          state.pollErrorStreak = 0;
-          void startLiveForSession(sel);
-        }
-      }
-    }
+    syncVisibilityPause();
   });
 
   window.addEventListener('pagehide', () => {
     stopLiveTransport();
   });
 
-  setTimeout(() => {
-    if (!booted) {
-      booted = true;
-      void refreshState();
+  async function boot() {
+    if (booted) return;
+    booted = true;
+    const tasks = [refreshState({ fast: true })];
+    if (savedSessionId && state.live) {
+      tasks.push(startLiveForSession({ id: savedSessionId, state: 'active' }));
     }
-  }, 120);
+    await Promise.all(tasks);
+    void refreshState({ fast: false });
+  }
+
+  void boot();
 })();
 </script>
 </body>

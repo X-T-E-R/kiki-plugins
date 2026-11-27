@@ -85,6 +85,8 @@ export function createScrcpyManager(options?: {
   ensureServer?: typeof ensureScrcpyServer;
   fetchImpl?: typeof fetch;
   allowDownload?: boolean;
+  onRemoteClipboard?: (event: { serial: string; text: string }) => void;
+  hubIdleTtlMs?: number;
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
 }): {
@@ -96,6 +98,14 @@ export function createScrcpyManager(options?: {
   warmControl(options: {
     adbBinary?: string;
     serial: string;
+    fallbackSize?: { width: number; height: number };
+  }): void;
+  warmVideoStream(options: {
+    adbBinary?: string;
+    serial: string;
+    maxFps?: number;
+    maxWidth?: number;
+    bitRate?: number;
     fallbackSize?: { width: number; height: number };
   }): void;
   openVideoStream(

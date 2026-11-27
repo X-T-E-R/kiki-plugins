@@ -301,7 +301,8 @@ test('manifest, sync-manifest --check, validateRegistration, packageFiles, and r
 
   const manifest = JSON.parse(await readFile(path.join(PLUGIN_ROOT, 'kimi.plugin.json'), 'utf8'));
   assert.equal(manifest.name, 'kiki-uu-remote');
-  assert.equal(manifest.version, '0.4.0');
+  assert.equal(manifest.version, '0.4.1');
+  assert.equal(entryModule.__FAST_PANEL_BOOT_V2__, true);
   assert.equal(manifest.license, 'MIT');
   assert.equal(manifest['x-kiki'].activation, 'app');
   assert.deepEqual(manifest['x-kiki'].tools, definitions);
@@ -3086,7 +3087,7 @@ test('v0.3.0 VNC host whitelist (B1), normalizeSessionId, and preview-service st
   fakeNow += 5_000;
   await new Promise((r) => setTimeout(r, 80));
   assert.equal(binaryPackets.length, 1, 'Static RFB screen must skip resending identical binary PNGs');
-  assert.equal(topoCountBefore, 1, 'Remote VNC/PVE stream must NOT re-run inspectTopology every 3s');
+  assert.equal(topoCountBefore, 0, 'Explicit remote VNC/PVE stream must skip inspectTopology completely');
 
   // Trigger RFB dirty rect with new pixel color -> pushes 2nd binary frame immediately!
   rfbColor = [230, 60, 40];
@@ -3707,4 +3708,209 @@ test('v0.4.0: pve-qmp-driver uses mshta clipboard bridge on legacy Windows XP (N
     assert.equal(res.ok, true);
   }
   assert.equal(diskReadCount, readsAfterWarm, 'Hot controlSession calls must not re-read state JSON from disk');
+});
+
+test('v0.4.1 SWR topology/device cache, fast listState + stateUpdated, in-place selectSession, and active RFB dirtyBounds coalescing', async (t) => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), 'kiki-uu-v041-'));
+  t.after(() => rm(stateDir, { recursive: true, force: true }));
+
+  // 1. uuyc-cli listDevices SWR cache & invalidation
+  let cliListCalls = 0;
+  const cli = createUuycCliClient({
+    fileExists: (p) => String(p).includes('uuyc-cli'),
+    executeFile: async (_bin, args) => {
+      if (args[0] === 'device' && args[1] === 'list') {
+        cliListCalls += 1;
+        return {
+          stdout: JSON.stringify({ devices: [{ id: 'dev-1', name: 'Rig-A', online: true }] }),
+          stderr: '',
+        };
+      }
+      if (args[0] === 'device' && args[1] === 'status') {
+        return { stdout: JSON.stringify({ connections: [] }), stderr: '' };
+      }
+      return { stdout: '{}', stderr: '' };
+    },
+  });
+  const cliSettings = { cliPath: 'C:\\mock\\uuyc-cli.exe' };
+  const list1 = await cli.listDevices(cliSettings);
+  const list2 = await cli.listDevices(cliSettings);
+  assert.equal(list1.ok, true);
+  assert.equal(list2.ok, true);
+  assert.equal(cliListCalls, 1, 'listDevices must reuse fresh SWR cache');
+  cli.invalidateDeviceCache();
+  await cli.listDevices(cliSettings);
+  assert.equal(cliListCalls, 2, 'invalidateDeviceCache must force fresh CLI query');
+
+  // 2. SWR topology cache, fast listState + stateUpdated broadcast, in-place selectSession, active RFB rects:null dirtyBounds flush & nudge
+  let topoInspectCalls = 0;
+  let immediateUpdateCalls = 0;
+  let dirtyListener = null;
+  let activeColor = [30, 80, 160];
+  let fakeNow = 2_000_000;
+
+  const mockFixture = createMockDriverFixture();
+  const baseInspect = mockFixture.driver.inspectTopology;
+  mockFixture.driver.inspectTopology = async () => {
+    topoInspectCalls += 1;
+    await new Promise((r) => setTimeout(r, 25));
+    return baseInspect();
+  };
+
+  let coalescedPacketCalls = 0;
+  const mockRfbDriver = {
+    onResize() {},
+    setVncPassword() {},
+    clearVncPassword() {},
+    requestImmediateUpdate() {
+      immediateUpdateCalls += 1;
+      return true;
+    },
+    subscribeUpdates(_id, fn) {
+      dirtyListener = fn;
+      return () => { dirtyListener = null; };
+    },
+    async ensureConnected() {
+      return { client: { name: 'MockRFB', width: 128, height: 96 }, framebuffer: { width: 128, height: 96 } };
+    },
+    async getSessionCapabilities() {
+      return { connected: true, unicodeClipboard: true, extendedClipboard: true, qemuExtendedKeyEvent: true, width: 128, height: 96, name: 'MockRFB' };
+    },
+    async captureRgba(target) {
+      const id = typeof target === 'string' ? target : target?.id;
+      const color = id === 'vnc:10.0.0.11:5902' ? [12, 180, 90] : activeColor;
+      const data = new Uint8Array(128 * 96 * 4);
+      for (let i = 0; i < 128 * 96; i += 1) {
+        data[i * 4] = color[0];
+        data[i * 4 + 1] = color[1];
+        data[i * 4 + 2] = color[2];
+        data[i * 4 + 3] = 255;
+      }
+      return { width: 128, height: 96, data, image: { width: 128, height: 96, data }, frameSeq: 1, stageBounds: { x: 0, y: 0, width: 128, height: 96 } };
+    },
+    async buildKeyframePacket() {
+      const pkt = Buffer.alloc(16);
+      pkt[0] = DIRTY_FRAME_MAGIC;
+      pkt[1] = 1; // keyframe flag
+      pkt.writeUInt16BE(128, 6);
+      pkt.writeUInt16BE(96, 8);
+      return { packet: pkt, width: 128, height: 96, frameSeq: 1 };
+    },
+    buildCoalescedBoundsPacket(_target, bounds) {
+      coalescedPacketCalls += 1;
+      const pkt = Buffer.alloc(16);
+      pkt[0] = DIRTY_FRAME_MAGIC;
+      pkt[1] = 0;
+      pkt.writeUInt16BE(bounds.width || 1, 6);
+      return pkt;
+    },
+    async executeActions() {
+      return { ok: true, executed: 0, results: [] };
+    },
+    async disconnectTarget() {},
+    async dispose() {},
+  };
+
+  const svc = createUuRemoteService({
+    stateDir,
+    systemDriver: mockFixture.driver,
+    rfbDriver: mockRfbDriver,
+    cliClient: {
+      listDevices: async () => ({ ok: true, devices: [] }),
+      getVersion: async () => ({ available: true, path: 'uuyc-cli.exe', version: '1.0.0' }),
+    },
+    nowFn: () => fakeNow,
+  });
+  const previewService = createUuPreviewService({
+    uuService: svc,
+    nowFn: () => fakeNow,
+  });
+  t.after(async () => {
+    await previewService.dispose();
+    await svc.dispose();
+  });
+
+  // Seed two VNC targets via previewService connectVnc
+  await previewService.performAction({ action: 'connectVnc', vncHost: '10.0.0.10', vncPort: 5901, label: 'VNC-One' });
+  await previewService.performAction({ action: 'connectVnc', vncHost: '10.0.0.11', vncPort: 5902, label: 'VNC-Two' });
+
+  // Verify SWR topology cache deduplicates rapid list calls
+  const beforeTopo = topoInspectCalls;
+  await svc.manageSessions({ action: 'list' });
+  await svc.manageSessions({ action: 'list' });
+  assert.equal(topoInspectCalls - beforeTopo, 1, 'inspectCombinedTopology must reuse fresh SWR cache');
+
+  // Open stream for VNC-One directly -> zero extra topology inspections
+  const binaryPackets = [];
+  const textMsgs = [];
+  let onTextCb = null;
+  let closeStream = null;
+
+  await previewService.openPanelStream(
+    'screen',
+    { sessionId: 'vnc:10.0.0.10:5901', fps: 24, maxWidth: 1280 },
+    {
+      sendBinary(buf) { binaryPackets.push(Buffer.from(buf)); },
+      sendText(txt) { textMsgs.push(JSON.parse(txt)); },
+      onClose(fn) { closeStream = fn; },
+      onText(fn) { onTextCb = fn; },
+    },
+    {},
+  );
+
+  // Wait for initial keyframe
+  const dl1 = Date.now() + 1000;
+  while (binaryPackets.length < 1 && Date.now() < dl1) {
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  assert.equal(binaryPackets.length, 1);
+
+  // Simulate active RFB updates where rects is null (>128 rects or CopyRect) with dirtyBounds
+  // Must flush via coalescedBounds at stream cadence (NOT wait 2000ms heartbeat)
+  activeColor = [240, 120, 40];
+  dirtyListener?.({
+    targetId: 'vnc:10.0.0.10:5901',
+    frameSeq: 2,
+    width: 128,
+    height: 96,
+    rects: null,
+    dirtyBounds: { x: 10, y: 12, width: 64, height: 48 },
+    resized: false,
+  });
+  const dl2 = Date.now() + 400;
+  while (binaryPackets.length < 2 && Date.now() < dl2) {
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  assert.ok(binaryPackets.length >= 2, 'RFB evt with rects:null + dirtyBounds must flush promptly instead of stalling for 2s heartbeat');
+  assert.ok(coalescedPacketCalls >= 1, 'RFB evt with rects:null + dirtyBounds must invoke buildCoalescedBoundsPacket');
+
+  // Nudge must trigger requestImmediateUpdate on RFB driver
+  const beforeImmediate = immediateUpdateCalls;
+  onTextCb?.(JSON.stringify({ type: 'nudge' }));
+  assert.ok(immediateUpdateCalls > beforeImmediate, 'nudge must call requestImmediateUpdate on RFB driver');
+
+  // In-place selectSession switches stream from VNC-One to VNC-Two without closing WebSocket
+  const countBeforeSwitch = binaryPackets.length;
+  onTextCb?.(JSON.stringify({ type: 'selectSession', sessionId: 'vnc:10.0.0.11:5902' }));
+  const dl3 = Date.now() + 1000;
+  while (binaryPackets.length <= countBeforeSwitch && Date.now() < dl3) {
+    await new Promise((r) => setTimeout(r, 15));
+  }
+  assert.ok(binaryPackets.length > countBeforeSwitch, 'selectSession must stream new session in-place');
+  assert.ok(
+    textMsgs.some((m) => m.type === 'telemetry' && m.sessionId === 'vnc:10.0.0.11:5902'),
+    'selectSession must emit telemetry metadata for the new target',
+  );
+
+  // Fast listState returns stale/cached immediately and triggers background stateUpdated broadcast
+  fakeNow += 10_000; // exceed 5s fresh TTL, within 60s stale TTL
+  const fastState = await previewService.listState({ fast: true });
+  assert.equal(fastState.ok, true);
+  const dl4 = Date.now() + 1000;
+  while (!textMsgs.some((m) => m.type === 'stateUpdated') && Date.now() < dl4) {
+    await new Promise((r) => setTimeout(r, 15));
+  }
+  assert.ok(textMsgs.some((m) => m.type === 'stateUpdated'), 'fast listState background refresh must broadcast stateUpdated to open panel streams');
+
+  closeStream?.();
 });

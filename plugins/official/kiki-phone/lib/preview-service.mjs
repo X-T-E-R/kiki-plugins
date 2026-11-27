@@ -1356,7 +1356,22 @@ export function createPhonePreviewService({
         return { ok: false, error: 'select requires deviceId and platform ("android" | "ios").' };
       }
       const selected = { id: String(input.deviceId), platform: input.platform };
-      await writeSelectedDevice(dataDir, selected);
+      selectedMemoryCache = { dataDir, value: selected };
+      for (const [k, snap] of cachedStateSnapshots.entries()) {
+        if (snap?.value) {
+          cachedStateSnapshots.set(k, { ...snap, value: { ...snap.value, selected } });
+        }
+      }
+      void writeSelectedDevice(dataDir, selected).catch(() => {});
+      if (selected.platform === 'android' && scrcpyEnabledByDefault && typeof scrcpy.warmVideoStream === 'function') {
+        void Promise.resolve(settings?.adbPath || findAdb({ dataDir }))
+          .then((adbBinary) => {
+            if (!adbBinary) return;
+            const meta = ensureMetaEntry('android', selected.id);
+            scrcpy.warmVideoStream({ adbBinary, serial: selected.id, fallbackSize: meta.effectiveSize });
+          })
+          .catch(() => {});
+      }
       return { ok: true, selected };
     }
 
@@ -1873,6 +1888,9 @@ export function createPhonePreviewService({
     const body = args !== null && typeof args === 'object' ? args : {};
     switch (action) {
       case 'state':
+        if (body.fast === true) {
+          return peekState({ settings, maxAgeMs: 30_000, waitBudgetMs: 120 });
+        }
         return listState({ settings });
       case 'frame':
         return captureFrame({ ...body, settings });

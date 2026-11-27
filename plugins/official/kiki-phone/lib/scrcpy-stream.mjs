@@ -808,7 +808,7 @@ async function connectFirstSocketWithDummyByte(createSocket, port, { timeoutMs =
       return result;
     } catch (err) {
       lastErr = err;
-      await sleep(35, signal);
+      await sleep(12, signal);
     }
   }
   throw lastErr || new Error('Timed out connecting to scrcpy-server socket');
@@ -1005,6 +1005,13 @@ function createControlActions(writePacket, getDimensions, hooks = {}) {
   };
 }
 
+const DEFAULT_HUB_IDLE_TTL_MS = 120_000;
+const CODEC_OPTION_TIERS = [
+  'i-frame-interval=2,repeat-previous-frame-after=100000,low-latency=1,priority=0',
+  'i-frame-interval=1,repeat-previous-frame-after=100000',
+  'i-frame-interval=1',
+];
+
 export function createScrcpyManager({
   resolveDataDir,
   executeFile = defaultExecFile,
@@ -1015,6 +1022,7 @@ export function createScrcpyManager({
   fetchImpl = fetch,
   allowDownload = true,
   onRemoteClipboard,
+  hubIdleTtlMs = DEFAULT_HUB_IDLE_TTL_MS,
   env = process.env,
   platform = process.platform,
 } = {}) {
@@ -1022,9 +1030,12 @@ export function createScrcpyManager({
   const pushFlights = new Map();
   const controlSessions = new Map();
   const controlFlights = new Map();
-  const activeVideoStreams = new Map();
+  const upstreamHubs = new Map();
+  const upstreamHubFlights = new Map();
   const injectBlockedSerials = new Set();
   const physicalSizeBySerial = new Map();
+  const disposeAbort = new AbortController();
+  let disposed = false;
 
   async function ensurePhysicalSize(adbBinary, serial, fallbackSize) {
     if (physicalSizeBySerial.has(serial)) return physicalSizeBySerial.get(serial);
@@ -1122,15 +1133,46 @@ export function createScrcpyManager({
     entry.idleTimer.unref?.();
   }
 
+  function clearHubIdleTimer(hub) {
+    if (hub?.idleTimer) {
+      clearTimeout(hub.idleTimer);
+      hub.idleTimer = null;
+    }
+  }
+
+  function armHubIdleTimer(hub) {
+    if (!hub || hub.closed || hub.subscribers.size > 0) return;
+    clearHubIdleTimer(hub);
+    const ttl = Math.max(0, Number(hubIdleTtlMs) || 0);
+    if (ttl === 0) {
+      void closeUpstreamHub(hub.serial, 'idle_timeout');
+      return;
+    }
+    hub.idleTimer = setTimeout(() => {
+      hub.idleTimer = null;
+      if (!hub.closed && hub.subscribers.size === 0) {
+        void closeUpstreamHub(hub.serial, 'idle_timeout');
+      }
+    }, ttl);
+    hub.idleTimer.unref?.();
+  }
+
+  async function closeUpstreamHub(serial, reason = 'closed') {
+    const hub = upstreamHubs.get(serial);
+    if (!hub) return;
+    upstreamHubs.delete(serial);
+    await hub.close(reason);
+  }
+
   async function acquireControl({ adbBinary, serial, fallbackSize }) {
     if (!adbBinary || !serial) return null;
 
-    const liveStreamSet = activeVideoStreams.get(serial);
-    if (liveStreamSet && liveStreamSet.size > 0) {
-      const liveEntry = liveStreamSet.values().next().value;
-      if (liveEntry?.control && !liveEntry.closed) {
-        return liveEntry.control;
+    const liveHub = upstreamHubs.get(serial);
+    if (liveHub && !liveHub.closed && liveHub.control) {
+      if (liveHub.subscribers.size === 0) {
+        armHubIdleTimer(liveHub);
       }
+      return liveHub.control;
     }
 
     const existing = controlSessions.get(serial);
@@ -1255,30 +1297,27 @@ export function createScrcpyManager({
     void acquireControl({ adbBinary, serial, fallbackSize }).catch(() => {});
   }
 
-  async function openVideoStreamAttempt(
-    {
-      deviceJar,
-      adbBinary,
-      serial,
-      safeFps,
-      safeMaxSize,
-      safeBitRate,
-      codecOptions,
-      fallbackSize,
-      clientReadyFallbackMs,
-      closeSessionOnInitFailure = true,
-    },
-    session,
-    context = {},
-  ) {
-    const signal = context?.signal;
-    signal?.throwIfAborted?.();
+  async function startUpstreamHubAttempt({
+    deviceJar,
+    adbBinary,
+    serial,
+    safeFps,
+    safeMaxSize,
+    safeBitRate,
+    codecOptions,
+    fallbackSize,
+    signal,
+  }) {
+    const combinedSignal = signal
+      ? AbortSignal.any([signal, disposeAbort.signal])
+      : disposeAbort.signal;
+    combinedSignal.throwIfAborted?.();
 
     const scid = (randomBytes(4).readUInt32BE(0) & 0x7fffffff).toString(16).padStart(8, '0');
     const port = await allocatePort();
 
     await executeFile(adbBinary, ['-s', serial, 'forward', `tcp:${port}`, `localabstract:scrcpy_${scid}`], {
-      encoding: 'utf8', windowsHide: true, timeout: 6_000, signal,
+      encoding: 'utf8', windowsHide: true, timeout: 6_000, signal: combinedSignal,
     });
 
     const proc = spawnProcess(adbBinary, [
@@ -1318,49 +1357,52 @@ export function createScrcpyManager({
 
     let videoSocket = null;
     let controlSocket = null;
-    let closed = false;
     let handshakeDone = false;
-    let clientReadyFallbackTimer = null;
     let procExitErr = null;
     let onEarlyProcExit = null;
-    const unsubs = [];
 
     const attemptAbort = new AbortController();
-    const connectSignal = signal ? AbortSignal.any([signal, attemptAbort.signal]) : attemptAbort.signal;
+    const connectSignal = AbortSignal.any([combinedSignal, attemptAbort.signal]);
 
-    const streamRecord = { closed: false, control: null, close: null };
+    const hub = {
+      serial,
+      adbBinary,
+      port,
+      proc,
+      closed: false,
+      idleTimer: null,
+      subscribers: new Set(),
+      parser: null,
+      control: null,
+      seq: 0,
+      lastKeyPacket: null,
+      keyEpochDeltas: [],
+      epochBroken: false,
+      lastBackpressureResetAt: 0,
+      basePhys: physicalSizeBySerial.get(serial) || (fallbackSize?.width > 0 && fallbackSize?.height > 0 ? fallbackSize : { width: 1080, height: 2400 }),
+      fallbackSize,
+      close: null,
+    };
 
-    const cleanup = (reason, { closeSession = true } = {}) => {
-      if (closed) return;
-      closed = true;
-      streamRecord.closed = true;
-      clearTimeout(clientReadyFallbackTimer);
-      clientReadyFallbackTimer = null;
-      const set = activeVideoStreams.get(serial);
-      if (set) {
-        set.delete(streamRecord);
-        if (set.size === 0) activeVideoStreams.delete(serial);
+    const cleanupHub = async (reason = 'closed') => {
+      if (hub.closed) return;
+      hub.closed = true;
+      clearHubIdleTimer(hub);
+      if (upstreamHubs.get(serial) === hub) {
+        upstreamHubs.delete(serial);
       }
-      for (const off of unsubs.splice(0)) {
-        try { off?.(); } catch {}
+      for (const sub of [...hub.subscribers]) {
+        try { sub.detach(reason, { closeSession: true, skipIdleArm: true }); } catch {}
       }
-      signal?.removeEventListener?.('abort', onAbort);
+      hub.subscribers.clear();
       try { videoSocket?.destroy(); } catch {}
       try { controlSocket?.destroy(); } catch {}
       try { proc.kill(); } catch {}
-      void executeFile(adbBinary, ['-s', serial, 'forward', '--remove', `tcp:${port}`], {
+      await executeFile(adbBinary, ['-s', serial, 'forward', '--remove', `tcp:${port}`], {
         encoding: 'utf8', windowsHide: true, timeout: 4_000,
       }).catch(() => {});
-      if (closeSession) {
-        try { session?.close?.(reason); } catch {}
-      }
     };
-
-    function onAbort() {
-      cleanup('aborted');
-    }
-    signal?.addEventListener?.('abort', onAbort, { once: true });
-    streamRecord.close = cleanup;
+    hub.close = cleanupHub;
 
     proc.once('exit', () => {
       if (/Aborted|ClassNotFoundException|No such file/i.test(stderrTail)) {
@@ -1371,7 +1413,7 @@ export function createScrcpyManager({
         if (!attemptAbort.signal.aborted) attemptAbort.abort(procExitErr);
         onEarlyProcExit?.(procExitErr);
       } else {
-        cleanup('scrcpy_exited');
+        void cleanupHub('scrcpy_exited');
       }
     });
 
@@ -1398,13 +1440,7 @@ export function createScrcpyManager({
 
       const parser = new ScrcpyVideoStreamParser({ expectDummyByte: true });
       const devMsgParser = new ScrcpyDeviceMessageParser({ expectDummyByte: false });
-      let seq = 0;
-      let streamFlushed = false;
-      let droppingUntilKeyframe = false;
-      let lastKeyPacket = null;
-      let keyEpochDeltas = [];
-      let epochBroken = false;
-      let lastBackpressureResetAt = 0;
+      hub.parser = parser;
       let graceTimer = null;
 
       let resolveInitial;
@@ -1425,7 +1461,7 @@ export function createScrcpyManager({
 
       const control = createControlActions(
         (buf) => {
-          if (closed || !controlSocket || controlSocket.destroyed) return false;
+          if (hub.closed || !controlSocket || controlSocket.destroyed) return false;
           controlSocket.write(buf);
           return true;
         },
@@ -1438,93 +1474,72 @@ export function createScrcpyManager({
           adbFallback: (shellArgs) => runAdbInputFallback(adbBinary, serial, shellArgs),
           onRemoteClipboard: (text) => {
             onRemoteClipboard?.({ serial, text });
-            if (!closed) {
-              session.sendText?.(JSON.stringify({
+            if (!hub.closed) {
+              const payload = JSON.stringify({
                 type: 'remoteClipboard',
                 serial,
                 text,
                 updatedAtMs: Date.now(),
-              }));
+              });
+              for (const sub of hub.subscribers) {
+                if (!sub.closed) sub.session.sendText?.(payload);
+              }
             }
           },
         },
       );
+      hub.control = control;
+
       controlSocket.on('data', (chunk) => {
-        if (closed) return;
+        if (hub.closed) return;
         for (const ev of devMsgParser.push(chunk)) {
           control._handleDeviceMessage(ev);
         }
       });
 
-      streamRecord.control = control;
-      if (!activeVideoStreams.has(serial)) activeVideoStreams.set(serial, new Set());
-      activeVideoStreams.get(serial).add(streamRecord);
-
-      const replayCurrentEpoch = () => {
-        if (closed) return;
-        streamFlushed = true;
-        droppingUntilKeyframe = false;
-        clearTimeout(clientReadyFallbackTimer);
-        clientReadyFallbackTimer = null;
-
-        if (!lastKeyPacket) {
-          control.resetVideo();
-          return;
-        }
-        const okKey = session.sendBinary(lastKeyPacket);
-        if (okKey === false) {
-          droppingUntilKeyframe = true;
-          return;
-        }
-        if (epochBroken) {
-          droppingUntilKeyframe = true;
-          control.resetVideo();
-          return;
-        }
-        for (const deltaPkt of keyEpochDeltas) {
-          const okDelta = session.sendBinary(deltaPkt);
-          if (okDelta === false) {
-            droppingUntilKeyframe = true;
-            return;
-          }
-        }
-      };
-
       const handleParsedEvents = (events) => {
         for (const ev of events) {
           if (ev.kind === 'error') {
             if (!handshakeDone) rejectInitial(new Error(ev.message));
-            else cleanup(ev.message);
+            else void cleanupHub(ev.message);
             return;
           }
           if (ev.kind === 'session') {
-            lastKeyPacket = null;
-            keyEpochDeltas = [];
-            epochBroken = false;
+            hub.lastKeyPacket = null;
+            hub.keyEpochDeltas = [];
+            hub.epochBroken = false;
             if (!handshakeDone && !graceTimer) {
-              graceTimer = setTimeout(finishHandshake, 180);
+              graceTimer = setTimeout(finishHandshake, 40);
             } else if (handshakeDone) {
-              session.sendText?.(JSON.stringify({
+              const metaJson = JSON.stringify({
                 type: 'meta',
                 width: ev.width,
                 height: ev.height,
                 codec: 'h264',
                 codecProfile: parser.codecProfile,
-              }));
+              });
+              for (const sub of hub.subscribers) {
+                if (!sub.closed) sub.session.sendText?.(metaJson);
+              }
             }
           }
           if (ev.kind === 'config') {
-            lastKeyPacket = null;
-            keyEpochDeltas = [];
-            epochBroken = false;
-            if (handshakeDone) {
-              session.sendText?.(JSON.stringify({
+            hub.lastKeyPacket = null;
+            hub.keyEpochDeltas = [];
+            hub.epochBroken = false;
+            if (!handshakeDone && parser.width > 0 && parser.height > 0) {
+              finishHandshake();
+            } else if (handshakeDone) {
+              const metaJson = JSON.stringify({
                 type: 'meta',
                 width: parser.width,
                 height: parser.height,
                 codec: 'h264',
                 codecProfile: ev.codecProfile,
-              }));
+              });
+              for (const sub of hub.subscribers) {
+                if (!sub.closed) sub.session.sendText?.(metaJson);
+              }
             }
           }
           if (ev.kind === 'frame') {
@@ -1532,21 +1547,21 @@ export function createScrcpyManager({
               keyFrame: ev.keyFrame,
               width: ev.width || fallbackSize?.width || 1080,
               height: ev.height || fallbackSize?.height || 2400,
-              seq: seq++,
+              seq: hub.seq++,
               ptsUs: ev.ptsUs,
               data: ev.data,
             });
 
             if (ev.keyFrame) {
-              lastKeyPacket = pkt;
-              keyEpochDeltas = [];
-              epochBroken = false;
-            } else if (lastKeyPacket && !epochBroken) {
-              if (keyEpochDeltas.length < MAX_REPLAY_EPOCH_DELTAS) {
-                keyEpochDeltas.push(pkt);
+              hub.lastKeyPacket = pkt;
+              hub.keyEpochDeltas = [];
+              hub.epochBroken = false;
+            } else if (hub.lastKeyPacket && !hub.epochBroken) {
+              if (hub.keyEpochDeltas.length < MAX_REPLAY_EPOCH_DELTAS) {
+                hub.keyEpochDeltas.push(pkt);
               } else {
-                keyEpochDeltas = [];
-                epochBroken = true;
+                hub.keyEpochDeltas = [];
+                hub.epochBroken = true;
               }
             }
 
@@ -1557,27 +1572,8 @@ export function createScrcpyManager({
               continue;
             }
 
-            if (!streamFlushed) {
-              continue;
-            }
-
-            const buffered = session.bufferedAmount?.() ?? 0;
-            if ((droppingUntilKeyframe || buffered > 512 * 1024) && !ev.keyFrame) {
-              droppingUntilKeyframe = true;
-              if (buffered === 0) {
-                const now = Date.now();
-                if (now - lastBackpressureResetAt >= 350) {
-                  lastBackpressureResetAt = now;
-                  control.resetVideo();
-                }
-              }
-              continue;
-            }
-            if (ev.keyFrame) droppingUntilKeyframe = false;
-
-            const ok = session.sendBinary(pkt);
-            if (ok === false) {
-              droppingUntilKeyframe = true;
+            for (const sub of hub.subscribers) {
+              sub.deliverFrame(pkt, ev.keyFrame);
             }
           }
         }
@@ -1587,20 +1583,20 @@ export function createScrcpyManager({
       videoSocket.removeListener('close', onBufferedClose);
       videoSocket.removeListener('error', onBufferedErr);
       videoSocket.on('data', (chunk) => {
-        if (closed) return;
+        if (hub.closed) return;
         handleParsedEvents(parser.push(chunk));
       });
       videoSocket.once('close', () => {
         clearTimeout(initTimer);
         clearTimeout(graceTimer);
         if (!handshakeDone) rejectInitial(new Error(`scrcpy video socket closed early (${stderrTail.trim() || 'EOF'})`));
-        else cleanup('device_stream_closed');
+        else void cleanupHub('device_stream_closed');
       });
       videoSocket.once('error', (err) => {
         clearTimeout(initTimer);
         clearTimeout(graceTimer);
         if (!handshakeDone) rejectInitial(err);
-        else cleanup(err.message || 'video_socket_error');
+        else void cleanupHub(err.message || 'video_socket_error');
       });
       controlSocket.once('error', () => {});
       onEarlyProcExit = (err) => {
@@ -1623,125 +1619,319 @@ export function createScrcpyManager({
       }
 
       await initialReady;
-      const basePhys = await ensurePhysicalSize(adbBinary, serial, fallbackSize);
-
-      let activeBottomGesture = null;
-      if (typeof session.onBinary === 'function') {
-        unsubs.push(session.onBinary((buf) => {
-          if (closed) return;
-          const sw = parser.width || fallbackSize?.width || 1080;
-          const sh = parser.height || fallbackSize?.height || 2400;
-          const isLandscape = sw > sh;
-          const physMin = Math.min(basePhys.width, basePhys.height);
-          const physMax = Math.max(basePhys.width, basePhys.height);
-          const physW = isLandscape ? physMax : physMin;
-          const physH = isLandscape ? physMin : physMax;
-          const physTouch = decodeClientTouchInfo(buf, physW, physH);
-          if (physTouch && physTouch.pointerSlot === 0) {
-            if (physTouch.action === 0 && (injectBlockedSerials.has(serial) || isHyperOsBottomEdgeZone(physTouch.y, physH))) {
-              activeBottomGesture = { startX: physTouch.x, startY: physTouch.y, lastX: physTouch.x, lastY: physTouch.y, startedAt: Date.now() };
-              return;
-            }
-            if (activeBottomGesture) {
-              if (physTouch.action === 2) {
-                activeBottomGesture.lastX = physTouch.x;
-                activeBottomGesture.lastY = physTouch.y;
-                return;
-              }
-              const g = activeBottomGesture;
-              activeBottomGesture = null;
-              if (physTouch.action === 1) {
-                const dist = Math.hypot(physTouch.x - g.startX, physTouch.y - g.startY);
-                const dur = clamp(Date.now() - g.startedAt, 90, 1200);
-                if (dist >= 12) {
-                  void runAdbInputFallback(adbBinary, serial, [
-                    'input', 'swipe', String(g.startX), String(g.startY), String(physTouch.x), String(physTouch.y), String(dur),
-                  ]).catch(() => {});
-                } else {
-                  void runAdbInputFallback(adbBinary, serial, [
-                    'input', 'tap', String(physTouch.x), String(physTouch.y),
-                  ]).catch(() => {});
-                }
-              }
-              return;
-            }
-          }
-          const raw = parseClientBinaryControl(buf, sw, sh);
-          if (raw) control.writeRaw(raw);
-        }));
-      }
-
-      if (typeof session.onText === 'function') {
-        unsubs.push(session.onText((text) => {
-          if (closed) return;
-          let msg;
-          try { msg = typeof text === 'string' ? JSON.parse(text) : text; } catch { return; }
-          if (!msg || typeof msg !== 'object') return;
-          switch (msg.type) {
-            case 'clientReady':
-              if (!streamFlushed || msg.force === true) {
-                replayCurrentEpoch();
-              }
-              break;
-            case 'button':
-            case 'key':
-              void control.pressButton(msg.button || msg.key);
-              break;
-            case 'keycode':
-              if (Number.isInteger(msg.keycode)) void control.pressKeycode(msg.keycode);
-              break;
-            case 'text':
-              void control.injectText(msg.text, { pasteUnicode: true, forcePaste: false });
-              break;
-            case 'paste':
-              void control.injectText(msg.text, { pasteUnicode: true, forcePaste: true });
-              break;
-            case 'power':
-              control.setDisplayPower(msg.on !== false);
-              break;
-            case 'rotate':
-              control.rotateDevice();
-              break;
-            case 'expandNotifications':
-              control.expandNotificationPanel();
-              break;
-            case 'collapsePanels':
-              control.collapsePanels();
-              break;
-            case 'resetVideo':
-              control.resetVideo();
-              break;
-            default:
-              break;
-          }
-        }));
-      }
-
-      if (typeof session.onClose === 'function') {
-        unsubs.push(session.onClose(() => cleanup('client_closed')));
-      }
-
       handshakeDone = true;
-      const fallbackDelay = Math.max(0, Number(clientReadyFallbackMs) || 0);
-      clientReadyFallbackTimer = setTimeout(() => {
-        if (!closed && !streamFlushed) {
-          replayCurrentEpoch();
-        }
-      }, fallbackDelay);
-      clientReadyFallbackTimer.unref?.();
 
-      return {
-        protocol: SCRCPY_STREAM_PROTOCOL,
-        width: parser.width || fallbackSize?.width || 1080,
-        height: parser.height || fallbackSize?.height || 2400,
-        codec: 'h264',
-        codecProfile: parser.codecProfile,
-        deviceName: parser.deviceName || undefined,
-      };
+      // Refresh physical size asynchronously without blocking stream handshake
+      void ensurePhysicalSize(adbBinary, serial, fallbackSize)
+        .then((sz) => {
+          if (sz?.width > 0 && sz?.height > 0) hub.basePhys = sz;
+        })
+        .catch(() => {});
+
+      if (disposed) {
+        await cleanupHub('disposed');
+        throw new Error('scrcpy manager disposed');
+      }
+
+      upstreamHubs.set(serial, hub);
+      return hub;
     } catch (err) {
-      cleanup(err.message || 'handshake_failed', { closeSession: closeSessionOnInitFailure });
+      await cleanupHub(err.message || 'handshake_failed');
       throw err;
     }
+  }
+
+  async function ensureUpstreamHub({
+    adbBinary,
+    serial,
+    safeFps,
+    safeMaxSize,
+    safeBitRate,
+    fallbackSize,
+    signal,
+  }) {
+    const existing = upstreamHubs.get(serial);
+    if (existing && !existing.closed) {
+      clearHubIdleTimer(existing);
+      return { hub: existing, reused: true };
+    }
+
+    const inFlight = upstreamHubFlights.get(serial);
+    if (inFlight) {
+      const hub = await inFlight;
+      if (hub && !hub.closed) {
+        clearHubIdleTimer(hub);
+        return { hub, reused: true };
+      }
+    }
+
+    const flight = (async () => {
+      const deviceJar = await ensureDeviceJar(adbBinary, serial, signal);
+      let lastErr = null;
+      for (let i = 0; i < CODEC_OPTION_TIERS.length; i += 1) {
+        const codecOptions = CODEC_OPTION_TIERS[i];
+        try {
+          return await startUpstreamHubAttempt({
+            deviceJar,
+            adbBinary,
+            serial,
+            safeFps,
+            safeMaxSize,
+            safeBitRate,
+            codecOptions,
+            fallbackSize,
+            signal,
+          });
+        } catch (err) {
+          lastErr = err;
+          if (signal?.aborted || disposed) throw err;
+          const msg = String(err?.message || '');
+          const shouldFallbackCodecOpts = /scrcpy-server exited|closed early|video stream disabled|codec|option/i.test(msg);
+          if (!shouldFallbackCodecOpts || i === CODEC_OPTION_TIERS.length - 1) {
+            throw err;
+          }
+        }
+      }
+      throw lastErr || new Error('scrcpy upstream startup failed');
+    })().finally(() => {
+      if (upstreamHubFlights.get(serial) === flight) {
+        upstreamHubFlights.delete(serial);
+      }
+    });
+
+    upstreamHubFlights.set(serial, flight);
+    const hub = await flight;
+    return { hub, reused: false };
+  }
+
+  function attachSubscriber(hub, session, { clientReadyFallbackMs, fallbackSize, reused, signal } = {}) {
+    clearHubIdleTimer(hub);
+    let closed = false;
+    let streamFlushed = false;
+    let droppingUntilKeyframe = false;
+    let clientReadyFallbackTimer = null;
+    let activeBottomGesture = null;
+    const unsubs = [];
+
+    const replayCurrentEpoch = () => {
+      if (closed || hub.closed) return;
+      streamFlushed = true;
+      droppingUntilKeyframe = false;
+      clearTimeout(clientReadyFallbackTimer);
+      clientReadyFallbackTimer = null;
+
+      if (!hub.lastKeyPacket) {
+        hub.control.resetVideo();
+        return;
+      }
+      const okKey = session.sendBinary(hub.lastKeyPacket);
+      if (okKey === false) {
+        droppingUntilKeyframe = true;
+        return;
+      }
+      if (hub.epochBroken) {
+        droppingUntilKeyframe = true;
+        hub.control.resetVideo();
+        return;
+      }
+      for (const deltaPkt of hub.keyEpochDeltas) {
+        const okDelta = session.sendBinary(deltaPkt);
+        if (okDelta === false) {
+          droppingUntilKeyframe = true;
+          return;
+        }
+      }
+    };
+
+    const detach = (reason, { closeSession = true, skipIdleArm = false } = {}) => {
+      if (closed) return;
+      closed = true;
+      sub.closed = true;
+      clearTimeout(clientReadyFallbackTimer);
+      clientReadyFallbackTimer = null;
+      hub.subscribers.delete(sub);
+      for (const off of unsubs.splice(0)) {
+        try { off?.(); } catch {}
+      }
+      signal?.removeEventListener?.('abort', onAbort);
+      if (closeSession) {
+        try { session?.close?.(reason); } catch {}
+      }
+      if (!skipIdleArm && !hub.closed && hub.subscribers.size === 0) {
+        armHubIdleTimer(hub);
+      }
+    };
+
+    function onAbort() {
+      detach('aborted', { closeSession: true });
+    }
+
+    const sub = {
+      session,
+      closed: false,
+      detach,
+      deliverFrame(pkt, isKeyFrame) {
+        if (closed || !streamFlushed) return;
+        const buffered = session.bufferedAmount?.() ?? 0;
+        if ((droppingUntilKeyframe || buffered > 512 * 1024) && !isKeyFrame) {
+          droppingUntilKeyframe = true;
+          if (buffered === 0) {
+            const now = Date.now();
+            if (now - hub.lastBackpressureResetAt >= 350) {
+              hub.lastBackpressureResetAt = now;
+              hub.control.resetVideo();
+            }
+          }
+          return;
+        }
+        if (isKeyFrame) droppingUntilKeyframe = false;
+        const ok = session.sendBinary(pkt);
+        if (ok === false) {
+          droppingUntilKeyframe = true;
+        }
+      },
+    };
+
+    hub.subscribers.add(sub);
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+
+    if (typeof session.onBinary === 'function') {
+      unsubs.push(session.onBinary((buf) => {
+        if (closed || hub.closed) return;
+        const sw = hub.parser?.width || fallbackSize?.width || 1080;
+        const sh = hub.parser?.height || fallbackSize?.height || 2400;
+        const isLandscape = sw > sh;
+        const physMin = Math.min(hub.basePhys.width, hub.basePhys.height);
+        const physMax = Math.max(hub.basePhys.width, hub.basePhys.height);
+        const physW = isLandscape ? physMax : physMin;
+        const physH = isLandscape ? physMin : physMax;
+        const physTouch = decodeClientTouchInfo(buf, physW, physH);
+        if (physTouch && physTouch.pointerSlot === 0) {
+          if (physTouch.action === 0 && (injectBlockedSerials.has(hub.serial) || isHyperOsBottomEdgeZone(physTouch.y, physH))) {
+            activeBottomGesture = { startX: physTouch.x, startY: physTouch.y, lastX: physTouch.x, lastY: physTouch.y, startedAt: Date.now() };
+            return;
+          }
+          if (activeBottomGesture) {
+            if (physTouch.action === 2) {
+              activeBottomGesture.lastX = physTouch.x;
+              activeBottomGesture.lastY = physTouch.y;
+              return;
+            }
+            const g = activeBottomGesture;
+            activeBottomGesture = null;
+            if (physTouch.action === 1) {
+              const dist = Math.hypot(physTouch.x - g.startX, physTouch.y - g.startY);
+              const dur = clamp(Date.now() - g.startedAt, 90, 1200);
+              if (dist >= 12) {
+                void runAdbInputFallback(hub.adbBinary, hub.serial, [
+                  'input', 'swipe', String(g.startX), String(g.startY), String(physTouch.x), String(physTouch.y), String(dur),
+                ]).catch(() => {});
+              } else {
+                void runAdbInputFallback(hub.adbBinary, hub.serial, [
+                  'input', 'tap', String(physTouch.x), String(physTouch.y),
+                ]).catch(() => {});
+              }
+            }
+            return;
+          }
+        }
+        const raw = parseClientBinaryControl(buf, sw, sh);
+        if (raw) hub.control.writeRaw(raw);
+      }));
+    }
+
+    if (typeof session.onText === 'function') {
+      unsubs.push(session.onText((text) => {
+        if (closed || hub.closed) return;
+        let msg;
+        try { msg = typeof text === 'string' ? JSON.parse(text) : text; } catch { return; }
+        if (!msg || typeof msg !== 'object') return;
+        switch (msg.type) {
+          case 'clientReady':
+            if (!streamFlushed || msg.force === true) {
+              replayCurrentEpoch();
+            }
+            break;
+          case 'button':
+          case 'key':
+            void hub.control.pressButton(msg.button || msg.key);
+            break;
+          case 'keycode':
+            if (Number.isInteger(msg.keycode)) void hub.control.pressKeycode(msg.keycode);
+            break;
+          case 'text':
+            void hub.control.injectText(msg.text, { pasteUnicode: true, forcePaste: false });
+            break;
+          case 'paste':
+            void hub.control.injectText(msg.text, { pasteUnicode: true, forcePaste: true });
+            break;
+          case 'power':
+            hub.control.setDisplayPower(msg.on !== false);
+            break;
+          case 'rotate':
+            hub.control.rotateDevice();
+            break;
+          case 'expandNotifications':
+            hub.control.expandNotificationPanel();
+            break;
+          case 'collapsePanels':
+            hub.control.collapsePanels();
+            break;
+          case 'resetVideo':
+            hub.control.resetVideo();
+            break;
+          default:
+            break;
+        }
+      }));
+    }
+
+    if (typeof session.onClose === 'function') {
+      unsubs.push(session.onClose(() => detach('client_closed', { closeSession: false })));
+    }
+
+    if (reused) {
+      hub.control.resetVideo();
+    }
+
+    const fallbackDelay = Math.max(0, Number(clientReadyFallbackMs) || 0);
+    clientReadyFallbackTimer = setTimeout(() => {
+      if (!closed && !streamFlushed) {
+        replayCurrentEpoch();
+      }
+    }, fallbackDelay);
+    clientReadyFallbackTimer.unref?.();
+
+    return sub;
+  }
+
+  function warmVideoStream({
+    adbBinary,
+    serial,
+    maxFps = 60,
+    maxWidth = 1080,
+    bitRate = 8_000_000,
+    fallbackSize,
+  } = {}) {
+    if (!adbBinary || !serial || disposed) return;
+    if (upstreamHubs.has(serial) || upstreamHubFlights.has(serial)) return;
+    const safeFps = clamp(Math.round(Number(maxFps) || 60), 10, 120);
+    const safeMaxSize = clamp(Math.round(Number(maxWidth) || 1080) & ~7, 360, 2400);
+    const safeBitRate = clamp(Math.round(Number(bitRate) || 8_000_000), 500_000, 20_000_000);
+    void ensureUpstreamHub({
+      adbBinary,
+      serial,
+      safeFps,
+      safeMaxSize,
+      safeBitRate,
+      fallbackSize,
+    })
+      .then(({ hub }) => {
+        if (hub && !hub.closed && hub.subscribers.size === 0) {
+          armHubIdleTimer(hub);
+        }
+      })
+      .catch(() => {});
   }
 
   async function openVideoStream(
@@ -1763,71 +1953,62 @@ export function createScrcpyManager({
     const signal = context?.signal;
     signal?.throwIfAborted?.();
 
-    const deviceJar = await ensureDeviceJar(adbBinary, serial, signal);
     const safeFps = clamp(Math.round(Number(maxFps) || 60), 10, 120);
     const safeMaxSize = clamp(Math.round(Number(maxWidth) || 1080) & ~7, 360, 2400);
     const safeBitRate = clamp(Math.round(Number(bitRate) || 8_000_000), 500_000, 20_000_000);
 
     try {
-      return await openVideoStreamAttempt(
-        {
-          deviceJar,
-          adbBinary,
-          serial,
-          safeFps,
-          safeMaxSize,
-          safeBitRate,
-          codecOptions: 'i-frame-interval=1,repeat-previous-frame-after=100000',
-          fallbackSize,
-          clientReadyFallbackMs,
-          closeSessionOnInitFailure: false,
-        },
-        session,
-        context,
-      );
-    } catch (firstErr) {
+      const { hub, reused } = await ensureUpstreamHub({
+        adbBinary,
+        serial,
+        safeFps,
+        safeMaxSize,
+        safeBitRate,
+        fallbackSize,
+        signal,
+      });
+
       if (signal?.aborted) {
-        try { session?.close?.(firstErr.message || 'aborted'); } catch {}
-        throw firstErr;
+        if (!hub.closed && hub.subscribers.size === 0) armHubIdleTimer(hub);
+        try { session?.close?.('aborted'); } catch {}
+        throw signal.reason || new Error('Aborted');
       }
-      const msg = String(firstErr?.message || '');
-      const shouldFallbackCodecOpts = /scrcpy-server exited|closed early|video stream disabled|codec|option/i.test(msg);
-      if (!shouldFallbackCodecOpts) {
-        try { session?.close?.(msg || 'handshake_failed'); } catch {}
-        throw firstErr;
-      }
-      return openVideoStreamAttempt(
-        {
-          deviceJar,
-          adbBinary,
-          serial,
-          safeFps,
-          safeMaxSize,
-          safeBitRate,
-          codecOptions: 'i-frame-interval=1',
-          fallbackSize,
-          clientReadyFallbackMs,
-          closeSessionOnInitFailure: true,
-        },
-        session,
-        context,
-      );
+
+      attachSubscriber(hub, session, {
+        clientReadyFallbackMs,
+        fallbackSize,
+        reused,
+        signal,
+      });
+
+      return {
+        protocol: SCRCPY_STREAM_PROTOCOL,
+        width: hub.parser?.width || fallbackSize?.width || 1080,
+        height: hub.parser?.height || fallbackSize?.height || 2400,
+        codec: 'h264',
+        codecProfile: hub.parser?.codecProfile,
+        deviceName: hub.parser?.deviceName || undefined,
+      };
+    } catch (err) {
+      try { session?.close?.(err?.message || 'handshake_failed'); } catch {}
+      throw err;
     }
   }
 
   async function dispose() {
-    for (const set of activeVideoStreams.values()) {
-      for (const item of [...set]) {
-        try { item.close?.('disposed'); } catch {}
-      }
+    disposed = true;
+    if (!disposeAbort.signal.aborted) {
+      disposeAbort.abort(new Error('disposed'));
     }
-    activeVideoStreams.clear();
+    await Promise.all([...upstreamHubs.keys()].map((serial) => closeUpstreamHub(serial, 'disposed')));
+    upstreamHubs.clear();
     await Promise.all([...controlSessions.keys()].map((serial) => closeControlSession(serial)));
   }
 
   return {
     acquireControl,
     warmControl,
+    warmVideoStream,
     openVideoStream,
     dispose,
   };

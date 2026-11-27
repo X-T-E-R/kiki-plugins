@@ -27,6 +27,7 @@ export function createPanelClient(options = {}) {
   let seq = 0;
   let parentOrigin = '';
   let ready = false;
+  let visible = true;
   let disposed = false;
   const pending = new Map();
 
@@ -77,8 +78,17 @@ export function createPanelClient(options = {}) {
       return;
     }
 
+    if (data.kind === 'visibility') {
+      visible = data.visible !== false;
+      if (typeof options.onVisibility === 'function') {
+        options.onVisibility(visible, data, event);
+      }
+      return;
+    }
+
     if (data.kind === 'init') {
       ready = true;
+      visible = data.visible !== false;
       if (data.presentation || data.theme || data.colorScheme || data.tokens || data.locale) {
         handlePresentation(data, event);
       }
@@ -195,6 +205,7 @@ export function createPanelClient(options = {}) {
     openStream: (stream, args = {}, opts = {}) =>
       request('plugin.openStream', { stream, args }, { timeoutMs: 4000, ...opts, withPort: true }),
     isReady: () => ready,
+    isVisible: () => visible,
     isStandalone,
     getOrigin: () => parentOrigin,
     pendingCount: () => pending.size,

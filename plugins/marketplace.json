@@ -420,7 +420,7 @@
       "id": "kiki-phone",
       "tier": "official",
       "displayName": "Kiki Phone",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "description": "Prepare the runtime, then use Mobilewright semantic scripts or Mobile MCP to operate a connected Android or iOS phone. Rooted Android also supports su commands.",
       "keywords": [
         "phone",
@@ -535,7 +535,7 @@
       "id": "kiki-cua",
       "tier": "official",
       "displayName": "Kiki Computer Use",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "description": "Operate local multi-DPI desktops and registered remote display/input target providers with native zoom cropping, human-takeover protection and live workspace preview.",
       "keywords": [
         "computer-use",
@@ -565,7 +565,7 @@
       "id": "kiki-uu-remote",
       "tier": "official",
       "displayName": "UU Remote",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "description": "Connect, preview, and operate NetEase UU Remote (GameViewer), Proxmox VE QEMU VMs (RFB 3.8 over SSH with QMP/QGA fallback), and direct/SSH-tunneled VNC desktops, bridged into Kiki Computer Use.",
       "keywords": [
         "uu-remote",

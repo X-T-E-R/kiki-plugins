@@ -16,6 +16,8 @@ export function prepareOptions(args, settings) {
   };
 }
 
+export const __FAST_PANEL_BOOT_V2__ = true;
+
 export function register(api) {
   for (const definition of definitions) {
     api.registerTool(definition, async (args, context) => {

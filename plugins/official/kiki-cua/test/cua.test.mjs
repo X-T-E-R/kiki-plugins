@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 import { packageFiles } from '../../../../scripts/package-files.mjs';
 import { validateRegistration } from '../../../../scripts/validate-registration.mjs';
-import { activate, deactivate, handlePanelRequest, openPanelStream, register, slots } from '../entry.mjs';
+import { __FAST_PANEL_BOOT_V2__, activate, deactivate, handlePanelRequest, openPanelStream, register, slots } from '../entry.mjs';
 import {
   computeContainedRect,
   computeScaledDimensions,
@@ -21,7 +21,7 @@ import {
   resolveTargetPoint,
   resolveZoomCropBounds,
 } from '../lib/coordinates.mjs';
-import { createCuaService } from '../lib/cua-service.mjs';
+import { createCuaService, STREAM_FRAME_MAGIC, STREAM_JPEG_KIND, STREAM_PNG_KIND, packStreamFrame } from '../lib/cua-service.mjs';
 import { CUA_SETTINGS_SCHEMA, definitions, normalizeCuaSettings } from '../lib/definitions.mjs';
 import {
   createSyntheticSurfacePng,
@@ -59,7 +59,8 @@ test('manifest, sync-manifest --check, validateRegistration, packageFiles, and v
 
   const manifest = JSON.parse(await readFile(path.join(pluginRoot, 'kimi.plugin.json'), 'utf8'));
   assert.equal(manifest.name, 'kiki-cua');
-  assert.equal(manifest.version, '0.1.4');
+  assert.equal(manifest.version, '0.1.5');
+  assert.equal(__FAST_PANEL_BOOT_V2__, true);
   assert.equal(manifest.license, 'MIT');
   assert.equal(manifest.icon, './icon.svg');
   assert.deepEqual(manifest.skills, ['./skills']);
@@ -1385,15 +1386,15 @@ test('openPanelStream caches target discovery within TTL, re-discovers on select
     assert.equal(listMonitorsCalls, 1, 'listMonitors must only run once inside fast target cache TTL');
     assert.equal(remoteListCalls, 1, 'remote /v1/targets must only run once inside fast target cache TTL');
 
-    // Switching target via selectTarget invalidates cache, re-discovers, and streams remote target
+    // Switching to an already-cached target via selectTarget reuses fast cache (zero blocking re-discovery)
     opened.onText(JSON.stringify({ type: 'selectTarget', targetId: 'uu:stream-1' }));
     const switchDeadline = Date.now() + 1_500;
     while (!textFrames.some((m) => m.type === 'frameMeta' && m.targetId === 'uu:stream-1') && Date.now() < switchDeadline) {
       await new Promise((r) => setTimeout(r, 15));
     }
     assert.ok(textFrames.some((m) => m.type === 'frameMeta' && m.targetId === 'uu:stream-1'));
-    assert.equal(listMonitorsCalls, 2, 'selectTarget must trigger fresh target discovery');
-    assert.equal(remoteListCalls, 2, 'selectTarget must trigger fresh remote target discovery');
+    assert.equal(listMonitorsCalls, 1, 'selectTarget to cached target must NOT zero cache or re-run listMonitors');
+    assert.equal(remoteListCalls, 1, 'selectTarget to cached target must NOT re-run remote /v1/targets');
     assert.ok(remoteObserveCalls >= 1);
 
     // Waiting past cache TTL (800ms) causes subsequent frames to re-discover automatically
@@ -1704,6 +1705,177 @@ test('takeover state changes during fast cache window propagate immediately to f
     assert.equal(localPrimary?.takeoverActive, true);
     assert.equal(localPrimary?.controlledBy, 'human');
     assert.equal(listMonitorsCalls, callsAfterTakeover, 'Subsequent stream frames and fast lookups must reuse cache with overlaid takeover');
+
+    ac.abort();
+    opened.onClose();
+    await service.dispose();
+  } finally {
+    await providerServer.close();
+    await rm(workDir, { recursive: true, force: true });
+  }
+});
+
+test('v0.1.5: rapid nudgeFrame never drops frames (targetEpoch vs nudgeRequested), selectTarget aborts slow capture, JPEG stream framing, and SWR targetsUpdated', async () => {
+  const workDir = await makeIsolatedTmpDir('cua-v015-perf');
+  const busDir = path.join(workDir, 'providers');
+  const stateDir = path.join(workDir, 'state');
+  await mkdir(busDir, { recursive: true });
+
+  const mockLocal = createMockLocalDriver();
+  const fakeJpegBytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0xff, 0xd9]);
+  let captureIdx = 0;
+  const requestedFormats = [];
+
+  mockLocal.capture = async (params) => {
+    requestedFormats.push(params.format || 'png');
+    captureIdx += 1;
+    await new Promise((r) => setTimeout(r, 35));
+    const isJpeg = params.format === 'jpeg';
+    const bytes = isJpeg
+      ? Buffer.concat([fakeJpegBytes, Buffer.from([captureIdx & 0xff])])
+      : createSyntheticSurfacePng(640, 360, { x: 100 + (captureIdx * 10) % 400, y: 180, radius: 14 });
+    return {
+      mimeType: isJpeg ? 'image/jpeg' : 'image/png',
+      imageBase64: bytes.toString('base64'),
+      byteLength: bytes.length,
+      imageSize: { width: 640, height: 360 },
+      logicalSize: { width: params.targetW, height: params.targetH },
+      targetOrigin: { x: params.originX, y: params.originY },
+      cropBounds: null,
+      cursor: { x: 200, y: 200 },
+      foregroundWindow: { hwnd: '0x20010', title: 'Sample Editor', processName: 'editor' },
+      accessibility: [],
+    };
+  };
+
+  let slowObserveStartedResolve = null;
+  const slowObserveStarted = new Promise((resolve) => { slowObserveStartedResolve = resolve; });
+
+  const providerServer = await createCuaProviderServer({
+    providerId: 'kiki-slow-test',
+    displayName: 'Slow Remote Provider',
+    busDir,
+    handlers: {
+      async listTargets() {
+        return [{
+          id: 'remote:slow-1',
+          providerId: 'kiki-slow-test',
+          kind: 'remote-desktop',
+          label: 'Slow Remote',
+          platform: 'desktop',
+          online: true,
+          takeoverActive: false,
+          controlledBy: 'agent',
+          dimensions: { width: 640, height: 360, scaleFactor: 1 },
+          capabilities: ['screenshot', 'click', 'takeover'],
+        }];
+      },
+      async observe(req, ctx) {
+        slowObserveStartedResolve?.();
+        await new Promise((resolve) => {
+          const t = setTimeout(resolve, 4_000);
+          t.unref?.();
+          ctx?.signal?.addEventListener?.('abort', () => {
+            clearTimeout(t);
+            resolve();
+          }, { once: true });
+        });
+        return {
+          ok: true,
+          targetId: req.targetId,
+          capturedAtMs: Date.now(),
+          mimeType: 'image/png',
+          imageBase64: createSyntheticSurfacePng(640, 360, { x: 200, y: 180, radius: 10 }).toString('base64'),
+          imageSize: { width: 640, height: 360 },
+          logicalSize: { width: 640, height: 360 },
+        };
+      },
+      async act() { return { ok: true, executed: 0, results: [] }; },
+      async takeover(req) { return { ok: true, targetId: req.targetId, takeoverActive: Boolean(req.active) }; },
+    },
+  });
+
+  try {
+    // 1. packStreamFrame packs STREAM_JPEG_KIND cleanly
+    const packedJpeg = packStreamFrame({ kind: STREAM_JPEG_KIND, width: 1280, height: 720, seq: 7, timestampMs: 1234, bytes: fakeJpegBytes });
+    assert.equal(packedJpeg[0], STREAM_FRAME_MAGIC);
+    assert.equal(packedJpeg[1], STREAM_JPEG_KIND);
+    assert.equal(packedJpeg.readUInt16BE(2), 1280);
+    assert.equal(packedJpeg.readUInt16BE(4), 720);
+
+    const service = createCuaService({
+      localDriver: mockLocal,
+      env: { KIKI_CUA_BUS_DIR: busDir },
+      dataDir: stateDir,
+      fastTargetsCacheTtlMs: 120,
+      staleTargetsCacheTtlMs: 10_000,
+    });
+
+    // 2. cua_observe tool MUST remain lossless PNG
+    const observeRes = await service.executeTool('cua_observe', { targetId: 'local:primary' }, {});
+    const observeMeta = JSON.parse(observeRes.output[0].text);
+    assert.equal(observeMeta.mimeType, 'image/png');
+    assert.equal(requestedFormats.at(-1), 'png');
+
+    // 3. openPanelStream streams JPEG (0x03) and NEVER drops frames under rapid nudgeFrame spam (faster than 35ms capture latency)
+    const binaryFrames = [];
+    const textFrames = [];
+    const ac = new AbortController();
+    const opened = await service.openPanelStream(
+      'screen',
+      { targetId: 'local:primary', maxWidth: 640, fps: 16 },
+      {
+        signal: ac.signal,
+        bufferedAmount: () => 0,
+        sendBinary(buf) { binaryFrames.push(Buffer.from(buf)); },
+        sendText(msg) { textFrames.push(typeof msg === 'string' ? JSON.parse(msg) : msg); },
+      },
+      {},
+    );
+
+    const nudgeInterval = setInterval(() => {
+      opened.onText(JSON.stringify({ type: 'nudgeFrame' }));
+    }, 15);
+    await new Promise((r) => setTimeout(r, 280));
+    clearInterval(nudgeInterval);
+
+    assert.ok(binaryFrames.length >= 3, `Rapid nudgeFrame spam must NOT cause 0 FPS drops; got ${binaryFrames.length} frames`);
+    assert.equal(binaryFrames[0][0], STREAM_FRAME_MAGIC);
+    assert.equal(binaryFrames[0][1], STREAM_JPEG_KIND, 'Local stream frames must encode as STREAM_JPEG_KIND (0x03)');
+    assert.equal(requestedFormats.at(-1), 'jpeg');
+
+    // 4. SWR stale refresh returns immediately and broadcasts targetsUpdated
+    await new Promise((r) => setTimeout(r, 150));
+    const swrT0 = performance.now();
+    const swrInv = await service.collectAllTargets({ fast: true });
+    assert.ok(performance.now() - swrT0 < 50, 'SWR collectAllTargets({ fast: true }) must return in <50ms');
+    assert.ok(swrInv.targets.some((t) => t.id === 'local:primary'));
+    const updDeadline = Date.now() + 1_000;
+    while (!textFrames.some((m) => m.type === 'targetsUpdated') && Date.now() < updDeadline) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    assert.ok(textFrames.some((m) => m.type === 'targetsUpdated'), 'Background refresh must broadcast targetsUpdated');
+
+    // 5. selectTarget switches away from slow in-flight remote capture immediately via captureAbort
+    opened.onText(JSON.stringify({ type: 'selectTarget', targetId: 'remote:slow-1' }));
+    await slowObserveStarted;
+    const framesBeforeSwitchBack = binaryFrames.length;
+    const switchBackT0 = performance.now();
+    opened.onText(JSON.stringify({ type: 'selectTarget', targetId: 'local:primary' }));
+    const backDeadline = Date.now() + 800;
+    while (binaryFrames.length <= framesBeforeSwitchBack && Date.now() < backDeadline) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    const switchBackMs = performance.now() - switchBackT0;
+    assert.ok(binaryFrames.length > framesBeforeSwitchBack, 'Switching away from slow remote must deliver local frame immediately');
+    assert.ok(switchBackMs < 600, `Switch back from slow 4s remote must abort immediately, took ${switchBackMs.toFixed(1)}ms`);
+
+    // 6. setPaused halts frame pushes until resumed
+    opened.onText(JSON.stringify({ type: 'setPaused', paused: true }));
+    await new Promise((r) => setTimeout(r, 80));
+    const pausedCount = binaryFrames.length;
+    await new Promise((r) => setTimeout(r, 160));
+    assert.equal(binaryFrames.length, pausedCount, 'Paused stream must not push new binary frames');
 
     ac.abort();
     opened.onClose();

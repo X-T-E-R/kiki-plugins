@@ -127,3 +127,5 @@ export async function openPanelStream(stream, args, session, context) {
 }
 
 export const slots = createUuSlotHandlers(previewService);
+
+export const __FAST_PANEL_BOOT_V2__ = true;

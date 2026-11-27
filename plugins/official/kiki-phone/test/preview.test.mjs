@@ -684,8 +684,11 @@ test('openPanelStream negotiates scrcpy v4.0 H.264 stream, handles backpressure 
     assert.ok(sentText.some((t) => JSON.parse(t).width === 1200 && JSON.parse(t).height === 540));
 
     abortCtl.abort();
-    assert.equal(killedProc, true);
     assert.equal(closedReason, 'aborted');
+    assert.equal(killedProc, false, 'Warm upstream scrcpy hub must stay alive across subscriber disconnect');
+
+    await preview.dispose();
+    assert.equal(killedProc, true, 'dispose() must tear down warm upstream scrcpy hub');
     assert.ok(adbCommands.some((c) => c.includes('--remove') && c.includes('tcp:28902')));
   } finally {
     await preview.dispose();
@@ -1145,9 +1148,9 @@ test('scrcpy-stream replays latest keyframe epoch on clientReady, falls back for
     );
 
     assert.equal(closedBySession, false, 'Fallback retry must not prematurely close session');
-    assert.equal(spawnArgsList.length, 2, 'Expected automatic retry with i-frame-interval=1 after codec_options rejection');
-    assert.ok(spawnArgsList[0].includes('video_codec_options=i-frame-interval=1,repeat-previous-frame-after=100000'));
-    assert.ok(spawnArgsList[1].includes('video_codec_options=i-frame-interval=1'));
+    assert.equal(spawnArgsList.length, 2, 'Expected automatic retry through 3-tier codec_options cascade after encoder rejection');
+    assert.ok(spawnArgsList[0].includes('video_codec_options=i-frame-interval=2,repeat-previous-frame-after=100000,low-latency=1,priority=0'));
+    assert.ok(spawnArgsList[1].includes('video_codec_options=i-frame-interval=1,repeat-previous-frame-after=100000'));
     assert.equal(hs.width, 720);
     assert.equal(hs.height, 1600);
     assert.equal(videoSocket.noDelay, true);
@@ -1912,6 +1915,204 @@ test('retains online devices on dual probe timeout and debounces transient backg
     assert.deepEqual(e5AfterDebounce, { sections: [] }, 'Sustained disappearance past debounce window must clear online device');
   } finally {
     await preview.dispose();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('v0.4.1 warm scrcpy upstream hub 0ms reattach + RESET_VIDEO + idle TTL teardown, fast state/select, and panel.html zero-jank guards', async () => {
+  const entryMod = await import('../entry.mjs');
+  assert.equal(entryMod.__FAST_PANEL_BOOT_V2__, true);
+
+  const html = await readFile(new URL('../panel.html', import.meta.url), 'utf8');
+  assert.match(html, /onVisibility:/);
+  assert.match(html, /kiki\.phone\.selected/);
+  assert.match(html, /getScreenBoxRect/);
+  assert.match(html, /scheduleLeadingStreamMove/);
+  assert.doesNotMatch(html, /setTimeout\(\(\) => \{\s*if \(!booted\) void startBoot\(\);\s*\},\s*200\)/);
+
+  const dataDir = await createRepoScratchDir('scrcpy-warm-hub-');
+  const sps = Buffer.from([0x00, 0x00, 0x00, 0x01, 0x67, 0x64, 0x00, 0x20, 0xac, 0xb4, 0x0f, 0x81]);
+  const pps = Buffer.from([0x00, 0x00, 0x00, 0x01, 0x68, 0xee, 0x06, 0xf2]);
+  const spsPps = Buffer.concat([sps, pps]);
+
+  const makeSessionPacket = (width, height) => {
+    const b = Buffer.alloc(12);
+    b.writeUInt32BE(0x80000000, 0);
+    b.writeUInt32BE(width, 4);
+    b.writeUInt32BE(height, 8);
+    return b;
+  };
+  const makeFramePacket = ({ config = false, key = false, ptsUs = 0n, payload }) => {
+    const b = Buffer.alloc(12 + payload.length);
+    let flags = config ? (1n << 62n) : BigInt(ptsUs);
+    if (!config && key) flags |= (1n << 61n);
+    b.writeBigUInt64BE(flags, 0);
+    b.writeUInt32BE(payload.length, 8);
+    payload.copy(b, 12);
+    return b;
+  };
+
+  class MockSocket extends EventEmitter {
+    constructor() {
+      super();
+      this.destroyed = false;
+      this.writes = [];
+    }
+    setNoDelay() {}
+    write(buf) { this.writes.push(Buffer.from(buf)); return true; }
+    destroy() { this.destroyed = true; this.emit('close'); }
+  }
+
+  let spawnCount = 0;
+  let killedCount = 0;
+  let controlSocket = null;
+  const adbCalls = [];
+
+  const manager = createScrcpyManager({
+    resolveDataDir: () => dataDir,
+    ensureServer: async () => ({ jarPath: '/mock/scrcpy-server-v4.0.jar', version: '4.0', source: 'cache' }),
+    allocatePort: async () => 29300 + spawnCount,
+    hubIdleTtlMs: 80,
+    executeFile: async (_bin, args) => {
+      adbCalls.push(args.join(' '));
+      return { stdout: '', stderr: '' };
+    },
+    spawnProcess: () => {
+      spawnCount += 1;
+      const proc = new EventEmitter();
+      proc.stdout = new EventEmitter();
+      proc.stderr = new EventEmitter();
+      proc.kill = () => { killedCount += 1; proc.emit('exit', 0); };
+      return proc;
+    },
+    createSocket: (() => {
+      let seq = 0;
+      return () => {
+        seq += 1;
+        const sock = new MockSocket();
+        if (seq % 2 === 1) {
+          queueMicrotask(() => {
+            const nameBuf = Buffer.alloc(64);
+            Buffer.from('Warm Hub Phone').copy(nameBuf);
+            sock.emit('data', Buffer.concat([
+              Buffer.from([0x00]),
+              nameBuf,
+              Buffer.from('h264', 'ascii'),
+              makeSessionPacket(720, 1600),
+              makeFramePacket({ config: true, payload: spsPps }),
+              makeFramePacket({ key: true, ptsUs: 1000n, payload: Buffer.from([0x00, 0x00, 0x00, 0x01, 0x65, 0x55]) }),
+            ]));
+          });
+        } else {
+          controlSocket = sock;
+          queueMicrotask(() => sock.emit('connect'));
+        }
+        return sock;
+      };
+    })(),
+  });
+
+  try {
+    // 1. Cold open spawns hub once
+    const sent1 = [];
+    let onText1 = null;
+    let onClose1 = null;
+    await manager.openVideoStream(
+      { adbBinary: '/mock/adb', serial: 'WARM-01', clientReadyFallbackMs: 200 },
+      {
+        sendBinary: (p) => { sent1.push(Buffer.from(p)); return true; },
+        sendText: () => true,
+        close: () => {},
+        onText: (fn) => { onText1 = fn; return () => {}; },
+        onBinary: () => () => {},
+        onClose: (fn) => { onClose1 = fn; return () => {}; },
+        bufferedAmount: () => 0,
+      },
+      {},
+    );
+    assert.equal(spawnCount, 1);
+    onText1(JSON.stringify({ type: 'clientReady' }));
+    assert.equal(sent1.length, 1);
+
+    // 2. Client 1 disconnects -> hub stays warm; acquireControl reuses it without spawning a control-only server
+    onClose1();
+    assert.equal(killedCount, 0, 'Hub must stay warm while within hubIdleTtlMs');
+    const ctl = await manager.acquireControl({ adbBinary: '/mock/adb', serial: 'WARM-01' });
+    assert.ok(ctl, 'acquireControl must reuse warm idle video hub');
+    assert.equal(spawnCount, 1, 'acquireControl must not spawn a second scrcpy process');
+
+    // 3. Client 2 reattaches -> 0ms reuse, sends RESET_VIDEO, replays cached keyframe
+    controlSocket.writes.length = 0;
+    const sent2 = [];
+    let onText2 = null;
+    let onClose2 = null;
+    const t0 = Date.now();
+    await manager.openVideoStream(
+      { adbBinary: '/mock/adb', serial: 'WARM-01', clientReadyFallbackMs: 200 },
+      {
+        sendBinary: (p) => { sent2.push(Buffer.from(p)); return true; },
+        sendText: () => true,
+        close: () => {},
+        onText: (fn) => { onText2 = fn; return () => {}; },
+        onBinary: () => () => {},
+        onClose: (fn) => { onClose2 = fn; return () => {}; },
+        bufferedAmount: () => 0,
+      },
+      {},
+    );
+    const reattachMs = Date.now() - t0;
+    assert.equal(spawnCount, 1, 'Warm reattach must reuse existing hub without spawning');
+    assert.ok(reattachMs < 50, `Warm reattach should be instant, took ${reattachMs}ms`);
+    assert.ok(
+      controlSocket.writes.some((w) => w.length === 1 && w[0] === CONTROL_MSG.RESET_VIDEO),
+      'Warm reattach must send RESET_VIDEO for immediate fresh IDR',
+    );
+    onText2(JSON.stringify({ type: 'clientReady' }));
+    assert.equal(sent2.length, 1, 'Warm reattach must replay cached keyframe on clientReady');
+
+    // 4. Client 2 disconnects -> after hubIdleTtlMs (80ms), hub tears down automatically
+    onClose2();
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(killedCount, 1, 'Idle warm hub must close automatically after hubIdleTtlMs');
+    assert.ok(adbCalls.some((c) => c.includes('forward --remove')), 'Idle hub teardown must remove adb forward');
+
+    // 5. handlePanelRequest('state', { fast: true }) uses peekState without blocking on slow probes, and select updates cached snapshot
+    let slowProbeCalls = 0;
+    const preview = createPhonePreviewService({
+      dataDir,
+      hostPlatform: 'win32',
+      loadDriverModule: async () => ({
+        MobilecliDriver: class SlowDriver {
+          async listDevices() {
+            slowProbeCalls += 1;
+            if (slowProbeCalls === 1) {
+              return [
+                { id: 'PHONE-A', name: 'Phone A', platform: 'android', type: 'real', state: 'online', screenWidth: 1080, screenHeight: 2400 },
+                { id: 'PHONE-B', name: 'Phone B', platform: 'android', type: 'real', state: 'online', screenWidth: 1080, screenHeight: 2400 },
+              ];
+            }
+            await new Promise((r) => setTimeout(r, 3000));
+            return [];
+          }
+          async dispose() {}
+        },
+      }),
+      executeFile: async () => ({ stdout: 'List of devices attached\n', stderr: '' }),
+    });
+    try {
+      const initial = await preview.handlePanelRequest('state', {}, {});
+      assert.equal(initial.devices.length, 2);
+      const selRes = await preview.handlePanelRequest('action', { action: 'select', deviceId: 'PHONE-B', platform: 'android' }, {});
+      assert.equal(selRes.ok, true);
+      const fastStart = Date.now();
+      const fastState = await preview.handlePanelRequest('state', { fast: true }, {});
+      assert.ok(Date.now() - fastStart < 100, 'handlePanelRequest("state", { fast: true }) must return immediately from cache');
+      assert.equal(fastState.selected?.id, 'PHONE-B', 'select action must update cachedStateSnapshots immediately');
+    } finally {
+      await preview.dispose();
+    }
+  } finally {
+    await manager.dispose();
     await rm(dataDir, { recursive: true, force: true });
   }
 });

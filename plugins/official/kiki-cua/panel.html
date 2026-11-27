@@ -805,6 +805,7 @@
       let seq = 0;
       let parentOrigin = '';
       let ready = false;
+      let visible = true;
       let disposed = false;
       const pending = new Map();
 
@@ -855,8 +856,17 @@
           return;
         }
 
+        if (data.kind === 'visibility') {
+          visible = data.visible !== false;
+          if (typeof options.onVisibility === 'function') {
+            options.onVisibility(visible, data, event);
+          }
+          return;
+        }
+
         if (data.kind === 'init') {
           ready = true;
+          visible = data.visible !== false;
           if (data.presentation || data.theme || data.colorScheme || data.tokens || data.locale) {
             handlePresentation(data, event);
           }
@@ -973,6 +983,7 @@
         openStream: (stream, args = {}, opts = {}) =>
           request('plugin.openStream', { stream, args }, { timeoutMs: 4000, ...opts, withPort: true }),
         isReady: () => ready,
+        isVisible: () => visible,
         isStandalone,
         getOrigin: () => parentOrigin,
         pendingCount: () => pending.size,
@@ -2481,19 +2492,41 @@
   const { attachSandboxClipboard, attachRemoteMagnifier } = KikiRemoteKit;
   const FRAME_MAGIC = 0x4b;
   const PNG_KIND = 0x02;
+  const JPEG_KIND = 0x03;
+  const LAST_FRAME_CACHE_LIMIT = 6;
   const POLL_INTERVAL_MS = 180;
   const isZh = /^zh\b/i.test(navigator.language || '');
 
   initThemeFromUrl();
 
   let booted = false;
+  const savedTargetId = safeStorage.get('kiki.cua.selectedTargetId') || 'local:primary';
+  const lastFrameByTarget = new Map();
+
+  function rememberTargetFrame(targetId, blob, logicalSize) {
+    if (!targetId || !blob) return;
+    if (lastFrameByTarget.has(targetId)) {
+      lastFrameByTarget.delete(targetId);
+    }
+    lastFrameByTarget.set(targetId, {
+      blob,
+      logicalSize: logicalSize?.width && logicalSize?.height
+        ? { width: logicalSize.width, height: logicalSize.height }
+        : null,
+    });
+    while (lastFrameByTarget.size > LAST_FRAME_CACHE_LIMIT) {
+      const oldestKey = lastFrameByTarget.keys().next().value;
+      lastFrameByTarget.delete(oldestKey);
+    }
+  }
 
   const state = {
     targets: [],
-    selectedTargetId: 'local:primary',
+    selectedTargetId: savedTargetId,
     logicalSize: { width: 1920, height: 1080 },
     scaleFactor: 1,
     live: true,
+    hostVisible: true,
     grid: safeStorage.get('kiki.cua.grid') === '1',
     takeoverActive: false,
     controlledBy: 'agent',
@@ -2504,6 +2537,8 @@
     pollTimer: null,
     immediateTimer: null,
     frameInFlight: false,
+    drawInFlight: false,
+    pendingDrawBlob: null,
     pointerDown: null,
     pasteHandledAt: 0,
     standaloneMode: window.parent === window,
@@ -2536,16 +2571,39 @@
 
   const ctx = el.screenCanvas.getContext('2d', { alpha: false });
 
+  function syncVisibilityPause() {
+    const paused = !state.live || !state.hostVisible || document.hidden;
+    if (state.streamActive && state.streamPort) {
+      try {
+        state.streamPort.postMessage(JSON.stringify({ type: 'setPaused', paused }));
+      } catch {}
+    }
+    if (paused) {
+      clearPoll();
+    } else if (state.live && !state.streamActive) {
+      void pollOnce();
+    }
+  }
+
   const bridge = createPanelClient({
     defaultTimeoutMs: 15000,
     testBridge: '__kikiCuaTestBridge',
     onPresentation: (pres, data) => {
       applyPresentation(pres, { fallbackTheme: data?.theme });
     },
+    onVisibility: (visible) => {
+      state.hostVisible = visible !== false;
+      syncVisibilityPause();
+    },
     onInit: (data) => {
       state.standaloneMode = false;
+      state.hostVisible = data?.visible !== false;
       applyPresentation(data.presentation || data, { fallbackTheme: data.theme });
-      void boot();
+      if (!booted) {
+        void boot();
+      } else {
+        syncVisibilityPause();
+      }
     },
   });
 
@@ -2773,46 +2831,75 @@
   }
 
   async function drawBlobToCanvas(blob) {
-    if (typeof createImageBitmap === 'function') {
-      const bmp = await createImageBitmap(blob);
-      try {
-        if (el.screenCanvas.width !== bmp.width || el.screenCanvas.height !== bmp.height) {
-          el.screenCanvas.width = bmp.width;
-          el.screenCanvas.height = bmp.height;
-        }
-        ctx.drawImage(bmp, 0, 0);
-      } finally {
-        bmp.close();
-      }
-      magnifier.refresh();
+    if (!blob) return;
+    if (state.drawInFlight) {
+      state.pendingDrawBlob = blob;
       return;
     }
-    const url = URL.createObjectURL(blob);
+    state.drawInFlight = true;
+    let nextBlob = blob;
     try {
-      await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-          el.screenCanvas.width = img.naturalWidth || 1280;
-          el.screenCanvas.height = img.naturalHeight || 720;
-          ctx.drawImage(img, 0, 0);
+      while (nextBlob) {
+        const current = nextBlob;
+        nextBlob = null;
+        if (typeof createImageBitmap === 'function') {
+          const bmp = await createImageBitmap(current);
+          try {
+            if (el.screenCanvas.width !== bmp.width || el.screenCanvas.height !== bmp.height) {
+              el.screenCanvas.width = bmp.width;
+              el.screenCanvas.height = bmp.height;
+            }
+            ctx.drawImage(bmp, 0, 0);
+          } finally {
+            bmp.close();
+          }
           magnifier.refresh();
-          resolve();
-        };
-        img.onerror = reject;
-        img.src = url;
-      });
+        } else {
+          const url = URL.createObjectURL(current);
+          try {
+            await new Promise((resolve, reject) => {
+              const img = new Image();
+              img.onload = () => {
+                el.screenCanvas.width = img.naturalWidth || 1280;
+                el.screenCanvas.height = img.naturalHeight || 720;
+                ctx.drawImage(img, 0, 0);
+                magnifier.refresh();
+                resolve();
+              };
+              img.onerror = reject;
+              img.src = url;
+            });
+          } finally {
+            URL.revokeObjectURL(url);
+          }
+        }
+        if (state.pendingDrawBlob) {
+          nextBlob = state.pendingDrawBlob;
+          state.pendingDrawBlob = null;
+        }
+      }
     } finally {
-      URL.revokeObjectURL(url);
+      state.drawInFlight = false;
+      if (state.pendingDrawBlob) {
+        const trailing = state.pendingDrawBlob;
+        state.pendingDrawBlob = null;
+        void drawBlobToCanvas(trailing);
+      }
     }
   }
 
   async function drawDataUrl(dataUrl) {
     const comma = dataUrl.indexOf(',');
     if (comma === -1) return;
+    const header = dataUrl.slice(0, comma);
+    const mimeMatch = /^data:([^;]+)/.exec(header);
+    const mime = mimeMatch ? mimeMatch[1] : 'image/png';
     const raw = atob(dataUrl.slice(comma + 1));
     const bytes = new Uint8Array(raw.length);
     for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
-    await drawBlobToCanvas(new Blob([bytes], { type: 'image/png' }));
+    const blob = new Blob([bytes], { type: mime });
+    rememberTargetFrame(state.selectedTargetId, blob, state.logicalSize);
+    await drawBlobToCanvas(blob);
   }
 
   function stopStream(sendClose = true) {
@@ -2879,10 +2966,10 @@
   }
 
   async function pollOnce() {
-    if (!state.live || state.streamActive || document.hidden || isDisconnectedStandalone()) return;
+    if (!state.live || state.streamActive || !state.hostVisible || document.hidden || isDisconnectedStandalone()) return;
     const t0 = performance.now();
     await captureSingleFrame();
-    if (state.live && !state.streamActive && !document.hidden && !isDisconnectedStandalone()) {
+    if (state.live && !state.streamActive && state.hostVisible && !document.hidden && !isDisconnectedStandalone()) {
       const wait = Math.max(40, POLL_INTERVAL_MS - (performance.now() - t0));
       state.pollTimer = setTimeout(() => { void pollOnce(); }, wait);
     }
@@ -2900,7 +2987,7 @@
       const { result, port } = await openStream('screen', {
         targetId: state.selectedTargetId,
         maxWidth: 1280,
-        fps: 8,
+        fps: 16,
       });
       if (gen !== state.streamGen || !port) {
         void pollOnce();
@@ -2908,6 +2995,10 @@
       }
       state.streamPort = port;
       state.streamActive = true;
+      if (result?.targetId) {
+        state.selectedTargetId = result.targetId;
+        safeStorage.set('kiki.cua.selectedTargetId', result.targetId);
+      }
       if (result?.width && result?.height) {
         state.logicalSize = { width: result.width, height: result.height };
         state.scaleFactor = result.scaleFactor || 1;
@@ -2916,6 +3007,9 @@
       if (result?.takeoverActive !== undefined) {
         state.takeoverActive = Boolean(result.takeoverActive);
       }
+      if (!state.hostVisible || document.hidden) {
+        try { port.postMessage(JSON.stringify({ type: 'setPaused', paused: true })); } catch {}
+      }
       updateChrome();
 
       port.onmessage = (ev) => {
@@ -2923,9 +3017,13 @@
         const payload = ev.data;
         if (payload instanceof ArrayBuffer && payload.byteLength > 16) {
           const dv = new DataView(payload);
-          if (dv.getUint8(0) === FRAME_MAGIC && dv.getUint8(1) === PNG_KIND) {
-            const pngBytes = new Uint8Array(payload, 16);
-            void drawBlobToCanvas(new Blob([pngBytes], { type: 'image/png' }));
+          const kind = dv.getUint8(1);
+          if (dv.getUint8(0) === FRAME_MAGIC && (kind === PNG_KIND || kind === JPEG_KIND)) {
+            const frameBytes = new Uint8Array(payload, 16);
+            const mime = kind === JPEG_KIND ? 'image/jpeg' : 'image/png';
+            const blob = new Blob([frameBytes], { type: mime });
+            rememberTargetFrame(state.selectedTargetId, blob, state.logicalSize);
+            void drawBlobToCanvas(blob);
           }
           return;
         }
@@ -2933,12 +3031,24 @@
         if (!msg) return;
         if (msg.__kikiStreamEvent === 'close') {
           stopStream(false);
-          if (state.live) void pollOnce();
+          if (state.live && state.hostVisible && !document.hidden) void pollOnce();
           return;
         }
         if (msg.type === 'frameMeta') {
-          if (msg.logicalSize?.width) state.logicalSize = msg.logicalSize;
+          if (msg.logicalSize?.width) {
+            const changed = msg.logicalSize.width !== state.logicalSize.width
+              || msg.logicalSize.height !== state.logicalSize.height;
+            state.logicalSize = msg.logicalSize;
+            if (changed) layoutFrame();
+          }
           state.takeoverActive = Boolean(msg.takeoverActive);
+          updateChrome();
+        } else if (msg.type === 'targetsUpdated' && Array.isArray(msg.targets)) {
+          state.targets = msg.targets;
+          if (msg.selectedTargetId && !state.selectedTargetId) {
+            state.selectedTargetId = msg.selectedTargetId;
+          }
+          renderTargetSelect();
           updateChrome();
         } else if (msg.type === 'takeover' && (!msg.targetId || msg.targetId === state.selectedTargetId)) {
           state.takeoverActive = Boolean(msg.takeoverActive);
@@ -2957,22 +3067,31 @@
     }
   }
 
-  async function loadTargets() {
+  async function loadTargets({ fast = false } = {}) {
     if (isDisconnectedStandalone()) {
       renderStandalonePlaceholder();
       return;
     }
     try {
-      const res = await panelCall('state');
+      const res = await panelCall('state', { fast: Boolean(fast) });
       if (res?.ok) {
+        const prevTargetId = state.selectedTargetId;
         state.targets = res.targets || [];
-        state.selectedTargetId = res.selectedTargetId || 'local:primary';
+        if (res.selectedTargetId) {
+          state.selectedTargetId = res.selectedTargetId;
+          safeStorage.set('kiki.cua.selectedTargetId', res.selectedTargetId);
+        }
         state.takeoverActive = Boolean(res.takeoverActive);
         state.controlledBy = res.controlledBy || 'agent';
         state.lastAction = res.lastAction || null;
         renderTargetSelect();
         renderActionOverlay(state.lastAction);
         updateChrome();
+        if (state.streamActive && state.streamPort && prevTargetId !== state.selectedTargetId) {
+          try {
+            state.streamPort.postMessage(JSON.stringify({ type: 'selectTarget', targetId: state.selectedTargetId }));
+          } catch {}
+        }
       }
     } catch (err) {
       setStatus(err.message || 'Unavailable', 'error');
@@ -3236,21 +3355,46 @@
     }
   });
 
-  el.targetSelect.addEventListener('change', async () => {
-    state.selectedTargetId = el.targetSelect.value;
-    if (!isDisconnectedStandalone()) {
-      const res = await panelCall('select', { targetId: state.selectedTargetId }).catch(() => null);
-      if (res?.target) {
-        state.takeoverActive = Boolean(res.target.takeoverActive);
-        state.controlledBy = res.target.controlledBy || 'agent';
+  el.targetSelect.addEventListener('change', () => {
+    const nextId = el.targetSelect.value;
+    state.selectedTargetId = nextId;
+    safeStorage.set('kiki.cua.selectedTargetId', nextId);
+
+    const cached = lastFrameByTarget.get(nextId);
+    if (cached?.blob) {
+      if (cached.logicalSize) {
+        state.logicalSize = cached.logicalSize;
+        layoutFrame();
       }
-      if (state.streamActive && state.streamPort) {
-        state.streamPort.postMessage(JSON.stringify({ type: 'selectTarget', targetId: state.selectedTargetId }));
-      } else {
-        await connectTransport();
-      }
+      void drawBlobToCanvas(cached.blob);
+    }
+
+    const active = state.targets.find((t) => t.id === nextId);
+    if (active) {
+      state.takeoverActive = Boolean(active.takeoverActive);
+      state.controlledBy = active.controlledBy || 'agent';
     }
     updateChrome();
+
+    if (!isDisconnectedStandalone()) {
+      if (state.streamActive && state.streamPort) {
+        try {
+          state.streamPort.postMessage(JSON.stringify({ type: 'selectTarget', targetId: nextId }));
+        } catch {}
+      } else {
+        void connectTransport();
+      }
+      void panelCall('select', { targetId: nextId, fast: true })
+        .then((res) => {
+          if (state.selectedTargetId !== nextId) return;
+          if (res?.target) {
+            state.takeoverActive = Boolean(res.target.takeoverActive);
+            state.controlledBy = res.target.controlledBy || 'agent';
+            updateChrome();
+          }
+        })
+        .catch(() => {});
+    }
   });
 
   el.liveBtn.addEventListener('click', () => {
@@ -3265,7 +3409,7 @@
   });
 
   el.refreshBtn.addEventListener('click', async () => {
-    await loadTargets();
+    await loadTargets({ fast: false });
     if (!state.streamActive) await captureSingleFrame();
   });
 
@@ -3281,8 +3425,7 @@
   });
 
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) clearPoll();
-    else if (state.live && !state.streamActive) void pollOnce();
+    syncVisibilityPause();
   });
 
   window.addEventListener('pagehide', () => stopStream(true));
@@ -3294,11 +3437,18 @@
     el.gridSvg.toggleAttribute('hidden', !state.grid);
     buildGridRulerSvg();
     layoutFrame();
-    await loadTargets();
-    await connectTransport();
+    if (isDisconnectedStandalone()) {
+      renderStandalonePlaceholder();
+      return;
+    }
+    await Promise.all([
+      loadTargets({ fast: true }),
+      connectTransport(),
+    ]);
+    void loadTargets({ fast: false });
   }
 
-  setTimeout(() => { if (!booted) void boot(); }, 180);
+  void boot();
 })();
 </script>
 </body>

@@ -894,7 +894,7 @@ export function createRfbDriver({
       }
     };
 
-    const scheduleIncrementalPull = (delayMs = 16) => {
+    const scheduleIncrementalPull = (delayMs = 8) => {
       if (session.closed || !client.connected || session.continuousUpdatesActive) return;
       if (session.updatePending) return;
       session.updatePending = true;
@@ -910,7 +910,7 @@ export function createRfbDriver({
         } catch {
           session.updatePending = false;
         }
-      }, Math.max(4, delayMs));
+      }, Math.max(2, delayMs));
       session.updateThrottleTimer.unref?.();
     };
 
@@ -977,7 +977,7 @@ export function createRfbDriver({
         let orderedRects = null;
         if (subscribersByTargetId.has(target.id) && fb.width > 0 && fb.height > 0) {
           const hasResize = rects.some((r) => r && (r.type === 'desktopSize' || r.type === 'extendedDesktopSize'));
-          if (!hasResize && rects.length <= 48) {
+          if (!hasResize && rects.length <= 128) {
             // Check whether any CopyRect destination overlaps an earlier pixel rect in the same batch;
             // if so, materialize from authoritative fb so order-dependent overwrites never diverge!
             let copyOverlapsEarlier = false;
@@ -1927,6 +1927,11 @@ export function createRfbDriver({
 
   function armInteractivePull(session) {
     if (!session || session.closed || !session.client?.connected || session.continuousUpdatesActive) return;
+    if (session.updateThrottleTimer) {
+      clearTimeout(session.updateThrottleTimer);
+      session.updateThrottleTimer = null;
+      session.updatePending = false;
+    }
     if (!session.updatePending) {
       session.updatePending = true;
       try {
@@ -1934,6 +1939,18 @@ export function createRfbDriver({
       } catch {
         session.updatePending = false;
       }
+    }
+  }
+
+  function requestImmediateUpdate(targetOrId) {
+    try {
+      const target = normalizeRfbTarget(targetOrId);
+      const session = sessionsById.get(target.id);
+      if (!session || session.closed || !session.client?.connected) return false;
+      armInteractivePull(session);
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -2028,6 +2045,7 @@ export function createRfbDriver({
     sendLivePointer,
     sendLiveWheel,
     sendLiveRawKey,
+    requestImmediateUpdate,
     getCurrentFrameSeq,
     waitForSettle,
     executeActions,

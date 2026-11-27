@@ -951,6 +951,7 @@ details.config-drawer[open] .chevron { transform: rotate(90deg); color: var(--in
       let seq = 0;
       let parentOrigin = '';
       let ready = false;
+      let visible = true;
       let disposed = false;
       const pending = new Map();
 
@@ -1001,8 +1002,17 @@ details.config-drawer[open] .chevron { transform: rotate(90deg); color: var(--in
           return;
         }
 
+        if (data.kind === 'visibility') {
+          visible = data.visible !== false;
+          if (typeof options.onVisibility === 'function') {
+            options.onVisibility(visible, data, event);
+          }
+          return;
+        }
+
         if (data.kind === 'init') {
           ready = true;
+          visible = data.visible !== false;
           if (data.presentation || data.theme || data.colorScheme || data.tokens || data.locale) {
             handlePresentation(data, event);
           }
@@ -1119,6 +1129,7 @@ details.config-drawer[open] .chevron { transform: rotate(90deg); color: var(--in
         openStream: (stream, args = {}, opts = {}) =>
           request('plugin.openStream', { stream, args }, { timeoutMs: 4000, ...opts, withPort: true }),
         isReady: () => ready,
+        isVisible: () => visible,
         isStandalone,
         getOrigin: () => parentOrigin,
         pendingCount: () => pending.size,

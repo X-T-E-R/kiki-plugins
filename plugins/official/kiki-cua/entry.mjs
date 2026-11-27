@@ -40,3 +40,5 @@ export async function openPanelStream(stream, args, session, context) {
 }
 
 export const slots = createCuaSlotHandlers(cuaService);
+
+export const __FAST_PANEL_BOOT_V2__ = true;

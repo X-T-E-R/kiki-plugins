@@ -1087,6 +1087,7 @@
       let seq = 0;
       let parentOrigin = '';
       let ready = false;
+      let visible = true;
       let disposed = false;
       const pending = new Map();
 
@@ -1137,8 +1138,17 @@
           return;
         }
 
+        if (data.kind === 'visibility') {
+          visible = data.visible !== false;
+          if (typeof options.onVisibility === 'function') {
+            options.onVisibility(visible, data, event);
+          }
+          return;
+        }
+
         if (data.kind === 'init') {
           ready = true;
+          visible = data.visible !== false;
           if (data.presentation || data.theme || data.colorScheme || data.tokens || data.locale) {
             handlePresentation(data, event);
           }
@@ -1255,6 +1265,7 @@
         openStream: (stream, args = {}, opts = {}) =>
           request('plugin.openStream', { stream, args }, { timeoutMs: 4000, ...opts, withPort: true }),
         isReady: () => ready,
+        isVisible: () => visible,
         isStandalone,
         getOrigin: () => parentOrigin,
         pendingCount: () => pending.size,
@@ -2792,8 +2803,15 @@
     onPresentation: (pres, data) => {
       applyPresentation(pres, { fallbackTheme: data?.theme });
     },
+    onVisibility: (visible) => {
+      state.hostHidden = !visible;
+      handleVisibilityChange();
+    },
     onInit: (data) => {
       state.standaloneMode = false;
+      if (typeof data?.visible === 'boolean') {
+        state.hostHidden = !data.visible;
+      }
       applyPresentation(data.presentation || data, { fallbackTheme: data.theme });
       void startBoot();
     },
@@ -2833,6 +2851,8 @@
     pointerStart: null,
     holdPulseTimer: null,
     streamActive: false,
+    streamDeviceId: null,
+    streamConnectingId: null,
     streamPort: null,
     streamGeneration: 0,
     videoDecoder: null,
@@ -2845,8 +2865,12 @@
     lastResetRequestAt: 0,
     waitingForKeyframe: true,
     hostStreamUnsupported: false,
+    hostHidden: false,
     pendingMove: null,
     moveRaf: 0,
+    moveTrailingTimer: null,
+    lastMoveSentAt: 0,
+    lastResBarAt: 0,
     wheelAccX: 0,
     wheelAccY: 0,
     wheelTimer: null,
@@ -2950,13 +2974,36 @@
     syncInteractiveUi();
   }
 
+  function isHidden() {
+    return Boolean(document.hidden || state.hostHidden);
+  }
+
+  function loadSavedSelection() {
+    try {
+      const raw = safeStorage.get('kiki.phone.selected');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.id === 'string' && parsed.id && (parsed.platform === 'android' || parsed.platform === 'ios')) {
+        return { id: parsed.id, platform: parsed.platform };
+      }
+    } catch {}
+    return null;
+  }
+
+  function saveSelection(sel) {
+    if (!sel || !sel.id || (sel.platform !== 'android' && sel.platform !== 'ios')) return;
+    try {
+      safeStorage.set('kiki.phone.selected', JSON.stringify({ id: sel.id, platform: sel.platform }));
+    } catch {}
+  }
+
   function recordRenderedFrame() {
     const now = performance.now();
     state.fpsTimes.push(now);
     while (state.fpsTimes.length > 0 && now - state.fpsTimes[0] > 1500) {
       state.fpsTimes.shift();
     }
-    updateResolutionBar();
+    updateResolutionBar(false);
   }
 
   function currentFps() {
@@ -2966,7 +3013,10 @@
     return Math.round(((state.fpsTimes.length - 1) * 1000) / span);
   }
 
-  function updateResolutionBar() {
+  function updateResolutionBar(force = true) {
+    const now = performance.now();
+    if (!force && now - state.lastResBarAt < 250) return;
+    state.lastResBarAt = now;
     const w = state.screenSize.width || 0;
     const h = state.screenSize.height || 0;
     if (!w || !h) {
@@ -2988,8 +3038,10 @@
     if (!width || !height) return;
     const changed = width !== state.screenSize.width || height !== state.screenSize.height;
     state.screenSize = { width, height };
-    if (changed) layoutChassis();
-    updateResolutionBar();
+    if (changed) {
+      layoutChassis();
+      updateResolutionBar(true);
+    }
   }
 
   function fitDeviceFrame(aspect, width, height, rightInset) {
@@ -3001,7 +3053,19 @@
       : { width: Math.round(availW), height: Math.round(availW / aspect) };
   }
 
+  let cachedScreenBoxRect = null;
+  function invalidateScreenBoxRect() {
+    cachedScreenBoxRect = null;
+  }
+  function getScreenBoxRect() {
+    if (!cachedScreenBoxRect) {
+      cachedScreenBoxRect = el.screenBox.getBoundingClientRect();
+    }
+    return cachedScreenBoxRect;
+  }
+
   function layoutChassis() {
+    invalidateScreenBoxRect();
     const rect = el.stage.getBoundingClientRect();
     const sw = Math.max(1, state.screenSize.width || 1080);
     const sh = Math.max(1, state.screenSize.height || 2400);
@@ -3013,6 +3077,9 @@
   }
 
   new ResizeObserver(layoutChassis).observe(el.stage);
+  new ResizeObserver(invalidateScreenBoxRect).observe(el.screenBox);
+  window.addEventListener('resize', invalidateScreenBoxRect);
+  window.addEventListener('scroll', invalidateScreenBoxRect, true);
 
   function computeContainedRect(boxWidth, boxHeight, contentWidth, contentHeight) {
     const cw = Math.max(1, boxWidth);
@@ -3031,7 +3098,7 @@
   }
 
   function mapSurfaceEvent(ev) {
-    const boxRect = el.screenBox.getBoundingClientRect();
+    const boxRect = getScreenBoxRect();
     const sw = Math.max(1, state.screenSize.width || el.screenCanvas.width || 1080);
     const sh = Math.max(1, state.screenSize.height || el.screenCanvas.height || 2400);
     const drawn = computeContainedRect(boxRect.width, boxRect.height, sw, sh);
@@ -3163,7 +3230,7 @@
   }
 
   function enqueueDecodedVideoFrame(videoFrame) {
-    if (!state.streamActive || document.hidden) {
+    if (!state.streamActive || isHidden()) {
       try { videoFrame.close(); } catch {}
       return;
     }
@@ -3179,6 +3246,8 @@
   function stopStreamMode(sendClose = true) {
     state.streamGeneration++;
     state.streamActive = false;
+    state.streamDeviceId = null;
+    state.streamConnectingId = null;
     state.waitingForKeyframe = true;
     state.configuredCodec = '';
     state.configuringDecoderPromise = null;
@@ -3319,7 +3388,7 @@
     const nalu = new Uint8Array(arrayBuffer, 16);
 
     if (w && h) updateScreenDimensions(w, h);
-    if (document.hidden) {
+    if (isHidden()) {
       state.waitingForKeyframe = true;
       state.pendingDecodeChunks.length = 0;
       cancelPendingVideoFrame();
@@ -3406,14 +3475,15 @@
     }
   }
 
-  async function tryConnectHardwareStream(forceRetryHost = false) {
-    const active = activeOnlineDevice();
+  async function tryConnectHardwareStream(forceRetryHost = false, explicitTarget = null) {
+    const active = explicitTarget || activeOnlineDevice();
     if (!active || !state.live || active.platform !== 'android' || isDisconnectedStandalone()) return false;
     if (typeof window.VideoDecoder !== 'function') return false;
     if (state.hostStreamUnsupported && !forceRetryHost) return false;
 
     stopStreamMode(true);
     const gen = ++state.streamGeneration;
+    state.streamConnectingId = active.id;
 
     try {
       const { result, port } = await openPanelStream('screen', {
@@ -3435,6 +3505,7 @@
       }
 
       if (!port) {
+        state.streamConnectingId = null;
         state.hostStreamUnsupported = true;
         return false;
       }
@@ -3442,6 +3513,8 @@
       state.hostStreamUnsupported = false;
       state.streamPort = port;
       state.streamActive = true;
+      state.streamDeviceId = active.id;
+      state.streamConnectingId = null;
       state.fpsTimes = [];
       clearPollTimer();
 
@@ -3483,9 +3556,10 @@
       sendStreamJson({ type: 'clientReady' });
 
       syncInteractiveUi();
-      updateResolutionBar();
+      updateResolutionBar(true);
       return true;
     } catch (err) {
+      if (state.streamConnectingId === active.id) state.streamConnectingId = null;
       const msg = String(err?.message || '');
       if (/unsupported method|unknown method|not supported/i.test(msg)) {
         state.hostStreamUnsupported = true;
@@ -3503,7 +3577,7 @@
 
   function scheduleNextPoll(preferredDelayMs = MIN_POLL_INTERVAL_MS, allowWhenPaused = false) {
     clearPollTimer();
-    if ((!state.live && !allowWhenPaused) || state.streamActive || document.hidden || !activeOnlineDevice() || isDisconnectedStandalone()) return;
+    if ((!state.live && !allowWhenPaused) || state.streamActive || isHidden() || !activeOnlineDevice() || isDisconnectedStandalone()) return;
     const now = Date.now();
     const count = pruneRpcWindow(now);
     let delay = Math.max(8, preferredDelayMs);
@@ -3623,13 +3697,13 @@
     }
   }
 
-  async function loadState() {
+  async function loadState({ fast = false } = {}) {
     if (isDisconnectedStandalone()) {
       renderDeviceOptions();
       return;
     }
     try {
-      const res = await panelCall('state');
+      const res = await panelCall('state', fast ? { fast: true } : {});
       if (res?.ok) {
         state.devices = res.devices || [];
         state.selected = res.selected || null;
@@ -3642,6 +3716,8 @@
         if (state.selected?.id && state.takeoverByDevice.has(state.selected.id)) {
           state.interactive = Boolean(state.takeoverByDevice.get(state.selected.id));
         }
+        const active = activeOnlineDevice();
+        if (active) saveSelection({ id: active.id, platform: active.platform });
         renderDeviceOptions();
       }
     } catch (err) {
@@ -3652,7 +3728,7 @@
   async function refreshFrame(force = false) {
     if (state.streamActive && !force) return;
     if (state.frameInFlight || isDisconnectedStandalone()) return;
-    if (!force && (!state.live || document.hidden)) return;
+    if (!force && (!state.live || isHidden())) return;
     const active = activeOnlineDevice();
     if (!active) return;
 
@@ -3749,7 +3825,7 @@
     }
     el.axLayer.hidden = false;
     el.axLayer.classList.add('interactive');
-    const boxRect = el.screenBox.getBoundingClientRect();
+    const boxRect = getScreenBoxRect();
     const drawn = computeContainedRect(boxRect.width, boxRect.height, state.screenSize.width, state.screenSize.height);
     const baseLeftPct = (drawn.x / Math.max(1, boxRect.width)) * 100;
     const baseTopPct = (drawn.y / Math.max(1, boxRect.height)) * 100;
@@ -3807,7 +3883,7 @@
       el.screenBox.appendChild(d2);
       state.pinchDots = [d1, d2];
     }
-    const boxRect = el.screenBox.getBoundingClientRect();
+    const boxRect = getScreenBoxRect();
     const sw = Math.max(1, state.screenSize.width || 1080);
     const sh = Math.max(1, state.screenSize.height || 2400);
     const drawn = computeContainedRect(boxRect.width, boxRect.height, sw, sh);
@@ -3874,6 +3950,53 @@
     state.pointerStart = { ...pt, time: Date.now(), pointerId: ev.pointerId, streamed, moved: false, isPinch: false };
   });
 
+  function clearMoveScheduling() {
+    if (state.moveRaf) {
+      cancelAnimationFrame(state.moveRaf);
+      state.moveRaf = 0;
+    }
+    if (state.moveTrailingTimer) {
+      clearTimeout(state.moveTrailingTimer);
+      state.moveTrailingTimer = null;
+    }
+  }
+
+  function dispatchStreamMove(pt) {
+    if (!pt || !state.pointerStart) return;
+    state.lastMoveSentAt = performance.now();
+    if (state.pointerStart.isPinch) {
+      const pair = computeVirtualPinchPair(pt.x, pt.y, 0.5, 0.5);
+      showPinchDots(pair.primary, pair.secondary);
+      sendStreamTouch(2, 1, pair.primary.normX, pair.primary.normY, 0);
+      sendStreamTouch(2, 1, pair.secondary.normX, pair.secondary.normY, 1);
+    } else if (state.pointerStart.streamed) {
+      sendStreamTouch(2, 1, pt.x, pt.y);
+    }
+  }
+
+  function scheduleLeadingStreamMove(pt) {
+    const now = performance.now();
+    const elapsed = now - state.lastMoveSentAt;
+    if (elapsed >= 6) {
+      clearMoveScheduling();
+      state.pendingMove = null;
+      dispatchStreamMove(pt);
+      return;
+    }
+    state.pendingMove = pt;
+    if (!state.moveTrailingTimer) {
+      const waitMs = Math.max(1, Math.ceil(6 - elapsed));
+      state.moveTrailingTimer = setTimeout(() => {
+        state.moveTrailingTimer = null;
+        if (state.pendingMove && state.pointerStart && state.streamActive) {
+          const next = state.pendingMove;
+          state.pendingMove = null;
+          dispatchStreamMove(next);
+        }
+      }, waitMs);
+    }
+  }
+
   el.screenBox.addEventListener('pointermove', (ev) => {
     if (state.interactive && !state.axEnabled && activeOnlineDevice()) {
       const hoverPt = mapSurfaceEvent(ev);
@@ -3885,19 +4008,7 @@
     const pt = mapSurfaceEvent(ev);
 
     if (state.pointerStart.isPinch && state.streamActive) {
-      state.pendingMove = pt;
-      if (!state.moveRaf) {
-        state.moveRaf = requestAnimationFrame(() => {
-          state.moveRaf = 0;
-          if (state.pendingMove && state.pointerStart?.isPinch) {
-            const pair = computeVirtualPinchPair(state.pendingMove.x, state.pendingMove.y, 0.5, 0.5);
-            showPinchDots(pair.primary, pair.secondary);
-            sendStreamTouch(2, 1, pair.primary.normX, pair.primary.normY, 0);
-            sendStreamTouch(2, 1, pair.secondary.normX, pair.secondary.normY, 1);
-            state.pendingMove = null;
-          }
-        });
-      }
+      scheduleLeadingStreamMove(pt);
       return;
     }
 
@@ -3912,16 +4023,7 @@
     }
 
     if (state.pointerStart.streamed && state.streamActive) {
-      state.pendingMove = pt;
-      if (!state.moveRaf) {
-        state.moveRaf = requestAnimationFrame(() => {
-          state.moveRaf = 0;
-          if (state.pendingMove && state.pointerStart?.streamed) {
-            sendStreamTouch(2, 1, state.pendingMove.x, state.pendingMove.y);
-            state.pendingMove = null;
-          }
-        });
-      }
+      scheduleLeadingStreamMove(pt);
     }
   });
 
@@ -3934,10 +4036,7 @@
     const end = mapSurfaceEvent(ev);
 
     if (start.isPinch) {
-      if (state.moveRaf) {
-        cancelAnimationFrame(state.moveRaf);
-        state.moveRaf = 0;
-      }
+      clearMoveScheduling();
       state.pendingMove = null;
       hidePinchDots();
       const pair = computeVirtualPinchPair(end.x, end.y, 0.5, 0.5);
@@ -3947,10 +4046,7 @@
     }
 
     if (start.streamed) {
-      if (state.moveRaf) {
-        cancelAnimationFrame(state.moveRaf);
-        state.moveRaf = 0;
-      }
+      clearMoveScheduling();
       if (state.pendingMove && !cancelled) {
         sendStreamTouch(2, 1, state.pendingMove.x, state.pendingMove.y);
       }
@@ -4196,18 +4292,19 @@
     setInteractiveMode(!state.interactive);
   });
 
-  el.deviceSelect.addEventListener('change', async () => {
+  el.deviceSelect.addEventListener('change', () => {
     const val = el.deviceSelect.value;
     if (!val.includes(':')) return;
     const [platform, ...rest] = val.split(':');
     const id = rest.join(':');
     state.selected = { id, platform };
+    saveSelection(state.selected);
     state.interactive = Boolean(state.takeoverByDevice.get(id));
     state.fpsTimes = [];
-    await panelCall('action', { action: 'select', deviceId: id, platform }).catch(() => {});
+    void panelCall('action', { action: 'select', deviceId: id, platform }).catch(() => {});
     renderDeviceOptions();
-    await activateLiveTransport(false);
-    if (state.axEnabled) await loadAxTree();
+    void activateLiveTransport(false);
+    if (state.axEnabled) void loadAxTree();
   });
 
   el.liveToggle.addEventListener('click', () => {
@@ -4402,35 +4499,76 @@
     }, 220);
   });
 
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
+  function handleVisibilityChange() {
+    if (isHidden()) {
       clearPollTimer();
       cancelPendingVideoFrame();
       state.pendingDecodeChunks.length = 0;
+      state.waitingForKeyframe = true;
     } else if (state.live) {
       if (state.streamActive) {
         state.waitingForKeyframe = true;
         sendStreamJson({ type: 'clientReady', force: true });
+        sendStreamJson({ type: 'resetVideo' });
       } else {
         scheduleNextPoll(10);
       }
     }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    handleVisibilityChange();
   });
 
   window.addEventListener('pagehide', () => stopStreamMode(true));
 
   async function startBoot() {
     if (booted) {
-      await loadState();
-      if (!state.streamActive) await activateLiveTransport(false);
+      await loadState({ fast: false });
+      const active = activeOnlineDevice();
+      const sameStream = active && (state.streamDeviceId === active.id || state.streamConnectingId === active.id);
+      if (active && !sameStream) await activateLiveTransport(false);
       return;
     }
     booted = true;
-    await loadState();
-    await activateLiveTransport(false);
+    const saved = loadSavedSelection();
+    const fastStatePromise = loadState({ fast: true });
+    let optimisticPromise = null;
+    if (
+      saved
+      && saved.platform === 'android'
+      && state.live
+      && typeof window.VideoDecoder === 'function'
+      && !isDisconnectedStandalone()
+    ) {
+      state.selected = saved;
+      optimisticPromise = tryConnectHardwareStream(false, saved).catch(() => false);
+    }
+
+    await fastStatePromise;
+    if (optimisticPromise) {
+      await optimisticPromise;
+    }
+    const active = activeOnlineDevice();
+    if (active) {
+      const sameStream = state.streamActive && state.streamDeviceId === active.id;
+      if (!sameStream) {
+        await activateLiveTransport(false);
+      }
+    } else if (state.streamActive) {
+      stopStreamMode(true);
+    }
+
+    // Background authoritative reconciliation without interrupting active matching stream
+    void loadState({ fast: false }).then(() => {
+      const latestActive = activeOnlineDevice();
+      if (latestActive && !state.streamActive && !state.streamConnectingId) {
+        void activateLiveTransport(false);
+      }
+    });
   }
 
-  setTimeout(() => { if (!booted) void startBoot(); }, 200);
+  void startBoot();
 })();
 </script>
 </body>

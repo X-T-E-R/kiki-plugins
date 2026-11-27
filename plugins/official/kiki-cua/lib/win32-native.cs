@@ -22,6 +22,8 @@ namespace KikiCua
         private static Bitmap _reuseSrcBmp = null;
         private static Bitmap _reuseOutBmp = null;
         private static readonly MemoryStream _reusePngStream = new MemoryStream(512 * 1024);
+        private static ImageCodecInfo _jpegCodec = null;
+        private static bool _jpegCodecResolved = false;
         private static readonly IntPtr EXTRA_MAGIC = new IntPtr(0x4B494B49);
         private static readonly HashSet<ushort> _heldKeys = new HashSet<ushort>();
         private static uint _heldMouseButtons = 0;
@@ -863,6 +865,79 @@ namespace KikiCua
             return slot;
         }
 
+        private static ImageCodecInfo GetJpegCodec()
+        {
+            if (!_jpegCodecResolved)
+            {
+                _jpegCodecResolved = true;
+                try
+                {
+                    ImageCodecInfo[] codecs = ImageCodecInfo.GetImageEncoders();
+                    for (int i = 0; i < codecs.Length; i++)
+                    {
+                        if (string.Equals(codecs[i].MimeType, "image/jpeg", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _jpegCodec = codecs[i];
+                            break;
+                        }
+                    }
+                }
+                catch { }
+            }
+            return _jpegCodec;
+        }
+
+        private static string ComputeSampledPixelHash(Bitmap bmp)
+        {
+            if (bmp == null) return "";
+            int w = bmp.Width;
+            int h = bmp.Height;
+            if (w <= 0 || h <= 0) return "";
+            BitmapData data = null;
+            try
+            {
+                data = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+                int stride = Math.Abs(data.Stride);
+                int totalBytes = stride * h;
+                if (totalBytes <= 0) return "";
+                byte[] rowBuf = new byte[stride];
+                int stepY = Math.Max(1, h / 48);
+                int stepX = Math.Max(1, w / 64);
+                ulong hash = 14695981039346656037UL;
+                hash ^= (ulong)w; hash *= 1099511628211UL;
+                hash ^= (ulong)h; hash *= 1099511628211UL;
+                IntPtr scan0 = data.Scan0;
+                int rowStride = data.Stride;
+                for (int y = 0; y < h; y += stepY)
+                {
+                    IntPtr rowPtr = new IntPtr(scan0.ToInt64() + (long)y * rowStride);
+                    Marshal.Copy(rowPtr, rowBuf, 0, stride);
+                    for (int x = 0; x < w; x += stepX)
+                    {
+                        int off = x * 3;
+                        if (off + 2 < stride)
+                        {
+                            hash ^= rowBuf[off]; hash *= 1099511628211UL;
+                            hash ^= rowBuf[off + 1]; hash *= 1099511628211UL;
+                            hash ^= rowBuf[off + 2]; hash *= 1099511628211UL;
+                        }
+                    }
+                }
+                return string.Format("{0:x16}", hash);
+            }
+            catch
+            {
+                return "";
+            }
+            finally
+            {
+                if (data != null)
+                {
+                    try { bmp.UnlockBits(data); } catch { }
+                }
+            }
+        }
+
         public static Dictionary<string, object> CaptureRegion(
             string hwndStr,
             int originX,
@@ -877,7 +952,9 @@ namespace KikiCua
             int maxWidth,
             int maxHeight,
             string overlay,
-            bool includeAccessibility)
+            bool includeAccessibility,
+            string format = "png",
+            int quality = 80)
         {
             EnsureInitialized();
             IntPtr targetHwnd = ParseHwnd(hwndStr);
@@ -975,16 +1052,30 @@ namespace KikiCua
                     }
                 }
 
+                bool wantJpeg = (string.Equals(format, "jpeg", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(format, "jpg", StringComparison.OrdinalIgnoreCase))
+                    && GetJpegCodec() != null;
+
                 if (outW != preW || outH != preH)
                 {
                     finalBmp = EnsureReusableBitmap(ref _reuseOutBmp, outW, outH, PixelFormat.Format24bppRgb);
                     using (Graphics gd = Graphics.FromImage(finalBmp))
                     {
                         gd.CompositingMode = CompositingMode.SourceCopy;
-                        gd.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                        gd.PixelOffsetMode = PixelOffsetMode.HighQuality;
-                        gd.SmoothingMode = SmoothingMode.HighQuality;
-                        gd.CompositingQuality = CompositingQuality.HighQuality;
+                        if (wantJpeg)
+                        {
+                            gd.InterpolationMode = InterpolationMode.Bilinear;
+                            gd.PixelOffsetMode = PixelOffsetMode.Half;
+                            gd.SmoothingMode = SmoothingMode.HighSpeed;
+                            gd.CompositingQuality = CompositingQuality.HighSpeed;
+                        }
+                        else
+                        {
+                            gd.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                            gd.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                            gd.SmoothingMode = SmoothingMode.HighQuality;
+                            gd.CompositingQuality = CompositingQuality.HighQuality;
+                        }
                         gd.DrawImage(croppedNative, new Rectangle(0, 0, outW, outH), new Rectangle(0, 0, preW, preH), GraphicsUnit.Pixel);
                     }
                 }
@@ -1018,9 +1109,24 @@ namespace KikiCua
                     }
                 }
 
+                string pixelHash = ComputeSampledPixelHash(finalBmp);
+                string mimeType = "image/png";
                 _reusePngStream.Position = 0;
                 _reusePngStream.SetLength(0);
-                finalBmp.Save(_reusePngStream, ImageFormat.Png);
+                if (wantJpeg)
+                {
+                    int clampedQ = Math.Max(30, Math.Min(95, quality > 0 ? quality : 80));
+                    using (EncoderParameters encParams = new EncoderParameters(1))
+                    {
+                        encParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, (long)clampedQ);
+                        finalBmp.Save(_reusePngStream, GetJpegCodec(), encParams);
+                    }
+                    mimeType = "image/jpeg";
+                }
+                else
+                {
+                    finalBmp.Save(_reusePngStream, ImageFormat.Png);
+                }
                 int byteLen = (int)_reusePngStream.Length;
                 string b64 = Convert.ToBase64String(_reusePngStream.GetBuffer(), 0, byteLen);
 
@@ -1048,6 +1154,8 @@ namespace KikiCua
 
                 IntPtr fg = GetForegroundWindow();
                 Dictionary<string, object> res = new Dictionary<string, object>();
+                res["mimeType"] = mimeType;
+                res["pixelHash"] = pixelHash;
                 res["imageBase64"] = b64;
                 res["byteLength"] = byteLen;
                 res["imageSize"] = imgSize;
@@ -1850,7 +1958,9 @@ namespace KikiCua
                             DictInt(p, "maxWidth", 1280),
                             DictInt(p, "maxHeight", 900),
                             DictStr(p, "overlay", "none"),
-                            DictBool(p, "includeAccessibility", false)
+                            DictBool(p, "includeAccessibility", false),
+                            DictStr(p, "format", "png"),
+                            DictInt(p, "quality", 80)
                         );
                         break;
                     case "mouseMove":

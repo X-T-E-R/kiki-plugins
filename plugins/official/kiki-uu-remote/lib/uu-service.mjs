@@ -28,6 +28,8 @@ const DEFAULT_TAKEOVER_THRESHOLD_PX = 48;
 const SCREENSHOT_HISTORY_LIMIT = 16;
 const DEDUPE_UNCHANGED_MAX_STREAK = 2;
 const HUMAN_SUMMARY_RING_LIMIT = 12;
+const DEFAULT_TOPOLOGY_FRESH_TTL_MS = 5_000;
+const DEFAULT_TOPOLOGY_STALE_TTL_MS = 60_000;
 
 function sleep(ms, signal) {
   const clamped = Math.max(0, Math.min(30_000, Math.round(Number(ms) || 0)));
@@ -348,6 +350,8 @@ export function createUuRemoteService({
   cliClient = createUuycCliClient(),
   stateDir: initialStateDir = null,
   busInspector = null,
+  topologyFreshTtlMs = DEFAULT_TOPOLOGY_FRESH_TTL_MS,
+  topologyStaleTtlMs = DEFAULT_TOPOLOGY_STALE_TTL_MS,
   nowFn = Date.now,
 } = {}) {
   const effectivePveDriver = pveDriver === undefined ? createPveQmpDriver({ nowFn }) : pveDriver;
@@ -376,6 +380,22 @@ export function createUuRemoteService({
   let stateLoadedFromDir = null;
   let stateLoadFlight = null;
   let externalDiskDirty = false;
+  const topologyCache = new Map();
+  const topologyFlights = new Map();
+
+  function topologyCacheKey(settings = {}, context = {}) {
+    return `${String(settings?.executablePath ?? '')}|${String(settings?.cliPath ?? '')}|${resolveStateDir(context)}`;
+  }
+
+  function invalidateTopologyCache() {
+    topologyCache.clear();
+  }
+
+  function getCachedTopology(settings = {}, context = {}) {
+    const key = topologyCacheKey(settings, context);
+    const entry = topologyCache.get(key);
+    return entry ? entry.value : null;
+  }
 
   function invalidateSessionGeometry(sessionId, dims = null) {
     const sid = normalizeSessionId(sessionId);
@@ -409,6 +429,7 @@ export function createUuRemoteService({
         configuredStateDir = resolved;
         stateLoadedFromDir = null;
         externalDiskDirty = true;
+        invalidateTopologyCache();
       }
     }
   }
@@ -846,7 +867,7 @@ export function createUuRemoteService({
     return results;
   }
 
-  async function inspectCombinedTopology(settings = {}, context = {}, { probePveResolution = false } = {}) {
+  async function fetchCombinedTopologyLive(settings = {}, context = {}, { probePveResolution = false } = {}) {
     await syncPersistedState(context);
     const [winTopo, pveSessions, vncSessions] = await Promise.all([
       systemDriver.inspectTopology(settings).catch((error) => ({
@@ -873,6 +894,49 @@ export function createUuRemoteService({
       pveSessions,
       vncSessions,
     };
+  }
+
+  function startTopologyRefresh(key, settings = {}, context = {}, { probePveResolution = false } = {}) {
+    let flight = topologyFlights.get(key);
+    if (!flight) {
+      flight = fetchCombinedTopologyLive(settings, context, { probePveResolution })
+        .then((value) => {
+          if (topologyFreshTtlMs > 0 || topologyStaleTtlMs > 0) {
+            topologyCache.set(key, { at: nowFn(), value });
+          }
+          return value;
+        })
+        .finally(() => {
+          if (topologyFlights.get(key) === flight) topologyFlights.delete(key);
+        });
+      flight.catch(() => {});
+      topologyFlights.set(key, flight);
+    }
+    return flight;
+  }
+
+  async function inspectCombinedTopology(settings = {}, context = {}, { probePveResolution = false, force = false } = {}) {
+    await syncPersistedState(context);
+    const key = topologyCacheKey(settings, context);
+    const cached = topologyCache.get(key);
+    if (!force && !probePveResolution && cached) {
+      const age = nowFn() - cached.at;
+      if (age < topologyFreshTtlMs) {
+        return cached.value;
+      }
+      if (age < topologyStaleTtlMs) {
+        startTopologyRefresh(key, settings, { ...context, signal: undefined }, { probePveResolution: false });
+        return cached.value;
+      }
+    }
+    if (force || probePveResolution) {
+      const value = await fetchCombinedTopologyLive(settings, context, { probePveResolution });
+      if (topologyFreshTtlMs > 0 || topologyStaleTtlMs > 0) {
+        topologyCache.set(key, { at: nowFn(), value });
+      }
+      return value;
+    }
+    return startTopologyRefresh(key, settings, context, { probePveResolution: false });
   }
 
   async function releaseSessionInputs(sessionId) {
@@ -1037,10 +1101,48 @@ export function createUuRemoteService({
     const parsed = parseVncTargetId(requestedId, { strict: true });
     const registered = vncTargetsById.get(parsed.id);
     const target = registered || { ...parsed, sshHost: null, label: null, desktopName: null, width: null, height: null };
-    const caps = effectiveRfbDriver
+    const caps = typeof effectiveRfbDriver?.getSessionCapabilities === 'function'
       ? await effectiveRfbDriver.getSessionCapabilities(target).catch(() => null)
       : null;
     return buildVncSessionObject(target, caps, null);
+  }
+
+  async function resolveFastStreamSession(requestedId, context = {}) {
+    await syncPersistedState(context);
+    const settings = context?.settings ?? {};
+    const wanted = requestedId ? normalizeSessionId(requestedId) : (selectedSessionId ? normalizeSessionId(selectedSessionId) : '');
+    const cachedTopo = getCachedTopology(settings, context);
+    if (wanted) {
+      if (cachedTopo) {
+        const hit = cachedTopo.sessions.find((s) => s.id === wanted);
+        if (hit) return hit;
+      }
+      if (isPveTargetId(wanted)) {
+        const registered = pveTargetsById.get(wanted);
+        if (registered) {
+          return buildPveSessionObject(
+            registered,
+            {
+              running: true,
+              vmStatus: 'running',
+              vmName: registered.vmName,
+              width: registered.width,
+              height: registered.height,
+            },
+            null,
+          );
+        }
+        return resolveExplicitPveTarget(wanted, context);
+      }
+      if (isVncTargetId(wanted)) {
+        return resolveExplicitVncTarget(wanted);
+      }
+    }
+    if (cachedTopo && cachedTopo.sessions.length > 0) {
+      return resolveTargetSession(wanted || null, cachedTopo, context);
+    }
+    const topo = await inspectCombinedTopology(settings, context);
+    return resolveTargetSession(wanted || null, topo, context);
   }
 
   async function resolveTargetSession(requestedId, topo, context = {}) {
@@ -2331,27 +2433,45 @@ export function createUuRemoteService({
       );
     }
 
-    const topo = await inspectCombinedTopology(settings, context, {
-      probePveResolution: Boolean(args.probeContentRect),
-    });
-
     if (action === 'select') {
       const targetId = normalizeSessionId(args.sessionId);
       if (!targetId) {
         throw new Error('uu_sessions action="select" requires sessionId (uu:<hwnd>, pve:<ssh_host>:<vmid>, or vnc:<host>:<port>).');
       }
-      const match = topo.sessions.find((s) => s.id === targetId);
+      const cachedTopo = getCachedTopology(settings, context);
+      let match = cachedTopo ? cachedTopo.sessions.find((s) => s.id === targetId) : null;
+      if (!match && isPveTargetId(targetId)) {
+        const reg = pveTargetsById.get(targetId);
+        if (reg) {
+          match = buildPveSessionObject(reg, { running: true, vmStatus: 'running', vmName: reg.vmName, width: reg.width, height: reg.height }, null);
+        }
+      }
+      if (!match && isVncTargetId(targetId)) {
+        const reg = vncTargetsById.get(targetId);
+        if (reg) {
+          match = await resolveExplicitVncTarget(targetId);
+        }
+      }
+      if (!match) {
+        const freshTopo = await inspectCombinedTopology(settings, context, { force: true });
+        match = freshTopo.sessions.find((s) => s.id === targetId);
+      }
       if (!match) {
         throw new Error(`Session "${targetId}" was not found among open UU Remote windows, registered PVE VMs, or VNC targets.`);
       }
       selectedSessionId = match.id;
-      await persistState(context);
+      void persistState(context);
       return {
         ok: true,
         selectedSessionId,
         session: decorateSession(match),
       };
     }
+
+    const topo = await inspectCombinedTopology(settings, context, {
+      probePveResolution: Boolean(args.probeContentRect),
+      force: Boolean(args.force),
+    });
 
     if (args.probeContentRect) {
       for (const session of topo.sessions) {
@@ -2636,6 +2756,7 @@ export function createUuRemoteService({
     const waitMs = args?.waitForWindowMs ?? 4000;
 
     if (action === 'recover_offscreen') {
+      invalidateTopologyCache();
       const topo = await systemDriver.inspectTopology(settings);
       const primaryMonitor = topo.monitors.find((m) => m.primary) || topo.monitors[0] || null;
       const filterId = args.sessionId ? normalizeSessionId(args.sessionId) : null;
@@ -2664,6 +2785,7 @@ export function createUuRemoteService({
       }
 
       const movedRes = await systemDriver.recoverOffscreenWindows(targets);
+      invalidateTopologyCache();
       return {
         ok: true,
         action,
@@ -2728,6 +2850,7 @@ export function createUuRemoteService({
         };
         vncTargetsById.set(record.id, record);
         selectedSessionId = record.id;
+        invalidateTopologyCache();
         await Promise.all([persistVncTargets(context), persistState(context)]);
 
         const liveCaps = await effectiveRfbDriver.getSessionCapabilities(record);
@@ -2782,6 +2905,7 @@ export function createUuRemoteService({
         };
         pveTargetsById.set(record.id, record);
         selectedSessionId = record.id;
+        invalidateTopologyCache();
         await Promise.all([persistPveTargets(context), persistState(context)]);
 
         const decorated = decorateSession(buildPveSessionObject(record, live, null));
@@ -2799,6 +2923,7 @@ export function createUuRemoteService({
       }
 
       const cliRes = await cliClient.connectDevice(args.deviceId, settings, { signal: context?.signal });
+      invalidateTopologyCache();
       const topo = waitMs > 0
         ? await waitForSessionWindow(waitMs, settings, context?.signal).catch(() => null)
         : null;
@@ -2825,6 +2950,7 @@ export function createUuRemoteService({
         humanSummaryBySession.delete(vncTarget.id);
         if (selectedSessionId === vncTarget.id) selectedSessionId = null;
         effectiveRfbDriver?.clearVncPassword?.(vncTarget.id);
+        invalidateTopologyCache();
         await effectiveRfbDriver?.disconnectTarget?.(vncTarget.id).catch(() => {});
         await Promise.all([persistVncTargets(context), persistState(context)]);
         return {
@@ -2851,6 +2977,7 @@ export function createUuRemoteService({
         if (selectedSessionId === pveTarget.id) {
           selectedSessionId = null;
         }
+        invalidateTopologyCache();
         await effectiveRfbDriver?.disconnectTarget?.(pveTarget.id).catch(() => {});
         await Promise.all([persistPveTargets(context), persistState(context)]);
 
@@ -2869,6 +2996,7 @@ export function createUuRemoteService({
       }
 
       const cliRes = await cliClient.disconnectDevice(args.deviceId, settings, { signal: context?.signal });
+      invalidateTopologyCache();
       return {
         ok: true,
         action,
@@ -3044,6 +3172,12 @@ export function createUuRemoteService({
     return effectiveRfbDriver.buildCoalescedBoundsPacket(target, bounds, { takeoverActive: tk.active });
   }
 
+  function requestRfbImmediateUpdate(sessionId) {
+    const target = resolveRegisteredRfbTarget(sessionId);
+    if (!target || typeof effectiveRfbDriver?.requestImmediateUpdate !== 'function') return false;
+    return effectiveRfbDriver.requestImmediateUpdate(target);
+  }
+
   function sendLiveRfbInput(sessionId, event = {}, context = {}) {
     const sid = normalizeSessionId(sessionId);
     const target = resolveRegisteredRfbTarget(sid);
@@ -3102,7 +3236,12 @@ export function createUuRemoteService({
     launchAction,
     observeSession,
     resolveTargetSession,
-    inspectTopology: (settings = {}, context = {}) => inspectCombinedTopology(settings, context),
+    resolveExplicitPveTarget,
+    resolveExplicitVncTarget,
+    resolveFastStreamSession,
+    getCachedTopology,
+    invalidateTopologyCache,
+    inspectTopology: (settings = {}, context = {}, opts = {}) => inspectCombinedTopology(settings, context, opts),
     setTakeover,
     recordHumanPanelAction,
     getLastHumanSummary,
@@ -3113,6 +3252,7 @@ export function createUuRemoteService({
     subscribeSessionClipboard,
     buildRfbKeyframePacket,
     buildRfbCoalescedBoundsPacket,
+    requestRfbImmediateUpdate,
     sendLiveRfbInput,
     listCuaTargets,
     observeCuaTarget,

@@ -23,20 +23,27 @@ import { createWin32Bridge } from './win32-bridge.mjs';
 
 export const STREAM_FRAME_MAGIC = 0x4b;
 export const STREAM_PNG_KIND = 0x02;
+export const STREAM_JPEG_KIND = 0x03;
 const DEFAULT_FAST_TARGETS_CACHE_TTL_MS = 5_000;
+const DEFAULT_STALE_TARGETS_CACHE_TTL_MS = 60_000;
+const FAST_PROVIDER_TARGETS_TIMEOUT_MS = 1_200;
 const DEFAULT_STREAM_META_HEARTBEAT_MS = 2_000;
 
-export function packPngStreamFrame({ width, height, seq = 0, timestampMs = Date.now(), pngBytes }) {
-  const payload = Buffer.isBuffer(pngBytes) ? pngBytes : Buffer.from(pngBytes);
+export function packStreamFrame({ kind = STREAM_PNG_KIND, width, height, seq = 0, timestampMs = Date.now(), bytes }) {
+  const payload = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
   const out = Buffer.allocUnsafe(16 + payload.length);
   out[0] = STREAM_FRAME_MAGIC;
-  out[1] = STREAM_PNG_KIND;
+  out[1] = kind & 0xff;
   out.writeUInt16BE(Math.min(65535, Math.max(0, Math.round(width) || 0)), 2);
   out.writeUInt16BE(Math.min(65535, Math.max(0, Math.round(height) || 0)), 4);
   out.writeUInt16BE(seq & 0xffff, 6);
   out.writeDoubleBE(Number(timestampMs) || 0, 8);
   payload.copy(out, 16);
   return out;
+}
+
+export function packPngStreamFrame({ width, height, seq = 0, timestampMs = Date.now(), pngBytes }) {
+  return packStreamFrame({ kind: STREAM_PNG_KIND, width, height, seq, timestampMs, bytes: pngBytes });
 }
 
 function sleepMs(ms, signal) {
@@ -68,11 +75,15 @@ export function createCuaService({
   env = process.env,
   dataDir: initialDataDir = null,
   fastTargetsCacheTtlMs = DEFAULT_FAST_TARGETS_CACHE_TTL_MS,
+  staleTargetsCacheTtlMs = DEFAULT_STALE_TARGETS_CACHE_TTL_MS,
   streamMetaHeartbeatMs = DEFAULT_STREAM_META_HEARTBEAT_MS,
 } = {}) {
   const fastCacheTtlMs = Number.isFinite(fastTargetsCacheTtlMs) && fastTargetsCacheTtlMs >= 0
     ? fastTargetsCacheTtlMs
     : DEFAULT_FAST_TARGETS_CACHE_TTL_MS;
+  const staleCacheTtlMs = Number.isFinite(staleTargetsCacheTtlMs) && staleTargetsCacheTtlMs >= fastCacheTtlMs
+    ? staleTargetsCacheTtlMs
+    : Math.max(fastCacheTtlMs, DEFAULT_STALE_TARGETS_CACHE_TTL_MS);
   const streamHeartbeatMs = Number.isFinite(streamMetaHeartbeatMs) && streamMetaHeartbeatMs >= 0
     ? streamMetaHeartbeatMs
     : DEFAULT_STREAM_META_HEARTBEAT_MS;
@@ -137,7 +148,19 @@ export function createCuaService({
 
   function triggerBackgroundTargetRefresh(context = null) {
     if (!targetRefreshFlight) {
-      targetRefreshFlight = collectAllTargets({ context, fast: false })
+      targetRefreshFlight = collectAllTargets({
+        context,
+        fast: false,
+        providerTimeoutMs: FAST_PROVIDER_TARGETS_TIMEOUT_MS,
+      })
+        .then((inv) => {
+          broadcastStreamEvent({
+            type: 'targetsUpdated',
+            selectedTargetId: inv.selectedTargetId,
+            targets: inv.targets.map(stripInternalTargetFields),
+          });
+          return inv;
+        })
         .finally(() => {
           targetRefreshFlight = null;
         });
@@ -237,10 +260,17 @@ export function createCuaService({
     }
   }
 
-  async function collectAllTargets({ context = null, signal = null, fast = false } = {}) {
+  async function collectAllTargets({ context = null, signal = null, fast = false, providerTimeoutMs = null } = {}) {
     await ensureSelectionLoaded(context);
-    if (fast && fastSummaryCache.value && Date.now() - fastSummaryCache.at < fastCacheTtlMs) {
-      return overlayLiveLedger(fastSummaryCache.value);
+    if (fast && fastSummaryCache.value) {
+      const ageMs = Date.now() - fastSummaryCache.at;
+      if (ageMs < fastCacheTtlMs) {
+        return overlayLiveLedger(fastSummaryCache.value);
+      }
+      if (ageMs < staleCacheTtlMs) {
+        triggerBackgroundTargetRefresh(context);
+        return overlayLiveLedger(fastSummaryCache.value);
+      }
     }
 
     const drv = getDriver();
@@ -332,10 +362,16 @@ export function createCuaService({
 
     const busDir = resolveCuaProviderBusDir({ env, context, dataDir: activeDataDir });
     const discovery = await discoverCuaProviders({ busDir });
+    const effectiveProviderTimeoutMs = Number.isFinite(providerTimeoutMs) && providerTimeoutMs > 0
+      ? providerTimeoutMs
+      : (fast ? FAST_PROVIDER_TARGETS_TIMEOUT_MS : undefined);
     const remoteTargetBatches = await Promise.all(
       discovery.providers.map(async (provider) => {
         try {
-          const items = await fetchProviderTargets(provider, { signal });
+          const items = await fetchProviderTargets(provider, {
+            signal,
+            ...(effectiveProviderTimeoutMs ? { timeoutMs: effectiveProviderTimeoutMs } : {}),
+          });
           return items.map((t) => {
             const ledger = getLedgerEntry(t.id);
             const takeoverActive = Boolean(t.takeoverActive || ledger.takeoverActive);
@@ -461,9 +497,18 @@ export function createCuaService({
       if (!targetId) {
         return { isError: true, output: JSON.stringify({ ok: false, code: 'missing_target_id', message: 'select requires targetId' }) };
       }
-      const { target } = await resolveActiveTarget(targetId, { context, signal });
-      await persistSelectedTarget(target.id, context);
-      fastSummaryCache.at = 0;
+      const fastSelect = Boolean(args?.fast);
+      const { target } = await resolveActiveTarget(targetId, { context, signal, fast: fastSelect });
+      selectedTargetId = target.id;
+      selectionLoadedFromDisk = true;
+      if (fastSummaryCache.value) {
+        fastSummaryCache.value = { ...fastSummaryCache.value, selectedTargetId: target.id };
+      }
+      if (fastSelect) {
+        void persistSelectedTarget(target.id, context);
+      } else {
+        await persistSelectedTarget(target.id, context);
+      }
       broadcastStreamEvent({ type: 'selected', selectedTargetId: target.id });
       return {
         output: JSON.stringify({
@@ -530,6 +575,8 @@ export function createCuaService({
     coordinateMode = 'normalized_1000',
     overlay = 'none',
     includeAccessibility = false,
+    format = 'png',
+    quality = 80,
     context = null,
     signal = null,
     recordObservation = true,
@@ -539,6 +586,8 @@ export function createCuaService({
     const mode = assertCoordinateMode(coordinateMode);
     const mw = Math.min(3840, Math.max(240, Math.round(Number(maxWidth) || settings.defaultMaxWidth || 1280)));
     const mh = Math.min(3840, Math.max(240, Math.round(Number(maxHeight) || 900)));
+    const normalizedFormat = format === 'jpeg' || format === 'jpg' ? 'jpeg' : 'png';
+    const clampedQuality = Math.min(95, Math.max(30, Math.round(Number(quality) || 80)));
 
     const { target, ledger } = await resolveActiveTarget(targetId, {
       context,
@@ -558,12 +607,13 @@ export function createCuaService({
 
       let imageBase64 = obs.imageBase64;
       let imageSize = obs.imageSize;
-      if (overlay === 'grid' && imageBase64) {
+      const mimeType = obs.mimeType || 'image/png';
+      if (overlay === 'grid' && imageBase64 && mimeType === 'image/png') {
         const gridded = applyGridOverlayToPng(Buffer.from(imageBase64, 'base64'));
         imageBase64 = gridded.toString('base64');
         const dim = parsePngDimensions(gridded);
         imageSize = { width: dim.width, height: dim.height };
-      } else if (!imageSize && imageBase64) {
+      } else if (!imageSize && imageBase64 && mimeType === 'image/png') {
         const dim = parsePngDimensions(Buffer.from(imageBase64, 'base64'));
         imageSize = { width: dim.width, height: dim.height };
       }
@@ -593,7 +643,7 @@ export function createCuaService({
         targetId: target.id,
         providerId: target.providerId,
         capturedAtMs,
-        mimeType: 'image/png',
+        mimeType,
         imageBase64,
         imageSize,
         logicalSize,
@@ -636,9 +686,12 @@ export function createCuaService({
       maxHeight: mh,
       overlay,
       includeAccessibility: Boolean(includeAccessibility),
+      format: normalizedFormat,
+      quality: clampedQuality,
     }, { signal });
 
     const capturedAtMs = Date.now();
+    const actualMimeType = rawShot.mimeType || 'image/png';
     if (recordObservation) {
       ledger.lastObservation = {
         capturedAtMs,
@@ -656,7 +709,8 @@ export function createCuaService({
       targetId: target.id,
       providerId: 'local',
       capturedAtMs,
-      mimeType: 'image/png',
+      mimeType: actualMimeType,
+      pixelHash: rawShot.pixelHash || null,
       imageBase64: rawShot.imageBase64,
       imageSize: rawShot.imageSize,
       logicalSize: rawShot.logicalSize,
@@ -1379,7 +1433,11 @@ export function createCuaService({
     }
 
     if (action === 'state') {
-      const inv = await collectAllTargets({ context, fast: Boolean(body.fast) });
+      const inv = await collectAllTargets({
+        context,
+        fast: Boolean(body.fast),
+        providerTimeoutMs: FAST_PROVIDER_TARGETS_TIMEOUT_MS,
+      });
       const activeTarget = inv.targets.find((t) => t.id === inv.selectedTargetId) || inv.targets[0];
       const ledger = activeTarget ? getLedgerEntry(canonicalLedgerKey(activeTarget.id, inv.primaryMonitorId)) : null;
       return {
@@ -1396,7 +1454,11 @@ export function createCuaService({
     }
 
     if (action === 'select') {
-      const res = await executeTargetsTool({ action: 'select', targetId: body.targetId }, context);
+      const res = await executeTargetsTool({
+        action: 'select',
+        targetId: body.targetId,
+        fast: body.fast !== false,
+      }, context);
       return JSON.parse(res.output);
     }
 
@@ -1463,7 +1525,7 @@ export function createCuaService({
     const body = args && typeof args === 'object' ? args : {};
     let currentTargetId = body.targetId || selectedTargetId || 'local:primary';
     const maxWidth = Math.min(2560, Math.max(480, Math.round(Number(body.maxWidth) || 1280)));
-    const intervalMs = Math.min(2000, Math.max(90, Math.round(1000 / (Number(body.fps) || 8))));
+    const intervalMs = Math.min(2000, Math.max(50, Math.round(1000 / (Number(body.fps) || 16))));
 
     const { target, ledger } = await resolveActiveTarget(currentTargetId, {
       context,
@@ -1473,10 +1535,12 @@ export function createCuaService({
     currentTargetId = target.id;
 
     let closed = false;
+    let paused = false;
     let seq = 0;
     let inFlight = false;
     let loopTimer = null;
-    let lastSentPngHash = null;
+    let loopScheduledAtMs = 0;
+    let lastSentFrameHash = null;
     let lastSentTargetId = null;
     let lastSentImageSize = null;
     let lastSentLogicalSize = null;
@@ -1484,16 +1548,24 @@ export function createCuaService({
     let lastSentControlledBy = null;
     let lastMetaSentAtMs = 0;
     let forceFrame = true;
-    let frameGeneration = 0;
-    let pendingRescheduleMs = null;
+    let targetEpoch = 0;
+    let nudgeRequested = false;
+    let activeCaptureAbort = null;
 
     function scheduleNextFrame(delayMs) {
-      if (closed || session.signal?.aborted) return;
+      if (closed || paused || session.signal?.aborted) return;
       if (loopTimer) {
         clearTimeout(loopTimer);
         loopTimer = null;
+        loopScheduledAtMs = 0;
       }
-      loopTimer = setTimeout(pushFrameOnce, delayMs);
+      const clampedDelay = Math.max(0, Math.round(delayMs));
+      loopScheduledAtMs = Date.now() + clampedDelay;
+      loopTimer = setTimeout(() => {
+        loopTimer = null;
+        loopScheduledAtMs = 0;
+        void pushFrameOnce();
+      }, clampedDelay);
       loopTimer.unref?.();
     }
 
@@ -1504,43 +1576,55 @@ export function createCuaService({
       },
       nudgeFrame(targetId) {
         if (closed || (targetId && targetId !== currentTargetId)) return;
-        frameGeneration += 1;
-        lastSentPngHash = null;
+        nudgeRequested = true;
+        lastSentFrameHash = null;
         forceFrame = true;
-        if (inFlight) {
-          pendingRescheduleMs = pendingRescheduleMs === null ? 35 : Math.min(pendingRescheduleMs, 35);
-        } else {
-          scheduleNextFrame(35);
+        if (!inFlight && !paused) {
+          if (!loopTimer || loopScheduledAtMs > Date.now() + 16) {
+            scheduleNextFrame(16);
+          }
         }
       },
     };
     liveStreamSubscribers.add(subscriber);
 
     async function pushFrameOnce() {
-      if (closed || inFlight || session.signal?.aborted) return;
+      if (closed || paused || inFlight || session.signal?.aborted) return;
       if (typeof session.bufferedAmount === 'function' && session.bufferedAmount() > 1.5 * 1024 * 1024) {
         scheduleNextFrame(intervalMs * 2);
         return;
       }
       inFlight = true;
       const frameTargetId = currentTargetId;
-      const genAtStart = frameGeneration;
+      const epochAtStart = targetEpoch;
+      nudgeRequested = false;
+      const captureAbort = new AbortController();
+      activeCaptureAbort = captureAbort;
+      const captureSignal = session.signal
+        ? AbortSignal.any([session.signal, captureAbort.signal])
+        : captureAbort.signal;
+
       try {
         const obs = await captureTargetObservation({
           targetId: frameTargetId,
           maxWidth,
           maxHeight: 1080,
           overlay: 'none',
+          format: 'jpeg',
+          quality: 82,
           context,
-          signal: session.signal,
+          signal: captureSignal,
           recordObservation: false,
           fastTargetLookup: true,
         });
-        if (closed || session.signal?.aborted) return;
-        if (frameTargetId !== currentTargetId || frameGeneration !== genAtStart) return;
+        if (closed || session.signal?.aborted || captureAbort.signal.aborted) return;
+        if (frameTargetId !== currentTargetId || targetEpoch !== epochAtStart) return;
 
-        const pngBytes = Buffer.from(obs.imageBase64, 'base64');
-        const pngHash = createHash('sha256').update(pngBytes).digest('hex');
+        const frameBytes = Buffer.from(obs.imageBase64, 'base64');
+        const isJpeg = obs.mimeType === 'image/jpeg'
+          || (frameBytes.length >= 2 && frameBytes[0] === 0xff && frameBytes[1] === 0xd8);
+        const frameKind = isJpeg ? STREAM_JPEG_KIND : STREAM_PNG_KIND;
+        const frameHash = obs.pixelHash || createHash('sha256').update(frameBytes).digest('hex');
         const takeoverActive = Boolean(obs.takeoverActive);
         const controlledBy = obs.controlledBy || (takeoverActive ? 'human' : 'agent');
 
@@ -1553,7 +1637,7 @@ export function createCuaService({
           || lastSentLogicalSize.height !== obs.logicalSize?.height;
         const takeoverChanged = lastSentTakeoverActive !== takeoverActive
           || lastSentControlledBy !== controlledBy;
-        const shouldSendBinary = forceFrame || targetChanged || sizeChanged || takeoverChanged || pngHash !== lastSentPngHash;
+        const shouldSendBinary = forceFrame || targetChanged || sizeChanged || takeoverChanged || frameHash !== lastSentFrameHash;
 
         const cursorNorm = obs.cursor && obs.logicalSize
           ? targetPixelsToNormalized1000(
@@ -1566,6 +1650,7 @@ export function createCuaService({
         const frameMeta = {
           type: 'frameMeta',
           targetId: obs.targetId,
+          mimeType: isJpeg ? 'image/jpeg' : 'image/png',
           logicalSize: obs.logicalSize,
           imageSize: obs.imageSize,
           cursorNorm,
@@ -1576,17 +1661,18 @@ export function createCuaService({
 
         const nowMs = Date.now();
         if (shouldSendBinary) {
-          const packet = packPngStreamFrame({
+          const packet = packStreamFrame({
+            kind: frameKind,
             width: obs.imageSize.width,
             height: obs.imageSize.height,
             seq: ++seq,
             timestampMs: obs.capturedAtMs,
-            pngBytes,
+            bytes: frameBytes,
           });
           session.sendBinary(packet);
           session.sendText(frameMeta);
           lastMetaSentAtMs = nowMs;
-          lastSentPngHash = pngHash;
+          lastSentFrameHash = frameHash;
           lastSentTargetId = obs.targetId;
           lastSentImageSize = obs.imageSize ? { width: obs.imageSize.width, height: obs.imageSize.height } : null;
           lastSentLogicalSize = obs.logicalSize ? { width: obs.logicalSize.width, height: obs.logicalSize.height } : null;
@@ -1598,15 +1684,23 @@ export function createCuaService({
           lastMetaSentAtMs = nowMs;
         }
       } catch {
-        fastSummaryCache.at = 0;
+        if (!captureAbort.signal.aborted && !session.signal?.aborted) {
+          fastSummaryCache.at = 0;
+        }
       } finally {
-        inFlight = false;
-        const nextDelay = frameGeneration !== genAtStart
-          ? (pendingRescheduleMs ?? 35)
-          : intervalMs;
-        pendingRescheduleMs = null;
-        if (!closed && !session.signal?.aborted) {
-          scheduleNextFrame(nextDelay);
+        if (activeCaptureAbort === captureAbort) {
+          activeCaptureAbort = null;
+        }
+        if (targetEpoch === epochAtStart) {
+          inFlight = false;
+        }
+        if (!closed && !paused && !session.signal?.aborted) {
+          if (targetEpoch !== epochAtStart) {
+            if (!inFlight && !loopTimer) scheduleNextFrame(0);
+          } else {
+            const nextDelay = nudgeRequested ? 16 : intervalMs;
+            scheduleNextFrame(nextDelay);
+          }
         }
       }
     }
@@ -1614,6 +1708,10 @@ export function createCuaService({
     const cleanup = () => {
       if (closed) return;
       closed = true;
+      if (activeCaptureAbort) {
+        try { activeCaptureAbort.abort(new Error('Stream closed')); } catch {}
+        activeCaptureAbort = null;
+      }
       if (loopTimer) {
         clearTimeout(loopTimer);
         loopTimer = null;
@@ -1623,7 +1721,7 @@ export function createCuaService({
 
     session.signal?.addEventListener?.('abort', cleanup, { once: true });
 
-    scheduleNextFrame(5);
+    scheduleNextFrame(0);
 
     return {
       result: {
@@ -1639,16 +1737,38 @@ export function createCuaService({
         try {
           const msg = typeof rawText === 'string' ? JSON.parse(rawText) : rawText;
           if (msg?.type === 'selectTarget' && typeof msg.targetId === 'string' && msg.targetId.trim()) {
-            currentTargetId = msg.targetId.trim();
-            fastSummaryCache.at = 0;
-            frameGeneration += 1;
-            lastSentPngHash = null;
+            const nextId = msg.targetId.trim();
+            currentTargetId = nextId;
+            selectedTargetId = nextId;
+            selectionLoadedFromDisk = true;
+            if (fastSummaryCache.value) {
+              fastSummaryCache.value = { ...fastSummaryCache.value, selectedTargetId: nextId };
+            }
+            void persistSelectedTarget(nextId, context);
+            targetEpoch += 1;
+            nudgeRequested = false;
+            lastSentFrameHash = null;
             forceFrame = true;
-            if (!closed) {
-              if (inFlight) {
-                pendingRescheduleMs = 5;
-              } else {
-                scheduleNextFrame(5);
+            if (activeCaptureAbort) {
+              try { activeCaptureAbort.abort(new Error('Target switched')); } catch {}
+              activeCaptureAbort = null;
+            }
+            inFlight = false;
+            if (!closed && !paused) {
+              scheduleNextFrame(0);
+            }
+          } else if (msg?.type === 'setPaused') {
+            const nextPaused = Boolean(msg.paused);
+            if (paused !== nextPaused) {
+              paused = nextPaused;
+              if (paused) {
+                if (loopTimer) {
+                  clearTimeout(loopTimer);
+                  loopTimer = null;
+                }
+              } else if (!closed) {
+                forceFrame = true;
+                scheduleNextFrame(0);
               }
             }
           } else if (msg?.type === 'nudgeFrame') {

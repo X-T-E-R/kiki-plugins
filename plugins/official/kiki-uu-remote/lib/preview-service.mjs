@@ -12,6 +12,8 @@ const MAX_BUFFERED_BYTES = 1_500_000;
 const DIRTY_COALESCE_BUFFERED_BYTES = 64 * 1024;
 const PEEK_DEFAULT_MAX_AGE_MS = 15_000;
 const PEEK_DEFAULT_WAIT_BUDGET_MS = 200;
+const STATE_FRESH_TTL_MS = 5_000;
+const STATE_STALE_TTL_MS = 60_000;
 const STREAM_TOPO_REFRESH_MS = 3_000;
 const TELEMETRY_HEARTBEAT_MS = 2_000;
 
@@ -120,7 +122,22 @@ function mergeRectBounds(a, b) {
 export function createUuPreviewService({ uuService, ensureProviderBus = async () => null, nowFn = Date.now } = {}) {
   const activeStreams = new Set();
   let cachedPeekState = { key: '', at: 0, value: null };
+  let cachedFullState = { key: '', at: 0, value: null };
   const peekFlights = new Map();
+  const fullStateFlights = new Map();
+
+  function invalidateStateCaches() {
+    cachedPeekState.at = 0;
+    cachedFullState.at = 0;
+  }
+
+  function broadcastStateUpdated(state) {
+    for (const subscriber of activeStreams) {
+      try {
+        subscriber.sendStateUpdate?.(state);
+      } catch {}
+    }
+  }
 
   function emptyPeekSnapshot() {
     return {
@@ -206,7 +223,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
     }
   }
 
-  async function listState(args = {}, context = {}) {
+  async function fetchFullStateLive(args = {}, context = {}) {
     await ensureProviderBus(context);
     const [sessionSummary, statusSummary] = await Promise.all([
       uuService.manageSessions(
@@ -214,6 +231,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
           action: 'list',
           includeDevices: args.includeDevices !== false,
           probeContentRect: Boolean(args.probeContentRect),
+          force: Boolean(args.force),
         },
         context,
       ),
@@ -231,9 +249,12 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
       runtime: statusSummary.runtime,
       providerBus: statusSummary.providerBus,
     };
+    const key = peekCacheKey(context);
+    const now = nowFn();
+    cachedFullState = { key, at: now, value: result };
     cachedPeekState = {
-      key: peekCacheKey(context),
-      at: nowFn(),
+      key,
+      at: now,
       value: {
         ok: true,
         selectedSessionId: result.selectedSessionId,
@@ -243,6 +264,54 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
       },
     };
     return result;
+  }
+
+  function triggerBackgroundFullStateRefresh(args = {}, context = {}) {
+    const key = peekCacheKey(context);
+    let flight = fullStateFlights.get(key);
+    if (!flight) {
+      flight = fetchFullStateLive({ ...args, fast: false }, context)
+        .then((result) => {
+          broadcastStateUpdated(result);
+          return result;
+        })
+        .finally(() => {
+          if (fullStateFlights.get(key) === flight) fullStateFlights.delete(key);
+        });
+      flight.catch(() => {});
+      fullStateFlights.set(key, flight);
+    }
+    return flight;
+  }
+
+  async function listState(args = {}, context = {}) {
+    const key = peekCacheKey(context);
+    const now = nowFn();
+    const wantFast = Boolean(args?.fast);
+    const wantForce = Boolean(args?.force || args?.probeContentRect);
+
+    if (!wantForce && cachedFullState.value && cachedFullState.key === key) {
+      const age = now - cachedFullState.at;
+      if (age < STATE_FRESH_TTL_MS) {
+        return cachedFullState.value;
+      }
+      if (wantFast && age < STATE_STALE_TTL_MS) {
+        triggerBackgroundFullStateRefresh(args, context);
+        return cachedFullState.value;
+      }
+    }
+
+    if (wantFast) {
+      if (cachedPeekState.value && cachedPeekState.key === key && now - cachedPeekState.at < STATE_STALE_TTL_MS) {
+        triggerBackgroundFullStateRefresh(args, context);
+        return cachedPeekState.value;
+      }
+      const peeked = await peekState({ maxAgeMs: STATE_FRESH_TTL_MS, waitBudgetMs: 120 }, context);
+      triggerBackgroundFullStateRefresh(args, context);
+      return peeked;
+    }
+
+    return fetchFullStateLive(args, context);
   }
 
   async function captureFrame(args = {}, context = {}) {
@@ -296,7 +365,16 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
     const kind = input.action;
     try {
       if (kind === 'select') {
-        return await uuService.manageSessions({ action: 'select', sessionId: input.sessionId }, context);
+        const res = await uuService.manageSessions({ action: 'select', sessionId: input.sessionId }, context);
+        if (res?.ok && res.selectedSessionId) {
+          if (cachedFullState.value) {
+            cachedFullState.value = { ...cachedFullState.value, selectedSessionId: res.selectedSessionId };
+          }
+          if (cachedPeekState.value) {
+            cachedPeekState.value = { ...cachedPeekState.value, selectedSessionId: res.selectedSessionId };
+          }
+        }
+        return res;
       }
       if (kind === 'takeover') {
         const res = await uuService.manageSessions(
@@ -308,6 +386,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
           },
           context,
         );
+        invalidateStateCaches();
         nudgeStreams(res.sessionId || input.sessionId, 20);
         return res;
       }
@@ -316,23 +395,30 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
           { action: 'recover_offscreen', sessionId: input.sessionId },
           context,
         );
+        invalidateStateCaches();
         nudgeStreams(input.sessionId || null, 45);
         return res;
       }
       if (kind === 'openClient') {
-        return await uuService.launchAction({ action: 'open_client', waitForWindowMs: 1500 }, context);
+        const res = await uuService.launchAction({ action: 'open_client', waitForWindowMs: 1500 }, context);
+        invalidateStateCaches();
+        return res;
       }
       if (kind === 'connectDevice') {
-        return await uuService.launchAction(
+        const res = await uuService.launchAction(
           { action: 'connect_device', deviceId: input.deviceId, waitForWindowMs: 4000 },
           context,
         );
+        invalidateStateCaches();
+        return res;
       }
       if (kind === 'disconnectDevice') {
-        return await uuService.launchAction(
+        const res = await uuService.launchAction(
           { action: 'disconnect_device', deviceId: input.deviceId },
           context,
         );
+        invalidateStateCaches();
+        return res;
       }
       if (kind === 'connectPve') {
         const res = await uuService.launchAction(
@@ -344,6 +430,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
           },
           context,
         );
+        invalidateStateCaches();
         nudgeStreams(res.sessionId || null, 25);
         return res;
       }
@@ -359,6 +446,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
           },
           context,
         );
+        invalidateStateCaches();
         nudgeStreams(res.sessionId || null, 25);
         return res;
       }
@@ -368,6 +456,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
           { action: 'disconnect', deviceId: targetId },
           context,
         );
+        invalidateStateCaches();
         return res;
       }
       if (kind === 'clipboardGet') {
@@ -527,8 +616,21 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
       capabilities: null,
     };
 
-    const topo = await uuService.inspectTopology(context?.settings ?? {}, context);
-    const initialSession = await uuService.resolveTargetSession(targetSessionId, topo, context);
+    const resolveStreamSessionFast = async (sid) => {
+      if (typeof uuService.resolveFastStreamSession === 'function') {
+        return uuService.resolveFastStreamSession(sid, context);
+      }
+      if (sid && isPveTargetId(sid) && typeof uuService.resolveExplicitPveTarget === 'function') {
+        return uuService.resolveExplicitPveTarget(sid, context);
+      }
+      if (sid && isVncTargetId(sid) && typeof uuService.resolveExplicitVncTarget === 'function') {
+        return uuService.resolveExplicitVncTarget(sid);
+      }
+      const topo = await uuService.inspectTopology(context?.settings ?? {}, context);
+      return uuService.resolveTargetSession(sid, topo, context);
+    };
+
+    const initialSession = await resolveStreamSessionFast(targetSessionId);
     targetSessionId = initialSession.id;
     let cachedSession = initialSession;
     let lastTopoAt = nowFn();
@@ -570,6 +672,9 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
         } else {
           needFullKeyframe = true;
         }
+      } else {
+        dirtySinceLastFrame = true;
+        if (!inFlight) scheduleNext(5);
       }
     };
 
@@ -599,57 +704,76 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
       if (typeof uuService.subscribeSessionUpdates !== 'function') return;
       unsubscribeRfb = uuService.subscribeSessionUpdates(sid, (evt) => {
         if (closed) return;
-        if (usingDirtyRectStream && Array.isArray(evt?.rects) && evt.rects.length > 0 && !needFullKeyframe) {
-          if (paused) {
-            coalescedBounds = mergeRectBounds(coalescedBounds, evt.dirtyBounds || { x: 0, y: 0, width: evt.width || 1024, height: evt.height || 768 });
-            return;
-          }
-          const minIntervalMs = Math.round(1000 / Math.max(1, fps));
-          const now = nowFn();
-          const buffered = streamSession.bufferedAmount?.() ?? 0;
-          if (buffered > DIRTY_COALESCE_BUFFERED_BYTES || coalescedBounds || (now - lastFrameSentAtMs < minIntervalMs - 2)) {
-            coalescedBounds = mergeRectBounds(coalescedBounds, evt.dirtyBounds || { x: 0, y: 0, width: evt.width || 1024, height: evt.height || 768 });
-            if (!dirtyFlushTimer) {
-              const waitMs = Math.max(8, minIntervalMs - (now - lastFrameSentAtMs));
-              dirtyFlushTimer = setTimeout(flushCoalescedDirtyBounds, waitMs);
-              dirtyFlushTimer.unref?.();
-            }
-            return;
-          }
-          const tkActive = typeof uuService.getTakeoverEntry === 'function'
-            ? Boolean(uuService.getTakeoverEntry(sid)?.active)
-            : lastMeta.takeoverActive;
-          const pkt = packDirtyRectFrame({
-            frameSeq: 0,
-            fbWidth: evt.width || lastMeta.width || 1024,
-            fbHeight: evt.height || lastMeta.height || 768,
-            keyFrame: false,
-            takeoverActive: tkActive,
-            rects: evt.rects,
-          });
-          const ok = sendDirtyPacket(pkt);
-          if (ok === false) {
-            needFullKeyframe = true;
-            scheduleNext(40);
-          } else {
-            lastFrameSentAtMs = now;
-            lastMeta.width = evt.width || lastMeta.width;
-            lastMeta.height = evt.height || lastMeta.height;
-            lastMeta.takeoverActive = tkActive;
-            if (now - lastTelemetryAtMs >= TELEMETRY_HEARTBEAT_MS) {
-              emitTelemetry({
-                unchanged: false,
-                sessionId: sid,
-                transport: lastMeta.transport,
-                captureMs: 0,
-                width: lastMeta.width,
-                height: lastMeta.height,
-                capabilities: lastMeta.capabilities,
-                takeoverActive: tkActive,
-              });
-            }
-          }
+        if (evt?.resized) {
+          needFullKeyframe = true;
+          coalescedBounds = null;
+          dirtySinceLastFrame = true;
+          if (!paused && !inFlight) scheduleNext(5);
           return;
+        }
+        if (usingDirtyRectStream && !needFullKeyframe) {
+          const hasRects = Array.isArray(evt?.rects) && evt.rects.length > 0;
+          const fallbackBounds = evt?.dirtyBounds || (evt?.width && evt?.height ? { x: 0, y: 0, width: evt.width, height: evt.height } : null);
+          if (hasRects || fallbackBounds) {
+            if (paused) {
+              coalescedBounds = mergeRectBounds(coalescedBounds, fallbackBounds || { x: 0, y: 0, width: lastMeta.width || 1024, height: lastMeta.height || 768 });
+              return;
+            }
+            const minIntervalMs = Math.round(1000 / Math.max(1, fps));
+            const now = nowFn();
+            const buffered = streamSession.bufferedAmount?.() ?? 0;
+            if (!hasRects || buffered > DIRTY_COALESCE_BUFFERED_BYTES || coalescedBounds || (now - lastFrameSentAtMs < minIntervalMs - 2)) {
+              coalescedBounds = mergeRectBounds(coalescedBounds, fallbackBounds || { x: 0, y: 0, width: lastMeta.width || 1024, height: lastMeta.height || 768 });
+              if (!hasRects && buffered <= DIRTY_COALESCE_BUFFERED_BYTES && now - lastFrameSentAtMs >= minIntervalMs - 2) {
+                if (dirtyFlushTimer) {
+                  clearTimeout(dirtyFlushTimer);
+                  dirtyFlushTimer = null;
+                }
+                flushCoalescedDirtyBounds();
+                return;
+              }
+              if (!dirtyFlushTimer) {
+                const waitMs = Math.max(8, minIntervalMs - (now - lastFrameSentAtMs));
+                dirtyFlushTimer = setTimeout(flushCoalescedDirtyBounds, waitMs);
+                dirtyFlushTimer.unref?.();
+              }
+              return;
+            }
+            const tkActive = typeof uuService.getTakeoverEntry === 'function'
+              ? Boolean(uuService.getTakeoverEntry(sid)?.active)
+              : lastMeta.takeoverActive;
+            const pkt = packDirtyRectFrame({
+              frameSeq: 0,
+              fbWidth: evt.width || lastMeta.width || 1024,
+              fbHeight: evt.height || lastMeta.height || 768,
+              keyFrame: false,
+              takeoverActive: tkActive,
+              rects: evt.rects,
+            });
+            const ok = sendDirtyPacket(pkt);
+            if (ok === false) {
+              needFullKeyframe = true;
+              scheduleNext(40);
+            } else {
+              lastFrameSentAtMs = now;
+              lastMeta.width = evt.width || lastMeta.width;
+              lastMeta.height = evt.height || lastMeta.height;
+              lastMeta.takeoverActive = tkActive;
+              if (now - lastTelemetryAtMs >= TELEMETRY_HEARTBEAT_MS) {
+                emitTelemetry({
+                  unchanged: false,
+                  sessionId: sid,
+                  transport: lastMeta.transport,
+                  captureMs: 0,
+                  width: lastMeta.width,
+                  height: lastMeta.height,
+                  capabilities: lastMeta.capabilities,
+                  takeoverActive: tkActive,
+                });
+              }
+            }
+            return;
+          }
         }
 
         dirtySinceLastFrame = true;
@@ -683,10 +807,18 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
           dirtyFlushTimer = null;
         }
       },
+      sendStateUpdate(state) {
+        if (closed) return;
+        streamSession.sendText?.(JSON.stringify({ type: 'stateUpdated', state }));
+      },
       nudge(sessionId = null, delayMs = 35) {
         if (closed) return;
         if (sessionId && targetSessionId && sessionId !== targetSessionId) return;
         if (usingDirtyRectStream) {
+          uuService.requestRfbImmediateUpdate?.(targetSessionId);
+          if (coalescedBounds && !paused) {
+            flushCoalescedDirtyBounds();
+          }
           const tk = typeof uuService.getTakeoverEntry === 'function'
             ? Boolean(uuService.getTakeoverEntry(targetSessionId)?.active)
             : lastMeta.takeoverActive;
@@ -799,18 +931,32 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
         if (!inFlight) scheduleNext(5);
         return;
       }
+      const switchSessionInPlace = (nextId) => {
+        const cleanId = String(nextId || '').trim();
+        if (!cleanId || cleanId === targetSessionId) return;
+        targetSessionId = cleanId;
+        cachedSession = null;
+        lastTopoAt = 0;
+        lastSentFrameHash = null;
+        usingDirtyRectStream = false;
+        needFullKeyframe = true;
+        coalescedBounds = null;
+        dirtySinceLastFrame = true;
+        if (dirtyFlushTimer) {
+          clearTimeout(dirtyFlushTimer);
+          dirtyFlushTimer = null;
+        }
+        bindRfbSubscription(targetSessionId);
+        if (!paused && !inFlight) scheduleNext(0);
+      };
+
+      if (msg.type === 'selectSession' && msg.sessionId) {
+        switchSessionInPlace(msg.sessionId);
+        return;
+      }
       if (msg.type === 'configure') {
         if (msg.sessionId && String(msg.sessionId) !== targetSessionId) {
-          targetSessionId = String(msg.sessionId);
-          cachedSession = null;
-          lastTopoAt = 0;
-          lastSentFrameHash = null;
-          usingDirtyRectStream = false;
-          needFullKeyframe = true;
-          coalescedBounds = null;
-          dirtySinceLastFrame = true;
-          bindRfbSubscription(targetSessionId);
-          if (!paused && !inFlight) scheduleNext(10);
+          switchSessionInPlace(msg.sessionId);
         }
         if (Number.isFinite(msg.maxWidth)) maxWidth = Math.max(320, Math.min(2560, msg.maxWidth));
         if (Number.isFinite(msg.maxHeight)) maxHeight = Math.max(240, Math.min(1600, msg.maxHeight));
@@ -926,8 +1072,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
           || session.state !== 'active'
           || (!isRemote && started - lastTopoAt >= STREAM_TOPO_REFRESH_MS);
         if (needTopoRefresh) {
-          const curTopo = await uuService.inspectTopology(context?.settings ?? {}, context);
-          session = await uuService.resolveTargetSession(targetSessionId, curTopo, context);
+          session = await resolveStreamSessionFast(targetSessionId);
           cachedSession = session;
           lastTopoAt = nowFn();
           bindRfbSubscription(session.id);
@@ -1060,6 +1205,7 @@ export function createUuPreviewService({ uuService, ensureProviderBus = async ()
         usingDirtyRectStream = false;
         lastTopoAt = 0;
         dirtySinceLastFrame = true;
+        uuService.invalidateTopologyCache?.();
         if (!closed) {
           streamSession.sendText?.(
             JSON.stringify({
