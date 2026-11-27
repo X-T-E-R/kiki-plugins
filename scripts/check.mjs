@@ -51,6 +51,7 @@ async function checkPackages(){
   run('scripts/sync-panel-kit.mjs',['--check']);
   for(const id of ['kiki-extract','kiki-office','kiki-media','kiki-bilibili','kiki-voice','kiki-qq','kiki-phone','kiki-everything','kiki-cua','kiki-uu-remote'])if(!selected||selected===id)run(`plugins/official/${id}/scripts/sync-manifest.mjs`,['--check']);
   if(!selected||selected==='kiki-everything')run('--test',['--test-timeout=15000','plugins/official/kiki-everything/test/everything.test.mjs']);
+  if(!selected||selected==='kiki-relay')run('--test',['--test-timeout=15000','test/relay.test.mjs']);
   if(!selected||selected==='kiki-cua')run('--test',['--test-timeout=30000','plugins/official/kiki-cua/test/cua.test.mjs']);
   if(!selected||selected==='kiki-uu-remote')run('--test',['--test-timeout=30000','plugins/official/kiki-uu-remote/test/uu-remote.test.mjs']);
   if(!selected||selected==='kiki-bilibili')run('--test',['plugins/official/kiki-bilibili/test/bilibili.test.mjs']);

@@ -1,0 +1,17 @@
+services:
+  kiki-relay:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9440:9440"
+    environment:
+      RELAY_HOST: "0.0.0.0"
+      RELAY_PORT: "9440"
+      RELAY_BASE_PATH: "/kiki-relay"
+      RELAY_PUBLIC_URL: "wss://relay.example.com/kiki-relay"
+      RELAY_NAME: "Edge Relay"
+      RELAY_HOST_TOKEN: "${RELAY_HOST_TOKEN:?Set RELAY_HOST_TOKEN}"
+      RELAY_SECRET: "${RELAY_SECRET:?Set RELAY_SECRET}"
+      RELAY_TRUST_PROXY: "1"

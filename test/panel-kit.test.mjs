@@ -293,7 +293,8 @@ test('buildPanelKitAssets produces classic-JS inline bundle with zero Emoji and 
   assert.equal(typeof ctx.exportedRemote.attachRemoteMagnifier, 'function');
 
   const { synced } = await syncPanelKit({ check: true });
-  assert.equal(synced.length, 13, `Expected all 13 business panels synced, got ${synced.length}`);
+  assert.equal(synced.length, 14, `Expected all 14 business panels synced, got ${synced.length}`);
+  assert.ok(synced.includes('plugins/official/kiki-relay/panel.html'));
   assert.ok(synced.includes('plugins/official/kiki-uu-remote/panel.html'));
 });
 

@@ -56,6 +56,36 @@
       }
     },
     {
+      "id": "kiki-relay",
+      "tier": "official",
+      "displayName": "Encrypted Relay",
+      "version": "0.1.0",
+      "description": "Reach Kiki spaces without a public IP through self-hosted encrypted relays with end-to-end TLS pinning.",
+      "keywords": [
+        "relay",
+        "derp",
+        "tunnel",
+        "remote",
+        "self-hosted"
+      ],
+      "author": "Kiki",
+      "license": "MIT",
+      "source": "./official/kiki-relay",
+      "homepage": "https://github.com/X-T-E-R/kiki-plugins/tree/main/plugins/official/kiki-relay",
+      "localizations": {
+        "zh": {
+          "description": "无公网 IP 时通过自建加密中转连接 Kiki，内层全程端到端证书固定。",
+          "keywords": [
+            "中转",
+            "中继",
+            "隧道",
+            "外部连接",
+            "自建"
+          ]
+        }
+      }
+    },
+    {
       "id": "kiki-office",
       "tier": "official",
       "displayName": "Kiki Office Suite",
