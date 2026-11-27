@@ -123,7 +123,8 @@ test('real frame provenance, concurrent watch(all), ASR fallback and creator med
     calls.push({ args, options });
     inFlight += 1;
     maxConcurrent = Math.max(maxConcurrent, inFlight);
-    await new Promise((r) => setTimeout(r, 10));
+    const isFanout = args[1] === 'subtitle' || args[1] === 'frames' || (args[0] === 'comment' && args[1] === 'list');
+    await new Promise((r) => setTimeout(r, isFanout ? 60 : 5));
     try {
       if (args[1] === 'subtitle') throw Object.assign(new Error('No subtitles'), { code: 'not_found' });
       if (args[1] === 'frames') return { quality: 'hd', frames: [{ requested_time: 0.5, actual_time: 0.5, path: '/frame.jpg' }] };

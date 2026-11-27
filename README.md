@@ -12,15 +12,26 @@ Voice needs a Kiki Host with plugin dependencies and the Media and messages APIs
 
 | Package | What you need to use it |
 | --- | --- |
-| Writing | No external service; contributes a manuscript panel and draft command. |
-| Extract | Text and HTML work locally. PDF and Office conversion need Python and MarkItDown; MinerU upload is explicit and opt-in. See [Extract setup](plugins/official/kiki-extract/README.md). |
-| Office | OfficeCLI **1.0.152**, installed with consent; Windows x64, macOS arm64, and Linux x64 are supported by its pinned binary resolver. |
-| Notion | Notion's HTTP MCP service and its OAuth authorization. See [Notion](plugins/official/kiki-notion/README.md). |
-| Phone | Prepare the runtime, then operate a connected phone with semantic Mobilewright scripts or Mobile MCP. Needs Node.js 22.12+ with npm; Android uses official platform-tools and USB or wireless debugging. iOS needs a signed upstream device agent. See [Phone setup](plugins/official/kiki-phone/README.md). |
-| Media | Install the Media entry plus a provider; configure an entitled API connection or key. Cloud generation may incur charges. ComfyUI needs your running endpoint and installed workflow/models; no GPU engine or models are included. |
-| Everything Search | Windows with the Everything index running and the `es.exe` command-line client installed. |
-| QQ | An official QQ Bot account or a OneBot 11 endpoint. |
-| Mail | An IMAP/SMTP account for direct mail or an Open Archiver URL and read-only key for archives. |
+| Computer Control (`kiki-cua`) | Local multi-DPI desktop control (`win32`, macOS, Linux) and cross-plugin `kiki.cua.provider.v1` remote display/input bus with live preview and human-takeover guard; zero native compilation. See [Computer Control](plugins/official/kiki-cua/README.md). |
+| UU Remote / PVE / VNC (`kiki-uu-remote`) | NetEase UU Remote (`GameViewer` + `uuyc-cli`) for `uu:` targets, passwordless `ssh` + `qm`/`python3` for Proxmox VE `pve:` VMs (RFB 3.8 primary with QMP/QGA fallback), or a reachable VNC server for `vnc:` targets; bridges into `kiki-cua`. See [UU Remote](plugins/official/kiki-uu-remote/README.md). |
+| Encrypted Relay (`kiki-relay`) | Self-hosted Node.js 24+ or Docker WebSocket rendezvous server for reaching Kiki spaces without a public IP; inner traffic stays end-to-end TLS 1.3 pinned to the space's P-256 SPKI fingerprint. See [Encrypted Relay](plugins/official/kiki-relay/README.md). |
+| Phone (`kiki-phone`) | Prepare the runtime, then operate a connected phone with semantic Mobilewright scripts or Mobile MCP. Needs Node.js 22.12+ with npm; Android uses official platform-tools and USB or wireless debugging; iOS needs a signed upstream device agent. See [Phone setup](plugins/official/kiki-phone/README.md). |
+| Cloudflare Tunnel (`kiki-cloudflare`) | Existing Cloudflare Tunnel token, local tunnel config + UUID, or `cloudflared` browser login; downloads a SHA-256-verified `cloudflared` binary into Kiki's plugin data directory on demand. See [Cloudflare Tunnel](plugins/official/kiki-cloudflare/README.md). |
+| Bilibili (`kiki-bilibili`) | Isolated Python 3.10+ environment with `bili-agent==1.0.0` (plus FFmpeg for real frames and `sherpa-onnx` for local ASR); supports multi-profile isolation and creator operations. See [Bilibili setup](plugins/official/kiki-bilibili/README.md). |
+| Task Board (`kiki-task-board`) | No external service; adds persistent workspace requirement cards and a workspace panel (requires plugin protocol `0.4.1+`). See [Task Board](plugins/official/kiki-task-board/README.md). |
+| Output Layer (`kiki-output-layer`) | Uses a configured Kiki model or connection to stream translations and plain-language rewrites without modifying the original conversation. |
+| Sites (`kiki-sites`) | Existing code-hosting login/token (`gh`, `glab`, Gitea, Forgejo, Gitee, Bitbucket) or deployment CLI/token (Vercel, Netlify, Cloudflare Pages/Workers, Railway, Fly.io, Render); provider quotas and billing apply. See [Sites](plugins/official/kiki-sites/README.md). |
+| Voice (`kiki-voice`) | Requires `kiki-media` (`^0.2.1`) with an enabled speech source plus Host messages APIs to generate playable audio and send originals to connected chats. See [Voice](plugins/official/kiki-voice/README.md). |
+| Media (`kiki-media`) | Grouped media plugin covering OpenAI, Google, Ark, xAI, MiniMax, StepFun, Novita, Agnes, NewAPI, ComfyUI, and local scripts; configure an entitled API connection or local ComfyUI endpoint (cloud generation may incur charges). |
+| Extract (`kiki-extract`) | Text and HTML work locally. PDF and Office conversion need Python and MarkItDown; MinerU OCR upload is explicit and opt-in. See [Extract setup](plugins/official/kiki-extract/README.md). |
+| Office (`kiki-office`) | OfficeCLI **1.0.152**, installed with consent; Windows x64, macOS arm64, and Linux x64 are supported by its pinned binary resolver. |
+| Work (`kiki-work`) | No external service or network; read-only local CSV/TSV key audit and two-table reconciliation. |
+| Writing (`kiki-writing`) | No external service; contributes a manuscript panel and draft command. |
+| Notion (`kiki-notion`) | Notion's HTTP MCP service and its OAuth authorization. See [Notion](plugins/official/kiki-notion/README.md). |
+| Everything Search (`kiki-everything`) | Windows with the Everything 1.5 index running and voidtools `es.exe` (`>=1.1.0.37`) installed. |
+| QQ (`kiki-qq`) | An official QQ Bot account or a OneBot 11 endpoint. |
+| Mail (`kiki-mail`) | An IMAP/SMTP account for direct mail or an Open Archiver URL and read-only key for archives. |
+| Desktop Pet (`kiki-pet`) | Local desktop companion that reacts to Kiki tasks and imports local or public Codex pet packs (`GPL-3.0-or-later`). |
 
 The two Moonshot entries are **author-hosted references**, not mirrored source in this repository. Their original license and external daemon/service requirements apply. The three community entries keep pinned author commits; their Claude-plugin import compatibility is marked unverified, so inspect Kiki's unsupported-contribution diagnostics before enabling them.
 
@@ -60,7 +71,7 @@ Office's real document-engine tests require `OFFICECLI_TEST_BINARY` pointing to 
 - `plugins/<id>/`: additional source packages that are not listed in the public marketplace.
 - `plugins/marketplace.json`: descriptions and author-hosted external entries.
 - `scripts/`: packaging, validation, development server, and release tooling.
-- `vendor/kiki-plugin-sdk-0.1.1-host-a3c694c402.tgz`: compiled SDK artifact selected by `sdk.lock.json`; older artifacts remain intact. CI recompiles the fixed Kiki ref and compares its public exports and compiled files.
+- `vendor/kiki-plugin-sdk-0.1.1-host-5c649def1.tgz`: compiled SDK artifact selected by `sdk.lock.json`; older artifacts remain intact. CI recompiles the fixed Kiki ref and compares its public exports and compiled files.
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) to change packages or propose third-party entries, and [RELEASING.md](RELEASING.md) to publish or recover a deployment.
 
